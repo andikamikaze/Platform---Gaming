@@ -1,0 +1,24 @@
+{
+  "name": "game-platform-checks",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pre-publish checks for the Game Platform static site: static validation, per-game mount smoke tests, browser smoke tests and live two-browser room tests.",
+  "scripts": {
+    "check": "node tools/check-all.mjs",
+    "check:static": "node tools/check-static.mjs",
+    "check:mount": "node tools/check-mount.mjs",
+    "check:browser": "node tools/check-browser.mjs",
+    "check:rooms": "node tools/check-rooms.mjs",
+    "check:community": "node tools/check-community.mjs",
+    "seed:community": "node tools/seed-community.mjs",
+    "check:manifest": "node tools/build-games-manifest.mjs",
+    "check:bot": "node tools/check-bot-play.mjs",
+    "capture:pages": "node tools/capture-pages.mjs",
+    "setup:browser": "npx playwright install chromium"
+  },
+  "devDependencies": {
+    "happy-dom": "^21.0.4",
+    "playwright": "^1.55.0"
+  }
+}

@@ -1,0 +1,27 @@
+# =============================================================
+# Folder/source YANG DIPAKAI (jangan diabaikan):
+#   CSS/     - style dashboard + game
+#   Gaming/  - 154 modul game
+#   JS/      - app.js, room-client, games-manifest, template
+#   tools/   - build manifest + script pengecekan pre-publish
+# =============================================================
+
+# Folder TIDAK DIPAKAI / hasil generate / dependency:
+node_modules/        # dependency npm, bukan bagian dari static site
+reports/             # hasil npm run check (JSON, Markdown, screenshot)
+playwright-report/   # hasil laporan Playwright
+test-results/        # hasil sementara Playwright
+dist/                # output build (project ini tidak punya build step)
+build/               # output build
+out/                 # output export statis
+coverage/            # hasil laporan coverage
+.cache/              # cache tooling
+tmp/                 # file sementara
+temp/                # file sementara
+.vscode/             # pengaturan editor
+.idea/               # pengaturan IDE
+
+# File sampah sistem / log
+.DS_Store
+Thumbs.db
+*.log

@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f8fa" />
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("gamespace_theme");
+          var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme = stored === "light" || stored === "dark"
+            ? stored
+            : (dark ? "dark" : "light");
+        } catch (error) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <title>Gaming &mdash; Community</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link href="CSS/community.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside aria-label="Game menu" class="app-sidebar">
+        <a aria-label="Game Space home" class="brand" href="index.html">
+          <span class="brand-mark">
+            <span> </span><span> </span><span> </span><span> </span>
+          </span>
+          <span class="brand-copy">
+            <strong> game space </strong>
+            <small> COMMUNITY </small>
+          </span>
+        </a>
+
+        <nav aria-label="Main navigation" class="main-nav">
+          <a aria-current="page" class="side-link active" href="#communities" title="Community">
+            <span class="nav-icon"> ◈ </span><span> Community </span>
+            <span class="nav-count" id="sidebarCommunityCount">0</span>
+          </a>
+          <a class="side-link" href="#events" title="Events">
+            <span class="nav-icon"> ▣ </span><span> Events </span>
+          </a>
+          <a class="side-link" href="#activity" title="Activity feed">
+            <span class="nav-icon"> ⌁ </span><span> Activity feed </span>
+          </a>
+          <a class="side-link" href="#players" title="Players online">
+            <span class="nav-icon"> ◉ </span><span> Players online </span>
+          </a>
+          <a class="side-link nav-switch" href="index.html" title="Game Space">
+            <span class="nav-icon"> ⌂ </span><span> Game Space </span>
+          </a>
+        </nav>
+
+        <nav aria-label="More navigation" class="more-nav" id="moreNav">
+          <span class="nav-caption"> Your spaces </span>
+          <div id="sidebarCommunities"></div>
+          <a class="side-link" href="#guidelines"><span class="nav-icon"> ⓘ </span><span> Guidelines </span></a>
+          <span class="nav-caption"> Account </span>
+          <a class="side-link" href="index.html#progress"><span class="nav-icon"> ▤ </span><span> Progress </span></a>
+          <a class="side-link" href="index.html#settings"><span class="nav-icon"> ⚙ </span><span> Settings </span></a>
+          <a class="side-link" href="index.html#help"><span class="nav-icon"> ? </span><span> Help &amp; Support </span></a>
+        </nav>
+      </aside>
+      <div aria-hidden="true" class="more-backdrop" data-action="toggle-menu" hidden></div>
+
+      <main class="main main-content" id="dashboard">
+        <header class="topbar">
+          <div class="breadcrumbs">
+            <span> Community </span>
+            <i> / </i>
+            <strong> Home </strong>
+          </div>
+          <label class="search">
+            <span>⌕</span>
+            <input
+              id="globalSearch"
+              type="search"
+              placeholder="Search games, communities, events..."
+              aria-label="Search communities and events"
+            />
+          </label>
+          <div class="top-actions">
+            <button
+              aria-label="Switch to dark mode"
+              class="icon-btn theme-toggle"
+              data-action="toggle-theme"
+              title="Switch to dark mode"
+              type="button"
+            >
+              <span aria-hidden="true" class="theme-icon">☾</span>
+            </button>
+            <button
+              aria-controls="moreNav"
+              aria-expanded="false"
+              aria-label="More options"
+              class="more-toggle"
+              data-action="toggle-menu"
+              title="More"
+              type="button"
+            >
+              ⋯
+            </button>
+            <button class="icon-btn" id="notifications" aria-label="Notifications" title="No new notifications">
+              ♧
+            </button>
+            <button class="primary-btn" id="createPostTop">＋ Create post</button>
+            <a aria-label="Edit player profile" class="profile-mini" href="index.html#settings" id="profileLink">
+              <span class="avatar primary" id="profileInitials">G</span>
+              <span class="profile-details">
+                <span class="profile-name" id="profileName">Guest</span>
+              </span>
+            </a>
+          </div>
+        </header>
+
+        <div class="content page-wrap">
+          <div class="status-banner" id="statusBanner" role="status"></div>
+
+          <section class="welcome">
+            <div>
+              <div class="eyebrow" id="todayLabel">Today</div>
+              <h1>Your people. Your games.</h1>
+              <p>
+                Welcome back, <span id="welcomeName">Guest</span>. Here’s what’s
+                happening in your communities.
+              </p>
+            </div>
+            <div class="welcome-actions">
+              <button class="secondary-btn" id="browseBtn">Explore ↗</button>
+              <button class="primary-btn" id="createPost">＋ New post</button>
+            </div>
+          </section>
+
+          <section class="stats" aria-label="Community overview">
+            <div class="stat">
+              <div class="stat-top">
+                <span>Communities joined</span>
+                <span class="stat-icon">◈</span>
+              </div>
+              <strong id="joinedCount">00</strong>
+              <div class="stat-foot">Across your favorite games</div>
+            </div>
+            <div class="stat">
+              <div class="stat-top">
+                <span>Upcoming events</span>
+                <span class="stat-icon stat-icon-violet">▣</span>
+              </div>
+              <strong id="upcomingCount">00</strong>
+              <div class="stat-foot">Scheduled by the community</div>
+            </div>
+            <div class="stat">
+              <div class="stat-top">
+                <span>Players online</span>
+                <span class="stat-icon stat-icon-orange">⌁</span>
+              </div>
+              <strong id="onlineCount">00</strong>
+              <div class="stat-foot">Community members connected</div>
+            </div>
+            <div class="stat">
+              <div class="stat-top">
+                <span>Posts this week</span>
+                <span class="stat-icon">↗</span>
+              </div>
+              <strong id="weeklyCount">00</strong>
+              <div class="stat-foot" id="weeklyFoot">Shared in the last 7 days</div>
+            </div>
+          </section>
+
+          <div class="dashboard-grid">
+            <div class="left-column">
+              <section class="section-card" id="communities">
+                <div class="section-head">
+                  <div>
+                    <h2>Find your community</h2>
+                    <p>Spaces built around the way you play.</p>
+                  </div>
+                  <button class="plain-link" id="seeAll">View all ↗</button>
+                </div>
+                <div class="filter-row" role="group" aria-label="Filter communities">
+                  <button class="filter active" data-game-filter="all">All games</button>
+                  <button class="filter" data-game-filter="competitive">Competitive</button>
+                  <button class="filter" data-game-filter="co-op">Co-op</button>
+                  <button class="filter" data-game-filter="creative">Creative</button>
+                </div>
+                <div class="community-list" id="communityList"></div>
+                <div class="empty" id="communityEmpty">No communities match your search.</div>
+              </section>
+
+              <section class="section-card" id="activity">
+                <div class="section-head">
+                  <div>
+                    <h2>Community activity</h2>
+                    <p>Catch up with your people.</p>
+                  </div>
+                  <button class="plain-link" id="feedRefresh">Refresh ↻</button>
+                </div>
+                <div id="feedList"></div>
+                <div class="empty" id="feedEmpty">No posts yet. Be the first to share something.</div>
+              </section>
+            </div>
+
+            <div class="right-column">
+              <section class="section-card" id="events">
+                <div class="section-head">
+                  <div>
+                    <h2>Upcoming events</h2>
+                    <p>Make time for your next session.</p>
+                  </div>
+                  <button class="plain-link" id="eventCalendar">Calendar ↗</button>
+                </div>
+                <div class="event-list" id="eventList"></div>
+                <div class="empty" id="eventEmpty">No events scheduled yet.</div>
+              </section>
+
+              <section class="section-card" id="players">
+                <div class="section-head">
+                  <div>
+                    <h2>Players online</h2>
+                    <p>Community members connected right now.</p>
+                  </div>
+                  <button class="plain-link" id="friendsBtn">Refresh</button>
+                </div>
+                <div class="online-list" id="onlineList"></div>
+                <div class="empty" id="onlineEmpty">Nobody is online yet.</div>
+              </section>
+
+              <section class="section-card" id="guidelines">
+                <div class="section-head">
+                  <div>
+                    <h2>Community code</h2>
+                    <p>Keep the space good for everyone.</p>
+                  </div>
+                  <span style="color: var(--primary); font-size: 18px">✳</span>
+                </div>
+                <div style="padding: 0 28px 24px; color: var(--muted); font-size: 13px; line-height: 1.7">
+                  Respect every skill level. Keep comms constructive. Make room
+                  for new players. Report harassment so moderators can help.
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div class="modal-backdrop" id="postModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <form class="modal" id="postForm">
+        <h2 id="modalTitle">Create a community post</h2>
+        <p>Share a moment, ask a question, or bring players together.</p>
+        <div class="field">
+          <label for="postCommunity">Community</label>
+          <select id="postCommunity"><option value="">General community</option></select>
+        </div>
+        <div class="field">
+          <label for="postTitle">Post title</label>
+          <input id="postTitle" placeholder="What’s on your mind?" required maxlength="90" />
+        </div>
+        <div class="field">
+          <label for="postBody">Message</label>
+          <textarea id="postBody" placeholder="Tell your community more..." required maxlength="500"></textarea>
+        </div>
+        <p class="inline-error" id="postError" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancelPost">Cancel</button>
+          <button type="submit" class="primary-btn">Publish post</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="commentModal" role="dialog" aria-modal="true" aria-labelledby="commentModalTitle">
+      <form class="modal" id="commentForm">
+        <h2 id="commentModalTitle">Join the conversation</h2>
+        <p id="commentTarget">Add a comment to this post.</p>
+        <div class="field">
+          <label for="commentBody">Comment</label>
+          <textarea id="commentBody" placeholder="Write a reply..." required maxlength="500"></textarea>
+        </div>
+        <p class="inline-error" id="commentError" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancelComment">Cancel</button>
+          <button type="submit" class="primary-btn">Post comment</button>
+        </div>
+      </form>
+    </div>
+
+    <template id="tpl-community">
+      <article class="community">
+        <div class="game-badge"></div>
+        <div>
+          <h3></h3>
+          <p></p>
+          <div class="community-meta">
+            <span class="pill live"></span>
+            <span class="pill"></span>
+          </div>
+        </div>
+        <button class="join-btn" type="button">Join</button>
+      </article>
+    </template>
+
+    <template id="tpl-post">
+      <article class="feed-item">
+        <div class="avatar"></div>
+        <div class="feed-body">
+          <div class="feed-top"></div>
+          <p></p>
+          <div class="feed-tags"></div>
+          <div class="feed-actions">
+            <button data-like type="button">♡ Like <span>0</span></button>
+            <button data-comment type="button">▢ Comment <span>0</span></button>
+            <button data-share type="button">↗ Share</button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <template id="tpl-comment">
+      <div class="comment">
+        <div class="avatar"></div>
+        <div class="comment-body"><strong></strong><p></p></div>
+      </div>
+    </template>
+
+    <template id="tpl-event">
+      <article class="event">
+        <div class="datebox"><span></span><strong></strong></div>
+        <div><h3></h3><p></p></div>
+        <button class="small-action" type="button">RSVP</button>
+      </article>
+    </template>
+
+    <template id="tpl-online">
+      <div class="online-person">
+        <div class="avatar"></div>
+        <div class="profile-mini-text"><strong></strong><small></small></div>
+        <span class="status"></span>
+      </div>
+    </template>
+
+    <script type="module" src="JS/community.js"></script>
+  </body>
+</html>

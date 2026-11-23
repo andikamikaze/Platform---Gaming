@@ -1,0 +1,1030 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <meta content="#f7f8fa" name="theme-color" />
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("gamespace_theme");
+          var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme = stored === "light" || stored === "dark"
+            ? stored
+            : (dark ? "dark" : "light");
+        } catch (error) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <meta
+      content="A small collection of browser games. Play solo, manage your activity, or invite a friend to a private room."
+      name="description"
+    />
+    <title>Game Space &mdash; Play together</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link href="CSS/style.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside aria-label="Game menu" class="app-sidebar">
+        <a
+          aria-label="Game Space home"
+          class="brand"
+          data-page-link="overview"
+          href="#overview"
+        >
+          <span class="brand-mark">
+            <span> </span>
+            <span> </span>
+            <span> </span>
+            <span> </span>
+          </span>
+          <span class="brand-copy">
+            <strong> game space </strong>
+            <small> PLAYGROUND </small>
+          </span>
+        </a>
+        <nav aria-label="Main navigation" class="main-nav">
+          <a aria-current="page" class="side-link active" data-page-link="overview" href="#overview" title="Overview">
+            <span class="nav-icon"> ⌂ </span><span> Overview </span>
+          </a>
+          <a class="side-link" data-page-link="library" href="#library" title="Game Library">
+            <span class="nav-icon"> ▦ </span><span> Games </span>
+          </a>
+          <a class="side-link" data-page-link="play" href="#play" title="Play">
+            <span class="nav-icon"> ▷ </span><span> Play </span>
+          </a>
+          <button class="side-link" data-action="create-room" type="button" title="Create a Room">
+            <span class="nav-icon"> ＋ </span><span> Create Room </span>
+          </button>
+          <a class="side-link" data-page-link="rooms" href="#rooms" title="Rooms">
+            <span class="nav-icon"> &nearrow; </span><span> Rooms </span>
+          </a>
+          <a class="side-link nav-switch" href="community.html" title="Community">
+            <span class="nav-icon"> ◈ </span><span> Community </span>
+          </a>
+        </nav>
+        <nav aria-label="More navigation" class="more-nav" id="moreNav">
+          <span class="nav-caption"> More </span>
+          <a class="side-link" data-page-link="progress" href="#progress"><span class="nav-icon"> ▤ </span><span> Progress </span></a>
+          <a class="side-link" data-page-link="settings" href="#settings"><span class="nav-icon"> ⚙ </span><span> Settings </span></a>
+          <a class="side-link" data-page-link="help" href="#help"><span class="nav-icon"> ? </span><span> Help &amp; Support </span></a>
+        </nav>
+      </aside>
+      <div aria-hidden="true" class="more-backdrop" data-action="toggle-menu" hidden></div>
+      <main class="main-content" id="dashboard">
+        <header class="topbar">
+          <div class="breadcrumbs">
+            <span id="breadcrumbGroup"> Workspace </span>
+            <i> / </i>
+            <strong id="breadcrumbCurrent"> Overview </strong>
+          </div>
+          <div class="topbar-actions">
+            <span class="connection-status">
+              <span class="status-dot"> </span>
+              Browser ready
+            </span>
+            <button
+              aria-label="Switch to dark mode"
+              class="icon-button theme-toggle"
+              data-action="toggle-theme"
+              title="Switch to dark mode"
+              type="button"
+            >
+              <span aria-hidden="true" class="theme-icon">☾</span>
+            </button>
+            <button
+              aria-controls="moreNav"
+              aria-expanded="false"
+              aria-label="More options"
+              class="more-toggle"
+              data-action="toggle-menu"
+              title="More"
+              type="button"
+            >
+              ⋯
+            </button>
+            <button
+              aria-label="Help"
+              class="icon-button"
+              data-page-link="help"
+              title="Help &amp; Support"
+              type="button"
+            >
+              ?
+            </button>
+            <button
+              aria-label="Edit player profile"
+              class="avatar avatar-small"
+              data-action="profile"
+              id="topAvatar"
+              type="button"
+            >
+              G
+            </button>
+          </div>
+        </header>
+        <div class="page-wrap">
+          <section
+            class="page-view"
+            data-page-view="overview"
+            id="page-overview"
+          >
+            <section class="welcome-row">
+              <div>
+                <p class="eyebrow">YOUR GAME SPACE</p>
+                <h1>
+                  What are we playing
+                  <span> today? </span>
+                </h1>
+                <p class="welcome-copy">
+                  Choose a quick match, challenge the AI, or make a room for a
+                  friend.
+                </p>
+              </div>
+              <button
+                class="button button-primary"
+                data-action="create-room"
+                type="button"
+              >
+                <span> ＋ </span>
+                Create a room
+              </button>
+            </section>
+            <section aria-label="Your gaming activity" class="stats-grid">
+              <article class="stat-card">
+                <div class="stat-label">
+                  <span> Available games </span>
+                  <span class="stat-icon"> ▦ </span>
+                </div>
+                <strong class="stat-value" id="gameCount"> -- </strong>
+                <span class="stat-foot"> Ready to play </span>
+              </article>
+              <article class="stat-card">
+                <div class="stat-label">
+                  <span> Games played </span>
+                  <span class="stat-icon"> &nearrow; </span>
+                </div>
+                <strong class="stat-value" id="playCount"> 00 </strong>
+                <span class="stat-foot"> Saved on this device </span>
+              </article>
+              <article class="stat-card">
+                <div class="stat-label">
+                  <span> Rooms created </span>
+                  <span class="stat-icon"> ⌘ </span>
+                </div>
+                <strong class="stat-value" id="roomCount"> 00 </strong>
+                <span class="stat-foot"> This browser profile </span>
+              </article>
+            </section>
+            <section aria-labelledby="quickTitle" class="quick-section">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">GET STARTED</p>
+                  <h2 id="quickTitle">Jump right in</h2>
+                </div>
+                <span class="section-hint"> A few ways to start </span>
+              </div>
+              <div class="quick-grid">
+                <a
+                  class="quick-action"
+                  data-page-link="play"
+                  href="#play"
+                >
+                  <span class="quick-symbol quick-symbol-violet"> ▷ </span>
+                  <span class="quick-copy">
+                    <strong> Play </strong>
+                    <small> Choose a game and start a match </small>
+                  </span>
+                  <span class="quick-arrow"> &nearrow; </span>
+                </a>
+                <a
+                  class="quick-action"
+                  data-page-link="rooms"
+                  href="#rooms"
+                >
+                  <span class="quick-symbol quick-symbol-green"> ＋ </span>
+                  <span class="quick-copy">
+                    <strong> Create a private room </strong>
+                    <small> Invite a friend with a room code </small>
+                  </span>
+                  <span class="quick-arrow"> &nearrow; </span>
+                </a>
+                <a
+                  class="quick-action"
+                  data-page-link="rooms"
+                  href="#rooms"
+                >
+                  <span class="quick-symbol quick-symbol-amber">
+                    &nearrow;
+                  </span>
+                  <span class="quick-copy">
+                    <strong> Rooms </strong>
+                    <small> Join a friend with an invite code </small>
+                  </span>
+                  <span class="quick-arrow"> &nearrow; </span>
+                </a>
+                <a
+                  class="quick-action"
+                  data-page-link="library"
+                  href="#library"
+                >
+                  <span class="quick-symbol quick-symbol-violet"> ▦ </span>
+                  <span class="quick-copy">
+                    <strong> Game library </strong>
+                    <small> Browse all available games </small>
+                  </span>
+                  <span class="quick-arrow"> &nearrow; </span>
+                </a>
+                <a class="quick-action" href="community.html">
+                  <span class="quick-symbol quick-symbol-green"> ◈ </span>
+                  <span class="quick-copy">
+                    <strong> Community </strong>
+                    <small> Meet players, share posts, join events </small>
+                  </span>
+                  <span class="quick-arrow"> &nearrow; </span>
+                </a>
+              </div>
+            </section>
+          </section>
+          <section
+            class="page-view"
+            data-page-view="library"
+            hidden="True"
+            id="page-library"
+          >
+            <section
+              aria-labelledby="libraryTitle"
+              class="library-section"
+              id="library"
+            >
+              <div class="section-heading library-heading">
+                <div>
+                  <p class="eyebrow">THE COLLECTION</p>
+                  <h2 id="libraryTitle">Game library</h2>
+                  <p class="section-description">
+                    Pick a game. Choose your opponent. Start playing.
+                  </p>
+                </div>
+                <span class="game-total" id="shownCount"> Loading games&hellip; </span>
+              </div>
+              <div class="library-toolbar">
+                <div aria-label="Filter games" class="filter-list" id="filterList" role="group"></div>
+                <label class="search-box">
+                  <span> &telrec; </span>
+                  <input
+                    aria-label="Search games"
+                    id="gameSearch"
+                    placeholder="Search games"
+                    type="search"
+                  />
+                </label>
+              </div>
+              <div aria-live="polite" class="game-grid" id="gameGrid"></div>
+              <div class="empty-state" hidden="" id="emptyState">
+                <strong> No games found </strong>
+                <p>Try another name or category.</p>
+              </div>
+            </section>
+          </section>
+          <section
+            aria-labelledby="playTitle"
+            class="page-view"
+            data-page-view="play"
+            hidden="True"
+            id="page-play"
+          >
+            <div class="subpage-heading">
+              <div>
+                <p class="eyebrow">WORKSPACE / PLAY</p>
+                <h1 id="playTitle">Play</h1>
+                <p class="welcome-copy">
+                  Pick a game to start, or jump back into one you played
+                  recently on this device.
+                </p>
+              </div>
+            </div>
+            <div class="play-layout">
+              <div>
+                <label class="search-box picker-search-box">
+                  <span> &telrec; </span>
+                  <input
+                    aria-label="Search games"
+                    id="playSearch"
+                    placeholder="Search games"
+                    type="search"
+                  />
+                </label>
+                <div
+                  aria-live="polite"
+                  class="page-card-grid game-picker-grid"
+                  id="playGrid"
+                ></div>
+                <div class="empty-state" hidden="" id="playEmpty">
+                  <strong> No games found </strong>
+                  <p>Try another game name.</p>
+                </div>
+                <div class="page-inline-note">
+                  <strong> How it works </strong>
+                  <span>
+                    Select a game, then choose Play Solo for a local match or
+                    go to Rooms to invite a friend.
+                  </span>
+                </div>
+              </div>
+              <aside class="recent-panel">
+                <div class="recent-panel-heading">
+                  <p class="eyebrow">YOUR SPACE</p>
+                  <h2>Recently played</h2>
+                  <p>Games you have opened on this device.</p>
+                </div>
+                <div aria-live="polite" class="recent-list" id="playRecentGrid"></div>
+                <div class="empty-state" hidden="" id="playRecentEmpty">
+                  <strong> No recent games </strong>
+                  <p>Your recently played games will appear here after your first session.</p>
+                  <a class="text-action" data-page-link="library" href="#library">
+                    Browse library &nearrow;
+                  </a>
+                </div>
+                <section aria-labelledby="playFavoritesTitle" class="favorites-panel">
+                  <div class="recent-panel-heading">
+                    <p class="eyebrow">YOUR SPACE</p>
+                    <h2 id="playFavoritesTitle">Favorites</h2>
+                    <p>Games you saved with the heart button.</p>
+                  </div>
+                  <div aria-live="polite" class="recent-list" id="playFavoritesGrid"></div>
+                  <div class="empty-state" hidden="" id="playFavoritesEmpty">
+                    <strong> No favorites yet </strong>
+                    <p>Use the heart on a game card to save it here.</p>
+                    <a class="text-action" data-page-link="library" href="#library">
+                      Browse library &nearrow;
+                    </a>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </section>
+          <section
+            aria-labelledby="roomsTitle"
+            class="page-view"
+            data-page-view="rooms"
+            hidden="True"
+            id="page-rooms"
+          >
+            <div class="subpage-heading">
+              <div>
+                <p class="eyebrow">WORKSPACE / MULTIPLAYER</p>
+                <h1 id="roomsTitle">
+                  Rooms
+                </h1>
+                <p class="welcome-copy">
+                  Create a private room or join a friend with an invite code.
+                </p>
+              </div>
+            </div>
+            <section aria-labelledby="roomCreateTitle" class="room-create-section">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">GET STARTED</p>
+                  <h2 id="roomCreateTitle">Create a Room</h2>
+                  <p class="section-description">
+                    Host a private two-player match in three short steps.
+                  </p>
+                </div>
+                <button class="button button-primary" data-action="create-room" type="button">
+                  Create room
+                </button>
+              </div>
+              <div class="room-steps">
+                <div class="room-step">
+                  <span> 01 </span>
+                  <strong> Choose a game </strong>
+                  <small> Select the game you want to host. </small>
+                </div>
+                <div class="room-step">
+                  <span> 02 </span>
+                  <strong> Create a room </strong>
+                  <small> The platform creates a private invite code. </small>
+                </div>
+                <div class="room-step">
+                  <span> 03 </span>
+                  <strong> Invite a friend </strong>
+                  <small> Share the code so another player can join. </small>
+                </div>
+              </div>
+            </section>
+            <div class="rooms-layout">
+              <div class="page-card join-page-card">
+                <span class="large-feature-icon"> &nearrow; </span>
+                <h2>Have an invite code?</h2>
+                <p>
+                  Room codes connect you to a private two-player match. Make
+                  sure you and your friend are using the same game version.
+                </p>
+                <label class="field-label" for="roomsJoinCode">
+                  Room code
+                </label>
+                <div class="join-code-row">
+                  <input
+                    autocomplete="off"
+                    id="roomsJoinCode"
+                    maxlength="8"
+                    placeholder="e.g. K7Q4MP"
+                    type="text"
+                  />
+                  <button
+                    class="button button-primary"
+                    id="roomsJoinSubmit"
+                    type="button"
+                  >
+                    Join room &nearrow;
+                  </button>
+                </div>
+                <p class="form-hint">
+                  Codes are not case-sensitive. Spaces and dashes are ignored.
+                </p>
+              </div>
+              <aside class="page-card page-card-soft">
+                <p class="eyebrow">PRIVATE BY DESIGN</p>
+                <h3>No public room list</h3>
+                <p>
+                  This platform only uses private two-player rooms. A room can
+                  be joined only through the invite code shared by its host —
+                  there is nothing to browse.
+                </p>
+                <button
+                  class="text-action"
+                  data-action="create-room"
+                  type="button"
+                >
+                  Create your own room
+                  <span> &nearrow; </span>
+                </button>
+              </aside>
+            </div>
+          </section>
+          <section
+            aria-labelledby="progressTitle"
+            class="page-view"
+            data-page-view="progress"
+            hidden="True"
+            id="page-progress"
+          >
+            <div class="subpage-heading">
+              <div>
+                <p class="eyebrow">YOUR SPACE</p>
+                <h1 id="progressTitle">Progress</h1>
+                <p class="welcome-copy">
+                  A local snapshot of everything you’ve played on this device.
+                </p>
+              </div>
+            </div>
+            <div class="progress-layout">
+              <section aria-labelledby="progressHistoryTitle" class="page-card progress-card">
+                <div class="progress-card-heading">
+                  <h2 id="progressHistoryTitle">Play History</h2>
+                  <p>Sessions started on this browser.</p>
+                </div>
+                <div aria-live="polite" class="history-list" id="progressHistoryList"></div>
+                <div class="empty-state" hidden="" id="progressHistoryEmpty">
+                  <strong> No play history yet </strong>
+                  <p>Start a game to create your first history entry.</p>
+                </div>
+                <p class="page-footnote">
+                  Tracks sessions started, not exact timestamps.
+                </p>
+              </section>
+              <section aria-labelledby="progressStatsTitle" class="page-card progress-card">
+                <div class="progress-card-heading">
+                  <h2 id="progressStatsTitle">My Statistics</h2>
+                  <p>A snapshot of your local activity.</p>
+                </div>
+                <div class="progress-stat-grid">
+                  <article class="stat-card">
+                    <div class="stat-label"><span> Total sessions </span><span class="stat-icon"> &nearrow; </span></div>
+                    <strong class="stat-value" id="progressTotalPlays"> 00 </strong>
+                    <span class="stat-foot"> Games started </span>
+                  </article>
+                  <article class="stat-card">
+                    <div class="stat-label"><span> Games explored </span><span class="stat-icon"> ▦ </span></div>
+                    <strong class="stat-value" id="progressUniqueGames"> 00 </strong>
+                    <span class="stat-foot"> Different titles played </span>
+                  </article>
+                  <article class="stat-card">
+                    <div class="stat-label"><span> Rooms created </span><span class="stat-icon"> ⌘ </span></div>
+                    <strong class="stat-value" id="progressRooms"> 00 </strong>
+                    <span class="stat-foot"> On this browser </span>
+                  </article>
+                </div>
+                <div class="progress-subheading">
+                  <h3>Sessions by game</h3>
+                  <p>Compare how often you have launched each title.</p>
+                </div>
+                <div class="usage-list" id="progressUsageList"></div>
+              </section>
+              <section aria-labelledby="progressAchievementsTitle" class="page-card progress-card">
+                <div class="progress-card-heading">
+                  <h2 id="progressAchievementsTitle">Achievements</h2>
+                  <p>Small milestones from local activity.</p>
+                </div>
+                <div class="achievement-grid" id="progressAchievementsGrid"></div>
+                <p class="page-footnote">
+                  Progress is calculated locally and is not synced to a cloud profile.
+                </p>
+              </section>
+            </div>
+          </section>
+          <section
+            aria-labelledby="settingsTitle"
+            class="page-view"
+            data-page-view="settings"
+            hidden="True"
+            id="page-settings"
+          >
+            <div class="subpage-heading">
+              <div>
+                <p class="eyebrow">PREFERENCES</p>
+                <h1 id="settingsTitle">Settings</h1>
+                <p class="welcome-copy">
+                  Adjust the interface for this browser.
+                </p>
+              </div>
+            </div>
+            <div class="settings-layout">
+              <div class="page-card settings-card">
+                <div class="table-card-heading">
+                  <div>
+                    <h2>Appearance</h2>
+                    <p>These preferences are stored locally on this device.</p>
+                  </div>
+                </div>
+                <label class="settings-row" for="compactLayoutToggle">
+                  <span>
+                    <strong> Compact layout </strong>
+                    <small> Reduce spacing between cards and sections. </small>
+                  </span>
+                  <input
+                    class="toggle-input"
+                    id="compactLayoutToggle"
+                    type="checkbox"
+                  />
+                </label>
+                <label class="settings-row" for="reduceMotionToggle">
+                  <span>
+                    <strong> Reduce motion </strong>
+                    <small> Limit interface transitions and animations. </small>
+                  </span>
+                  <input
+                    class="toggle-input"
+                    id="reduceMotionToggle"
+                    type="checkbox"
+                  />
+                </label>
+                <div class="settings-row settings-theme-row">
+                  <span>
+                    <strong> Theme </strong>
+                    <small> Light, dark, or follow your device. </small>
+                  </span>
+                  <div aria-label="Theme" class="theme-options" role="group">
+                    <label class="theme-option">
+                      <input name="themeMode" type="radio" value="light" />
+                      <span> ☀ Light </span>
+                    </label>
+                    <label class="theme-option">
+                      <input name="themeMode" type="radio" value="dark" />
+                      <span> ☾ Dark </span>
+                    </label>
+                    <label class="theme-option">
+                      <input name="themeMode" type="radio" value="system" />
+                      <span> ◐ System </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="page-card settings-card">
+                <div class="table-card-heading">
+                  <div>
+                    <h2>Player profile</h2>
+                    <p>Change the display name shown in rooms.</p>
+                  </div>
+                </div>
+                <div class="settings-row settings-profile-row">
+                  <span>
+                    <strong> Display name </strong>
+                    <small id="settingsPlayerName"> Guest </small>
+                  </span>
+                  <button class="button" data-action="profile" type="button">
+                    Edit profile
+                  </button>
+                </div>
+              </div>
+              <div class="page-card settings-card">
+                <div class="table-card-heading">
+                  <div>
+                    <h2>Local data</h2>
+                    <p>
+                      Everything is stored on this device only. Resetting clears
+                      your name, favorites, history, best scores, and settings.
+                    </p>
+                  </div>
+                </div>
+                <div class="settings-row settings-profile-row">
+                  <span>
+                    <strong> Reset local data </strong>
+                    <small> Start fresh like a first-time visitor. </small>
+                  </span>
+                  <button class="button button-danger" id="resetDataButton" type="button">
+                    Reset data
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section
+            aria-labelledby="helpPageTitle"
+            class="page-view"
+            data-page-view="help"
+            hidden="True"
+            id="page-help"
+          >
+            <div class="subpage-heading">
+              <div>
+                <p class="eyebrow">PREFERENCES</p>
+                <h1 id="helpPageTitle">
+                  Help &amp;
+                  <span> Support </span>
+                </h1>
+                <p class="welcome-copy">Quick answers for using Game Space.</p>
+              </div>
+            </div>
+            <div class="help-grid">
+              <article class="page-card help-card">
+                <span class="help-icon"> ▷ </span>
+                <h2>Play against AI</h2>
+                <p>
+                  Open Play, choose a game, then select Play Solo. This mode
+                  runs locally in your browser.
+                </p>
+                <a
+                  class="text-action"
+                  data-page-link="play"
+                  href="#play"
+                >
+                  Go to Play &nearrow;
+                </a>
+              </article>
+              <article class="page-card help-card">
+                <span class="help-icon"> ⌘ </span>
+                <h2>Play with a friend</h2>
+                <p>
+                  Create a private room and share its six-character code. Your
+                  friend can join from another browser.
+                </p>
+                <a
+                  class="text-action"
+                  data-page-link="rooms"
+                  href="#rooms"
+                >
+                  Create a room &nearrow;
+                </a>
+              </article>
+              <article class="page-card help-card">
+                <span class="help-icon"> ⚙ </span>
+                <h2>Online setup</h2>
+                <p>
+                  Online rooms require Firebase Web App configuration, Realtime
+                  Database, and Anonymous Authentication.
+                </p>
+                <a
+                  class="text-action"
+                  data-page-link="settings"
+                  href="#settings"
+                >
+                  Open Settings &nearrow;
+                </a>
+              </article>
+              <article class="page-card help-card">
+                <span class="help-icon"> ◈ </span>
+                <h2>Meet the community</h2>
+                <p>
+                  Open Community to find groups, share posts, and RSVP to game
+                  nights. Your display name is shared between both pages.
+                </p>
+                <a class="text-action" href="community.html">
+                  Open Community
+                  <span> &nearrow; </span>
+                </a>
+              </article>
+              <article class="page-card help-card">
+                <span class="help-icon"> ◷ </span>
+                <h2>Local data</h2>
+                <p>
+                  Favorites, recently played games, session counts, and
+                  interface preferences are currently stored in this browser's
+                  local storage.
+                </p>
+              </article>
+            </div>
+          </section>
+          <footer class="page-footer">
+            <span>
+              &copy;
+              <span id="currentYear"> </span>
+              Game Space
+            </span>
+            <span class="footer-links">
+              <button class="footer-link" data-action="about" type="button">About</button>
+              <button class="footer-link" data-action="privacy" type="button">Privacy</button>
+            </span>
+          </footer>
+        </div>
+      </main>
+    </div>
+    <!-- Select how to play. Also used by the global Create room action. -->
+    <section
+      aria-labelledby="launchTitle"
+      aria-modal="true"
+      class="dialog-backdrop"
+      hidden=""
+      id="launchDialog"
+      role="dialog"
+    >
+      <div class="dialog dialog-wide">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">NEW SESSION</p>
+            <h2 id="launchTitle">Choose your game mode</h2>
+            <p class="dialog-subtitle" id="launchSubtitle">
+              Play solo or invite someone into a room.
+            </p>
+          </div>
+          <button
+            aria-label="Close"
+            class="dialog-close"
+            data-close="launchDialog"
+            type="button"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="field-group">
+          <label for="launchGameSelect"> Game </label>
+          <select id="launchGameSelect"></select>
+        </div>
+        <div class="mode-options">
+          <button class="mode-option" data-launch-mode="ai" type="button">
+            <span class="mode-icon mode-icon-ai"> ◎ </span>
+            <span>
+              <strong> Play Solo </strong>
+              <small> Start immediately against a computer opponent. </small>
+            </span>
+            <span class="mode-arrow"> &rarr; </span>
+          </button>
+          <button class="mode-option" data-launch-mode="room" type="button">
+            <span class="mode-icon mode-icon-room"> ⌘ </span>
+            <span>
+              <strong> Create a room </strong>
+              <small> Open a private room and invite one friend. </small>
+            </span>
+            <span class="mode-arrow"> &rarr; </span>
+          </button>
+        </div>
+        <p class="dialog-footnote">
+          Online rooms use a lightweight realtime database for matchmaking and
+          turn sync.
+        </p>
+      </div>
+    </section>
+    <section
+      aria-labelledby="joinTitle"
+      aria-modal="true"
+      class="dialog-backdrop"
+      hidden=""
+      id="joinDialog"
+      role="dialog"
+    >
+      <div class="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">FRIEND INVITE</p>
+            <h2 id="joinTitle">Join a room</h2>
+            <p class="dialog-subtitle">
+              Enter the room code shared by the host.
+            </p>
+          </div>
+          <button
+            aria-label="Close"
+            class="dialog-close"
+            data-close="joinDialog"
+            type="button"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="field-group">
+          <label for="joinRoomCode"> Room code </label>
+          <input
+            autocomplete="off"
+            id="joinRoomCode"
+            maxlength="8"
+            placeholder="e.g. K7Q4MP"
+            type="text"
+          />
+        </div>
+        <p class="inline-error" hidden="" id="joinError"></p>
+        <div class="dialog-actions">
+          <button
+            class="button button-primary button-full"
+            id="joinRoomSubmit"
+            type="button"
+          >
+            Join room
+            <span> &nearrow; </span>
+          </button>
+        </div>
+      </div>
+    </section>
+    <section
+      aria-labelledby="profileTitle"
+      aria-modal="true"
+      class="dialog-backdrop"
+      hidden=""
+      id="profileDialog"
+      role="dialog"
+    >
+      <div class="dialog dialog-compact">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">PLAYER PROFILE</p>
+            <h2 id="profileTitle">Your display name</h2>
+            <p class="dialog-subtitle">This name appears in your game rooms.</p>
+          </div>
+          <button
+            aria-label="Close"
+            class="dialog-close"
+            data-close="profileDialog"
+            type="button"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="field-group">
+          <label for="playerNameInput"> Display name </label>
+          <input
+            id="playerNameInput"
+            maxlength="20"
+            placeholder="Guest"
+            type="text"
+          />
+        </div>
+        <p class="inline-error" hidden="" id="profileError"></p>
+        <div class="dialog-actions">
+          <button
+            class="button button-primary button-full"
+            id="saveProfile"
+            type="button"
+          >
+            Save name
+          </button>
+        </div>
+      </div>
+    </section>
+    <section
+      aria-labelledby="infoTitle"
+      aria-modal="true"
+      class="dialog-backdrop"
+      hidden=""
+      id="infoDialog"
+      role="dialog"
+    >
+      <div class="dialog dialog-compact">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">GAME SPACE</p>
+            <h2 id="infoTitle">Help</h2>
+          </div>
+          <button
+            aria-label="Close"
+            class="dialog-close"
+            data-close="infoDialog"
+            type="button"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="info-copy" id="infoCopy"></div>
+        <div class="dialog-actions">
+          <button
+            class="button button-primary button-full"
+            data-close="infoDialog"
+            type="button"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </section>
+    <!-- First-visit onboarding: asks for a display name before playing. -->
+    <section
+      aria-labelledby="welcomeTitle"
+      aria-modal="true"
+      class="dialog-backdrop"
+      data-persistent=""
+      hidden=""
+      id="welcomeDialog"
+      role="dialog"
+    >
+      <div class="dialog dialog-compact">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">WELCOME</p>
+            <h2 id="welcomeTitle">What should we call you?</h2>
+            <p class="dialog-subtitle">
+              Your name stays on this device only. Favorites, history, and best
+              scores are saved locally too.
+            </p>
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="welcomeNameInput"> Display name </label>
+          <input
+            id="welcomeNameInput"
+            maxlength="20"
+            placeholder="Guest"
+            type="text"
+          />
+        </div>
+        <p class="inline-error" hidden="" id="welcomeError"></p>
+        <div class="dialog-actions">
+          <button
+            class="button button-primary button-full"
+            id="welcomeSubmit"
+            type="button"
+          >
+            Start playing
+            <span> &nearrow; </span>
+          </button>
+        </div>
+      </div>
+    </section>
+    <!-- A single reusable game surface; individual games are loaded on demand. -->
+    <section
+      aria-labelledby="gameDialogTitle"
+      aria-modal="true"
+      class="game-backdrop"
+      hidden=""
+      id="gameDialog"
+      role="dialog"
+    >
+      <div class="game-window">
+        <header class="game-window-bar">
+          <div class="game-window-title">
+            <span class="game-window-mark"> GS </span>
+            <div>
+              <strong id="gameDialogTitle"> Game </strong>
+              <small id="gameDialogMeta"> Solo session </small>
+            </div>
+          </div>
+          <div class="game-window-actions">
+            <span class="game-best-badge" hidden="" id="gameBestBadge"></span>
+            <button
+              class="button button-subtle room-share"
+              hidden=""
+              id="shareRoomButton"
+              type="button"
+            >
+              Copy room code
+            </button>
+            <button
+              aria-label="Close game"
+              class="icon-button game-close"
+              id="closeGameButton"
+              type="button"
+            >
+              &times;
+            </button>
+          </div>
+        </header>
+        <div class="game-window-content" id="gameHost">
+          <div class="game-loading">
+            <span class="loading-spinner"> </span>
+            <p>Loading game&hellip;</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <div
+      aria-atomic="true"
+      aria-live="polite"
+      class="toast-region"
+      id="toastRegion"
+    ></div>
+    <script src="JS/app.js" type="module"></script>
+  </body>
+</html>
