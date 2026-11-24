@@ -1,0 +1,58 @@
+{
+  "rules": {
+    "community": {
+      ".read": "auth != null",
+      "users": {
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      },
+      "communities": {
+        ".write": "auth != null"
+      },
+      "members": {
+        "$communityId": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      },
+      "posts": {
+        "$postId": {
+          ".write": "auth != null && (!data.exists() || data.child('authorUid').val() === auth.uid)",
+          ".validate": "!newData.exists() || (newData.child('title').isString() && newData.child('body').isString() && newData.child('authorUid').val() === auth.uid)"
+        }
+      },
+      "likes": {
+        "$postId": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      },
+      "comments": {
+        "$postId": {
+          "$commentId": {
+            ".write": "auth != null && (!data.exists() || data.child('authorUid').val() === auth.uid)",
+            ".validate": "!newData.exists() || (newData.child('body').isString() && newData.child('authorUid').val() === auth.uid)"
+          }
+        }
+      },
+      "events": {
+        ".write": "auth != null"
+      },
+      "rsvps": {
+        "$eventId": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      },
+      "content": {
+        "guidelines": {
+          ".write": false
+        }
+      }
+    }
+  }
+}

@@ -17,6 +17,15 @@
         box-sizing: border-box;
       }
 
+      /* hydrateIcons()/setIcon() inject SVGs without dimensions — size them here. */
+      .icon svg,
+      [data-icon] svg {
+        display: block;
+        width: 18px;
+        height: 18px;
+        flex: none;
+      }
+
       body {
         margin: 0;
         background: var(--bg);
@@ -371,6 +380,9 @@
         font-weight: 600;
         font-size: 13px;
         transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
       }
 
       .secondary-btn:hover {
@@ -505,6 +517,51 @@
         margin-bottom: 0;
       }
 
+      /* Dedicated views switched by the hash router. */
+      .community-view { display: block; }
+      .community-view[hidden] { display: none !important; }
+      .community-view > .section-card { max-width: 900px; }
+
+      .view-heading {
+        padding: 0 0 28px;
+      }
+      .view-heading .eyebrow { margin-bottom: 8px; }
+      .view-heading h1 {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 28px;
+        line-height: 1.2;
+        margin: 0 0 8px;
+        color: var(--ink);
+      }
+      .view-heading > p:last-child {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0;
+      }
+
+      .view-links {
+        display: grid;
+        gap: 6px;
+        padding: 4px 16px 20px;
+      }
+      .view-link {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 42px;
+        padding: 0 12px;
+        border-radius: 9px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: background .18s ease, color .18s ease;
+      }
+      .view-link:hover { background: var(--surface-muted); color: var(--ink); }
+      .view-link .icon:first-child { display: inline-flex; color: var(--primary); }
+      .view-link .icon:last-child { margin-left: auto; }
+      .view-link svg { width: 18px; height: 18px; }
+
       .section-head {
         display: flex;
         align-items: center;
@@ -534,6 +591,24 @@
         font-size: 13px;
         padding: 6px 0;
         transition: opacity 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .section-head-actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .guidelines-copy {
+        padding: 0 28px 24px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+        white-space: pre-wrap;
       }
 
       .plain-link:hover {
@@ -777,6 +852,18 @@
         color: var(--primary);
       }
 
+      .feed-actions .delete-action { margin-left: auto; }
+      .feed-actions .delete-action:hover,
+      .comment-body .delete-action:hover { color: var(--danger); }
+      .comment-body .delete-action {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
       /* Events */
       .event-list {
         padding: 0 28px 24px;
@@ -896,13 +983,26 @@
         box-shadow: 0 0 0 3px #dcfce7;
       }
 
+      /* Some components set display explicitly, so hide[hidden] globally. */
+      [hidden] { display: none !important; }
+
       .empty {
         padding: 32px;
         color: var(--muted);
         font-size: 13px;
         text-align: center;
-        display: none;
       }
+      .empty p { margin: 0 0 12px; }
+      .empty-action {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--primary);
+        border-radius: 9px;
+        padding: 9px 16px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .empty-action:hover { border-color: var(--primary); }
 
       /* Toast */
       .toast {
@@ -1448,3 +1548,30 @@
       :root[data-theme="dark"] .stat-icon-violet,
       :root[data-theme="dark"] .stat-icon-orange { background: var(--surface-muted); }
       :root[data-theme="dark"] .search input { background: var(--surface); color: var(--ink); }
+
+      /* Mobile bottom bar: "More" opens the hidden navigation group. */
+      .app-sidebar .main-nav > .mobile-more-link { display: none; }
+
+      @media (max-width: 768px) {
+        .app-sidebar .main-nav > .mobile-more-link { display: flex; }
+
+        .app-sidebar .main-nav > .mobile-more-link[aria-expanded="true"] {
+          background: var(--primary-soft);
+          color: var(--primary);
+        }
+
+        .app-sidebar .main-nav > .mobile-more-link[aria-expanded="true"] .nav-icon {
+          color: var(--primary);
+          background: rgba(37, 99, 235, .12);
+        }
+
+        .app-sidebar .main-nav > .mobile-more-link[aria-expanded="true"]::before {
+          top: auto;
+          right: 18%;
+          bottom: 0;
+          left: 18%;
+          width: auto;
+          height: 3px;
+          border-radius: 3px 3px 0 0;
+        }
+      }

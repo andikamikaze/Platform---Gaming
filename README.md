@@ -13,6 +13,8 @@ CSS/
 Gaming/                       # All game modules (one .js file per game)
 JS/
   app.js                      # Dashboard logic: library, loader, stats, routing
+  icons.js                    # SUMBER TUNGGAL path SVG (290 ikon) + helper render
+  game-icons.js               # Mapping 155 game id -> nama ikon (fallback per kategori)
   games-manifest.js           # AUTO-GENERATED list of every game in Gaming/
   firebase.js                 # Shared Firebase SDK init + Anonymous Auth
   identity.js                 # Shared display name (gamespace_player_name)
@@ -30,6 +32,15 @@ tools/
 
 ## How the game list works
 
+### Icon system (single source of truth)
+
+All SVG icons come from `JS/icons.js` (`paths`, 290 icons, `viewBox 0 0 24 24`, `stroke="currentColor"`, no fill). It is framework-agnostic ESM; `JS/icons.d.ts` provides the `IconName` type for TypeScript consumers.
+
+- UI icons in HTML use `<span class="icon" data-icon="nama"></span>`; `hydrateIcons()` fills them at boot (including `<template>` content). Dynamic icons use `iconSVG(name)` / `setIcon(el, name)` directly.
+- Every game cover art is generated from `JS/game-icons.js` (`GAME_ICON` maps each game id to an icon name, with a category fallback). The old `META.art` / `art` field is ignored by the manifest generator.
+- Never inline a new SVG or use Unicode glyphs for UI icons. Add a path to `JS/icons.js` and a mapping to `JS/game-icons.js` instead.
+- Run `npm run check:icons` to validate names, cover-art generation, placeholders, and absence of legacy glyphs.
+
 The browser cannot list files in a folder on static hosting, so the library is generated ahead of time:
 
 ```bash
@@ -40,8 +51,10 @@ Run this after **adding or removing any file in `Gaming/`**. The script scans ev
 
 Two module formats are supported:
 
-1. **MGP classic module** (most games) — an IIFE that calls the global `MGP_REGISTER({ id, name, category, catLabel, desc, art, bg, build })`. `build(app)` renders into a wrapper `<div id="<id>-app">` and returns `{ open, close }`. The script is injected lazily the first time the game is launched.
-2. **ESM module** (`maze-escape.js`, `airplane-combat.js`) — exports `mount(root, context) -> { destroy }` plus `export const META = { id, name, category, catLabel, desc, art, bg, bestKey? }`. Loaded with a dynamic `import()`; supports the room context API.
+1. **MGP classic module** (most games) — an IIFE that calls the global `MGP_REGISTER({ id, name, category, catLabel, desc, bg, build })`. `build(app)` renders into a wrapper `<div id="<id>-app">` and returns `{ open, close }`. The script is injected lazily the first time the game is launched.
+2. **ESM module** (`maze-escape.js`, `airplane-combat.js`) — exports `mount(root, context) -> { destroy }` plus `export const META = { id, name, category, catLabel, desc, bg, bestKey? }`. Loaded with a dynamic `import()`; supports the room context API.
+
+The legacy `art` metadata field is still accepted but ignored: cover art always comes from `JS/game-icons.js` + `JS/icons.js`.
 
 ## Community page (real users)
 
@@ -124,6 +137,7 @@ Fase yang dijalankan berurutan:
 | Fase | Script | Yang dicek |
 | --- | --- | --- |
 | Static | `npm run check:static` | Syntax semua `.js`, integritas + freshness `JS/games-manifest.js`, kontrak modul tiap game |
+| Icons | `npm run check:icons` | NAMA ikon valid, 155 cover art persis dari `iconSVG()`, placeholder HTML valid, tidak ada glyph lama atau workaround CSS |
 | Mount | `npm run check:mount` | `mount()`/`build()` + `destroy()`/`close()` untuk semua game dalam mode `ai`, `room-host`, `room-guest` (tiap skenario di proses terisolasi) |
 | Browser | `npm run check:browser` | Fungsi dashboard (search, filter, favorit, navigasi, pengaturan, reset data) + buka/tutup 154 game di Chromium dengan penangkapan `pageerror`/`console.error` |
 | Community | `npm run check:community` | Dua browser: nama terbawa dari dashboard, presence, join, post, like, komentar, RSVP tersinkron; data uji dibersihkan |

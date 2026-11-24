@@ -6,7 +6,8 @@
  *   node tools/build-games-manifest.mjs
  *
  * Dua format modul yang dikenali:
- *   1. "mgp" — IIFE yang memanggil global MGP_REGISTER({ id, name, category, catLabel, desc, art, bg, build })
+ *   1. "mgp" — IIFE yang memanggil global MGP_REGISTER({ id, name, category, catLabel, desc, bg, build })
+ *      (field `art` lama masih diterima tetapi diabaikan; cover art berasal dari JS/icons.js)
  *   2. "esm" — ES module yang mengekspor `mount(root, context)` + `export const meta = {...}`
  *
  * Manifest ini di-commit ke repo karena GitHub Pages tidak bisa melakukan
@@ -18,6 +19,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import vm from "node:vm";
 import { makeSandbox, installGlobals } from "./lib/sandbox.mjs";
+import { iconSVG } from "../JS/icons.js";
+import { GAME_ICON, gameIconFor } from "../JS/game-icons.js";
 
 const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.dirname(toolsDir);
@@ -73,7 +76,7 @@ async function readEsmModule(file, id) {
   const mod = await import(pathToFileURL(path.join(gamesDir, file)).href);
   const meta = mod.meta || mod.META;
   if (!meta || typeof meta !== "object") {
-    throw new Error(`${file}: tambahkan "export const META = { name, category, catLabel, desc, art, bg }".`);
+    throw new Error(`${file}: tambahkan "export const META = { name, category, catLabel, desc, bg }".`);
   }
   if (meta.id && meta.id !== id) {
     throw new Error(`${file}: id meta "${meta.id}" berbeda dari nama file "${id}".`);
@@ -105,11 +108,14 @@ for (const file of fileNames) {
     throw new Error(`${file}: bukan modul game yang dikenali (MGP_REGISTER atau mount).`);
   }
 
+  // Cover art diambil dari library ikon pusat; META.art lama tidak dipakai lagi.
+  if (!GAME_ICON[id]) warnings.push(`${file}: belum ada mapping GAME_ICON, memakai fallback kategori "${entry.category}".`);
+  entry.art = iconSVG(gameIconFor(id, entry.category));
+
   if (!Array.isArray(entry.bg) || entry.bg.length !== 2 || entry.bg.some((color) => !/^#[0-9a-fA-F]{3,8}$/.test(color))) {
     warnings.push(`${file}: bg tidak valid, kartu akan memakai warna default.`);
     entry.bg = [];
   }
-  if (!entry.art) warnings.push(`${file}: metadata "art" kosong, kartu akan memakai inisial nama.`);
   entries.push(entry);
 }
 

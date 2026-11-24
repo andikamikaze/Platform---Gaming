@@ -52,29 +52,34 @@
         </a>
         <nav aria-label="Main navigation" class="main-nav">
           <a aria-current="page" class="side-link active" data-page-link="overview" href="#overview" title="Overview">
-            <span class="nav-icon"> ⌂ </span><span> Overview </span>
+            <span class="nav-icon icon"><span class="icon" data-icon="home"></span></span><span> Overview </span>
           </a>
           <a class="side-link" data-page-link="library" href="#library" title="Game Library">
-            <span class="nav-icon"> ▦ </span><span> Games </span>
+            <span class="nav-icon icon"><span class="icon" data-icon="layoutDashboard"></span></span><span> Games </span>
           </a>
           <a class="side-link" data-page-link="play" href="#play" title="Play">
-            <span class="nav-icon"> ▷ </span><span> Play </span>
+            <span class="nav-icon icon"><span class="icon" data-icon="play"></span></span><span> Play </span>
           </a>
-          <button class="side-link" data-action="create-room" type="button" title="Create a Room">
-            <span class="nav-icon"> ＋ </span><span> Create Room </span>
-          </button>
           <a class="side-link" data-page-link="rooms" href="#rooms" title="Rooms">
-            <span class="nav-icon"> &nearrow; </span><span> Rooms </span>
+            <span class="nav-icon icon"><span class="icon" data-icon="arrowUpRight"></span></span><span> Rooms </span>
           </a>
-          <a class="side-link nav-switch" href="community.html" title="Community">
-            <span class="nav-icon"> ◈ </span><span> Community </span>
-          </a>
+          <button
+            aria-controls="moreNav"
+            aria-expanded="false"
+            class="side-link mobile-more-link"
+            data-action="toggle-menu"
+            title="More"
+            type="button"
+          >
+            <span class="nav-icon icon"><span class="icon" data-icon="moreHorizontal"></span></span><span> More </span>
+          </button>
         </nav>
         <nav aria-label="More navigation" class="more-nav" id="moreNav">
           <span class="nav-caption"> More </span>
-          <a class="side-link" data-page-link="progress" href="#progress"><span class="nav-icon"> ▤ </span><span> Progress </span></a>
-          <a class="side-link" data-page-link="settings" href="#settings"><span class="nav-icon"> ⚙ </span><span> Settings </span></a>
-          <a class="side-link" data-page-link="help" href="#help"><span class="nav-icon"> ? </span><span> Help &amp; Support </span></a>
+          <a class="side-link" href="community.html" title="Community"><span class="nav-icon icon"><span class="icon" data-icon="users"></span></span><span> Community </span></a>
+          <a class="side-link" data-page-link="progress" href="#progress"><span class="nav-icon icon"><span class="icon" data-icon="chart"></span></span><span> Progress </span></a>
+          <a class="side-link" data-page-link="settings" href="#settings"><span class="nav-icon icon"><span class="icon" data-icon="settings"></span></span><span> Settings </span></a>
+          <a class="side-link" data-page-link="help" href="#help"><span class="nav-icon icon"><span class="icon" data-icon="helpCircle"></span></span><span> Help &amp; Support </span></a>
         </nav>
       </aside>
       <div aria-hidden="true" class="more-backdrop" data-action="toggle-menu" hidden></div>
@@ -97,7 +102,7 @@
               title="Switch to dark mode"
               type="button"
             >
-              <span aria-hidden="true" class="theme-icon">☾</span>
+              <span aria-hidden="true" class="theme-icon icon"><span class="icon" data-icon="moon"></span></span>
             </button>
             <button
               aria-controls="moreNav"
@@ -108,7 +113,7 @@
               title="More"
               type="button"
             >
-              ⋯
+              <span class="icon" data-icon="moreHorizontal"></span>
             </button>
             <button
               aria-label="Help"
@@ -117,7 +122,7 @@
               title="Help &amp; Support"
               type="button"
             >
-              ?
+              <span class="icon" data-icon="helpCircle"></span>
             </button>
             <button
               aria-label="Edit player profile"
@@ -153,7 +158,7 @@
                 data-action="create-room"
                 type="button"
               >
-                <span> ＋ </span>
+                <span class="icon"><span class="icon" data-icon="plus"></span></span>
                 Create a room
               </button>
             </section>
@@ -161,7 +166,7 @@
               <article class="stat-card">
                 <div class="stat-label">
                   <span> Available games </span>
-                  <span class="stat-icon"> ▦ </span>
+                  <span class="stat-icon icon"><span class="icon" data-icon="layoutDashboard"></span></span>
                 </div>
                 <strong class="stat-value" id="gameCount"> -- </strong>
                 <span class="stat-foot"> Ready to play </span>
@@ -169,7 +174,7 @@
               <article class="stat-card">
                 <div class="stat-label">
                   <span> Games played </span>
-                  <span class="stat-icon"> &nearrow; </span>
+                  <span class="stat-icon icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 </div>
                 <strong class="stat-value" id="playCount"> 00 </strong>
                 <span class="stat-foot"> Saved on this device </span>
@@ -177,7 +182,7 @@
               <article class="stat-card">
                 <div class="stat-label">
                   <span> Rooms created </span>
-                  <span class="stat-icon"> ⌘ </span>
+                  <span class="stat-icon icon"><span class="icon" data-icon="users"></span></span>
                 </div>
                 <strong class="stat-value" id="roomCount"> 00 </strong>
                 <span class="stat-foot"> This browser profile </span>
@@ -197,58 +202,56 @@
                   data-page-link="play"
                   href="#play"
                 >
-                  <span class="quick-symbol quick-symbol-violet"> ▷ </span>
+                  <span class="quick-symbol quick-symbol-violet icon"><span class="icon" data-icon="play"></span></span>
                   <span class="quick-copy">
                     <strong> Play </strong>
                     <small> Choose a game and start a match </small>
                   </span>
-                  <span class="quick-arrow"> &nearrow; </span>
+                  <span class="quick-arrow icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 </a>
                 <a
                   class="quick-action"
                   data-page-link="rooms"
                   href="#rooms"
                 >
-                  <span class="quick-symbol quick-symbol-green"> ＋ </span>
+                  <span class="quick-symbol quick-symbol-green icon"><span class="icon" data-icon="plus"></span></span>
                   <span class="quick-copy">
                     <strong> Create a private room </strong>
                     <small> Invite a friend with a room code </small>
                   </span>
-                  <span class="quick-arrow"> &nearrow; </span>
+                  <span class="quick-arrow icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 </a>
                 <a
                   class="quick-action"
                   data-page-link="rooms"
                   href="#rooms"
                 >
-                  <span class="quick-symbol quick-symbol-amber">
-                    &nearrow;
-                  </span>
+                  <span class="quick-symbol quick-symbol-amber icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                   <span class="quick-copy">
                     <strong> Rooms </strong>
                     <small> Join a friend with an invite code </small>
                   </span>
-                  <span class="quick-arrow"> &nearrow; </span>
+                  <span class="quick-arrow icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 </a>
                 <a
                   class="quick-action"
                   data-page-link="library"
                   href="#library"
                 >
-                  <span class="quick-symbol quick-symbol-violet"> ▦ </span>
+                  <span class="quick-symbol quick-symbol-violet icon"><span class="icon" data-icon="layoutDashboard"></span></span>
                   <span class="quick-copy">
                     <strong> Game library </strong>
                     <small> Browse all available games </small>
                   </span>
-                  <span class="quick-arrow"> &nearrow; </span>
+                  <span class="quick-arrow icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 </a>
                 <a class="quick-action" href="community.html">
-                  <span class="quick-symbol quick-symbol-green"> ◈ </span>
+                  <span class="quick-symbol quick-symbol-green icon"><span class="icon" data-icon="users"></span></span>
                   <span class="quick-copy">
                     <strong> Community </strong>
                     <small> Meet players, share posts, join events </small>
                   </span>
-                  <span class="quick-arrow"> &nearrow; </span>
+                  <span class="quick-arrow icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 </a>
               </div>
             </section>
@@ -277,7 +280,7 @@
               <div class="library-toolbar">
                 <div aria-label="Filter games" class="filter-list" id="filterList" role="group"></div>
                 <label class="search-box">
-                  <span> &telrec; </span>
+                  <span class="icon"><span class="icon" data-icon="search"></span></span>
                   <input
                     aria-label="Search games"
                     id="gameSearch"
@@ -305,70 +308,41 @@
                 <p class="eyebrow">WORKSPACE / PLAY</p>
                 <h1 id="playTitle">Play</h1>
                 <p class="welcome-copy">
-                  Pick a game to start, or jump back into one you played
-                  recently on this device.
+                  Jump back into a game you played recently on this device, or
+                  open one of your favorites.
                 </p>
               </div>
             </div>
-            <div class="play-layout">
-              <div>
-                <label class="search-box picker-search-box">
-                  <span> &telrec; </span>
-                  <input
-                    aria-label="Search games"
-                    id="playSearch"
-                    placeholder="Search games"
-                    type="search"
-                  />
-                </label>
-                <div
-                  aria-live="polite"
-                  class="page-card-grid game-picker-grid"
-                  id="playGrid"
-                ></div>
-                <div class="empty-state" hidden="" id="playEmpty">
-                  <strong> No games found </strong>
-                  <p>Try another game name.</p>
-                </div>
-                <div class="page-inline-note">
-                  <strong> How it works </strong>
-                  <span>
-                    Select a game, then choose Play Solo for a local match or
-                    go to Rooms to invite a friend.
-                  </span>
-                </div>
+            <aside class="recent-panel">
+              <div class="recent-panel-heading">
+                <p class="eyebrow">YOUR SPACE</p>
+                <h2>Recently played</h2>
+                <p>Games you have opened on this device.</p>
               </div>
-              <aside class="recent-panel">
+              <div aria-live="polite" class="recent-list" id="playRecentGrid"></div>
+              <div class="empty-state" hidden="" id="playRecentEmpty">
+                <strong> No recent games </strong>
+                <p>Your recently played games will appear here after your first session.</p>
+                <a class="text-action" data-page-link="library" href="#library">
+                  Browse library <span class="icon" data-icon="arrowUpRight"></span>
+                </a>
+              </div>
+              <section aria-labelledby="playFavoritesTitle" class="favorites-panel">
                 <div class="recent-panel-heading">
                   <p class="eyebrow">YOUR SPACE</p>
-                  <h2>Recently played</h2>
-                  <p>Games you have opened on this device.</p>
+                  <h2 id="playFavoritesTitle">Favorites</h2>
+                  <p>Games you saved with the heart button.</p>
                 </div>
-                <div aria-live="polite" class="recent-list" id="playRecentGrid"></div>
-                <div class="empty-state" hidden="" id="playRecentEmpty">
-                  <strong> No recent games </strong>
-                  <p>Your recently played games will appear here after your first session.</p>
+                <div aria-live="polite" class="recent-list" id="playFavoritesGrid"></div>
+                <div class="empty-state" hidden="" id="playFavoritesEmpty">
+                  <strong> No favorites yet </strong>
+                  <p>Use the heart on a game card to save it here.</p>
                   <a class="text-action" data-page-link="library" href="#library">
-                    Browse library &nearrow;
+                    Browse library <span class="icon" data-icon="arrowUpRight"></span>
                   </a>
                 </div>
-                <section aria-labelledby="playFavoritesTitle" class="favorites-panel">
-                  <div class="recent-panel-heading">
-                    <p class="eyebrow">YOUR SPACE</p>
-                    <h2 id="playFavoritesTitle">Favorites</h2>
-                    <p>Games you saved with the heart button.</p>
-                  </div>
-                  <div aria-live="polite" class="recent-list" id="playFavoritesGrid"></div>
-                  <div class="empty-state" hidden="" id="playFavoritesEmpty">
-                    <strong> No favorites yet </strong>
-                    <p>Use the heart on a game card to save it here.</p>
-                    <a class="text-action" data-page-link="library" href="#library">
-                      Browse library &nearrow;
-                    </a>
-                  </div>
-                </section>
-              </aside>
-            </div>
+              </section>
+            </aside>
           </section>
           <section
             aria-labelledby="roomsTitle"
@@ -421,7 +395,7 @@
             </section>
             <div class="rooms-layout">
               <div class="page-card join-page-card">
-                <span class="large-feature-icon"> &nearrow; </span>
+                <span class="large-feature-icon icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 <h2>Have an invite code?</h2>
                 <p>
                   Room codes connect you to a private two-player match. Make
@@ -443,7 +417,7 @@
                     id="roomsJoinSubmit"
                     type="button"
                   >
-                    Join room &nearrow;
+                    Join room <span class="icon" data-icon="arrowUpRight"></span>
                   </button>
                 </div>
                 <p class="form-hint">
@@ -464,7 +438,7 @@
                   type="button"
                 >
                   Create your own room
-                  <span> &nearrow; </span>
+                  <span class="icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 </button>
               </aside>
             </div>
@@ -507,17 +481,17 @@
                 </div>
                 <div class="progress-stat-grid">
                   <article class="stat-card">
-                    <div class="stat-label"><span> Total sessions </span><span class="stat-icon"> &nearrow; </span></div>
+                    <div class="stat-label"><span> Total sessions </span><span class="stat-icon icon"><span class="icon" data-icon="arrowUpRight"></span></span></div>
                     <strong class="stat-value" id="progressTotalPlays"> 00 </strong>
                     <span class="stat-foot"> Games started </span>
                   </article>
                   <article class="stat-card">
-                    <div class="stat-label"><span> Games explored </span><span class="stat-icon"> ▦ </span></div>
+                    <div class="stat-label"><span> Games explored </span><span class="stat-icon icon"><span class="icon" data-icon="layoutDashboard"></span></span></div>
                     <strong class="stat-value" id="progressUniqueGames"> 00 </strong>
                     <span class="stat-foot"> Different titles played </span>
                   </article>
                   <article class="stat-card">
-                    <div class="stat-label"><span> Rooms created </span><span class="stat-icon"> ⌘ </span></div>
+                    <div class="stat-label"><span> Rooms created </span><span class="stat-icon icon"><span class="icon" data-icon="users"></span></span></div>
                     <strong class="stat-value" id="progressRooms"> 00 </strong>
                     <span class="stat-foot"> On this browser </span>
                   </article>
@@ -594,15 +568,15 @@
                   <div aria-label="Theme" class="theme-options" role="group">
                     <label class="theme-option">
                       <input name="themeMode" type="radio" value="light" />
-                      <span> ☀ Light </span>
+                      <span><span class="icon" data-icon="sun"></span> Light </span>
                     </label>
                     <label class="theme-option">
                       <input name="themeMode" type="radio" value="dark" />
-                      <span> ☾ Dark </span>
+                      <span><span class="icon" data-icon="moon"></span> Dark </span>
                     </label>
                     <label class="theme-option">
                       <input name="themeMode" type="radio" value="system" />
-                      <span> ◐ System </span>
+                      <span><span class="icon" data-icon="circle"></span> System </span>
                     </label>
                   </div>
                 </div>
@@ -665,7 +639,7 @@
             </div>
             <div class="help-grid">
               <article class="page-card help-card">
-                <span class="help-icon"> ▷ </span>
+                <span class="help-icon icon"><span class="icon" data-icon="play"></span></span>
                 <h2>Play against AI</h2>
                 <p>
                   Open Play, choose a game, then select Play Solo. This mode
@@ -676,11 +650,11 @@
                   data-page-link="play"
                   href="#play"
                 >
-                  Go to Play &nearrow;
+                  Go to Play <span class="icon" data-icon="arrowUpRight"></span>
                 </a>
               </article>
               <article class="page-card help-card">
-                <span class="help-icon"> ⌘ </span>
+                <span class="help-icon icon"><span class="icon" data-icon="users"></span></span>
                 <h2>Play with a friend</h2>
                 <p>
                   Create a private room and share its six-character code. Your
@@ -691,11 +665,11 @@
                   data-page-link="rooms"
                   href="#rooms"
                 >
-                  Create a room &nearrow;
+                  Create a room <span class="icon" data-icon="arrowUpRight"></span>
                 </a>
               </article>
               <article class="page-card help-card">
-                <span class="help-icon"> ⚙ </span>
+                <span class="help-icon icon"><span class="icon" data-icon="settings"></span></span>
                 <h2>Online setup</h2>
                 <p>
                   Online rooms require Firebase Web App configuration, Realtime
@@ -706,11 +680,11 @@
                   data-page-link="settings"
                   href="#settings"
                 >
-                  Open Settings &nearrow;
+                  Open Settings <span class="icon" data-icon="arrowUpRight"></span>
                 </a>
               </article>
               <article class="page-card help-card">
-                <span class="help-icon"> ◈ </span>
+                <span class="help-icon icon"><span class="icon" data-icon="users"></span></span>
                 <h2>Meet the community</h2>
                 <p>
                   Open Community to find groups, share posts, and RSVP to game
@@ -718,11 +692,11 @@
                 </p>
                 <a class="text-action" href="community.html">
                   Open Community
-                  <span> &nearrow; </span>
+                  <span class="icon"><span class="icon" data-icon="arrowUpRight"></span></span>
                 </a>
               </article>
               <article class="page-card help-card">
-                <span class="help-icon"> ◷ </span>
+                <span class="help-icon icon"><span class="icon" data-icon="clock"></span></span>
                 <h2>Local data</h2>
                 <p>
                   Favorites, recently played games, session counts, and
@@ -770,7 +744,7 @@
             data-close="launchDialog"
             type="button"
           >
-            &times;
+            <span class="icon" data-icon="x"></span>
           </button>
         </div>
         <div class="field-group">
@@ -779,20 +753,20 @@
         </div>
         <div class="mode-options">
           <button class="mode-option" data-launch-mode="ai" type="button">
-            <span class="mode-icon mode-icon-ai"> ◎ </span>
+            <span class="mode-icon mode-icon-ai icon"><span class="icon" data-icon="user"></span></span>
             <span>
               <strong> Play Solo </strong>
               <small> Start immediately against a computer opponent. </small>
             </span>
-            <span class="mode-arrow"> &rarr; </span>
+            <span class="mode-arrow icon"><span class="icon" data-icon="arrowRight"></span></span>
           </button>
           <button class="mode-option" data-launch-mode="room" type="button">
-            <span class="mode-icon mode-icon-room"> ⌘ </span>
+            <span class="mode-icon mode-icon-room icon"><span class="icon" data-icon="users"></span></span>
             <span>
               <strong> Create a room </strong>
               <small> Open a private room and invite one friend. </small>
             </span>
-            <span class="mode-arrow"> &rarr; </span>
+            <span class="mode-arrow icon"><span class="icon" data-icon="arrowRight"></span></span>
           </button>
         </div>
         <p class="dialog-footnote">
@@ -824,7 +798,7 @@
             data-close="joinDialog"
             type="button"
           >
-            &times;
+            <span class="icon" data-icon="x"></span>
           </button>
         </div>
         <div class="field-group">
@@ -845,7 +819,7 @@
             type="button"
           >
             Join room
-            <span> &nearrow; </span>
+            <span class="icon"><span class="icon" data-icon="arrowUpRight"></span></span>
           </button>
         </div>
       </div>
@@ -871,7 +845,7 @@
             data-close="profileDialog"
             type="button"
           >
-            &times;
+            <span class="icon" data-icon="x"></span>
           </button>
         </div>
         <div class="field-group">
@@ -915,7 +889,7 @@
             data-close="infoDialog"
             type="button"
           >
-            &times;
+            <span class="icon" data-icon="x"></span>
           </button>
         </div>
         <div class="info-copy" id="infoCopy"></div>
@@ -968,7 +942,7 @@
             type="button"
           >
             Start playing
-            <span> &nearrow; </span>
+            <span class="icon"><span class="icon" data-icon="arrowUpRight"></span></span>
           </button>
         </div>
       </div>
@@ -1007,7 +981,7 @@
               id="closeGameButton"
               type="button"
             >
-              &times;
+              <span class="icon" data-icon="x"></span>
             </button>
           </div>
         </header>

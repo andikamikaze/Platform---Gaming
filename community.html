@@ -41,31 +41,39 @@
 
         <nav aria-label="Main navigation" class="main-nav">
           <a aria-current="page" class="side-link active" href="#communities" title="Community">
-            <span class="nav-icon"> ◈ </span><span> Community </span>
+            <span class="nav-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg></span><span> Community </span>
             <span class="nav-count" id="sidebarCommunityCount">0</span>
           </a>
           <a class="side-link" href="#events" title="Events">
-            <span class="nav-icon"> ▣ </span><span> Events </span>
+            <span class="nav-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true" focusable="false"><path d="M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span><span> Events </span>
           </a>
           <a class="side-link" href="#activity" title="Activity feed">
-            <span class="nav-icon"> ⌁ </span><span> Activity feed </span>
+            <span class="nav-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span> Activity feed </span>
           </a>
           <a class="side-link" href="#players" title="Players online">
-            <span class="nav-icon"> ◉ </span><span> Players online </span>
+            <span class="nav-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg></span><span> Players online </span>
           </a>
-          <a class="side-link nav-switch" href="index.html" title="Game Space">
-            <span class="nav-icon"> ⌂ </span><span> Game Space </span>
-          </a>
+          <button
+            aria-controls="moreNav"
+            aria-expanded="false"
+            class="side-link mobile-more-link"
+            data-action="toggle-menu"
+            title="More"
+            type="button"
+          >
+            <span class="nav-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span><span> More </span>
+          </button>
         </nav>
 
         <nav aria-label="More navigation" class="more-nav" id="moreNav">
-          <span class="nav-caption"> Your spaces </span>
+          <span class="nav-caption"> MORE </span>
+          <a class="side-link" href="index.html" title="Game Space">
+            <span class="nav-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span><span> Game Space </span>
+          </a>
+          <a class="side-link" href="#guidelines" title="Guidelines">
+            <span class="nav-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true" focusable="false"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span><span> Guidelines </span>
+          </a>
           <div id="sidebarCommunities"></div>
-          <a class="side-link" href="#guidelines"><span class="nav-icon"> ⓘ </span><span> Guidelines </span></a>
-          <span class="nav-caption"> Account </span>
-          <a class="side-link" href="index.html#progress"><span class="nav-icon"> ▤ </span><span> Progress </span></a>
-          <a class="side-link" href="index.html#settings"><span class="nav-icon"> ⚙ </span><span> Settings </span></a>
-          <a class="side-link" href="index.html#help"><span class="nav-icon"> ? </span><span> Help &amp; Support </span></a>
         </nav>
       </aside>
       <div aria-hidden="true" class="more-backdrop" data-action="toggle-menu" hidden></div>
@@ -75,10 +83,10 @@
           <div class="breadcrumbs">
             <span> Community </span>
             <i> / </i>
-            <strong> Home </strong>
+            <strong id="breadcrumbCurrent"> Home </strong>
           </div>
           <label class="search">
-            <span>⌕</span>
+            <span class="icon" data-icon="search" aria-hidden="true"></span>
             <input
               id="globalSearch"
               type="search"
@@ -94,7 +102,7 @@
               title="Switch to dark mode"
               type="button"
             >
-              <span aria-hidden="true" class="theme-icon">☾</span>
+              <span aria-hidden="true" class="theme-icon icon"><span class="icon" data-icon="moon"></span></span>
             </button>
             <button
               aria-controls="moreNav"
@@ -105,12 +113,12 @@
               title="More"
               type="button"
             >
-              ⋯
+              <span class="icon" data-icon="moreHorizontal"></span>
             </button>
             <button class="icon-btn" id="notifications" aria-label="Notifications" title="No new notifications">
-              ♧
+              <span class="icon" data-icon="bell" aria-hidden="true"></span>
             </button>
-            <button class="primary-btn" id="createPostTop">＋ Create post</button>
+            <button class="primary-btn" id="createPostTop"><span class="icon" data-icon="plus"></span> Create post</button>
             <a aria-label="Edit player profile" class="profile-mini" href="index.html#settings" id="profileLink">
               <span class="avatar primary" id="profileInitials">G</span>
               <span class="profile-details">
@@ -123,134 +131,253 @@
         <div class="content page-wrap">
           <div class="status-banner" id="statusBanner" role="status"></div>
 
-          <section class="welcome">
-            <div>
-              <div class="eyebrow" id="todayLabel">Today</div>
-              <h1>Your people. Your games.</h1>
-              <p>
-                Welcome back, <span id="welcomeName">Guest</span>. Here’s what’s
-                happening in your communities.
-              </p>
-            </div>
-            <div class="welcome-actions">
-              <button class="secondary-btn" id="browseBtn">Explore ↗</button>
-              <button class="primary-btn" id="createPost">＋ New post</button>
+          <!-- Community / home view -->
+          <section class="community-view" data-community-view="communities">
+            <section class="welcome">
+              <div>
+                <div class="eyebrow" id="todayLabel">Today</div>
+                <h1>Your people. Your games.</h1>
+                <p>
+                  Welcome back, <span id="welcomeName">Guest</span>. Here’s what’s
+                  happening in your communities.
+                </p>
+              </div>
+              <div class="welcome-actions">
+                <button class="secondary-btn" id="browseBtn">Explore <span class="icon" data-icon="arrowUpRight"></span></button>
+                <button class="primary-btn" id="createPost"><span class="icon" data-icon="plus"></span> New post</button>
+              </div>
+            </section>
+
+            <section class="stats" aria-label="Community overview">
+              <div class="stat">
+                <div class="stat-top">
+                  <span>Communities joined</span>
+                  <span class="stat-icon icon"><span class="icon" data-icon="users"></span></span>
+                </div>
+                <strong id="joinedCount">00</strong>
+                <div class="stat-foot">Across your favorite games</div>
+              </div>
+              <div class="stat">
+                <div class="stat-top">
+                  <span>Upcoming events</span>
+                  <span class="stat-icon stat-icon-violet icon"><span class="icon" data-icon="calendar"></span></span>
+                </div>
+                <strong id="upcomingCount">00</strong>
+                <div class="stat-foot">Scheduled by the community</div>
+              </div>
+              <div class="stat">
+                <div class="stat-top">
+                  <span>Players online</span>
+                  <span class="stat-icon stat-icon-orange icon"><span class="icon" data-icon="activity"></span></span>
+                </div>
+                <strong id="onlineCount">00</strong>
+                <div class="stat-foot">Community members connected</div>
+              </div>
+              <div class="stat">
+                <div class="stat-top">
+                  <span>Posts this week</span>
+                  <span class="stat-icon icon"><span class="icon" data-icon="arrowUpRight"></span></span>
+                </div>
+                <strong id="weeklyCount">00</strong>
+                <div class="stat-foot" id="weeklyFoot">Shared in the last 7 days</div>
+              </div>
+            </section>
+
+            <div class="dashboard-grid">
+              <div class="left-column">
+                <section class="section-card" id="section-communities">
+                  <div class="section-head">
+                    <div>
+                      <h2>Find your community</h2>
+                      <p>Spaces built around the way you play.</p>
+                    </div>
+                    <div class="section-head-actions">
+                      <button class="plain-link" id="seeAll">View all <span class="icon" data-icon="arrowUpRight"></span></button>
+                      <button class="plain-link" id="createCommunity">New community <span class="icon" data-icon="plus"></span></button>
+                    </div>
+                  </div>
+                  <div class="filter-row" role="group" aria-label="Filter communities">
+                    <button class="filter active" data-game-filter="all">All games</button>
+                    <button class="filter" data-game-filter="competitive">Competitive</button>
+                    <button class="filter" data-game-filter="co-op">Co-op</button>
+                    <button class="filter" data-game-filter="creative">Creative</button>
+                  </div>
+                  <div class="community-list" id="communityList"></div>
+                  <div class="empty" id="communityEmpty" hidden>
+                    <p>No communities match your search.</p>
+                    <button class="empty-action" id="emptyCreateCommunity" type="button">Create a community</button>
+                  </div>
+                </section>
+              </div>
+
+              <div class="right-column">
+                <section class="section-card" aria-labelledby="exploreTitle">
+                  <div class="section-head">
+                    <div>
+                      <h2 id="exploreTitle">Explore community</h2>
+                      <p>Jump into a specific space.</p>
+                    </div>
+                  </div>
+                  <nav class="view-links" aria-label="Community sections">
+                    <a class="view-link" href="#events"><span class="icon" data-icon="calendar"></span><span> Events </span><span class="icon" data-icon="arrowUpRight"></span></a>
+                    <a class="view-link" href="#activity"><span class="icon" data-icon="activity"></span><span> Activity feed </span><span class="icon" data-icon="arrowUpRight"></span></a>
+                    <a class="view-link" href="#players"><span class="icon" data-icon="users"></span><span> Players online </span><span class="icon" data-icon="arrowUpRight"></span></a>
+                    <a class="view-link" href="#guidelines"><span class="icon" data-icon="info"></span><span> Guidelines </span><span class="icon" data-icon="arrowUpRight"></span></a>
+                  </nav>
+                </section>
+              </div>
             </div>
           </section>
 
-          <section class="stats" aria-label="Community overview">
-            <div class="stat">
-              <div class="stat-top">
-                <span>Communities joined</span>
-                <span class="stat-icon">◈</span>
-              </div>
-              <strong id="joinedCount">00</strong>
-              <div class="stat-foot">Across your favorite games</div>
+          <!-- Events view -->
+          <section class="community-view" data-community-view="events" hidden>
+            <div class="view-heading">
+              <p class="eyebrow">COMMUNITY / EVENTS</p>
+              <h1>Upcoming events</h1>
+              <p>Make time for your next session.</p>
             </div>
-            <div class="stat">
-              <div class="stat-top">
-                <span>Upcoming events</span>
-                <span class="stat-icon stat-icon-violet">▣</span>
+            <section class="section-card" id="section-events">
+              <div class="section-head">
+                <div>
+                  <h2>Event calendar</h2>
+                  <p>Sessions scheduled by your communities.</p>
+                </div>
+                <button class="plain-link" id="createEvent">New event <span class="icon" data-icon="plus"></span></button>
               </div>
-              <strong id="upcomingCount">00</strong>
-              <div class="stat-foot">Scheduled by the community</div>
-            </div>
-            <div class="stat">
-              <div class="stat-top">
-                <span>Players online</span>
-                <span class="stat-icon stat-icon-orange">⌁</span>
+              <div class="event-list" id="eventList"></div>
+              <div class="empty" id="eventEmpty" hidden>
+                <p>No events scheduled yet.</p>
+                <button class="empty-action" id="emptyCreateEvent" type="button">Create the first event</button>
               </div>
-              <strong id="onlineCount">00</strong>
-              <div class="stat-foot">Community members connected</div>
-            </div>
-            <div class="stat">
-              <div class="stat-top">
-                <span>Posts this week</span>
-                <span class="stat-icon">↗</span>
-              </div>
-              <strong id="weeklyCount">00</strong>
-              <div class="stat-foot" id="weeklyFoot">Shared in the last 7 days</div>
-            </div>
+            </section>
           </section>
 
-          <div class="dashboard-grid">
-            <div class="left-column">
-              <section class="section-card" id="communities">
-                <div class="section-head">
-                  <div>
-                    <h2>Find your community</h2>
-                    <p>Spaces built around the way you play.</p>
-                  </div>
-                  <button class="plain-link" id="seeAll">View all ↗</button>
-                </div>
-                <div class="filter-row" role="group" aria-label="Filter communities">
-                  <button class="filter active" data-game-filter="all">All games</button>
-                  <button class="filter" data-game-filter="competitive">Competitive</button>
-                  <button class="filter" data-game-filter="co-op">Co-op</button>
-                  <button class="filter" data-game-filter="creative">Creative</button>
-                </div>
-                <div class="community-list" id="communityList"></div>
-                <div class="empty" id="communityEmpty">No communities match your search.</div>
-              </section>
-
-              <section class="section-card" id="activity">
-                <div class="section-head">
-                  <div>
-                    <h2>Community activity</h2>
-                    <p>Catch up with your people.</p>
-                  </div>
-                  <button class="plain-link" id="feedRefresh">Refresh ↻</button>
-                </div>
-                <div id="feedList"></div>
-                <div class="empty" id="feedEmpty">No posts yet. Be the first to share something.</div>
-              </section>
+          <!-- Activity feed view -->
+          <section class="community-view" data-community-view="activity" hidden>
+            <div class="view-heading">
+              <p class="eyebrow">COMMUNITY / ACTIVITY FEED</p>
+              <h1>Community activity</h1>
+              <p>Catch up with your people.</p>
             </div>
+            <section class="section-card" id="section-activity">
+              <div class="section-head">
+                <div>
+                  <h2>Latest posts</h2>
+                  <p>Updates from your communities.</p>
+                </div>
+                <button class="plain-link" id="feedRefresh">Refresh ↻</button>
+              </div>
+              <div id="feedList"></div>
+              <div class="empty" id="feedEmpty" hidden>
+                <p>No posts yet. Be the first to share something.</p>
+                <button class="empty-action" id="emptyCreatePost" type="button">Write a post</button>
+              </div>
+            </section>
+          </section>
 
-            <div class="right-column">
-              <section class="section-card" id="events">
-                <div class="section-head">
-                  <div>
-                    <h2>Upcoming events</h2>
-                    <p>Make time for your next session.</p>
-                  </div>
-                  <button class="plain-link" id="eventCalendar">Calendar ↗</button>
-                </div>
-                <div class="event-list" id="eventList"></div>
-                <div class="empty" id="eventEmpty">No events scheduled yet.</div>
-              </section>
-
-              <section class="section-card" id="players">
-                <div class="section-head">
-                  <div>
-                    <h2>Players online</h2>
-                    <p>Community members connected right now.</p>
-                  </div>
-                  <button class="plain-link" id="friendsBtn">Refresh</button>
-                </div>
-                <div class="online-list" id="onlineList"></div>
-                <div class="empty" id="onlineEmpty">Nobody is online yet.</div>
-              </section>
-
-              <section class="section-card" id="guidelines">
-                <div class="section-head">
-                  <div>
-                    <h2>Community code</h2>
-                    <p>Keep the space good for everyone.</p>
-                  </div>
-                  <span style="color: var(--primary); font-size: 18px">✳</span>
-                </div>
-                <div style="padding: 0 28px 24px; color: var(--muted); font-size: 13px; line-height: 1.7">
-                  Respect every skill level. Keep comms constructive. Make room
-                  for new players. Report harassment so moderators can help.
-                </div>
-              </section>
+          <!-- Players online view -->
+          <section class="community-view" data-community-view="players" hidden>
+            <div class="view-heading">
+              <p class="eyebrow">COMMUNITY / PLAYERS</p>
+              <h1>Players online</h1>
+              <p>Community members connected right now.</p>
             </div>
-          </div>
+            <section class="section-card" id="section-players">
+              <div class="section-head">
+                <div>
+                  <h2>Who’s here</h2>
+                  <p>Active members across your communities.</p>
+                </div>
+                <button class="plain-link" id="friendsBtn">Refresh</button>
+              </div>
+              <div class="online-list" id="onlineList"></div>
+              <div class="empty" id="onlineEmpty" hidden>Nobody is online yet.</div>
+            </section>
+          </section>
+
+          <!-- Guidelines view -->
+          <section class="community-view" data-community-view="guidelines" hidden>
+            <div class="view-heading">
+              <p class="eyebrow">COMMUNITY / GUIDELINES</p>
+              <h1>Guidelines</h1>
+              <p>Keep the space good for everyone.</p>
+            </div>
+            <section class="section-card" id="section-guidelines">
+              <div class="section-head">
+                <div>
+                  <h2>Community code</h2>
+                  <p>How we play together.</p>
+                </div>
+                <span style="color: var(--primary); font-size: 18px">✳</span>
+              </div>
+              <div class="guidelines-copy" id="guidelinesText">No guidelines have been published by the moderators yet.</div>
+            </section>
+          </section>
         </div>
       </main>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div class="modal-backdrop" id="communityModal" role="dialog" aria-modal="true" aria-labelledby="communityModalTitle">
+      <form class="modal" id="communityForm">
+        <h2 id="communityModalTitle">Create a community</h2>
+        <p>Start a space around a game or a way of playing.</p>
+        <div class="field">
+          <label for="communityName">Name</label>
+          <input id="communityName" placeholder="e.g. Weekend Raiders" required maxlength="60" />
+        </div>
+        <div class="field">
+          <label for="communityDescription">Description</label>
+          <textarea id="communityDescription" placeholder="What is this community about?" maxlength="240"></textarea>
+        </div>
+        <div class="field">
+          <label for="communityCategory">Category</label>
+          <select id="communityCategory">
+            <option value="co-op">Co-op</option>
+            <option value="competitive">Competitive</option>
+            <option value="creative">Creative</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="communityBadge">Badge (1&ndash;3 letters, optional)</label>
+          <input id="communityBadge" placeholder="GS" maxlength="3" />
+        </div>
+        <p class="inline-error" id="communityError" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancelCommunity">Cancel</button>
+          <button type="submit" class="primary-btn">Create community</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="eventModal" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
+      <form class="modal" id="eventForm">
+        <h2 id="eventModalTitle">Create an event</h2>
+        <p>Schedule a session for your community.</p>
+        <div class="field">
+          <label for="eventTitle">Title</label>
+          <input id="eventTitle" placeholder="e.g. Friday co-op night" required maxlength="90" />
+        </div>
+        <div class="field">
+          <label for="eventDescription">Description</label>
+          <textarea id="eventDescription" placeholder="What are you planning?" maxlength="300"></textarea>
+        </div>
+        <div class="field">
+          <label for="eventCommunity">Community</label>
+          <select id="eventCommunity"><option value="">General community</option></select>
+        </div>
+        <div class="field">
+          <label for="eventStarts">Date &amp; time</label>
+          <input id="eventStarts" type="datetime-local" required />
+        </div>
+        <p class="inline-error" id="eventError" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancelEvent">Cancel</button>
+          <button type="submit" class="primary-btn">Create event</button>
+        </div>
+      </form>
+    </div>
 
     <div class="modal-backdrop" id="postModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <form class="modal" id="postForm">
@@ -315,9 +442,10 @@
           <p></p>
           <div class="feed-tags"></div>
           <div class="feed-actions">
-            <button data-like type="button">♡ Like <span>0</span></button>
-            <button data-comment type="button">▢ Comment <span>0</span></button>
-            <button data-share type="button">↗ Share</button>
+            <button data-like type="button"><span class="icon" data-icon="heart"></span> Like <span>0</span></button>
+            <button data-comment type="button"><span class="icon" data-icon="messageSquare"></span> Comment <span>0</span></button>
+            <button data-share type="button"><span class="icon" data-icon="arrowUpRight"></span> Share</button>
+            <button class="delete-action" data-delete-post type="button" hidden><span class="icon" data-icon="trash"></span> Delete</button>
           </div>
         </div>
       </article>
@@ -326,7 +454,7 @@
     <template id="tpl-comment">
       <div class="comment">
         <div class="avatar"></div>
-        <div class="comment-body"><strong></strong><p></p></div>
+        <div class="comment-body"><strong></strong><p></p><button class="delete-action" data-delete-comment type="button" hidden><span class="icon" data-icon="trash"></span> Delete</button></div>
       </div>
     </template>
 

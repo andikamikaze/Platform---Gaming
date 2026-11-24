@@ -4,6 +4,7 @@
  *       2 pemain lokal, dan PvP online (host = server autoritatif).
  * Jalankan: node tools/build-games-manifest.mjs
  */
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "sprout-defense", // harus sama dengan nama file (tanpa .js)
@@ -489,7 +490,7 @@ export function mount(root, context = {}) {
         if (sc === "random") return `<div class="sd-menu"><h3>${T("random")}</h3><p class="mut">${T("randomD")}. ${T("seedNote")}</p><div class="sd-row2"><input data-seed inputmode="numeric" value="${ui.seed}" aria-label="${T("seed")}"><button data-a="reroll">${T("reroll")}</button></div><div class="sd-row2"><button class="pri" data-a="rand">${T("play")}</button>${back}</div></div>`;
         if (sc === "bot") return `<div class="sd-menu"><h3>${T("vsbot")}</h3><div class="sd-row2"><button class="pri" data-a="bot" data-v="plants">${T("plants")}</button><button data-a="bot" data-v="zombies">${T("zombies")}</button></div>${back}</div>`;
         if (sc === "lobby") return `<div class="sd-menu"><h3>Sprout Defense</h3><p class="mut">${playerName}</p><p>${room.isHost ? T("lobbyHost") : T("lobbyGuest")}</p>${room.isHost ? `<button class="pri" data-a="start">${T("start")}</button>` : ""}</div>`;
-        return `<div class="sd-menu"><div class="sd-logo">${META.art}</div><h1>Sprout Defense</h1><p class="mut">${T("tag")}</p>
+        return `<div class="sd-menu"><div class="sd-logo">${iconSVG("sprout")}</div><h1>Sprout Defense</h1><p class="mut">${T("tag")}</p>
       <div class="sd-list">
         ${[["levels", "campaign"], ["random", "random"], ["bot", "vsbot"], ["local", "local"]].map(([v, k]) => `<button class="sd-big" data-a="go" data-v="${v}"><b>${T(k)}</b><span>${T(k + "D")}</span></button>`).join("")}
         <button data-a="help">${T("help")}</button>

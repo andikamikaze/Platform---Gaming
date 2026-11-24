@@ -32,6 +32,7 @@ export async function connectCommunity({ name, initials, color }) {
       comments: ref("comments"),
       events: ref("events"),
       rsvps: ref("rsvps"),
+      guidelines: ref("content", "guidelines"),
     };
     const userRef = ref("users", uid);
 
@@ -57,6 +58,9 @@ export async function connectCommunity({ name, initials, color }) {
           listen("onComments", refs.comments),
           listen("onEvents", refs.events),
           listen("onRsvps", refs.rsvps),
+          typeof handlers.onGuidelines === "function"
+            ? dbSdk.onValue(refs.guidelines, (snapshot) => handlers.onGuidelines(snapshot.val() || ""))
+            : () => {},
         ];
         return () => stop.forEach((unsubscribe) => {
           try { unsubscribe(); } catch (_) { }
@@ -132,6 +136,55 @@ export async function connectCommunity({ name, initials, color }) {
         const snapshot = await dbSdk.get(target);
         if (snapshot.exists()) await dbSdk.remove(target);
         else await dbSdk.set(target, true);
+      },
+
+      async createCommunity({ name, description = "", category = "co-op", badge = "G", badgeTone = "blue" }) {
+        const cleanName = String(name || "").trim();
+        if (!cleanName) throw new Error("A community name is required.");
+        const node = await dbSdk.push(refs.communities, {
+          name: cleanName,
+          description: String(description || "").trim(),
+          category,
+          badge: String(badge || "G").trim().slice(0, 3).toUpperCase() || "G",
+          badgeTone,
+          createdBy: uid,
+          createdAt: dbSdk.serverTimestamp(),
+        });
+        // The creator is the first member, so the community is visible right away.
+        await client.setMember(node.key, true);
+        return node.key;
+      },
+
+      async createEvent({ title, description = "", communityId = "", startsAt }) {
+        const cleanTitle = String(title || "").trim();
+        const date = new Date(startsAt);
+        if (!cleanTitle) throw new Error("An event title is required.");
+        if (!Number.isFinite(date.getTime())) throw new Error("Choose a valid date and time.");
+        const node = await dbSdk.push(refs.events, {
+          title: cleanTitle,
+          description: String(description || "").trim(),
+          communityId,
+          startsAt: date.toISOString(),
+          createdBy: uid,
+          createdAt: dbSdk.serverTimestamp(),
+        });
+        // Host is automatically going to their own event.
+        await dbSdk.set(ref("rsvps", node.key, uid), true);
+        return node.key;
+      },
+
+      async deletePost(postId) {
+        const target = ref("posts", postId);
+        const snapshot = await dbSdk.get(target);
+        if (snapshot.val()?.authorUid !== uid) throw new Error("You can only delete your own posts.");
+        await dbSdk.remove(target);
+      },
+
+      async deleteComment(postId, commentId) {
+        const target = ref("comments", postId, commentId);
+        const snapshot = await dbSdk.get(target);
+        if (snapshot.val()?.authorUid !== uid) throw new Error("You can only delete your own comments.");
+        await dbSdk.remove(target);
       },
     };
 

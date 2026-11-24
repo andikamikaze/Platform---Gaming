@@ -1,4 +1,5 @@
 /* Shared light/dark theme preferences for both pages. */
+import { setIcon } from "./icons.js";
 
 const STORAGE_THEME = "gamespace_theme";
 const VALID = ["light", "dark", "system"];
@@ -53,7 +54,7 @@ function syncThemeButtons(theme = effectiveTheme()) {
   const label = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
   document.querySelectorAll("[data-action='toggle-theme']").forEach((button) => {
     const icon = button.querySelector(".theme-icon");
-    if (icon) icon.textContent = theme === "dark" ? "☀" : "☾";
+    setIcon(icon, theme === "dark" ? "sun" : "moon");
     button.setAttribute("aria-label", label);
     button.setAttribute("title", label);
     button.setAttribute("aria-pressed", String(theme === "dark"));

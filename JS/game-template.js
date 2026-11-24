@@ -10,7 +10,7 @@
  * JS/games-manifest.js. Tanpa ini, build akan gagal dengan error
  * "tambahkan \"export const META = {...}\"".
  *   - name, category, catLabel, desc : wajib terisi
- *   - art  : SVG string kartu (opsional — kosong = pakai inisial nama)
+ *   - art  : deprecated/diabaikan — cover art berasal dari JS/game-icons.js
  *   - bg   : 2 warna hex kartu (opsional — kosong = pakai warna default)
  *   - bestKey: (opsional) localStorage key untuk skor terbaik
  */
@@ -20,7 +20,7 @@ export const META = {
   category: "arcade",          // id kategori, mis. arcade / sports / puzzle
   catLabel: "Arcade",          // label tampil di kartu
   desc: "Replace this text with the game instructions.",
-  art: "",                     // mis. '<svg viewBox="0 0 48 48" ...>...</svg>'
+  // art: deprecated — cover art diambil dari JS/game-icons.js + JS/icons.js
   bg: [],                      // mis. ["#fdba74", "#f97316"]
   // bestKey: "newGameBest",
 };

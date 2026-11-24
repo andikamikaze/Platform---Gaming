@@ -24,6 +24,15 @@ Dashboard dan aset inti disajikan sebagai situs statis melalui GitHub Pages. Set
 5. **Local-first:** mode solo tidak membutuhkan akun, database, atau koneksi backend.
 6. **Multiplayer terisolasi:** komunikasi multiplayer hanya aktif pada game dan room yang membutuhkannya.
 7. **Modular:** setiap game mengikuti kontrak integrasi yang sama agar dapat ditambahkan tanpa mengubah dashboard secara besar-besaran.
+8. **Ikon terpusat:** seluruh ikon UI dan cover art berasal dari `JS/icons.js` (satu sumber path SVG, `viewBox 0 0 24 24`, `stroke currentColor`, tanpa fill). Dilarang memakai glyph Unicode sebagai ikon atau menulis SVG inline baru di komponen.
+
+### 1.2 Sistem ikon
+
+- `JS/icons.js` menyimpan `paths`, `iconPaths()`, `iconSVG()`, `hydrateIcons()`, dan `setIcon()`.
+- `JS/game-icons.js` memetakan tiap id game ke nama ikon; generator manifest memakai pemetaan ini untuk seluruh cover art.
+- Placeholder HTML: `<span class="icon" data-icon="nama"></span>`; diisi saat boot oleh `hydrateIcons()`.
+- Ikon dinamis (tema, favorit) memakai `setIcon()` / `iconSVG()` langsung.
+- `npm run check:icons` memvalidasi konsistensi sistem ini.
 
 ---
 

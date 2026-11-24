@@ -86,8 +86,11 @@ try {
   process.exit(1);
 }
 
-const nameA = `${runId}_A`.slice(0, 20);
-const nameB = `${runId}_B`.slice(0, 20);
+// Sisipkan sufiks sebelum dibatasi 20 karakter: jika tidak, nameA dan nameB
+// identik setelah slice dan tes presence tidak benar-benar membedakan pemain.
+const shortId = runId.slice(0, 14);
+const nameA = `${shortId}_A`;
+const nameB = `${shortId}_B`;
 let a = null;
 let b = null;
 let title = "";
@@ -114,8 +117,10 @@ try {
     a = await openCommunity(nameA);
     await a.page.goto(`${serverHandle.origin}/?test=1`, { waitUntil: "domcontentloaded" });
     await a.page.waitForFunction(() => globalThis.__MGP_TEST_READY__ === true, null, { timeout: 20000 });
-    const dashboardName = await a.page.locator("#profileName").textContent();
-    if (dashboardName?.trim() !== nameA) throw new Error(`Nama dashboard salah: ${dashboardName}`);
+    // Dashboard tidak punya elemen #profileName; identitas bersama disimpan
+    // di localStorage[gamespace_player_name] (lihat JS/identity.js).
+    const dashboardName = await a.page.evaluate(() => localStorage.getItem("gamespace_player_name") || "");
+    if (dashboardName.trim() !== nameA) throw new Error(`Nama dashboard salah: ${dashboardName}`);
     await a.page.locator('a.side-link[href="community.html"]').click();
     await ready(a.page);
     const communityName = await a.page.locator("#profileName").textContent();
@@ -135,10 +140,11 @@ try {
     return `${onlineCount} pemain online`;
   });
 
-  const communityId = await a.page.locator("[data-join]").first().getAttribute("data-join");
-  const uidA = await a.page.evaluate(() => globalThis.__COMMUNITY_TEST__.uid());
-
   await step("join-community", async () => {
+    // Ambil data di dalam step agar kegagalan tidak berubah menjadi "fatal"
+    // dan menghentikan seluruh langkah berikutnya.
+    const communityId = await a.page.locator("[data-join]").first().getAttribute("data-join", { timeout: 15000 });
+    const uidA = await a.page.evaluate(() => globalThis.__COMMUNITY_TEST__.uid());
     await a.page.locator(`[data-join="${communityId}"]`).click();
     await a.page.waitForFunction((id) =>
       document.querySelector(`[data-join="${id}"]`)?.textContent.includes("Joined"),
@@ -171,7 +177,8 @@ try {
     await a.page.waitForFunction((text) => {
       const article = [...document.querySelectorAll("#feedList .feed-item")]
         .find((node) => node.textContent.includes(text));
-      return Number(article?.querySelector("[data-like] span")?.textContent || 0) >= 1;
+      // span pertama adalah ikon; angka ada di span kedua (bukan .icon).
+      return Number(article?.querySelector("[data-like] span:not(.icon)")?.textContent || 0) >= 1;
     }, title, { timeout: 20000 });
     return "1 like";
   });

@@ -202,6 +202,50 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   color: #aeb2ff;
 }
 
+/* =============================================================
+ * ICONS — sumber tunggal: JS/icons.js (viewBox 24, currentColor)
+ * ============================================================= */
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  line-height: 0;
+}
+
+.icon svg {
+  display: block;
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+}
+
+/* Ikon yang disisipkan langsung (bukan lewat placeholder .icon). */
+.favorite-button svg,
+.play-button svg,
+.picker-arrow svg,
+.achievement-symbol svg,
+.filter-chip svg,
+.mode-arrow svg {
+  display: block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+}
+
+.favorite-button[aria-pressed="true"] svg,
+.feed-actions button[data-like].is-liked svg {
+  fill: currentColor;
+}
+
+.theme-toggle .theme-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
 .sidebar-bottom {
   margin-top: auto;
 }
@@ -2847,8 +2891,8 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 }
 
 .art-glyph svg {
-  width: 54px;
-  height: 54px;
+  width: 48px;
+  height: 48px;
   display: block;
   filter: drop-shadow(0 9px 18px rgba(0, 0, 0, .22));
 }
@@ -3487,14 +3531,6 @@ a {
 .game-art::before, .game-art::after, .art-orbit { display: none; }
 .art-glyph { transform: none; text-shadow: none; font-size: 36px; }
 .art-glyph svg { width: 44px; height: 44px; filter: none; }
-.game-art .art-glyph svg[stroke="#fff"],
-.game-art .art-glyph svg [stroke="#fff"],
-.picker-glyph svg[stroke="#fff"],
-.picker-glyph svg [stroke="#fff"] { stroke: var(--color-primary); }
-.game-art .art-glyph svg[fill="#fff"],
-.game-art .art-glyph svg [fill="#fff"],
-.picker-glyph svg[fill="#fff"],
-.picker-glyph svg [fill="#fff"] { fill: var(--color-primary); }
 
 .game-art-label {
   top: 10px;
@@ -4229,4 +4265,148 @@ button.text-action { padding: 0; border: 0; background: none; }
 :root[data-theme="dark"] .field-group select {
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+/* Mobile library cards: compact list rows instead of large art tiles. */
+@media (max-width: 639px) {
+  .game-grid {
+    gap: 10px;
+  }
+
+  .game-grid .game-card {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) 24px;
+    grid-template-areas:
+      "art title action"
+      "art meta  action";
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 1px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    box-shadow: none;
+  }
+
+  .game-grid .game-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .game-grid .game-art {
+    grid-area: art;
+    width: 46px;
+    height: 46px;
+    aspect-ratio: auto;
+    min-height: 0;
+    border: 0;
+    border-radius: 10px;
+    background: var(--color-surface-muted);
+    color: var(--color-primary);
+  }
+
+  .game-grid .game-art::before,
+  .game-grid .game-art::after,
+  .game-grid .game-art-label,
+  .game-grid .art-index,
+  .game-grid .art-orbit {
+    display: none;
+  }
+
+  .game-grid .art-glyph {
+    font-size: 22px;
+  }
+
+  .game-grid .art-glyph svg {
+    width: 24px;
+    height: 24px;
+    filter: none;
+  }
+
+  .game-grid .game-body,
+  .game-grid .game-card-footer {
+    display: contents;
+  }
+
+  .game-grid .game-title-row {
+    grid-area: title;
+    display: block;
+    min-width: 0;
+  }
+
+  .game-grid .game-title-row h3 {
+    overflow: hidden;
+    color: var(--color-text);
+    font-size: 13px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .game-grid .favorite-button,
+  .game-grid .game-description {
+    display: none;
+  }
+
+  .game-grid .game-tags {
+    grid-area: meta;
+    min-width: 0;
+  }
+
+  .game-grid .game-tag {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-weight: 400;
+  }
+
+  .game-grid .game-tag + .game-tag {
+    display: none;
+  }
+
+  .game-grid .play-button {
+    grid-area: action;
+    justify-self: end;
+    gap: 0;
+    padding: 4px;
+    color: var(--color-text-muted);
+    font-size: 0;
+  }
+
+  .game-grid .play-button svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* Mobile bottom bar: "More" opens the hidden navigation group. */
+.app-sidebar .main-nav > .mobile-more-link {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app-sidebar .main-nav > .mobile-more-link {
+    display: flex;
+  }
+
+  .app-sidebar .main-nav > .mobile-more-link[aria-expanded="true"] {
+    background: rgba(37, 99, 235, .08);
+    color: var(--color-primary);
+  }
+
+  .app-sidebar .main-nav > .mobile-more-link[aria-expanded="true"] .nav-icon {
+    color: var(--color-primary);
+  }
+
+  .app-sidebar .main-nav > .mobile-more-link[aria-expanded="true"]::before {
+    top: auto;
+    right: 18%;
+    bottom: 0;
+    left: 18%;
+    width: auto;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+  }
 }

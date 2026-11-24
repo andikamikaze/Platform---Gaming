@@ -7,6 +7,7 @@
   "scripts": {
     "check": "node tools/check-all.mjs",
     "check:static": "node tools/check-static.mjs",
+    "check:icons": "node tools/check-icons.mjs",
     "check:mount": "node tools/check-mount.mjs",
     "check:browser": "node tools/check-browser.mjs",
     "check:rooms": "node tools/check-rooms.mjs",

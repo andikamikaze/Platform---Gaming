@@ -28,7 +28,7 @@
     ];
     /* simple SVG flags: [country, draw fn] - stripes/crosses/circle only */
     function flagSVG(kind) {
-        const W = 'width="150" height="100" viewBox="0 0 60 40"';
+        const W = 'width="150" height="100" viewBox="0 0 60 40" focusable="false"';
         switch (kind) {
             case "Japan":
                 return (
@@ -175,7 +175,7 @@
         category: "educational",
         catLabel: "Educational",
         desc: "Capitals, continents and flags - score 8 of 10 to pass.",
-        art: '<svg viewBox="0 0 48 48" width="54" height="54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="17"/><path d="M10 18h28M10 30h28M24 7c-5 5-5 10-5 17s0 12 5 17c5-5 5-10 5-17s0-12-5-17z"/></svg>',
+        art: '<svg viewBox="0 0 48 48" width="54" height="54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="17"/><path d="M10 18h28M10 30h28M24 7c-5 5-5 10-5 17s0 12 5 17c5-5 5-10 5-17s0-12-5-17z"/></svg>',
         bg: ["#bae6fd", "#0ea5e9"],
         _test: TEST,
 

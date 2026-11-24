@@ -10,6 +10,7 @@ import {
 } from "./identity.js";
 import { connectCommunity } from "./community-client.js";
 import { initThemeButtons } from "./theme.js";
+import { iconSVG, hydrateIcons } from "./icons.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -22,12 +23,43 @@ function toggleMoreMenu(force) {
   moreNav.classList.toggle("is-open", open);
   const backdrop = $(".more-backdrop");
   if (backdrop) backdrop.hidden = !open;
-  const toggle = $(".more-toggle");
-  if (toggle) toggle.setAttribute("aria-expanded", String(open));
+  $$(".more-toggle, .mobile-more-link").forEach((button) => {
+    button.setAttribute("aria-expanded", String(open));
+  });
 }
 
 function closeMoreMenu() {
   toggleMoreMenu(false);
+}
+
+/* Each sidebar hash link maps to one dedicated view inside community.html. */
+const VIEW_META = {
+  communities: { label: "Home", title: "Gaming — Community" },
+  events: { label: "Events", title: "Gaming — Events" },
+  activity: { label: "Activity feed", title: "Gaming — Activity feed" },
+  players: { label: "Players online", title: "Gaming — Players online" },
+  guidelines: { label: "Guidelines", title: "Gaming — Guidelines" },
+};
+
+function viewFromHash() {
+  const name = location.hash.replace(/^#/, "");
+  if (name.startsWith("post-")) return "activity";
+  return Object.prototype.hasOwnProperty.call(VIEW_META, name) ? name : "communities";
+}
+
+function setView(name, { scroll = true } = {}) {
+  const view = Object.prototype.hasOwnProperty.call(VIEW_META, name) ? name : "communities";
+  $$("[data-community-view]").forEach((node) => {
+    node.hidden = node.dataset.communityView !== view;
+  });
+  $$(".app-sidebar .main-nav > .side-link, .app-sidebar .more-nav > .side-link").forEach((link) => {
+    link.classList.toggle("active", link.getAttribute("href") === `#${view}`);
+  });
+  const breadcrumb = $("#breadcrumbCurrent");
+  if (breadcrumb) breadcrumb.textContent = VIEW_META[view].label;
+  document.title = VIEW_META[view].title;
+  closeMoreMenu();
+  if (scroll) window.scrollTo(0, 0);
 }
 
 const CATEGORY_LABELS = {
@@ -46,10 +78,14 @@ const state = {
   comments: {},
   events: {},
   rsvps: {},
+  guidelines: "",
   filter: "all",
   query: "",
   commentPostId: "",
 };
+
+/* Shown only while community/content/guidelines has not been published yet. */
+const GUIDELINES_EMPTY = "No guidelines have been published by the moderators yet.";
 
 const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -148,7 +184,7 @@ function renderSidebarCommunities() {
     .filter(isMember)
     .sort((a, b) => communityName(a).localeCompare(communityName(b)));
   host.innerHTML = joined.length
-    ? joined.map((id) => `<a href="#communities" class="side-link"><span class="nav-icon">◉</span><span>${escapeHTML(communityName(id))}</span></a>`).join("")
+    ? joined.map((id) => `<a href="#communities" class="side-link"><span class="nav-icon icon">${iconSVG("users")}</span><span>${escapeHTML(communityName(id))}</span></a>`).join("")
     : "";
 }
 
@@ -213,13 +249,17 @@ function commentHTML(postId) {
     .sort((a, b) => Number(a[1]?.createdAt || 0) - Number(b[1]?.createdAt || 0));
   if (!comments.length) return document.createDocumentFragment();
   const fragment = document.createDocumentFragment();
-  for (const [, comment] of comments) {
+  for (const [id, comment] of comments) {
     const node = $("#tpl-comment").content.firstElementChild.cloneNode(true);
+    node.dataset.commentId = id;
+    node.dataset.postId = postId;
     const avatar = $(".avatar", node);
     avatar.className = `avatar ${avatarToneFor(comment.authorUid, comment.authorName)}`;
     avatar.textContent = comment.authorInitials || playerInitials(comment.authorName);
     $("strong", node).textContent = comment.authorName || "Member";
     $("p", node).textContent = comment.body || "";
+    const remove = $("[data-delete-comment]", node);
+    if (remove) remove.hidden = comment.authorUid !== state.client?.uid;
     fragment.append(node);
   }
   const wrapper = document.createElement("div");
@@ -241,6 +281,8 @@ function renderFeed() {
   host.replaceChildren(...visible.map(([id, post]) => {
     const node = template.content.firstElementChild.cloneNode(true);
     node.dataset.postId = id;
+    const remove = $("[data-delete-post]", node);
+    if (remove) remove.hidden = post.authorUid !== state.client?.uid;
     const avatar = $(".avatar", node);
     avatar.className = `avatar ${avatarToneFor(post.authorUid, post.authorName)}`;
     avatar.textContent = initialsFor(post.authorUid, post);
@@ -254,10 +296,10 @@ function renderFeed() {
       .map((tag) => `<span class="feed-tag">${escapeHTML(tag)}</span>`).join("");
 
     const like = $("[data-like]", node);
-    like.firstChild.textContent = isLiked(id) ? "♥ Like " : "♡ Like ";
-    $("span", like).textContent = String(countMap(state.likes[id]));
+    like.classList.toggle("is-liked", isLiked(id));
+    $("span:not(.icon)", like).textContent = String(countMap(state.likes[id]));
     const comment = $("[data-comment]", node);
-    $("span", comment).textContent = String(countMap(state.comments[id]));
+    $("span:not(.icon)", comment).textContent = String(countMap(state.comments[id]));
 
     const actions = $(".feed-actions", node);
     actions.parentNode.insertBefore(commentHTML(id), actions);
@@ -290,7 +332,7 @@ function renderEvents() {
     const button = $(".small-action", node);
     button.dataset.rsvp = id;
     const going = isRsvped(id);
-    button.textContent = going ? "Going ✓" : "RSVP";
+    button.innerHTML = going ? `Going ${iconSVG("check")}` : "RSVP";
     button.classList.toggle("rsvped", going);
     node.dataset.search = `${event.title} ${event.description || ""} ${communityName(event.communityId)}`.toLowerCase();
     return node;
@@ -330,6 +372,24 @@ function renderPostCommunityOptions() {
   if (communities.some(([id]) => id === current)) select.value = current;
 }
 
+function renderEventCommunityOptions() {
+  const select = $("#eventCommunity");
+  if (!select) return;
+  const current = select.value;
+  const communities = Object.entries(state.communities)
+    .sort((a, b) => a[1].name.localeCompare(b[1].name));
+  select.innerHTML = '<option value="">General community</option>' + communities
+    .map(([id, community]) => `<option value="${escapeHTML(id)}">${escapeHTML(community.name)}</option>`)
+    .join("");
+  if (communities.some(([id]) => id === current)) select.value = current;
+}
+
+function renderGuidelines() {
+  const node = $("#guidelinesText");
+  if (!node) return;
+  node.textContent = String(state.guidelines || "").trim() || GUIDELINES_EMPTY;
+}
+
 function renderAll() {
   renderIdentity();
   renderSidebarCommunities();
@@ -339,6 +399,8 @@ function renderAll() {
   renderEvents();
   renderOnline();
   renderPostCommunityOptions();
+  renderEventCommunityOptions();
+  renderGuidelines();
 }
 
 let renderScheduled = false;
@@ -460,27 +522,68 @@ function wireEvents() {
           .then(() => toast("Post link copied."))
           .catch(() => toast(link));
       } else toast(link);
+      return;
+    }
+    const deletePost = event.target.closest("[data-delete-post]");
+    if (deletePost) {
+      const id = deletePost.closest("[data-post-id]").dataset.postId;
+      runAction(async () => {
+        await state.client.deletePost(id);
+        toast("Post deleted.");
+      });
+      return;
+    }
+    const deleteComment = event.target.closest("[data-delete-comment]");
+    if (deleteComment) {
+      const host = deleteComment.closest("[data-post-id]");
+      runAction(async () => {
+        await state.client.deleteComment(host.dataset.postId, host.dataset.commentId);
+        toast("Comment deleted.");
+      });
     }
   });
 
-  ["createPost", "createPostTop"].forEach((id) => {
-    $(`#${id}`).addEventListener("click", () => {
+  ["createPost", "createPostTop", "emptyCreatePost"].forEach((id) => {
+    $(`#${id}`)?.addEventListener("click", () => {
       $("#postError").hidden = true;
       openModal("postModal");
       $("#postTitle").focus();
     });
   });
-  $("#cancelPost").addEventListener("click", () => closeModal("postModal"));
-  $("#cancelComment").addEventListener("click", () => closeModal("commentModal"));
-  ["postModal", "commentModal"].forEach((id) => {
-    $(`#${id}`).addEventListener("click", (event) => {
+  ["createCommunity", "emptyCreateCommunity"].forEach((id) => {
+    $(`#${id}`)?.addEventListener("click", () => {
+      $("#communityError").hidden = true;
+      openModal("communityModal");
+      $("#communityName").focus();
+    });
+  });
+  ["createEvent", "emptyCreateEvent"].forEach((id) => {
+    $(`#${id}`)?.addEventListener("click", () => {
+      $("#eventError").hidden = true;
+      renderEventCommunityOptions();
+      openModal("eventModal");
+      $("#eventTitle").focus();
+    });
+  });
+
+  const cancelButtons = {
+    cancelPost: "postModal",
+    cancelComment: "commentModal",
+    cancelCommunity: "communityModal",
+    cancelEvent: "eventModal",
+  };
+  Object.entries(cancelButtons).forEach(([button, modal]) => {
+    $(`#${button}`)?.addEventListener("click", () => closeModal(modal));
+  });
+  const modalIds = ["postModal", "commentModal", "communityModal", "eventModal"];
+  modalIds.forEach((id) => {
+    $(`#${id}`)?.addEventListener("click", (event) => {
       if (event.target.id === id) closeModal(id);
     });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    closeModal("postModal");
-    closeModal("commentModal");
+    modalIds.forEach(closeModal);
   });
 
   $("#postForm").addEventListener("submit", (event) => {
@@ -525,8 +628,56 @@ function wireEvents() {
     });
   });
 
+  $("#communityForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = $("#communityName").value.trim();
+    const error = $("#communityError");
+    if (!name) {
+      error.textContent = "A community name is required.";
+      error.hidden = false;
+      return;
+    }
+    error.hidden = true;
+    runAction(async () => {
+      await state.client.createCommunity({
+        name,
+        description: $("#communityDescription").value,
+        category: $("#communityCategory").value,
+        badge: $("#communityBadge").value,
+        badgeTone: "blue",
+      });
+      closeModal("communityModal");
+      event.target.reset();
+      toast("Community created — you joined automatically.");
+    });
+  });
+
+  $("#eventForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const title = $("#eventTitle").value.trim();
+    const startsAt = $("#eventStarts").value;
+    const error = $("#eventError");
+    if (!title || !startsAt) {
+      error.textContent = "A title and a date are required.";
+      error.hidden = false;
+      return;
+    }
+    error.hidden = true;
+    runAction(async () => {
+      await state.client.createEvent({
+        title,
+        description: $("#eventDescription").value,
+        communityId: $("#eventCommunity").value,
+        startsAt,
+      });
+      closeModal("eventModal");
+      event.target.reset();
+      toast("Event created — your RSVP is confirmed.");
+    });
+  });
+
   $("#browseBtn").addEventListener("click", () => {
-    $("#communities").scrollIntoView({ behavior: "smooth" });
+    $("#section-communities")?.scrollIntoView({ behavior: "smooth" });
   });
   $("#seeAll").addEventListener("click", () => {
     state.filter = "all";
@@ -541,9 +692,6 @@ function wireEvents() {
     scheduleRender();
     toast("Your activity feed is up to date.");
   });
-  $("#eventCalendar").addEventListener("click", () => {
-    $("#events").scrollIntoView({ behavior: "smooth" });
-  });
   $("#friendsBtn").addEventListener("click", () => {
     renderOnline();
     toast("Online list refreshed.");
@@ -557,21 +705,26 @@ function wireEvents() {
     if (event.key === "Escape") closeMoreMenu();
   });
   document.addEventListener("click", (event) => {
-    const link = event.target.closest('.app-sidebar .side-link[href^="#"]');
+    const link = event.target.closest('.app-sidebar .side-link[href^="#"], .view-links a[href^="#"]');
     if (!link) return;
-    $$(".app-sidebar .side-link").forEach((item) => item.classList.remove("active"));
-    link.classList.add("active");
-    closeMoreMenu();
+    const name = link.getAttribute("href").slice(1);
+    if (!Object.prototype.hasOwnProperty.call(VIEW_META, name)) return;
+    if (location.hash !== `#${name}`) location.hash = name;
+    else setView(name);
   });
+  window.addEventListener("hashchange", () => setView(viewFromHash()));
 }
 
 async function boot() {
   $("#todayLabel").textContent = new Intl.DateTimeFormat("en-US", {
     weekday: "long", month: "long", day: "numeric", year: "numeric",
   }).format(new Date());
+  hydrateIcons();
+  document.querySelectorAll("template").forEach((tpl) => hydrateIcons(tpl.content));
   renderIdentity();
   initThemeButtons();
   wireEvents();
+  setView(viewFromHash(), { scroll: false });
 
   if (!hasDisplayName()) {
     location.replace(`index.html?next=${encodeURIComponent("community.html")}`);
@@ -600,6 +753,7 @@ async function boot() {
     onComments: (value) => { state.comments = value; scheduleRender(); },
     onEvents: (value) => { state.events = value; scheduleRender(); },
     onRsvps: (value) => { state.rsvps = value; scheduleRender(); },
+    onGuidelines: (value) => { state.guidelines = value; scheduleRender(); },
     error: (error, key) => showBanner(`Gagal memuat ${key}: ${error.message}`, true),
   });
   renderAll();

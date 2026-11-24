@@ -1,4 +1,5 @@
 import { createRoom, joinRoom } from "./room-client.js";
+import { iconSVG, hydrateIcons } from "./icons.js";
 import { GAMES as GENERATED_GAMES } from "./games-manifest.js";
 import {
   rawPlayerName as sharedRawPlayerName,
@@ -530,11 +531,11 @@ function gameCardHTML(game, favorites) {
       </div>
       <div class="game-body">
         <div class="game-title-row"><h3>${escapeHTML(game.name)}</h3>
-          <button class="favorite-button" type="button" data-favorite="${game.id}" aria-label="${isFavorite ? "Remove" : "Add"} ${escapeHTML(game.name)} ${isFavorite ? "from" : "to"} favorites" aria-pressed="${isFavorite}">${isFavorite ? "♥" : "♡"}</button>
+          <button class="favorite-button" type="button" data-favorite="${game.id}" aria-label="${isFavorite ? "Remove" : "Add"} ${escapeHTML(game.name)} ${isFavorite ? "from" : "to"} favorites" aria-pressed="${isFavorite}">${iconSVG("heart")}</button>
         </div>
         <p class="game-description">${escapeHTML(game.description)}</p>
         <div class="game-card-footer"><div class="game-tags"><span class="game-tag">${escapeHTML(game.catLabel || game.category)}</span><span class="game-tag">${escapeHTML(bestTag(game))}</span></div>
-          <button class="play-button" type="button" data-play="${game.id}">Play <span>↗</span></button>
+          <button class="play-button" type="button" data-play="${game.id}">Play ${iconSVG("arrowUpRight")}</button>
         </div>
       </div>
     </article>`;
@@ -550,7 +551,7 @@ function pickerCardHTML(game) {
         <strong>${escapeHTML(game.name)}</strong>
         <small>${escapeHTML(game.catLabel || game.category)}</small>
       </span>
-      <span class="picker-arrow"> ↗ </span>
+      <span class="picker-arrow">${iconSVG("arrowUpRight")}</span>
     </button>`;
 }
 
@@ -576,11 +577,11 @@ function renderFilterChips() {
       label,
       count: GAMES.filter((game) => game.category === category).length
     })),
-    { value: "favorites", label: "♡ Favorites", count: favorites.size }
+    { value: "favorites", label: "Favorites", icon: "heart", count: favorites.size }
   ];
   $("#filterList").innerHTML = chips.map((chip) => {
     const active = chip.value === activeFilter;
-    return `<button class="filter-chip${active ? " active" : ""}" type="button" data-filter="${chip.value}" aria-pressed="${active}">${escapeHTML(chip.label)} <span>${chip.count}</span></button>`;
+    return `<button class="filter-chip${active ? " active" : ""}" type="button" data-filter="${chip.value}" aria-pressed="${active}">${chip.icon ? iconSVG(chip.icon) : ""}${escapeHTML(chip.label)} <span>${chip.count}</span></button>`;
   }).join("");
 }
 
@@ -690,7 +691,7 @@ function renderProgressAchievements() {
   grid.innerHTML = achievements.map((item) => {
     const complete = item.current >= item.target;
     const progress = Math.min(100, Math.round((item.current / item.target) * 100));
-    return `<article class="page-card achievement-card ${complete ? "is-earned" : ""}"><div class="achievement-top"><span class="achievement-symbol">${complete ? "✓" : "☆"}</span><span class="achievement-state">${complete ? "UNLOCKED" : "IN PROGRESS"}</span></div><h2>${item.title}</h2><p>${item.desc}</p><div class="achievement-progress"><span style="width:${progress}%"></span></div><small>${item.current}/${item.target} ${item.reward}</small></article>`;
+    return `<article class="page-card achievement-card ${complete ? "is-earned" : ""}"><div class="achievement-top"><span class="achievement-symbol">${iconSVG(complete ? "check" : "star")}</span><span class="achievement-state">${complete ? "UNLOCKED" : "IN PROGRESS"}</span></div><h2>${item.title}</h2><p>${item.desc}</p><div class="achievement-progress"><span style="width:${progress}%"></span></div><small>${item.current}/${item.target} ${item.reward}</small></article>`;
   }).join("");
 }
 
@@ -777,8 +778,9 @@ function toggleMoreMenu(force) {
   moreNav.classList.toggle("is-open", open);
   const backdrop = $(".more-backdrop");
   if (backdrop) backdrop.hidden = !open;
-  const moreToggle = $(".more-toggle");
-  if (moreToggle) moreToggle.setAttribute("aria-expanded", String(open));
+  $$(".more-toggle, .mobile-more-link").forEach((button) => {
+    button.setAttribute("aria-expanded", String(open));
+  });
 }
 
 function closeMoreMenu() {
@@ -987,6 +989,7 @@ window.addEventListener("hashchange", () => {
  * ============================================================= */
 selectedGameId = readJSON(STORAGE.recent, []).map((id) => gameById(id)).find(Boolean)?.id || GAMES[0]?.id || "";
 applyAppearance();
+hydrateIcons();
 renderProfile();
 renderOverviewStats();
 renderGameOptions();
