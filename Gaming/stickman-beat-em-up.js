@@ -1,4 +1,6 @@
 /* ==== stickman-beat-em-up.js ==== */
+import { iconSVG } from "../JS/icons.js";
+
 /* =============================================================
    STICKMAN BEAT 'EM UP - real-time 2D side-scrolling brawler.
    Template: export META + export mount(root, context).
@@ -10,7 +12,7 @@
 
 export const META = {
     id: "stickman-beat-em-up", // must match the file name (without .js)
-    name: "Stickman Beat 'em Up",
+    name: "Stickman Beat Em Up",
     category: "arcade",
     catLabel: "Arcade",
     desc: "Brawl through randomly generated city blocks, chain combos, grab weapons and dethrone the Kingpin.",
@@ -493,70 +495,68 @@ export function mount(root, context = {}) {
 <style>
 .sb-root{--bg:#0b1122;--panel:#0e162e;--line:#1f2b47;--txt:#dbe4f3;--dim:#8fa3c8;--acc:#22d3ee;--bad:#fb7185;--warn:#fbbf24;--good:#34d399;color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .sb-root *{box-sizing:border-box}
-.sb-hud{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px 12px 0 0}
-.sb-label{font-size:9px;letter-spacing:.14em;color:var(--dim);font-weight:700}
-.sb-hp{display:flex;align-items:center;gap:8px}
-.sb-bar{width:120px;height:8px;border-radius:99px;background:#16223f;overflow:hidden}
+.sb-root.game-fill{gap:0}
+.sb-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sb-chip{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:5px 9px;white-space:nowrap}
+.sb-chip b,.sb-chip .sb-bar+ b{color:var(--txt);font-variant-numeric:tabular-nums}
+.sb-bar{display:inline-block;width:90px;height:7px;border-radius:99px;background:#16223f;overflow:hidden;vertical-align:middle}
 .sb-bar i{display:block;height:100%;width:100%;background:var(--acc);border-radius:99px;transition:width .15s,background .3s}
-.sb-hp b{font-size:13px;font-variant-numeric:tabular-nums;min-width:26px}
-.sb-ally{font-size:10px;color:var(--dim)}
+.sb-ally{color:var(--dim)}
 .sb-ally b{color:#a3e635}
-.sb-combo{display:flex;align-items:center;gap:7px}
-.sb-pips{display:flex;gap:4px}
-.sb-pips i{width:9px;height:9px;border-radius:99px;background:#16223f;border:1px solid var(--line);transition:background .12s}
+.sb-pips{display:inline-flex;gap:3px}
+.sb-pips i{width:8px;height:8px;border-radius:99px;background:#16223f;border:1px solid var(--line);transition:background .12s}
 .sb-pips i.on{background:var(--acc);border-color:var(--acc)}
 .sb-pips.ready i{box-shadow:0 0 8px #22d3ee99;animation:sbPulse 1s infinite}
-.sb-chip{font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:3px 9px}
-.sb-chip b{color:var(--txt)}
-.sb-areas{display:flex;gap:5px;align-items:center}
+.sb-areas{display:inline-flex;gap:4px;align-items:center}
 .sb-areas i{width:8px;height:8px;border-radius:2px;background:#16223f;border:1px solid var(--line);transform:rotate(45deg)}
 .sb-areas i.done{background:var(--good);border-color:var(--good)}
 .sb-areas i.cur{border-color:var(--acc);box-shadow:0 0 6px #22d3ee66}
-.sb-score{display:flex;align-items:baseline;gap:6px;margin-left:auto}
-.sb-score b{font-size:15px;font-variant-numeric:tabular-nums}
-.sb-best{font-size:9px;color:var(--dim);letter-spacing:.1em}
-.sb-best b{font-size:11px;color:var(--warn)}
-.sb-tools{display:flex;gap:6px}
-.sb-tools button{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--dim);font-size:13px;font-weight:800;cursor:pointer;line-height:1}
-.sb-tools button:hover{color:var(--txt);border-color:var(--acc)}
-.sb-tools button.off{opacity:.4;text-decoration:line-through}
-.sb-stage{position:relative;aspect-ratio:960/430;background:#070c1c;border:1px solid var(--line);border-top:0;overflow:hidden;touch-action:none}
-.sb-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.sb-banner{position:absolute;top:13%;left:0;right:0;text-align:center;pointer-events:none;opacity:0}
+.sb-spacer{flex:1 1 auto}
+@keyframes sbBanner{0%{opacity:0;transform:translateY(10px)}12%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
+@keyframes sbPulse{0%,100%{opacity:1}50%{opacity:.5}}
+.sb-board{position:relative;width:100%;aspect-ratio:960/430;flex:0 0 auto;background:#070c1c;border:1px solid var(--line);border-radius:12px;overflow:hidden;touch-action:none}
+.sb-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.sb-banner{position:absolute;top:13%;left:0;right:0;text-align:center;pointer-events:none;opacity:0;z-index:2}
 .sb-banner.show{animation:sbBanner 2s ease forwards}
 .sb-banner b{display:block;font-size:26px;font-weight:900;letter-spacing:.18em;text-shadow:0 2px 14px #000}
 .sb-banner span{font-size:12px;color:var(--dim);letter-spacing:.08em}
-@keyframes sbBanner{0%{opacity:0;transform:translateY(10px)}12%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
-@keyframes sbPulse{0%,100%{opacity:1}50%{opacity:.5}}
-.sb-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(6,10,22,.74);backdrop-filter:blur(4px);z-index:5;padding:14px;overflow:auto}
-.sb-card{width:min(540px,96%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;text-align:left}
-.sb-card h3{margin:0 0 4px;font-size:19px;letter-spacing:.14em;font-weight:900}
-.sb-card .sb-sub{margin:0 0 12px;font-size:12px;color:var(--dim)}
-.sb-how{margin:0 0 12px;padding:0;list-style:none;display:grid;gap:7px;font-size:12px;color:var(--txt)}
+.sb-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(6,10,22,.78);backdrop-filter:blur(4px);z-index:5;padding:14px;overflow:auto}
+.sb-card{width:min(540px,96%);max-height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 20px;text-align:left}
+.sb-head,.sb-foot{flex:none;display:flex;align-items:center;gap:10px;justify-content:space-between}
+.sb-body{flex:1 1 auto;min-height:0;overflow:auto}
+.sb-head h3{margin:0;font-size:19px;letter-spacing:.14em;font-weight:900}
+.sb-sub{margin:0 0 12px;font-size:12px;color:var(--dim);line-height:1.5}
+.sb-how{margin:0 0 10px;padding:0;list-style:none;display:grid;gap:7px;font-size:12px;color:var(--txt)}
 .sb-how li{padding-left:16px;position:relative;line-height:1.45}
 .sb-how li::before{content:"";position:absolute;left:0;top:7px;width:6px;height:6px;border-radius:2px;background:var(--acc);transform:rotate(45deg)}
 .sb-how b{color:var(--acc);font-weight:700}
+.sb-titlegroup{display:block;margin:0 0 10px;font-size:11px;color:var(--acc);font-weight:800;letter-spacing:.12em}
 .sb-ctrl{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11px;color:var(--dim);border-top:1px solid var(--line);padding-top:10px;margin-bottom:10px}
 .sb-ctrl kbd{display:inline-block;min-width:18px;text-align:center;padding:2px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#101b36;color:var(--txt);font-size:10px;font-family:inherit;margin-right:2px}
-.sb-note{font-size:11px;color:var(--warn);margin:0 0 12px}
-.sb-btn{display:inline-block;border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:10px;padding:10px 18px;font-size:12px;font-weight:800;letter-spacing:.12em;cursor:pointer}
+.sb-note{font-size:11px;color:var(--warn);margin:0;line-height:1.4}
+.sb-foot{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.sb-btn{display:inline-block;border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:800;letter-spacing:.08em;cursor:pointer}
 .sb-btn:hover{border-color:var(--acc)}
 .sb-btn.primary{background:var(--acc);border-color:var(--acc);color:#04222b}
 .sb-btn.primary:hover{filter:brightness(1.1)}
 .sb-btn:disabled{opacity:.45;cursor:default}
-.sb-btnrow{display:flex;gap:8px;flex-wrap:wrap}
-.sb-cheats,.sb-cheatacts{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px}
+.sb-btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sb-icon-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;font-size:10px;border-radius:9px}
+.sb-icon-btn svg{flex:none;display:block}
+.sb-icon-btn.off{opacity:.45;text-decoration:line-through}
+.sb-icon-btn.on{border-color:var(--acc);color:var(--acc)}
+.sb-cheats,.sb-cheatacts{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0 0 10px}
 .sb-cheats button,.sb-cheatacts button{border:1px solid var(--line);background:#101b36;color:var(--txt);border-radius:9px;padding:9px 10px;font-size:11px;font-weight:700;cursor:pointer;text-align:left}
 .sb-cheats button.on{background:#0c3b46;border-color:var(--acc);color:var(--acc)}
 .sb-cheats button.on::after{content:" \\2713";float:right}
 .sb-cheatacts button:hover,.sb-cheats button:hover{border-color:var(--acc)}
 .sb-cheats button:disabled,.sb-cheatacts button:disabled{opacity:.4;cursor:default}
-.sb-endtitle{font-size:24px;font-weight:900;letter-spacing:.14em;margin:0 0 4px}
+.sb-endtitle{font-size:24px;font-weight:900;letter-spacing:.14em;margin:0}
 .sb-endtitle.win{color:var(--good)}
 .sb-endtitle.lose{color:var(--bad)}
-.sb-endscore{font-size:13px;margin:0 0 14px;color:var(--dim)}
+.sb-endscore{font-size:13px;margin:0 0 12px;color:var(--dim);line-height:1.5}
 .sb-endscore b{color:var(--txt);font-size:17px}
-.sb-touch{display:none;justify-content:space-between;align-items:center;padding:10px 6px 2px;gap:10px;user-select:none;-webkit-user-select:none}
+.sb-touch{display:none;justify-content:space-between;align-items:center;margin-top:8px;padding:6px;gap:10px;user-select:none;-webkit-user-select:none}
 .sb-tleft,.sb-tright{display:flex;gap:10px}
 .sb-tbtn{width:60px;height:60px;border-radius:99px;border:1px solid var(--line);background:#121e3a;color:var(--txt);font-size:15px;font-weight:900;touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
 .sb-tbtn:active,.sb-tbtn.held{background:#1c2c52;border-color:var(--acc)}
@@ -565,57 +565,111 @@ export function mount(root, context = {}) {
 .sb-ts{background:#12303a;border-color:#155e6e;color:#a5f3fc;font-size:12px}
 .sb-ts.ready{box-shadow:0 0 14px #22d3ee88;border-color:var(--acc);animation:sbPulse 1s infinite}
 .sb-tj{font-size:11px}
-.sb-keys{padding:8px 4px 0;font-size:10.5px;color:var(--dim);text-align:center;letter-spacing:.03em}
-@media (pointer:coarse),(max-width:760px){.sb-touch{display:flex}.sb-keys{display:none}.sb-bar{width:80px}.sb-hud{gap:9px}}
+@media (pointer:coarse),(max-width:760px){.sb-touch{display:flex}.sb-bar{width:80px}}
+
+/* --- Batch 02 design polish --- */
+.sb-root :focus-visible,.sb-root button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sb-card{box-shadow:none}
+.sb-btn,.sb-cheats button,.sb-cheatacts button{min-height:44px}
+.sb-tbtn{min-width:44px;min-height:44px}
+@media (pointer:coarse){.sb-root button:not(:disabled){min-height:44px}}
+@media (max-width:480px){
+.sb-touch{flex-wrap:wrap;justify-content:center;gap:8px}
+.sb-tleft,.sb-tright{justify-content:center;gap:8px}
+.sb-tbtn{width:44px;height:44px;min-width:44px;min-height:44px}
+.sb-ts{font-size:10px}
+}
+@media (prefers-reduced-motion:reduce){.sb-root *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements --- */
+.sb-icon-btn svg{flex:none;display:block}
+.sb-card{display:flex;flex-direction:column;overflow:hidden}
+.sb-body{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.sb-root.game-fill > .sb-board:not(:has(.sb-ov:not([hidden]))){aspect-ratio:960/430;flex:0 0 auto}
+.sb-root.game-fill > .sb-board:has(.sb-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sb-root.game-fill > .sb-board:has(.sb-ov:not([hidden])) .sb-canvas{position:absolute;top:50%;height:auto;aspect-ratio:960/430;transform:translateY(-50%)}
+.sb-root .sb-hud{gap:5px;margin-bottom:8px;padding:6px 8px}
+.sb-root .sb-hud .sb-chip{padding:4px 6px;font-size:9px}
+.sb-root .sb-hud .sb-chip[data-chip="combo"],
+.sb-root .sb-hud .sb-chip[data-chip="mode"]{display:none}
+.sb-root .sb-hud .sb-btn{min-height:32px;padding:5px 7px;font-size:9px}
+.sb-root .sb-hud .sb-btn-label,
+.sb-root .sb-hud .sb-spacer{display:none}
+.sb-root .sb-ov{padding:8px}
+.sb-root .sb-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sb-root .sb-body{scrollbar-width:none}
+.sb-root .sb-body::-webkit-scrollbar{display:none}
+.sb-root .sb-foot{position:static;margin:0;padding:10px 0 0}
+.sb-root .sb-note{display:none}
+}
 </style>
-<div class="game-app sb-root">
-  <div class="game-intro">
-    <div><h2>Stickman Beat 'em Up</h2><p>Real-time street brawl. Clear the blocks, chain combos, drop the Kingpin.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app sb-root game-fill" data-sb>
+  <div class="sb-hud">
+    <span class="sb-chip">HP <span class="sb-bar"><i data-hpfill></i></span><b data-hp>120</b><span class="sb-ally" data-allychip hidden>ALLY <b data-allyhp>120</b></span></span>
+    <span class="sb-chip" data-chip="combo">COMBO <span class="sb-pips" data-pips><i></i><i></i><i></i><i></i><i></i></span></span>
+    <span class="sb-chip" data-wpnchip hidden>WPN <b data-wpn>Bat</b></span>
+    <span class="sb-chip">BLOCK <b data-block>1/4</b><span class="sb-areas" data-areas title="Blocks"></span></span>
+    <span class="sb-chip" data-chip="mode"><b data-status>VS BOTS &middot; READY</b></span>
+    <span class="sb-chip">SCORE <b data-score>0</b> BEST <b data-best>0</b></span>
+    <span class="sb-spacer"></span>
+    <button class="sb-btn sb-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sb-btn-label">Help</span></button>
+    <button class="sb-btn sb-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sb-btn-label">Cheats</span></button>
+    <button class="sb-btn sb-icon-btn" type="button" data-mute aria-label="Sound" title="Sound (M)">${iconSVG("volume", { size: 14 })}<span class="sb-btn-label">Sound</span></button>
+    <button class="sb-btn sb-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sb-btn-label">Pause</span></button>
+    <button class="sb-btn sb-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sb-btn-label">Restart</span></button>
+    <button class="sb-btn sb-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sb-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="sb-hud">
-      <div class="sb-hp"><span class="sb-label">HP</span><div class="sb-bar"><i data-hpfill></i></div><b data-hp>120</b><span class="sb-ally" data-allychip hidden>ALLY <b data-allyhp>120</b></span></div>
-      <div class="sb-combo"><span class="sb-label">COMBO</span><div class="sb-pips" data-pips><i></i><i></i><i></i><i></i><i></i></div></div>
-      <span class="sb-chip" data-wpnchip hidden><b data-wpn>Bat</b></span>
-      <div class="sb-areas" data-areas title="Blocks"></div>
-      <div class="sb-score"><span class="sb-label">SCORE</span><b data-score>0</b><span class="sb-best">BEST <b data-best>0</b></span></div>
-      <div class="sb-tools">
-        <button type="button" data-act="help" title="How to play (H)">?</button>
-        <button type="button" data-act="cheat" title="Cheats (C)">&#9889;</button>
-        <button type="button" data-act="mute" title="Sound (M)">&#9834;</button>
-        <button type="button" data-act="pause" title="Pause (P)">&#10074;&#10074;</button>
-      </div>
-    </div>
-    <div class="sb-stage">
-      <canvas class="sb-canvas" width="960" height="430"></canvas>
-      <div class="sb-banner" data-banner><b data-btitle></b><span data-bsub></span></div>
-      <div class="sb-ov" data-ov="guide">
-        <div class="sb-card">
-          <h3>STICKMAN BEAT 'EM UP</h3>
+  <section class="game-panel sb-board" data-board>
+    <canvas class="sb-canvas" width="960" height="430"></canvas>
+    <div class="sb-banner" data-banner><b data-btitle></b><span data-bsub></span></div>
+    <div class="sb-ov" data-ov="ready">
+      <div class="sb-card">
+        <div class="sb-head"><h3>STICKMAN BEAT 'EM UP</h3><button class="sb-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}</button></div>
+        <div class="sb-body">
           <p class="sb-sub">Clean every block. Dethrone the Kingpin. Simple controls, real-time action.</p>
           <ul class="sb-how">
             <li><b>Move &amp; jump</b> to the gate. Knock out every foe in the block to open it.</li>
-            <li><b>Hold ATTACK</b> to auto-chain a 3-hit combo. Attack in the air = flying kick. You auto-face nearby foes.</li>
+            <li><b>Hold ATTACK</b> to auto-chain a 3-hit combo. Attack in the air = flying kick.</li>
             <li><b>Land 5 hits</b> to charge the <b>SPECIAL</b> - a spin blast that hits both sides.</li>
-            <li><b>Walk over crates &amp; apples.</b> Weapons auto-equip (they wear out), apples heal +30.</li>
-            <li><b>Watch the "!"</b> - every attack is telegraphed. Jump or step away, then punish. The Kingpin charges: sidestep it and hit him while he is stunned.</li>
           </ul>
+          <p class="sb-note" data-firstnote></p>
+        </div>
+        <div class="sb-foot"><span class="sb-note">Press H for the full guide</span><button class="sb-btn primary" type="button" data-start><span data-startlabel>START</span></button></div>
+      </div>
+    </div>
+    <div class="sb-ov" data-ov="help" hidden>
+      <div class="sb-card">
+        <div class="sb-head"><h3>How to play</h3><button class="sb-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="sb-body">
+          <span class="sb-titlegroup">DESKTOP</span>
           <div class="sb-ctrl">
             <span><kbd>A</kbd><kbd>D</kbd> / <kbd>&#8592;</kbd><kbd>&#8594;</kbd> move</span>
             <span><kbd>W</kbd> / <kbd>Space</kbd> jump</span>
-            <span><kbd>J</kbd> / left-click attack</span>
+            <span><kbd>J</kbd> / left-click attack (hold to combo)</span>
             <span><kbd>K</kbd> / right-click special</span>
-            <span><kbd>P</kbd> pause &nbsp;<kbd>H</kbd> help &nbsp;<kbd>C</kbd> cheats</span>
+            <span><kbd>H</kbd> help &nbsp;<kbd>C</kbd> cheats &nbsp;<kbd>P</kbd> pause &nbsp;<kbd>R</kbd> restart &nbsp;<kbd>M</kbd> sound</span>
           </div>
-          <p class="sb-note" data-firstnote>A coin toss decides who strikes first each run. In co-op, spawn sides are random too.</p>
-          <div class="sb-btnrow"><button type="button" class="sb-btn primary" data-act="start" data-guidebtn>START</button></div>
+          <span class="sb-titlegroup">MOBILE</span>
+          <ul class="sb-how">
+            <li>On-screen pad: left/right to move, JUMP to dodge, HIT to attack, SP for the special.</li>
+          </ul>
+          <span class="sb-titlegroup">RULES</span>
+          <ul class="sb-how">
+            <li><b>Hold ATTACK</b> to auto-chain a 3-hit combo. You auto-face nearby foes.</li>
+            <li><b>Land 5 hits</b> to charge the <b>SPECIAL</b> - a spin blast that hits both sides.</li>
+            <li><b>Walk over crates &amp; apples.</b> Weapons auto-equip (they wear out), apples heal +30.</li>
+            <li><b>Watch the "!"</b> - attacks are telegraphed. Jump or step away, then punish. The Kingpin charges: sidestep it and hit him while he is stunned.</li>
+            <li>Cheats disable best-score saving. A coin toss decides who strikes first each run.</li>
+          </ul>
         </div>
+        <div class="sb-foot"><span class="sb-note">Press H to reopen this guide</span><button class="sb-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
-      <div class="sb-ov" data-ov="cheat" hidden>
-        <div class="sb-card">
-          <h3>CHEATS</h3>
-          <p class="sb-note">Using cheats disables best-score saving. <span data-cheatnote></span></p>
+    </div>
+    <div class="sb-ov" data-ov="cheat" hidden>
+      <div class="sb-card">
+        <div class="sb-head"><h3>Cheats</h3><button class="sb-btn" type="button" data-cheatclose aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="sb-body">
           <div class="sb-cheats">
             <button type="button" data-cheat="god">God mode</button>
             <button type="button" data-cheat="onehit">One-hit KO</button>
@@ -631,67 +685,74 @@ export function mount(root, context = {}) {
             <button type="button" data-cheatact="boss">Warp to boss</button>
             <button type="button" data-cheatact="reseed">New random level</button>
           </div>
-          <div class="sb-btnrow"><button type="button" class="sb-btn" data-act="cheatClose">CLOSE</button></div>
         </div>
+        <div class="sb-foot"><span class="sb-note">Using cheats disables best-score saving. <span data-cheatnote></span></span><button class="sb-btn" type="button" data-cheatclose>Close</button></div>
       </div>
-      <div class="sb-ov" data-ov="pause" hidden>
-        <div class="sb-card">
-          <h3>PAUSED</h3>
-          <p class="sb-sub">Take a breath. The gang will wait.</p>
+    </div>
+    <div class="sb-ov" data-ov="pause" hidden>
+      <div class="sb-card">
+        <div class="sb-head"><h3>Paused</h3></div>
+        <div class="sb-body"><p class="sb-sub">Take a breath. The gang will wait.</p></div>
+        <div class="sb-foot">
+          <span class="sb-note">Press P or Esc to resume</span>
           <div class="sb-btnrow">
-            <button type="button" class="sb-btn primary" data-act="resume">RESUME</button>
-            <button type="button" class="sb-btn" data-act="retry" data-retrybtn>NEW RUN</button>
-            <button type="button" class="sb-btn" data-exit>EXIT</button>
+            <button type="button" class="sb-btn primary" data-resume>Resume</button>
+            <button type="button" class="sb-btn" data-restart aria-label="Restart">New run</button>
+            <button type="button" class="sb-btn" data-exit>Exit</button>
           </div>
         </div>
       </div>
-      <div class="sb-ov" data-ov="end" hidden>
-        <div class="sb-card">
-          <p class="sb-endtitle" data-endtitle>KINGPIN DETHRONED</p>
+    </div>
+    <div class="sb-ov" data-ov="end" hidden>
+      <div class="sb-card">
+        <div class="sb-head"><p class="sb-endtitle" data-endtitle>KINGPIN DETHRONED</p></div>
+        <div class="sb-body">
           <p class="sb-endscore" data-endmsg></p>
           <p class="sb-endscore">SCORE <b data-endscore>0</b> &nbsp;&middot;&nbsp; BEST <b data-endbest>0</b> <span data-endnote></span></p>
+        </div>
+        <div class="sb-foot">
+          <span class="sb-note">Press Enter to play again</span>
           <div class="sb-btnrow">
-            <button type="button" class="sb-btn primary" data-act="retry" data-retrybtn>PLAY AGAIN</button>
-            <button type="button" class="sb-btn" data-exit>EXIT</button>
+            <button type="button" class="sb-btn primary" data-restart>Play again</button>
+            <button type="button" class="sb-btn" data-exit>Exit</button>
           </div>
         </div>
       </div>
     </div>
-    <div class="sb-touch">
-      <div class="sb-tleft">
-        <button type="button" class="sb-tbtn" data-k="l" aria-label="Move left">&#9664;</button>
-        <button type="button" class="sb-tbtn" data-k="r" aria-label="Move right">&#9654;</button>
-      </div>
-      <div class="sb-tright">
-        <button type="button" class="sb-tbtn sb-tj" data-k="j" aria-label="Jump">JUMP</button>
-        <button type="button" class="sb-tbtn sb-ta" data-k="a" aria-label="Attack">HIT</button>
-        <button type="button" class="sb-tbtn sb-ts" data-k="s" aria-label="Special">SP</button>
-      </div>
-    </div>
-    <div class="sb-keys">A/D move &middot; W/Space jump &middot; J or click = attack (hold to combo) &middot; K or right-click = special &middot; P pause &middot; H help &middot; C cheats &middot; M sound</div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="sb-touch">
+    <div class="sb-tleft">
+      <button type="button" class="sb-tbtn" data-k="l" aria-label="Move left">&#9664;</button>
+      <button type="button" class="sb-tbtn" data-k="r" aria-label="Move right">&#9654;</button>
+    </div>
+    <div class="sb-tright">
+      <button type="button" class="sb-tbtn sb-tj" data-k="j" aria-label="Jump">JUMP</button>
+      <button type="button" class="sb-tbtn sb-ta" data-k="a" aria-label="Attack">HIT</button>
+      <button type="button" class="sb-tbtn sb-ts" data-k="s" aria-label="Special">SP</button>
+    </div>
+  </div>
 </div>`;
 
     /* ---------- dom refs ---------- */
     const $ = (s, r) => (r || root).querySelector(s);
-    const canvas = $(".sb-canvas"), stage = $(".sb-stage");
+    const canvas = $(".sb-canvas"), board = $("[data-board]");
     const ctx = canvas.getContext("2d");
     const el = {
-        status: $("[data-status]"), hp: $("[data-hp]"), hpfill: $("[data-hpfill]"),
+        status: $("[data-status]"), block: $("[data-block]"),
+        hp: $("[data-hp]"), hpfill: $("[data-hpfill]"),
         allychip: $("[data-allychip]"), allyhp: $("[data-allyhp]"),
         pips: $("[data-pips]"), wpnchip: $("[data-wpnchip]"), wpn: $("[data-wpn]"),
         areas: $("[data-areas]"), score: $("[data-score]"), best: $("[data-best]"),
         banner: $("[data-banner]"), btitle: $("[data-btitle]"), bsub: $("[data-bsub]"),
-        ovGuide: $('[data-ov="guide"]'), ovCheat: $('[data-ov="cheat"]'),
+        ovReady: $('[data-ov="ready"]'), ovHelp: $('[data-ov="help"]'), ovCheat: $('[data-ov="cheat"]'),
         ovPause: $('[data-ov="pause"]'), ovEnd: $('[data-ov="end"]'),
-        guidebtn: $("[data-guidebtn]"), firstnote: $("[data-firstnote]"),
+        startBtn: $("[data-start]"), startlabel: $("[data-startlabel]"), firstnote: $("[data-firstnote]"),
         endtitle: $("[data-endtitle]"), endmsg: $("[data-endmsg]"),
         endscore: $("[data-endscore]"), endbest: $("[data-endbest]"), endnote: $("[data-endnote]"),
         cheatnote: $("[data-cheatnote]"),
-        spBtn: $('.sb-tbtn[data-k="s"]'), muteBtn: $('[data-act="mute"]'), pauseBtn: $('[data-act="pause"]'),
+        spBtn: $('.sb-tbtn[data-k="s"]'), muteBtn: $("[data-mute]"),
+        pauseBtn: $("[data-pause]"), cheatBtn: $("[data-cheats]"),
     };
-    const retryBtns = Array.from(root.querySelectorAll("[data-retrybtn]"));
     const cheatBtns = Array.from(root.querySelectorAll("[data-cheat]"));
     const cheatActBtns = Array.from(root.querySelectorAll("[data-cheatact]"));
     const tbtns = Array.from(root.querySelectorAll("[data-k]"));
@@ -699,11 +760,23 @@ export function mount(root, context = {}) {
     /* ---------- local (non-synced) visual state ---------- */
     let parts = [], gateAnim = {}, bannerQ = [];
     let camX = 0, camSnap = true, shake = 0, hitstop = 0, hurtFlash = 0;
-    let guideOpen = false, cheatOpen = false;
+    let helpOpen = false, cheatOpen = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("stickmanBeatEmUpHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("stickmanBeatEmUpHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     let prevPhase = "ready", saved = false;
     const strikeT = new Map(), prevFoeState = new Map();
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (err) { }
+
+    /* Wall-clock offsets: a pause freezes timers and bots, then shifts
+       every timestamp anchor so nothing jumps on resume. */
+    let timeShift = 0, pauseBegan = 0;
+    function nowSec() { return performance.now() / 1000 - timeShift; }
+    function nowMs() { return performance.now() - timeShift * 1000; }
 
     /* ---------- input ---------- */
     const inputs = [{ ...EMPTY_INPUT }, { ...EMPTY_INPUT }];
@@ -711,7 +784,7 @@ export function mount(root, context = {}) {
     const keys = {};
     const touchSets = { l: new Set(), r: new Set(), j: new Set(), a: new Set(), s: new Set() };
     let mouseA = false, pulseS = false;
-    let lastSent = { ...EMPTY_INPUT }, lastSentAt = 0, lastGuestInput = performance.now();
+    let lastSent = { ...EMPTY_INPUT }, lastSentAt = 0, lastGuestInput = nowMs();
     const KEYMAP = { KeyA: "l", ArrowLeft: "l", KeyD: "r", ArrowRight: "r", KeyW: "j", ArrowUp: "j", Space: "j", KeyJ: "a", KeyX: "a", KeyK: "s", KeyV: "s" };
 
     function pushInput(now) {
@@ -734,22 +807,31 @@ export function mount(root, context = {}) {
         if (!state || !isHost) return;
         if (state.phase === "play" || state.phase === "pause") submitAction({ type: "pause" });
     }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+    }
     function onKeyDown(e) {
-        if (e.code === "KeyM" && !e.repeat) { muted = !muted; return; }
-        if (e.code === "KeyH" && !e.repeat) { guideOpen = !guideOpen; cheatOpen = false; e.preventDefault(); return; }
-        if (e.code === "KeyC" && !e.repeat) { cheatOpen = !cheatOpen; guideOpen = false; e.preventDefault(); return; }
-        if (e.code === "KeyP" && !e.repeat) { togglePause(); e.preventDefault(); return; }
-        if (e.code === "Escape" && !e.repeat) {
-            if (cheatOpen) cheatOpen = false;
-            else if (guideOpen && state && state.phase !== "ready") guideOpen = false;
+        if (e.code === "KeyM" && !e.repeat) { muted = !muted; el.muteBtn.classList.toggle("off", muted); return; }
+        if (e.code === "KeyH" && !e.repeat) { toggleHelp(); e.preventDefault(); return; }
+        if (e.code === "KeyC" && !e.repeat) { if (!helpOpen) cheatOpen = !cheatOpen; e.preventDefault(); return; }
+        if ((e.code === "KeyP" || e.code === "Escape") && !e.repeat) {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) cheatOpen = false;
             else togglePause();
             e.preventDefault(); return;
         }
-        if (e.code === "Enter" && !e.repeat && state) {
-            if (state.phase === "ready" && isHost) { sfx("start"); submitAction({ type: "start" }); }
-            else if ((state.phase === "win" || state.phase === "lose") && isHost) submitAction({ type: "retry" });
-            return;
+        if (e.code === "KeyR" && !e.repeat && !helpOpen && !cheatOpen && isHost) {
+            submitAction({ type: "retry" }); e.preventDefault(); return;
         }
+        if (e.code === "Enter" && !e.repeat && state) {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) cheatOpen = false;
+            else if (state.phase === "ready" && isHost) { sfx("start"); submitAction({ type: "start" }); }
+            else if ((state.phase === "win" || state.phase === "lose") && isHost) submitAction({ type: "retry" });
+            e.preventDefault(); return;
+        }
+        if (helpOpen || cheatOpen || !state || state.phase !== "play") return;
         const k = KEYMAP[e.code];
         if (k) { e.preventDefault(); keys[k] = true; }
     }
@@ -779,7 +861,7 @@ export function mount(root, context = {}) {
     document.addEventListener("visibilitychange", onVis);
     canvas.addEventListener("pointerdown", onCanvasDown);
     window.addEventListener("pointerup", onCanvasUp);
-    stage.addEventListener("contextmenu", preventCtx);
+    board.addEventListener("contextmenu", preventCtx);
     tbtns.forEach((b) => {
         b.addEventListener("pointerdown", onTDown);
         b.addEventListener("pointerup", onTUp);
@@ -864,7 +946,7 @@ export function mount(root, context = {}) {
         el.banner.classList.add("show");
     }
     function queueFirstBanners(e) {
-        const now = performance.now() / 1000;
+        const now = nowSec();
         bannerQ.push({
             at: now + 1.0,
             title: e.who === "players" ? "YOU STRIKE FIRST" : "GANG AMBUSH!",
@@ -927,7 +1009,7 @@ export function mount(root, context = {}) {
         parts = []; gateAnim = {}; bannerQ = [];
         strikeT.clear(); prevFoeState.clear();
         camX = 0; camSnap = true; shake = 0; hitstop = 0; hurtFlash = 0;
-        saved = false; prevPhase = "ready";
+        saved = false; prevPhase = "ready"; pauseBegan = 0;
         el.banner.classList.remove("show");
         el.areas.innerHTML = "<i></i>".repeat(level.areas.length);
     }
@@ -980,7 +1062,7 @@ export function mount(root, context = {}) {
             inputs[idx] = { l: !!s.l, r: !!s.r, j: !!s.j, a: !!s.a, s: !!s.s };
             if (s.j) latch.j[idx] = true;
             if (s.s) latch.s[idx] = true;
-            if (online && actor === 1) lastGuestInput = performance.now();
+            if (online && actor === 1) lastGuestInput = nowMs();
             return;
         }
         if (action.type === "name") {
@@ -997,8 +1079,20 @@ export function mount(root, context = {}) {
             newRun(false);
             publish(true);
         } else if (action.type === "pause") {
-            if (state.phase === "play") state.phase = "pause";
-            else if (state.phase === "pause") state.phase = "play";
+            if (state.phase === "play") {
+                state.phase = "pause";
+                pauseBegan = performance.now();
+            } else if (state.phase === "pause") {
+                state.phase = "play";
+                if (pauseBegan) {
+                    const d = performance.now() - pauseBegan;
+                    timeShift += d / 1000;
+                    bannerQ.forEach((b) => { b.at += d / 1000; });
+                    tA += d / 1000; tB += d / 1000;
+                    lastGuestInput += d; lastPub += d;
+                    pauseBegan = 0;
+                }
+            }
             publish(true);
         } else if (action.type === "cheat") {
             applyCheat(action);
@@ -1013,29 +1107,32 @@ export function mount(root, context = {}) {
         applyAction(action, playerIndex);
     }
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const cb = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { if (!helpOpen) cheatOpen = !cheatOpen; return; }
+        if (t.closest("[data-cheatclose]")) { cheatOpen = false; return; }
+        if (t.closest("[data-mute]")) { muted = !muted; el.muteBtn.classList.toggle("off", muted); return; }
+        if (t.closest("[data-start]")) {
+            if (state && state.phase === "ready" && isHost) { sfx("start"); submitAction({ type: "start" }); }
+            return;
+        }
+        if (t.closest("[data-restart]")) {
+            if (isHost) { helpOpen = false; cheatOpen = false; submitAction({ type: "retry" }); }
+            return;
+        }
+        if (t.closest("[data-resume]")) { togglePause(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        const cb = t.closest("[data-cheat]");
         if (cb && !cb.disabled) {
             const key = cb.dataset.cheat;
             submitAction({ type: "cheat", op: "toggle", key: key, val: !(state && state.cheats[key]) });
             return;
         }
-        const ca = event.target.closest("[data-cheatact]");
+        const ca = t.closest("[data-cheatact]");
         if (ca && !ca.disabled) { submitAction({ type: "cheat", op: ca.dataset.cheatact }); return; }
-        const b = event.target.closest("[data-act]");
-        if (!b) return;
-        const act = b.dataset.act;
-        if (act === "start") {
-            if (state && state.phase === "ready") { if (isHost) { sfx("start"); submitAction({ type: "start" }); } }
-            else guideOpen = false;
-        } else if (act === "retry") {
-            if (isHost) { guideOpen = false; cheatOpen = false; submitAction({ type: "retry" }); }
-        } else if (act === "resume") togglePause();
-        else if (act === "pause") togglePause();
-        else if (act === "help") { guideOpen = !guideOpen; cheatOpen = false; }
-        else if (act === "cheat") { cheatOpen = !cheatOpen; guideOpen = false; }
-        else if (act === "cheatClose") cheatOpen = false;
-        else if (act === "mute") muted = !muted;
     }
     root.addEventListener("click", handleClick);
 
@@ -1058,7 +1155,7 @@ export function mount(root, context = {}) {
     function publish(force) {
         // Only the host writes canonical state, throttled to ~10 Hz.
         if (!(online && isHost && state)) return;
-        const now = performance.now();
+        const now = nowMs();
         if (force || now - lastPub >= 100) {
             lastPub = now;
             try { room.publishState(packState(state)).catch(console.warn); } catch (err) { console.warn(err); }
@@ -1122,7 +1219,7 @@ export function mount(root, context = {}) {
     const FONT = "ui-sans-serif,system-ui,sans-serif";
     let scale = 1;
     function resize() {
-        const r = stage.getBoundingClientRect();
+        const r = board.getBoundingClientRect();
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         const w = Math.max(320, r.width || 640);
         canvas.width = Math.round(w * dpr);
@@ -1130,7 +1227,7 @@ export function mount(root, context = {}) {
         scale = canvas.width / VIEW_W;
     }
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
-    if (ro) ro.observe(stage); else window.addEventListener("resize", resize);
+    if (ro) ro.observe(board); else window.addEventListener("resize", resize);
     const skyGrad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
     skyGrad.addColorStop(0, "#0a0f24"); skyGrad.addColorStop(0.7, "#101c3d"); skyGrad.addColorStop(1, "#15223f");
     const vig = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.5, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.72);
@@ -1499,24 +1596,34 @@ export function mount(root, context = {}) {
             dots[i].classList.toggle("cur", i === V.areaIdx);
         }
         txt(el.score, V.score); txt(el.best, best);
+        txt(el.block, (V.areaIdx + 1) + "/" + V.cleared.length);
         const modeLbl = online ? (isHost ? "CO-OP HOST" : "CO-OP") : "VS BOTS";
         const phLbl = V.phase === "play" ? "FIGHT" : V.phase === "ready" ? "READY" : V.phase === "pause" ? "PAUSED" : V.phase === "win" ? "CLEAR!" : "K.O.";
         txt(el.status, modeLbl + " \u00b7 " + phLbl);
-        el.ovGuide.hidden = !(V.phase === "ready" || guideOpen);
-        el.ovCheat.hidden = !cheatOpen;
-        el.ovPause.hidden = V.phase !== "pause";
-        el.ovEnd.hidden = !(V.phase === "win" || V.phase === "lose");
+        el.ovReady.hidden = V.phase !== "ready" || cheatOpen || helpOpen;
+        el.ovHelp.hidden = !helpOpen;
+        el.ovCheat.hidden = !cheatOpen || helpOpen;
+        el.ovPause.hidden = V.phase !== "pause" || cheatOpen || helpOpen;
+        el.ovEnd.hidden = !(V.phase === "win" || V.phase === "lose") || cheatOpen || helpOpen;
         if (V.phase === "ready") {
-            txt(el.guidebtn, isHost ? "START" : "WAITING FOR HOST");
-            el.guidebtn.disabled = !isHost;
+            txt(el.startlabel, isHost ? "START" : "WAITING FOR HOST");
+            el.startBtn.disabled = !isHost;
             txt(el.firstnote, "Coin toss: " + (V.firstStrike === "players" ? "you strike first (+25% dmg, 3s)." : "the gang ambushes you - defend!") +
                 (V.coop ? " Spawn sides: P1 " + (V.players[0].side === 0 ? "left" : "right") + ", P2 " + (V.players[1].side === 0 ? "left" : "right") + "." : ""));
-        } else { txt(el.guidebtn, "CLOSE"); el.guidebtn.disabled = false; }
-        retryBtns.forEach((b) => { b.hidden = !isHost; });
+        } else { el.startBtn.disabled = false; }
         cheatBtns.forEach((b) => { b.disabled = !isHost; b.classList.toggle("on", !!V.cheats[b.dataset.cheat]); });
         cheatActBtns.forEach((b) => { b.disabled = !isHost; });
+        root.querySelectorAll("[data-restart]").forEach((b) => { b.hidden = !isHost; });
         txt(el.cheatnote, !isHost ? "Host only in co-op." : V.cheated ? "Cheats active." : "");
+        const cheatsActive = Object.keys(V.cheats).filter((k) => V.cheats[k]).length;
+        el.cheatBtn.classList.toggle("on", cheatsActive > 0);
+        const cheatLabel = el.cheatBtn.querySelector(".sb-btn-label");
+        if (cheatLabel) txt(cheatLabel, cheatsActive ? "Cheats " + cheatsActive : "Cheats");
         el.muteBtn.classList.toggle("off", muted);
+        const pauseLabel = el.pauseBtn.querySelector(".sb-btn-label");
+        const pauseTxt = V.phase === "pause" ? "Resume" : "Pause";
+        if (pauseLabel) txt(pauseLabel, pauseTxt);
+        el.pauseBtn.setAttribute("aria-label", pauseTxt);
         el.pauseBtn.disabled = !isHost;
         if (V.phase !== prevPhase) {
             if (V.phase === "win" || V.phase === "lose") {
@@ -1535,17 +1642,19 @@ export function mount(root, context = {}) {
     let raf = 0, last = 0;
     function frame(ts) {
         raf = requestAnimationFrame(frame);
-        const now = ts / 1000;
+        const now = ts / 1000 - timeShift;
         if (!last) last = now;
         const dt = Math.min(0.05, Math.max(0, now - last));
         last = now;
-        while (bannerQ.length && bannerQ[0].at <= now) { const b = bannerQ.shift(); showBanner(b.title, b.sub); }
+        const overlayPause = (helpOpen || cheatOpen) && state && state.phase === "play";
+        if (!overlayPause) {
+            while (bannerQ.length && bannerQ[0].at <= now) { const b = bannerQ.shift(); showBanner(b.title, b.sub); }
+        }
         shake = Math.max(0, shake - dt * 22);
         hurtFlash = Math.max(0, hurtFlash - dt);
         for (const k in gateAnim) gateAnim[k] += dt;
         updateParts(dt);
         pushInput(now);
-        const overlayPause = !online && (guideOpen || cheatOpen) && state && state.phase === "play";
         if (state && isHost && state.phase === "play" && !overlayPause) {
             if (hitstop > 0) hitstop -= dt;
             else {
@@ -1555,7 +1664,7 @@ export function mount(root, context = {}) {
                 const ev = [];
                 stepSim(state, level, eff, dt, ev);
                 handleEvents(ev);
-                if (online && performance.now() - lastGuestInput > 5000) inputs[1] = { ...EMPTY_INPUT };
+                if (online && nowMs() - lastGuestInput > 5000) inputs[1] = { ...EMPTY_INPUT };
             }
         }
         const V = online && !isHost ? interpView(now) : state;
@@ -1574,7 +1683,7 @@ export function mount(root, context = {}) {
         } else {
             sub(() => room.onState((nextState) => {
                 if (!nextState || !nextState.players) return;
-                const now = performance.now() / 1000;
+                const now = nowSec();
                 if (!level || level.seed !== nextState.seed) {
                     level = generateLevel(nextState.seed, nextState.coop);
                     camX = 0; camSnap = true; parts = []; gateAnim = {}; bannerQ = [];
@@ -1604,7 +1713,7 @@ export function mount(root, context = {}) {
         window.removeEventListener("resize", resize);
         root.removeEventListener("click", handleClick);
         canvas.removeEventListener("pointerdown", onCanvasDown);
-        stage.removeEventListener("contextmenu", preventCtx);
+        board.removeEventListener("contextmenu", preventCtx);
         tbtns.forEach((b) => {
             b.removeEventListener("pointerdown", onTDown);
             b.removeEventListener("pointerup", onTUp);

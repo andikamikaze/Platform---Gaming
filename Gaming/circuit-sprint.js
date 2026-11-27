@@ -5,6 +5,8 @@
  * Setelah mengubah file ini, jalankan: node tools/build-games-manifest.mjs
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "circuit-sprint",
     name: "Circuit Sprint",
@@ -120,6 +122,14 @@ export function mount(root, context = {}) {
     let topSpeed = 0, cheated = false;
     let rafId = 0, lastT = 0, acc = 0, lastPub = 0, lastSend = 0, lastSentKey = "";
     let hiddenTimer = 0;
+    let cheatsOpen = false, helpOpen = false, pauseStart = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("circuitSprintHelpSeen") === "1"; } catch { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("circuitSprintHelpSeen", "1"); } catch { /* storage blocked */ }
+    }
+    const frozen = () => !state || state.paused || helpOpen || cheatsOpen;
     const unsubs = [];
     const cheats = { turbo: false, grip: false, grass: false, slow: false, ghost: false, auto: false };
     const keys = new Set();
@@ -134,7 +144,7 @@ export function mount(root, context = {}) {
             v: 1, phase: "setup", track: "oval", pick: "oval",
             seats: online ? [0, 1] : [0],
             names: online ? [String(playerName).slice(0, 18), "Guest"] : ["You"],
-            karts: [], countMs: 0, raceMs: 0, results: null,
+            karts: [], countMs: 0, raceMs: 0, results: null, paused: false,
         };
     }
 
@@ -167,115 +177,182 @@ export function mount(root, context = {}) {
     /* ---------------- DOM + CSS (minimalist, scoped) ---------------- */
     root.innerHTML = `
 <style>
-.cs-root{color:#e7e9ee;font-size:14px}
+.cs-root{color:#e7e9ee;font-size:14px;line-height:1.5}
 .cs-root [hidden]{display:none!important}
-.cs-root .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
-.cs-root .game-intro h2{margin:0;font-size:18px;font-weight:650;letter-spacing:.2px}
-.cs-root .game-panel{padding:0;background:none;border:0}
-.cs-stage{position:relative;width:100%;max-width:940px;margin-inline:auto;aspect-ratio:880/520}
-.cs-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:16px;background:#101418;border:1px solid #ffffff12;touch-action:none;cursor:crosshair}
-.cs-hud{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none;z-index:2}
-.cs-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;background:#0b0d10b8;border:1px solid #ffffff14;backdrop-filter:blur(4px);font-size:12px;color:#9aa1ad;letter-spacing:.3px}
-.cs-chip b{color:#fff;font-weight:600;font-variant-numeric:tabular-nums}
-.cs-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
-.cs-overlay{position:absolute;inset:0;display:grid;place-items:center;background:#0b0d10c9;backdrop-filter:blur(6px);border-radius:16px;z-index:3}
-.cs-card{display:grid;gap:14px;justify-items:center;text-align:center;padding:24px;max-width:440px}
+.game-app.cs-root{gap:10px}
+.cs-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.cs-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #ffffff14;border-radius:999px;background:#0b0d10b8;color:#b3bac5;white-space:nowrap}
+.cs-chip b{color:#fff;font-weight:700;font-variant-numeric:tabular-nums}
+.cs-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}
+.cs-spacer{flex:1 1 auto}
+.cs-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:8px 18px;border-radius:9px;border:1px solid #ffffff22;background:#ffffff0d;color:#dfe4ea;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer;transition:border-color .15s,background .15s}
+.cs-btn:hover{border-color:#ffffff40}
+.cs-btn.primary{background:#3b82f6;border-color:#3b82f6;color:#fff}
+.cs-btn.primary:hover{filter:brightness(1.1)}
+.cs-btn.ghost{background:transparent}
+.cs-btn:disabled{opacity:.45;cursor:not-allowed}
+.cs-btn.on{border-color:#3b82f6;color:#fff;background:#3b82f62b}
+.cs-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.cs-icon-btn svg{flex:none;display:block}
+.game-panel.cs-board{position:relative;width:100%;min-height:0;aspect-ratio:880/520;padding:0;border:1px solid #ffffff12;border-radius:12px;background:#101418;overflow:hidden}
+.cs-root.game-fill > .cs-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.cs-canvas{display:block;width:100%;height:100%;background:#101418;touch-action:none;cursor:crosshair}
+.cs-ov{position:absolute;inset:0;z-index:3;display:grid;place-items:center;padding:14px;background:#0b0d10c9;backdrop-filter:blur(6px)}
+.cs-card{display:flex;flex-direction:column;gap:12px;width:min(440px,100%);max-height:100%;overflow:hidden;padding:20px;border:1px solid #ffffff18;border-radius:14px;background:#0d1014f2;text-align:center}
+.cs-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+.cs-head h3{margin:0;font-size:15px;font-weight:700}
 .cs-kicker{font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:#9aa1ad}
-.cs-title{font-size:30px;font-weight:700;margin:0}
-.cs-sub{font-size:13px;color:#9aa1ad;margin:0;font-variant-numeric:tabular-nums}
-.cs-tracks{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-.cs-track{padding:7px 15px;border-radius:999px;border:1px solid #ffffff1f;background:#ffffff08;color:#dfe4ea;font-size:12.5px;cursor:pointer;transition:border-color .15s,background .15s}
+.cs-title{font-size:26px;font-weight:700;margin:0}
+.cs-sub{font-size:13px;color:#b3bac5;margin:0;font-variant-numeric:tabular-nums}
+.cs-tracks{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;flex:1 1 auto;min-height:0;overflow:auto}
+.cs-track{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:9px;border:1px solid #ffffff1f;background:#ffffff08;color:#dfe4ea;font-size:13px;cursor:pointer;transition:border-color .15s,background .15s}
 .cs-track:hover{border-color:#ffffff3d}
 .cs-track.on{border-color:#3b82f6;background:#3b82f61f;color:#fff}
-.cs-btn{padding:10px 24px;border-radius:12px;border:0;background:#3b82f6;color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:filter .15s}
-.cs-btn:hover{filter:brightness(1.1)}
-.cs-btn.ghost{background:transparent;border:1px solid #ffffff22;color:#dfe4ea;font-weight:500}
-.cs-btn.ghost:hover{border-color:#ffffff40;filter:none}
-.cs-rows{display:grid;gap:6px;width:250px}
+.cs-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap}
+.cs-foot-btns{display:flex;gap:8px;flex-wrap:wrap}
+.cs-rows{display:grid;gap:6px;width:100%;max-width:280px;flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
 .cs-row{display:flex;align-items:center;gap:9px;font-size:13px}
 .cs-row .cs-pos{width:22px;color:#9aa1ad;font-variant-numeric:tabular-nums}
 .cs-row .cs-name{flex:1;text-align:left}
 .cs-row .cs-time{color:#9aa1ad;font-variant-numeric:tabular-nums}
-.cs-cheats{position:absolute;top:46px;right:10px;width:228px;background:#0d1014f2;border:1px solid #ffffff18;border-radius:14px;padding:14px;display:grid;gap:10px;z-index:4}
-.cs-cheats-head{display:flex;align-items:center;justify-content:space-between;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9aa1ad}
-.cs-cheats-close{background:none;border:0;color:#9aa1ad;font-size:16px;cursor:pointer;padding:0 2px}
-.cs-cheat{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;cursor:pointer}
-.cs-cheat input{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:999px;background:#ffffff22;position:relative;cursor:pointer;transition:background .15s;flex:none;margin:0}
-.cs-cheat input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+.cs-cheat-list{display:grid;gap:8px;flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.cs-cheat{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:6px 10px;border:1px solid #ffffff14;border-radius:9px;font-size:13px;cursor:pointer}
+.cs-cheat input{appearance:none;-webkit-appearance:none;width:40px;height:24px;border-radius:999px;background:#ffffff22;position:relative;cursor:pointer;transition:background .15s;flex:none;margin:0}
+.cs-cheat input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s}
 .cs-cheat input:checked{background:#3b82f6}
 .cs-cheat input:checked::after{transform:translateX(16px)}
-.cs-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
-.cs-actions .spacer{flex:1}
-.cs-note{font-size:12.5px;color:#9aa1ad}
-@media (max-width:560px){.cs-chip{font-size:11px;padding:3px 8px}.cs-title{font-size:24px}}
+.cs-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.cs-help b{display:block;margin-bottom:6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9aa1ad}
+.cs-help ul{margin:0 0 12px;padding-left:16px;font-size:12px;line-height:1.7;color:#b3bac5}
+.cs-kbd{display:inline-block;padding:1px 5px;border:1px solid #ffffff22;border-bottom-width:2px;border-radius:5px;background:#ffffff0d;color:#e7e9ee;font:inherit}
+.cs-note{font-size:12.5px;color:#b3bac5}
+@media (prefers-reduced-motion:reduce){
+.cs-track,.cs-btn,.cs-cheat input,.cs-cheat input::after{transition:none}
+}
+@media (pointer:coarse){.cs button:not(:disabled){min-height:44px}}
+
+/* --- fill height + mobile refinements (must stay last) --- */
+@media (max-width:640px){
+.game-app.cs-root{gap:8px}
+.cs .cs-hud{gap:5px}
+.cs .cs-hud .cs-chip{padding:4px 6px;font-size:9px}
+.cs .cs-hud .cs-chip[data-hud="status"],.cs .cs-hud .cs-chip[data-hud="best"]{display:none}
+.cs .cs-hud .cs-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.cs .cs-hud .cs-btn-label,.cs .cs-hud .cs-spacer{display:none}
+.cs-root.game-fill > .cs-board:not(:has(.cs-ov:not([hidden]))){aspect-ratio:880/520;flex:0 0 auto}
+.cs-root.game-fill > .cs-board:has(.cs-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.cs .cs-ov{padding:8px}
+.cs .cs-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.cs .cs-tracks,.cs .cs-cheat-list,.cs .cs-help,.cs .cs-rows{scrollbar-width:none}
+.cs .cs-tracks::-webkit-scrollbar,.cs .cs-cheat-list::-webkit-scrollbar,.cs .cs-help::-webkit-scrollbar,.cs .cs-rows::-webkit-scrollbar{display:none}
+.cs .cs-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid #ffffff1f}
+.cs .cs-note{display:none}
+}
 </style>
-<div class="game-app cs-root">
-  <div class="game-intro">
-    <div><h2>Circuit Sprint</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app cs-root cs game-fill" data-cs>
+  <div class="cs-hud">
+    <span class="cs-chip">TRACK <b data-hud="track">Oval</b></span>
+    <span class="cs-chip">LAP <b data-hud="lap">1/${LAPS}</b></span>
+    <span class="cs-chip">POS <b data-hud="pos">–</b></span>
+    <span class="cs-chip">SPD <b data-hud="spd">0</b></span>
+    <span class="cs-chip">TIME <b data-hud="time">0.0</b></span>
+    <span class="cs-chip" data-hud="status">Ready</span>
+    <span class="cs-chip" data-hud="best">Best —</span>
+    <span class="cs-chip"><i class="cs-dot" data-seat-dot></i><b data-seat-name>You</b></span>
+    <span class="cs-spacer"></span>
+    <button class="cs-btn cs-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="cs-btn-label">Help</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="cs-btn-label">Cheats</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="cs-btn-label">Pause</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="cs-btn-label">Restart</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cs-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="cs-stage" data-stage>
-      <canvas data-canvas></canvas>
-      <div class="cs-hud">
-        <span class="cs-chip">Lap <b data-hud="lap">1/${LAPS}</b></span>
-        <span class="cs-chip">Pos <b data-hud="pos">–</b></span>
-        <span class="cs-chip">Speed <b data-hud="spd">0</b></span>
-        <span class="cs-chip">Time <b data-hud="time">0.0</b></span>
-        <span class="cs-chip"><i class="cs-dot" data-seat-dot></i><b data-seat-name>You</b></span>
+  <section class="game-panel cs-board" data-board>
+    <canvas class="cs-canvas" data-canvas></canvas>
+    <div class="cs-ov" data-ov="setup">
+      <div class="cs-card">
+        <div class="cs-head"><h3>Select circuit</h3><span class="cs-kicker" data-hud="mode">Solo</span></div>
+        <div class="cs-tracks" data-tracks></div>
+        <div class="cs-foot"><span class="cs-note" data-best>Best —</span><button class="cs-btn primary" type="button" data-act="start" data-start>Start race</button></div>
+        <span class="cs-note" data-wait hidden>Waiting for host…</span>
       </div>
-      <div class="cs-overlay" data-ov="setup">
-        <div class="cs-card">
-          <span class="cs-kicker">Select circuit</span>
-          <div class="cs-tracks" data-tracks></div>
-          <span class="cs-note" data-best>Best —</span>
-          <button class="cs-btn" type="button" data-act="start" data-start>Start race</button>
-          <span class="cs-note" data-wait hidden>Waiting for host…</span>
+    </div>
+    <div class="cs-ov" data-ov="over" hidden>
+      <div class="cs-card">
+        <div class="cs-head"><h3 class="cs-title" data-res-title>P1</h3><span class="cs-kicker">Race result</span></div>
+        <div class="cs-rows" data-rows></div>
+        <div class="cs-foot"><span class="cs-sub" data-res-stats></span><div class="cs-foot-btns"><button class="cs-btn primary" type="button" data-act="restart">Race again</button><button class="cs-btn" type="button" data-act="setup">Circuits</button></div></div>
+      </div>
+    </div>
+    <div class="cs-ov" data-ov="pause" hidden>
+      <div class="cs-card">
+        <div class="cs-head"><h3>Paused</h3></div>
+        <div class="cs-foot"><span class="cs-note">Press P or Esc to resume</span><button class="cs-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="cs-ov" data-ov="cheat" hidden>
+      <div class="cs-card">
+        <div class="cs-head"><h3>Cheats</h3><button class="cs-btn" type="button" data-cheats-close aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="cs-cheat-list">
+          <label class="cs-cheat"><span>Turbo engine</span><input type="checkbox" data-cheat="turbo"></label>
+          <label class="cs-cheat"><span>Perfect grip</span><input type="checkbox" data-cheat="grip"></label>
+          <label class="cs-cheat"><span>Grass grip</span><input type="checkbox" data-cheat="grass"></label>
+          <label class="cs-cheat"><span>Slow bots</span><input type="checkbox" data-cheat="slow"></label>
+          <label class="cs-cheat"><span>Ghost mode</span><input type="checkbox" data-cheat="ghost"></label>
+          <label class="cs-cheat"><span>Autopilot</span><input type="checkbox" data-cheat="auto"></label>
         </div>
+        <div class="cs-foot"><span class="cs-note">Host only · cheats void the best time</span><button class="cs-btn primary" type="button" data-cheats-close>Done</button></div>
       </div>
-      <div class="cs-overlay" data-ov="over" hidden>
-        <div class="cs-card">
-          <span class="cs-kicker">Race result</span>
-          <h3 class="cs-title" data-res-title>P1</h3>
-          <p class="cs-sub" data-res-stats></p>
-          <div class="cs-rows" data-rows></div>
-          <div style="display:flex;gap:8px">
-            <button class="cs-btn" type="button" data-act="restart">Race again</button>
-            <button class="cs-btn ghost" type="button" data-act="setup">Circuits</button>
+    </div>
+    <div class="cs-ov" data-ov="help" hidden>
+      <div class="cs-card">
+        <div class="cs-head"><h3>How to play</h3><button class="cs-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="cs-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="cs-kbd">↑ / W</span> accelerate · <span class="cs-kbd">↓ / S</span> brake</li>
+              <li><span class="cs-kbd">← →</span> / <span class="cs-kbd">A D</span> steer</li>
+              <li><span class="cs-kbd">Space</span> brake · mouse click: steer toward cursor + accelerate</li>
+              <li>Right-click: brake</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Hold and drag on the canvas to steer and accelerate</li>
+              <li>Drag down or use a second finger to brake</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Complete 3 laps, passing all 10 gates in order.</li>
+              <li>Best time per circuit is saved locally.</li>
+              <li>Cheats are host-only and void the best time.</li>
+              <li><span class="cs-kbd">H</span> help · <span class="cs-kbd">C</span> cheats · <span class="cs-kbd">P</span> pause · <span class="cs-kbd">R</span> restart</li>
+            </ul>
+            <div class="cs-foot"><span class="cs-note">Press H to reopen this guide</span><button class="cs-btn primary" type="button" data-help-close>Got it</button></div>
           </div>
         </div>
       </div>
-      <div class="cs-cheats" data-cheats hidden>
-        <div class="cs-cheats-head"><span>Cheats</span><button class="cs-cheats-close" type="button" data-cheats-close aria-label="Close">✕</button></div>
-        <label class="cs-cheat"><span>Turbo engine</span><input type="checkbox" data-cheat="turbo"></label>
-        <label class="cs-cheat"><span>Perfect grip</span><input type="checkbox" data-cheat="grip"></label>
-        <label class="cs-cheat"><span>Grass grip</span><input type="checkbox" data-cheat="grass"></label>
-        <label class="cs-cheat"><span>Slow bots</span><input type="checkbox" data-cheat="slow"></label>
-        <label class="cs-cheat"><span>Ghost mode</span><input type="checkbox" data-cheat="ghost"></label>
-        <label class="cs-cheat"><span>Autopilot</span><input type="checkbox" data-cheat="auto"></label>
-      </div>
     </div>
   </section>
-  <div class="game-actions cs-actions">
-    <button class="cs-btn ghost" type="button" data-cheats-toggle data-cheats-btn>Cheats</button>
-    <button class="cs-btn ghost" type="button" data-act="restart">Restart</button>
-    <span class="spacer"></span>
-    <button class="game-action-button cs-btn ghost" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const stage = $("[data-stage]");
+    const board = $("[data-board]");
     const canvas = $("[data-canvas]");
     const ctx = canvas.getContext("2d");
-    const hud = { lap: $('[data-hud="lap"]'), pos: $('[data-hud="pos"]'), spd: $('[data-hud="spd"]'), time: $('[data-hud="time"]') };
+    const hud = {
+        track: $('[data-hud="track"]'), lap: $('[data-hud="lap"]'), pos: $('[data-hud="pos"]'),
+        spd: $('[data-hud="spd"]'), time: $('[data-hud="time"]'), status: $('[data-hud="status"]'),
+        best: $('[data-hud="best"]'), mode: $('[data-hud="mode"]'),
+    };
     const seatDot = $("[data-seat-dot]"), seatName = $("[data-seat-name]");
     const ovSetup = $('[data-ov="setup"]'), ovOver = $('[data-ov="over"]');
+    const ovPause = $('[data-ov="pause"]'), ovCheat = $('[data-ov="cheat"]'), ovHelp = $('[data-ov="help"]');
     const tracksEl = $("[data-tracks]"), bestEl = $("[data-best]");
     const startBtn = $("[data-start]"), waitNote = $("[data-wait]");
     const resTitle = $("[data-res-title]"), resStats = $("[data-res-stats]"), rowsEl = $("[data-rows]");
-    const cheatsPanel = $("[data-cheats]"), cheatsBtn = $("[data-cheats-btn]");
-    const statusEl = $("[data-status]");
+    const cheatsBtn = $("[data-cheats]"), pauseBtn = $("[data-pause]"), restartBtn = $("[data-restart]");
 
     tracksEl.innerHTML =
         TRACKS.map((t) => `<button class="cs-track" type="button" data-track="${t.id}">${t.name}</button>`).join("") +
@@ -295,9 +372,10 @@ export function mount(root, context = {}) {
         c.closePath();
     }
 
-    function resize() {
-        const cssW = stage.clientWidth || 880;
+    function fitCanvas() {
+        const rect = board.getBoundingClientRect();
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const cssW = Math.max(320, rect.width || W);
         canvas.width = Math.round(cssW * dpr);
         canvas.height = Math.round(cssW * dpr * (H / W));
         scale = canvas.width / W;
@@ -424,7 +502,7 @@ export function mount(root, context = {}) {
     function stepSim(dt) {
         if (state.phase === "count") {
             state.countMs -= dt * 1000;
-            if (state.countMs <= 0) { state.phase = "race"; state.raceMs = 0; publishNow(); syncOverlays(); }
+            if (state.countMs <= 0) { state.phase = "race"; state.raceMs = 0; publishNow(); syncUI(); }
             return;
         }
         if (state.phase !== "race") return;
@@ -476,9 +554,10 @@ export function mount(root, context = {}) {
         state.track = state.pick === "random" ? TRACK_IDS[Math.floor(Math.random() * TRACK_IDS.length)] : state.pick;
         state.karts = makeKarts();
         state.phase = "count"; state.countMs = 3000; state.raceMs = 0; state.results = null;
-        topSpeed = 0; cheated = anyCheat(); acc = 0;
+        state.paused = false; pauseStart = 0;
+        topSpeed = 0; cheated = anyCheat(); acc = 0; lastT = performance.now();
         staticDirty = true;
-        publishNow(); syncOverlays();
+        publishNow(); syncUI();
     }
 
     function endRace() {
@@ -491,20 +570,20 @@ export function mount(root, context = {}) {
         });
         state.results = { order: order.map((i) => ({ i, ms: state.karts[i].fin ? state.karts[i].finMs : null })) };
         saveBest();
-        publishNow(); syncOverlays();
+        publishNow(); syncUI();
     }
 
     function toSetup() {
         state.phase = "setup";
         state.karts = makeKarts();
-        publishNow(); syncOverlays();
+        publishNow(); syncUI();
     }
 
     /* ---------------- networking (pola template) ---------------- */
     function serialize() {
         const r1 = (v) => Math.round(v * 10) / 10, r3 = (v) => Math.round(v * 1000) / 1000;
         return {
-            v: 1, phase: state.phase, track: state.track, pick: state.pick,
+            v: 1, phase: state.phase, track: state.track, pick: state.pick, paused: !!state.paused,
             seats: state.seats, names: state.names,
             countMs: Math.round(state.countMs), raceMs: Math.round(state.raceMs), results: state.results,
             karts: state.karts.map((k) => ({ x: r1(k.x), y: r1(k.y), h: r3(k.h), sp: r1(k.sp), lap: k.lap, gate: k.gate, idx: k.idx, s: r1(k.s), off: r1(k.off), prog: r1(k.prog), fin: k.fin, finMs: Math.round(k.finMs), top: k.top })),
@@ -521,8 +600,9 @@ export function mount(root, context = {}) {
         if (a.t === "track" && state.phase === "setup" && (TRACK_IDS.includes(a.id) || a.id === "random")) {
             state.pick = a.id;
             if (a.id !== "random") { state.track = a.id; state.karts = makeKarts(); staticDirty = true; }
-            publishNow(); syncOverlays(); return;
+            publishNow(); syncUI(); return;
         }
+        if (a.t === "pause" && isHost) { togglePause(); return; }
         if (a.t === "start" && state.phase === "setup") { startRace(); return; }
         if (a.t === "restart" && state.phase !== "count") { startRace(); return; }
         if (a.t === "setup" && state.phase === "over") { toSetup(); return; }
@@ -538,13 +618,28 @@ export function mount(root, context = {}) {
 
     function onKeyDown(e) {
         if (!active) return;
+        const code = e.code || "";
+        const ch = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        const hot = (letter, keyCode) => ch === letter || code === keyCode;
+        if (hot("h", "KeyH")) { if (!e.repeat) toggleHelp(); e.preventDefault(); return; }
+        if (helpOpen) {
+            if (!e.repeat && (e.key === "Escape" || e.key === "Enter")) toggleHelp(false);
+            e.preventDefault(); return;
+        }
+        if (hot("c", "KeyC")) { if (!e.repeat) toggleCheats(); e.preventDefault(); return; }
+        if (cheatsOpen) {
+            if (!e.repeat && (e.key === "Escape" || e.key === "Enter")) toggleCheats(false);
+            e.preventDefault(); return;
+        }
+        if (e.key === "Escape" || hot("p", "KeyP")) { if (!e.repeat) togglePause(); e.preventDefault(); return; }
+        if (hot("r", "KeyR")) { if (!e.repeat && state && state.phase !== "count") submitAction({ t: "restart" }); e.preventDefault(); return; }
+        if (e.key === "Enter" && state && !e.repeat) {
+            if (state.phase === "setup") submitAction({ t: "start" });
+            else if (state.phase === "over") submitAction({ t: "restart" });
+            e.preventDefault(); return;
+        }
         const k = KEYMAP[e.key];
-        if (k) { if (e.key.startsWith("Arrow") || e.key === " ") e.preventDefault(); keys.add(k); return; }
-        if (e.repeat) return;
-        if (e.key === "Enter" && state) { if (state.phase === "setup") submitAction({ t: "start" }); else if (state.phase === "over") submitAction({ t: "restart" }); }
-        else if ((e.key === "r" || e.key === "R") && state && state.phase !== "count") submitAction({ t: "restart" });
-        else if ((e.key === "c" || e.key === "C") && !online) cheatsPanel.hidden = !cheatsPanel.hidden;
-        else if (e.key === "Escape") cheatsPanel.hidden = true;
+        if (k) { if (e.key.startsWith("Arrow") || e.key === " ") e.preventDefault(); keys.add(k); }
     }
     function onKeyUp(e) { const k = KEYMAP[e.key]; if (k) keys.delete(k); }
     function onBlur() { keys.clear(); mouse.down = mouse.right = false; touch.id = null; touch.brake = touch.second = false; }
@@ -612,12 +707,17 @@ export function mount(root, context = {}) {
 
     function handleClick(e) {
         if (!active) return;
-        const el = e.target.closest ? e.target.closest("[data-exit],[data-act],[data-track],[data-cheats-toggle],[data-cheats-close]") : null;
+        const el = e.target.closest ? e.target.closest("[data-exit],[data-help],[data-help-close],[data-cheats],[data-cheats-close],[data-pause],[data-resume],[data-restart],[data-act],[data-track]") : null;
         if (!el) return;
         el.blur?.();
         if (el.hasAttribute("data-exit")) { onExit(); return; }
-        if (el.hasAttribute("data-cheats-toggle")) { cheatsPanel.hidden = !cheatsPanel.hidden; return; }
-        if (el.hasAttribute("data-cheats-close")) { cheatsPanel.hidden = true; return; }
+        if (el.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (el.hasAttribute("data-help-close")) { toggleHelp(false); return; }
+        if (el.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (el.hasAttribute("data-cheats-close")) { toggleCheats(false); return; }
+        if (el.hasAttribute("data-pause")) { togglePause(); return; }
+        if (el.hasAttribute("data-resume")) { togglePause(false); return; }
+        if (el.hasAttribute("data-restart")) { if (state && state.phase !== "count") submitAction({ t: "restart" }); return; }
         if (el.dataset.track) { submitAction({ t: "track", id: el.dataset.track }); return; }
         if (el.dataset.act === "start") submitAction({ t: "start" });
         else if (el.dataset.act === "restart") submitAction({ t: "restart" });
@@ -649,19 +749,35 @@ export function mount(root, context = {}) {
         setTxt(hud.time, (t / 1000).toFixed(1));
     }
 
-    function syncOverlays() {
+    function syncUI() {
         if (!state) return;
         const ph = state.phase;
-        ovSetup.hidden = ph !== "setup";
-        ovOver.hidden = ph !== "over";
+        const blocked = cheatsOpen || helpOpen;
+        ovSetup.hidden = ph !== "setup" || blocked;
+        ovOver.hidden = ph !== "over" || blocked;
+        ovPause.hidden = !state.paused || blocked;
+        ovCheat.hidden = !cheatsOpen || helpOpen;
+        ovHelp.hidden = !helpOpen;
         cheatsBtn.hidden = online;
-        if (online) cheatsPanel.hidden = true;
+        if (online) cheatsOpen = false;
+        cheatsBtn.classList.toggle("on", anyCheat());
+        const cLabel = cheatsBtn.querySelector(".cs-btn-label");
+        if (cLabel) setTxt(cLabel, anyCheat() ? "Cheats •" : "Cheats");
+        const pLabel = pauseBtn.querySelector(".cs-btn-label");
+        if (pLabel) setTxt(pLabel, state.paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("aria-label", state.paused ? "Resume" : "Pause");
+        pauseBtn.title = state.paused ? "Resume (P)" : "Pause (P)";
+        restartBtn.disabled = ph === "count";
         startBtn.hidden = online && !isHost;
         waitNote.hidden = !(online && !isHost && ph === "setup");
         tracksEl.querySelectorAll(".cs-track").forEach((b) => b.classList.toggle("on", b.dataset.track === state.pick));
         const best = state.pick === "random" ? null : readBest(state.pick);
-        setTxt(bestEl, best === null ? "Best —" : "Best " + best.toFixed(1) + "s");
-        setTxt(statusEl, ph === "setup" ? (online ? "Lobby" : "Ready") : ph === "count" ? "Set…" : ph === "race" ? "Racing" : "Finished");
+        const bestTxt = best === null ? "Best —" : "Best " + best.toFixed(1) + "s";
+        setTxt(bestEl, bestTxt);
+        setTxt(hud.best, bestTxt.toUpperCase());
+        setTxt(hud.track, TRACKS.find((t) => t.id === state.track)?.name || "—");
+        setTxt(hud.mode, online ? "Online" : "Solo");
+        setTxt(hud.status, ph === "setup" ? (online ? "Lobby" : "Ready") : ph === "count" ? "Set…" : ph === "race" ? (state.paused ? "Paused" : "Racing") : "Finished");
         seatDot.style.background = COLORS[myIdx()];
         setTxt(seatName, online ? state.names[playerIndex] || "You" : "You");
         if (ph === "over" && state.results) {
@@ -675,6 +791,37 @@ export function mount(root, context = {}) {
             ).join("");
         }
         if (staticTrack !== state.track) staticDirty = true;
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        syncUI();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        syncUI();
+    }
+    function togglePause(on) {
+        if (!state) return;
+        const next = typeof on === "boolean" ? on : !state.paused;
+        if (next === state.paused) return;
+        if (next) {
+            pauseStart = performance.now();
+        } else {
+            const delta = performance.now() - pauseStart;
+            recvTime += delta; lastPub += delta; lastSend += delta;
+            acc = 0;
+            lastT = performance.now();
+        }
+        state.paused = next;
+        keys.clear();
+        mouse.down = mouse.right = false;
+        touch.id = null; touch.brake = touch.second = false;
+        if (isHost) publishNow(); else submitAction({ t: "pause" });
+        syncUI();
     }
 
     /* ---------------- render ---------------- */
@@ -737,7 +884,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- loop ---------------- */
     function advance(ms) {
-        if (!state || (state.phase !== "count" && state.phase !== "race")) return;
+        if (frozen() || (state.phase !== "count" && state.phase !== "race")) return;
         localCtl = readPlayerCtl();
         acc += ms;
         let n = 0;
@@ -748,6 +895,7 @@ export function mount(root, context = {}) {
         rafId = requestAnimationFrame(frame);
         const dt = Math.min(100, ts - lastT || 16);
         lastT = ts;
+        if (frozen()) return;
         if (isHost) advance(dt);
         else {
             guestInterp(dt / 1000);
@@ -766,23 +914,23 @@ export function mount(root, context = {}) {
     // host: tetap simulasi saat tab hidden (rAF berhenti) agar guest tidak freeze
     function onVis() {
         if (document.hidden) {
-            if (isHost && !hiddenTimer) hiddenTimer = setInterval(() => { if (active) { advance(100); if (online) publishThrottled(performance.now()); } }, 100);
+            if (isHost && !hiddenTimer) hiddenTimer = setInterval(() => { if (active && !frozen()) { advance(100); if (online) publishThrottled(performance.now()); } }, 100);
         } else if (hiddenTimer) { clearInterval(hiddenTimer); hiddenTimer = 0; lastT = performance.now(); acc = 0; }
     }
     document.addEventListener("visibilitychange", onVis);
 
-    const ro = new ResizeObserver(() => resize());
-    ro.observe(stage);
+    const ro = new ResizeObserver(() => fitCanvas());
+    ro.observe(board);
 
     /* ---------------- boot ---------------- */
     if (isHost) {
         state = initialState();
         state.karts = makeKarts();
     } else {
-        state = { v: 1, phase: "setup", track: "oval", pick: "oval", seats: [0, 1], names: ["Host", "You"], karts: [], countMs: 0, raceMs: 0, results: null };
+        state = { v: 1, phase: "setup", track: "oval", pick: "oval", seats: [0, 1], names: ["Host", "You"], karts: [], countMs: 0, raceMs: 0, results: null, paused: false };
     }
-    resize();
-    syncOverlays();
+    fitCanvas();
+    syncUI();
     render();
 
     if (online) {
@@ -796,9 +944,12 @@ export function mount(root, context = {}) {
             const u3 = room.onState((next) => {
                 if (!next) return;
                 const trackChanged = !state || next.track !== state.track;
+                const wasPaused = !!state?.paused;
                 state = next; recvTime = performance.now();
+                if (!!next.paused && !wasPaused) pauseStart = performance.now();
+                if (!next.paused && wasPaused) { acc = 0; lastT = performance.now(); }
                 if (trackChanged) staticDirty = true;
-                syncOverlays();
+                syncUI();
             });
             if (typeof u3 === "function") unsubs.push(u3);
             submitAction({ t: "hello", name: playerName });

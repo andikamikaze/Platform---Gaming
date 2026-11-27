@@ -1,6 +1,6 @@
 /* ==== GAME: stickman-hack-slash.js ==== */
 /*
-  Stickman Hack and Slash — realtime 2D side-scroller.
+  Stickman Hack Slash — realtime 2D side-scroller.
   Balapan pedang melawan BOT (mode ai) atau pemain lain (mode room).
   - Template: export META + mount(root, context).
   - Level dibangkitkan acak dari seed, DIJAMIN bisa diselesaikan
@@ -9,9 +9,11 @@
     guest mengirim input dan render dengan interpolasi.
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "stickman-hack-slash", // harus sama dengan nama file (tanpa .js)
-    name: "Stickman Hack and Slash",
+    name: "Stickman Hack Slash",
     category: "action",
     catLabel: "Action",
     desc: "Balapan pedang 2D side-scrolling: tebas musuh, lompati jurang, dan capai bendera sebelum bot atau lawanmu.",
@@ -153,156 +155,210 @@ export function mount(root, context = {}) {
     /* ---------- DOM & gaya (minimalis, ter-scope .hs-app) ---------- */
     root.innerHTML = `
 <style>
-.hs-app{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
-.hs-app .game-intro{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.hs-app .game-intro h2{font-size:18px;margin:0;letter-spacing:.3px}
-.hs-app .game-intro p{margin:2px 0 0;font-size:12px;opacity:.65}
-.hs-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#94a3b8;background:#10152b;border:1px solid #232b52;border-radius:999px;padding:5px 12px}
-.hs-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#34d399;display:inline-block;animation:hsPulse 2s infinite}
+.hs-app{max-width:1100px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:10px;padding:0 12px calc(12px + env(safe-area-inset-bottom));box-sizing:border-box}
+.hs-app *{box-sizing:border-box}
+.hs-app [hidden]{display:none!important}
+.hs-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.hs-chip{display:inline-flex;align-items:center;gap:6px;background:#10152b;border:1px solid #232b52;border-radius:999px;padding:5px 10px;color:#94a3b8;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap}
+.hs-chip b{color:#e2e8f0;font-size:11.5px;font-variant-numeric:tabular-nums}
+.hs-statusdot{width:7px;height:7px;border-radius:50%;background:#34d399;display:inline-block;animation:hsPulse 2s infinite;flex:none}
 @keyframes hsPulse{50%{opacity:.35}}
-.hs-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.hs-chip{display:inline-flex;align-items:center;gap:6px;background:#10152b;border:1px solid #232b52;border-radius:999px;padding:5px 11px;font-size:10.5px;color:#94a3b8;letter-spacing:.5px;text-transform:uppercase}
-.hs-chip b{color:#e2e8f0;font-size:12px;font-variant-numeric:tabular-nums}
-.hs-hpbar{width:110px;height:7px;background:#1e2749;border-radius:99px;overflow:hidden}
+.hs-hpbar{width:90px;height:7px;background:#1e2749;border-radius:99px;overflow:hidden}
 .hs-hpfill{height:100%;width:100%;background:#34d399;border-radius:99px;transition:width .15s,background .3s}
-.hs-spacer{flex:1}
-.hs-iconbtn{width:34px;height:34px;border-radius:10px;border:1px solid #2a3560;background:transparent;color:#cbd5e1;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
-.hs-iconbtn:hover{background:#182046}
-.hs-progress{position:relative;height:12px;background:#10152b;border:1px solid #232b52;border-radius:99px}
-.hs-pdot{position:absolute;top:50%;width:11px;height:11px;border-radius:50%;transform:translate(-50%,-50%);transition:left .12s linear;border:2px solid #0b0e1a;z-index:2}
-.hs-pflag{position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:9px;line-height:1}
+.hs-spacer{flex:1 1 auto}
+.hs-btn{background:transparent;color:#cbd5e1;border:1px solid #2a3560;border-radius:9px;padding:6px 10px;min-height:32px;font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.hs-btn:hover:not(:disabled){background:#182046;border-color:#7dd3fc;color:#e2e8f0}
+.hs-btn:disabled{opacity:.4;cursor:not-allowed}
+.hs-btn.primary{background:#7dd3fc;color:#082032;border-color:#7dd3fc}
+.hs-btn.ghost{background:transparent;color:#cbd5e1;border:1px solid #2a3560}
+.hs-btn.on{border-color:#fbbf24;color:#fbbf24}
+.hs-icon-btn svg{flex:none;display:block}
+.hs-progress{position:relative;width:120px;height:10px;background:#10152b;border:1px solid #232b52;border-radius:99px;flex:none}
+.hs-pdot{position:absolute;top:50%;width:10px;height:10px;border-radius:50%;transform:translate(-50%,-50%);transition:left .12s linear;border:2px solid #0b0e1a;z-index:2}
+.hs-pflag{position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:9px;line-height:1}
 .hs-cptick{position:absolute;top:-2px;bottom:-2px;width:2px;background:#334155;border-radius:2px}
-.hs-panel{position:relative;width:100%;aspect-ratio:16/9;min-height:300px;max-height:62vh;background:#0b0e1a;border:1px solid #1f2748;border-radius:16px;overflow:hidden}
+.hs-panel{position:relative;width:100%;aspect-ratio:16/9;min-height:260px;background:#0b0e1a;border:1px solid #1f2748;border-radius:14px;overflow:hidden}
 .hs-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
 .hs-banner{position:absolute;top:24%;left:0;right:0;text-align:center;font-size:clamp(20px,4vw,34px);font-weight:800;color:#fff;letter-spacing:2px;text-shadow:0 4px 18px #000;pointer-events:none;z-index:12;animation:hsPop .45s ease}
 @keyframes hsPop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
-.hs-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(7,10,20,.78);backdrop-filter:blur(5px);z-index:20;padding:16px;overflow:auto}
-.hs-card{background:#0e1326;border:1px solid #26305c;border-radius:16px;padding:20px 22px;max-width:460px;width:100%;text-align:center;animation:hsUp .3s ease;margin:auto}
+.hs-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(7,10,20,.8);backdrop-filter:blur(5px);z-index:20;padding:12px;overflow:auto}
+.hs-card{display:flex;flex-direction:column;overflow:hidden;max-height:100%;width:min(560px,100%);background:#0e1326;border:1px solid #26305c;border-radius:14px;padding:18px;text-align:center;animation:hsUp .3s ease;margin:auto}
 @keyframes hsUp{from{transform:translateY(10px);opacity:0}}
-.hs-card h3{margin:0 0 6px;font-size:20px;color:#e2e8f0}
+.hs-card h3{margin:0;font-size:19px;color:#e2e8f0}
 .hs-card h3.win{color:#34d399}.hs-card h3.lose{color:#f87171}
-.hs-card .sub{font-size:12.5px;color:#94a3b8;line-height:1.55;margin:0 0 14px}
-.hs-how{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left;margin:0 0 12px}
-.hs-how>div{background:#101731;border:1px solid #222b52;border-radius:10px;padding:9px 11px;font-size:11.5px;color:#cbd5e1;line-height:1.8}
-.hs-how h4{margin:0 0 4px;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:#7dd3fc}
+.hs-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.hs-tag{font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:#7dd3fc;border:1px solid #232b52;border-radius:999px;padding:5px 9px;text-transform:uppercase}
+.hs-sub{font-size:12.5px;color:#94a3b8;line-height:1.55;margin:0 0 12px}
+.hs-help{display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left}
+.hs-help>div{background:#101731;border:1px solid #222b52;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#cbd5e1;line-height:1.75}
+.hs-help h4{margin:0 0 5px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#7dd3fc}
+.hs-help ul{margin:0 0 10px;padding-left:16px;color:#cbd5e1}
+.hs-help li{margin:2px 0}
 .hs-app kbd{background:#1c2447;border:1px solid #34407a;border-bottom-width:2px;border-radius:5px;padding:1px 5px;font-size:10.5px;font-family:inherit;color:#e2e8f0}
-.hs-rules{font-size:11.5px;color:#94a3b8;text-align:left;line-height:1.65;margin:0 0 14px;padding-left:16px}
-.hs-btn{background:#7dd3fc;color:#082032;border:0;border-radius:10px;padding:10px 18px;font-weight:700;font-size:13px;cursor:pointer;margin:2px}
-.hs-btn:hover{filter:brightness(1.12)}
-.hs-btn.ghost{background:transparent;color:#cbd5e1;border:1px solid #2a3560}
-.hs-cheats{position:absolute;top:10px;right:10px;z-index:25;background:rgba(14,19,38,.95);border:1px solid #26305c;border-radius:12px;padding:12px 14px;width:212px;font-size:12px}
-.hs-cheats h4{margin:0 0 8px;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#fbbf24}
-.hs-cheats label{display:flex;align-items:center;gap:8px;padding:3.5px 0;color:#cbd5e1;cursor:pointer}
-.hs-cheats input{accent-color:#fbbf24}
-.hs-cheats .row{display:flex;gap:6px;margin-top:9px}
-.hs-cheats .mini{flex:1;background:#1c2447;border:1px solid #34407a;color:#e2e8f0;border-radius:8px;padding:6px 4px;font-size:10.5px;cursor:pointer}
-.hs-cheats .mini:hover{background:#26305c}
-.hs-touch{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;align-items:flex-end;padding:12px;z-index:15;pointer-events:none}
-.hs-touch .grp{display:flex;gap:10px;pointer-events:auto}
+.hs-rules{margin:0;padding-left:16px;color:#94a3b8;font-size:11.5px;line-height:1.65}
+.hs-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hs-toggle{display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 10px;border:1px solid #232b52;border-radius:10px;background:#101731;color:#cbd5e1;font-size:11.5px;cursor:pointer;text-align:left}
+.hs-toggle input{accent-color:#fbbf24;width:16px;height:16px;flex:none}
+.hs-sep{margin:12px 0 8px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;color:#fbbf24;text-transform:uppercase;text-align:left}
+.hs-cheatacts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.hs-cheatacts .hs-btn{flex:1 1 auto}
+.hs-foot{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px}
+.hs-note{font-size:10px;color:#64748b;margin-right:auto;text-align:left}
+.hs-pad{display:none;justify-content:space-between;align-items:flex-end;gap:12px;padding:10px 12px;user-select:none}
+.hs-app.touch-on .hs-pad{display:flex}
+.hs-pad .grp{display:flex;gap:10px}
 .hs-vbtn{width:62px;height:62px;border-radius:50%;border:1px solid rgba(148,163,184,.35);background:rgba(15,20,40,.55);color:#e2e8f0;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;backdrop-filter:blur(2px);cursor:pointer}
 .hs-vbtn svg{width:26px;height:26px;pointer-events:none}
 .hs-vbtn:active{transform:scale(.92);background:rgba(125,211,252,.25)}
 .hs-vbtn.jmp{border-color:rgba(125,211,252,.55);color:#7dd3fc}
 .hs-vbtn.atk{border-color:rgba(253,224,71,.55);color:#fde047}
-.hs-app.touch-on .hs-touch{display:flex}
-.hs-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.hs-hint{font-size:11px;color:#64748b;margin-left:auto}
-@media (max-width:640px){.hs-how{grid-template-columns:1fr}.hs-hint{display:none}.hs-chip{padding:4px 8px}.hs-hpbar{width:70px}}
-@media (prefers-reduced-motion:reduce){.hs-banner,.hs-card,.hs-app .game-status-dot{animation:none}}
+.hs-app :focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
+@media (max-width:640px){.hs-app{padding-left:8px;padding-right:8px}.hs-pad{padding:8px}}
+@media (max-width:390px){.hs-vbtn{width:56px;height:56px}}
+@media (prefers-reduced-motion:reduce){.hs-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- fill height + mobile refinements (last) --- */
+.hs-head,.hs-foot{flex:none}
+.hs-help,.hs-cheats,.hs-stats{flex:1 1 auto;min-height:0;overflow:auto}
+@media (pointer:coarse){.hs-app button:not(:disabled){min-height:44px}}
+@media (max-width:640px){
+.hs-app.game-fill > .hs-panel[data-board]:not(:has(.hs-overlay:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
+.hs-app.game-fill > .hs-panel[data-board]:has(.hs-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.hs-app .hs-hud{gap:5px;margin-bottom:8px}
+.hs-app .hs-hud .hs-chip{padding:4px 6px;font-size:9px}
+.hs-app .hs-hud .hs-chip[data-hud="combochip"],
+.hs-app .hs-hud .hs-chip[data-hud="bestchip"],
+.hs-app .hs-hud .hs-chip[data-hud="statuschip"],
+.hs-app .hs-hud .hs-chip[data-hud="progresschip"]{display:none}
+.hs-app .hs-hud .hs-progress{width:84px}
+.hs-app .hs-hud .hs-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.hs-app .hs-hud .hs-btn-label,.hs-app .hs-hud .hs-spacer{display:none}
+.hs-app .hs-overlay{padding:8px}
+.hs-app .hs-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.hs-app .hs-help{grid-template-columns:1fr;gap:8px}
+.hs-app .hs-cheats{grid-template-columns:1fr}
+.hs-app .hs-help,.hs-app .hs-cheats,.hs-app .hs-stats{scrollbar-width:none}
+.hs-app .hs-help::-webkit-scrollbar,.hs-app .hs-cheats::-webkit-scrollbar,.hs-app .hs-stats::-webkit-scrollbar{display:none}
+.hs-app .hs-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid #26305c}
+.hs-app .hs-note{display:none}
+}
 </style>
-<div class="game-app hs-app">
-  <div class="game-intro">
-    <div><h2>Stickman Hack and Slash</h2><p>Balapan pedang side-scrolling — capai bendera sebelum lawanmu.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
-  </div>
+<div class="game-app hs-app game-fill" data-hs>
   <div class="hs-hud">
     <span class="hs-chip">HP <span class="hs-hpbar"><span class="hs-hpfill" data-hud="hpfill"></span></span> <b data-hud="hp">100</b></span>
-    <span class="hs-chip">Level <b data-hud="lv">1</b></span>
-    <span class="hs-chip">Skor <b data-hud="score">0</b></span>
-    <span class="hs-chip">Combo <b data-hud="combo">x1</b></span>
-    <span class="hs-chip">Kill <b data-hud="kills">0</b></span>
-    <span class="hs-chip">Best <b data-hud="best">0</b></span>
+    <span class="hs-chip">LV <b data-hud="lv">1</b></span>
+    <span class="hs-chip">SCORE <b data-hud="score">0</b></span>
+    <span class="hs-chip" data-hud="combochip">COMBO <b data-hud="combo">x1</b></span>
+    <span class="hs-chip">KILL <b data-hud="kills">0</b></span>
+    <span class="hs-chip" data-hud="bestchip">BEST <b data-hud="best">0</b></span>
+    <span class="hs-chip" data-hud="statuschip"><i class="hs-statusdot"></i><b data-hud="status">Siap</b></span>
+    <span class="hs-chip" data-hud="progresschip" title="Progress balapan"><span class="hs-progress" aria-hidden="true">
+      <span class="hs-cptick" data-el="cptick"></span>
+      <span class="hs-pdot" data-el="dot0" style="background:#7dd3fc;left:0%"></span>
+      <span class="hs-pdot" data-el="dot1" style="background:#fda4af;left:0%"></span>
+      <span class="hs-pflag">🚩</span>
+    </span></span>
     <span class="hs-spacer"></span>
-    <button class="hs-iconbtn" type="button" data-act="help" aria-label="Cara main" title="Cara main (H)">?</button>
-    <button class="hs-iconbtn" type="button" data-act="cheats" aria-label="Cheat" title="Cheat (C)">⚡</button>
-    <button class="hs-iconbtn" type="button" data-act="pause" aria-label="Jeda" title="Jeda (P)">⏸</button>
-  </div>
-  <div class="hs-progress" aria-hidden="true">
-    <span class="hs-cptick" data-el="cptick"></span>
-    <span class="hs-pdot" data-el="dot0" style="background:#7dd3fc;left:0%"></span>
-    <span class="hs-pdot" data-el="dot1" style="background:#fda4af;left:0%"></span>
-    <span class="hs-pflag">🚩</span>
+    <button class="hs-btn hs-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="hs-btn-label">Help</span></button>
+    <button class="hs-btn hs-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="hs-btn-label">Cheats</span></button>
+    <button class="hs-btn hs-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="hs-btn-label">Pause</span></button>
+    <button class="hs-btn hs-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="hs-btn-label">Restart</span></button>
+    <button class="hs-btn hs-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="hs-btn-label">Exit</span></button>
+    <button class="hs-btn hs-icon-btn" type="button" data-act="touch" aria-label="Tombol virtual" title="Tombol virtual">${iconSVG("gamepad2", { size: 14 })}<span class="hs-btn-label">Pad</span></button>
+    <button class="hs-btn hs-icon-btn" type="button" data-act="sound" aria-label="Mute" title="Suara"><span data-el="soundicon">${iconSVG("volume", { size: 14 })}</span><span class="hs-btn-label">Sound</span></button>
   </div>
   <section class="game-panel hs-panel" data-board>
-    <canvas class="hs-canvas"></canvas>
+    <canvas class="hs-canvas" data-canvas></canvas>
     <div class="hs-banner" data-el="banner" hidden></div>
-    <div class="hs-touch">
-      <div class="grp">
-        <button class="hs-vbtn" type="button" data-vk="l" aria-label="Kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
-        <button class="hs-vbtn" type="button" data-vk="r" aria-label="Kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
-      </div>
-      <div class="grp">
-        <button class="hs-vbtn jmp" type="button" data-vk="j" aria-label="Lompat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/><path d="M6 19h12"/></svg></button>
-        <button class="hs-vbtn atk" type="button" data-vk="a" aria-label="Serang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L18 6M18 6h-5M18 6v5M7 17l-3 3"/></svg></button>
-      </div>
-    </div>
     <div class="hs-overlay" data-ov="menu">
       <div class="hs-card">
-        <h3>Cara Main</h3>
-        <p class="sub">Balapan ke bendera 🚩 melawan <b data-el="opname">BOT</b>. Tebas musuh yang menghalangi, lompati jurang, dan jangan sampai HP habis!</p>
-        <div class="hs-how">
-          <div><h4>⌨️ Desktop</h4><kbd>A</kbd>/<kbd>D</kbd> atau <kbd>←</kbd>/<kbd>→</kbd> gerak<br><kbd>W</kbd>/<kbd>Space</kbd> lompat<br><kbd>J</kbd> / <b>klik mouse</b> serang<br><kbd>P</kbd> jeda · <kbd>H</kbd> bantuan</div>
-          <div><h4>📱 Mobile</h4>Tombol ◀ ▶ di kiri bawah<br>Tombol ▲ lompat di kanan<br>Tombol 🗡 serang (tahan = combo)<br>Tap layar juga = serang</div>
-        </div>
-        <ul class="hs-rules">
-          <li><b>Tahan serang</b> untuk ayunan beruntun — hit beruntun menaikkan combo & damage.</li>
-          <li>❤️ Hati memulihkan 25 HP. Tiang hijau = <b>checkpoint</b> (tempat respawn).</li>
-          <li>Jatuh ke jurang: −25 HP dan kembali ke checkpoint. HP habis: respawn 1,2 detik.</li>
-          <li>🎲 <b>Undian koin</b> menentukan siapa jalan duluan — yang kalah undian diam 1,1 detik!</li>
-          <li>🎲 Multiplayer: posisi <b>P1 (biru) / P2 (merah)</b> diacak otomatis oleh host.</li>
-          <li>Level dibangkitkan acak dan <b>dijamin bisa diselesaikan</b>. Makin tinggi level, makin panjang & ramai.</li>
-        </ul>
-        <button class="hs-btn" type="button" data-act="start">Mulai</button>
+        <div class="hs-head"><h3>Siap bertarung?</h3><span class="hs-tag" data-el="modetag">Vs BOT</span></div>
+        <p class="hs-sub">Balapan ke bendera 🚩 melawan <b data-el="opname">BOT</b>. Tebas musuh, lompati jurang, dan capai bendera lebih dulu!</p>
+        <div class="hs-foot"><span class="hs-note">H panduan · C cheat · P jeda · R ulang</span><button class="hs-btn primary" type="button" data-act="start">Mulai</button></div>
       </div>
     </div>
     <div class="hs-overlay" data-ov="end" hidden>
       <div class="hs-card">
-        <h3 data-el="endtitle">Selesai</h3>
-        <p class="sub" data-el="endmsg"></p>
-        <div data-el="endbtns">
-          <button class="hs-btn" type="button" data-act="next">Level berikutnya</button>
+        <div class="hs-head"><h3 data-el="endtitle">Selesai</h3><span class="hs-tag" data-el="endlv">LV 1</span></div>
+        <p class="hs-sub" data-el="endmsg"></p>
+        <div class="hs-foot" data-el="endbtns">
+          <span class="hs-note"></span>
+          <button class="hs-btn primary" type="button" data-act="next">Level berikutnya</button>
           <button class="hs-btn ghost" type="button" data-act="retry">Ulangi level</button>
         </div>
-        <p class="sub" data-el="endwait" hidden style="margin-top:8px">Menunggu host melanjutkan…</p>
+        <p class="hs-sub" data-el="endwait" hidden style="margin-top:8px">Menunggu host melanjutkan…</p>
       </div>
     </div>
     <div class="hs-overlay" data-ov="pause" hidden>
       <div class="hs-card">
-        <h3>Jeda</h3>
-        <p class="sub">Tarik napas dulu. Musuh juga ikut berhenti.</p>
-        <button class="hs-btn" type="button" data-act="resume">Lanjut</button>
+        <div class="hs-head"><h3>Jeda</h3></div>
+        <p class="hs-sub">Tarik napas dulu. Musuh dan bot ikut berhenti.</p>
+        <div class="hs-foot"><span class="hs-note">P / Esc untuk lanjut</span><button class="hs-btn primary" type="button" data-act="resume">Lanjut</button></div>
       </div>
     </div>
-    <div class="hs-cheats" data-ov="cheats" hidden>
-      <h4>⚡ Cheat</h4>
-      <label><input type="checkbox" data-cheat="god"> God Mode (kebal)</label>
-      <label><input type="checkbox" data-cheat="onehit"> One-Hit Kill</label>
-      <label><input type="checkbox" data-cheat="speed"> Lari 1.5×</label>
-      <label><input type="checkbox" data-cheat="fly"> Terbang (lompat udara)</label>
-      <label><input type="checkbox" data-cheat="freeze"> Bekukan musuh</label>
-      <label><input type="checkbox" data-cheat="slow"> Slow-mo musuh & bot</label>
-      <div class="row">
-        <button class="mini" type="button" data-cheatact="heal">Full HP</button>
-        <button class="mini" type="button" data-cheatact="kill">Kill All</button>
-        <button class="mini" type="button" data-cheatact="skip" data-el="skipbtn">Skip ⏭</button>
+    <div class="hs-overlay" data-ov="cheat" hidden>
+      <div class="hs-card">
+        <div class="hs-head"><h3>Cheats</h3><button class="hs-btn ghost" type="button" data-act="cheatclose">Close</button></div>
+        <div class="hs-cheats">
+          <label class="hs-toggle"><input type="checkbox" data-cheat="god"> God Mode (kebal)</label>
+          <label class="hs-toggle"><input type="checkbox" data-cheat="onehit"> One-Hit Kill</label>
+          <label class="hs-toggle"><input type="checkbox" data-cheat="speed"> Lari 1.5×</label>
+          <label class="hs-toggle"><input type="checkbox" data-cheat="fly"> Terbang (lompat udara)</label>
+          <label class="hs-toggle"><input type="checkbox" data-cheat="freeze"> Bekukan musuh</label>
+          <label class="hs-toggle"><input type="checkbox" data-cheat="slow"> Slow-mo musuh & bot</label>
+        </div>
+        <div class="hs-sep">Aksi cepat</div>
+        <div class="hs-cheatacts">
+          <button class="hs-btn ghost" type="button" data-cheatact="heal">Full HP</button>
+          <button class="hs-btn ghost" type="button" data-cheatact="kill">Kill All</button>
+          <button class="hs-btn ghost" type="button" data-cheatact="skip" data-el="skipbtn">Skip ⏭</button>
+        </div>
+      </div>
+    </div>
+    <div class="hs-overlay" data-ov="help" hidden>
+      <div class="hs-card">
+        <div class="hs-head"><h3>How to play</h3><button class="hs-btn ghost" type="button" data-act="helpclose">Close</button></div>
+        <div class="hs-help">
+          <div>
+            <h4>⌨️ Desktop</h4>
+            <ul>
+              <li><kbd>A</kbd>/<kbd>D</kbd> atau <kbd>←</kbd>/<kbd>→</kbd> gerak</li>
+              <li><kbd>W</kbd>/<kbd>Space</kbd> lompat · <kbd>J</kbd> / klik mouse serang</li>
+              <li>Tahan serang untuk ayunan beruntun (combo)</li>
+              <li><kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> jeda · <kbd>R</kbd> ulang</li>
+            </ul>
+            <h4>📱 Mobile</h4>
+            <ul>
+              <li>Tombol ◀ ▶ di kiri bawah untuk gerak</li>
+              <li>Tombol ▲ lompat · tombol 🗡 serang (tahan = combo)</li>
+              <li>Tap layar juga = serang</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Aturan</h4>
+            <ul class="hs-rules">
+              <li><b>Tahan serang</b> untuk ayunan beruntun — hit beruntun menaikkan combo & damage.</li>
+              <li>❤️ Hati memulihkan 25 HP. Tiang hijau = <b>checkpoint</b> (tempat respawn).</li>
+              <li>Jatuh ke jurang: −25 HP dan kembali ke checkpoint. HP habis: respawn 1,2 detik.</li>
+              <li>🎲 <b>Undian koin</b> menentukan siapa jalan duluan — yang kalah undian diam 1,1 detik!</li>
+              <li>🎲 Multiplayer: posisi <b>P1 (biru) / P2 (merah)</b> diacak otomatis oleh host.</li>
+              <li>Level dibangkitkan acak dan <b>dijamin bisa diselesaikan</b>. Makin tinggi level, makin panjang & ramai.</li>
+            </ul>
+            <div class="hs-foot"><span class="hs-note">Tekan H untuk membuka lagi</span><button class="hs-btn primary" type="button" data-act="helpclose">Got it</button></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
-  <div class="game-actions hs-actions">
-    <button class="game-action-button hs-btn ghost" type="button" data-exit>Exit game</button>
-    <button class="hs-iconbtn" type="button" data-act="touch" aria-label="Tombol virtual" title="Tombol virtual">🎮</button>
-    <button class="hs-iconbtn" type="button" data-act="sound" aria-label="Suara" title="Suara" data-el="soundbtn">🔊</button>
-    <span class="hs-hint">A/D gerak · W/Space lompat · J/klik serang (tahan = combo) · P jeda</span>
+  <div class="hs-pad">
+    <div class="grp">
+      <button class="hs-vbtn" type="button" data-vk="l" aria-label="Kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
+      <button class="hs-vbtn" type="button" data-vk="r" aria-label="Kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
+    </div>
+    <div class="grp">
+      <button class="hs-vbtn jmp" type="button" data-vk="j" aria-label="Lompat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/><path d="M6 19h12"/></svg></button>
+      <button class="hs-vbtn atk" type="button" data-vk="a" aria-label="Serang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L18 6M18 6h-5M18 6v5M7 17l-3 3"/></svg></button>
+    </div>
   </div>
 </div>`;
 
@@ -315,18 +371,24 @@ export function mount(root, context = {}) {
     const ovMenu = qs('[data-ov="menu"]');
     const ovEnd = qs('[data-ov="end"]');
     const ovPause = qs('[data-ov="pause"]');
-    const ovCheats = qs('[data-ov="cheats"]');
+    const ovCheats = qs('[data-ov="cheat"]');
+    const ovHelp = qs('[data-ov="help"]');
     const hud = {
         hp: qs('[data-hud="hp"]'), hpfill: qs('[data-hud="hpfill"]'),
         lv: qs('[data-hud="lv"]'), score: qs('[data-hud="score"]'),
         combo: qs('[data-hud="combo"]'), kills: qs('[data-hud="kills"]'),
-        best: qs('[data-hud="best"]'), status: qs("[data-status]"),
+        best: qs('[data-hud="best"]'), status: qs('[data-hud="status"]'),
         dot0: qs('[data-el="dot0"]'), dot1: qs('[data-el="dot1"]'),
         cptick: qs('[data-el="cptick"]'),
     };
     const cheatsAllowed = !online || isHost;
-    if (!cheatsAllowed) qs('[data-act="cheats"]').hidden = true;
+    if (!cheatsAllowed) {
+        qs("[data-cheats]").hidden = true;
+        qs("[data-pause]").disabled = true;
+        qs("[data-restart]").disabled = true;
+    }
     if (online) qs('[data-el="opname"]').textContent = "pemain lain";
+    qs('[data-el="modetag"]').textContent = online ? "Online" : "Vs BOT";
     if (online && !isHost) qs('[data-el="skipbtn"]').hidden = true;
 
     /* ---------- state lokal ---------- */
@@ -341,18 +403,25 @@ export function mount(root, context = {}) {
     const vc = { l: false, r: false, j: false, a: false };
     const ms = { a: false };
     const cheats = { god: false, onehit: false, speed: false, fly: false, freeze: false, slow: false };
-    let helpOpen = false;
+    let helpOpen = false, cheatsOpen = false, pausedByHelp = false;
     let evId = 0, lastEvI = 0, eid = 1, hid = 1;
     let snaps = [];              // guest: buffer snapshot untuk interpolasi
     let particles = [], floaters = [];
     let shakeT = 0, shakeMag = 0;
     let cam = 0, dpr = 1, scale = 1, viewW = 960;
     let raf = null, lastT = 0, lastPub = 0, prevPhase = "";
-    let bannerTimer = null, inTimer = null, lastSent = 0, pendingInp = null;
+    let inTimer = null, lastSent = 0, pendingInp = null;
     let soundOn = true, AC = null;
+    let pauseAnchor = 0, visualT = 0, bannerUntil = 0;
     const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (e) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("stickmanHsHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("stickmanHsHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
 
     function getMySlot() {
         if (!online) return 0;
@@ -423,8 +492,7 @@ export function mount(root, context = {}) {
     function showBanner(txt, ms2 = 1200) {
         banner.textContent = txt; banner.hidden = false;
         banner.style.animation = "none"; void banner.offsetWidth; banner.style.animation = "";
-        clearTimeout(bannerTimer);
-        bannerTimer = setTimeout(() => { banner.hidden = true; }, ms2);
+        bannerUntil = visualT + ms2 / 1000;
     }
 
     /* ---------- level & state ---------- */
@@ -741,10 +809,31 @@ export function mount(root, context = {}) {
         const t = e.target;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
         const k = KEYMAP[e.code];
-        if (k) { e.preventDefault(); if (!kb[k]) { kb[k] = true; applyLocalInput(); } return; }
-        if (e.code === "KeyP" || e.code === "Escape") { e.preventDefault(); submitAction({ t: "pause" }); }
-        if (e.code === "KeyH") { e.preventDefault(); toggleHelp(); }
-        if (e.code === "KeyC" && cheatsAllowed) { e.preventDefault(); ovCheats.hidden = !ovCheats.hidden; }
+        if (k) {
+            e.preventDefault();
+            if (!helpOpen && !cheatsOpen && !kb[k]) { kb[k] = true; applyLocalInput(); }
+            return;
+        }
+        // Prioritas: help → cheats → pause/Escape → aksi game.
+        if (e.code === "KeyH") { e.preventDefault(); toggleHelp(); return; }
+        if (e.code === "KeyC") { e.preventDefault(); if (cheatsAllowed && !helpOpen) toggleCheats(); return; }
+        if (e.code === "KeyR") { e.preventDefault(); if (!helpOpen && !cheatsOpen) restartRun(); return; }
+        if (e.code === "KeyP" || e.code === "Escape") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else submitAction({ t: "pause" });
+            return;
+        }
+        if (e.code === "Enter") {
+            const s = curState();
+            if (!s) return;
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (s.phase === "menu") submitAction({ t: "start" });
+            else if (s.phase === "end") submitAction({ t: s.winner === getMySlot() ? "next" : "retry" });
+        }
     }, sig);
     window.addEventListener("keyup", (e) => {
         const k = KEYMAP[e.code];
@@ -769,18 +858,52 @@ export function mount(root, context = {}) {
     if (window.matchMedia("(pointer: coarse)").matches) appEl.classList.add("touch-on");
 
     /* ---------- bantuan, cheat, klik UI ---------- */
-    function toggleHelp() {
+    function refreshOverlays() {
         const s = curState();
         if (!s) return;
-        if (!helpOpen && s.phase !== "menu") {
-            helpOpen = true;
-            qs('[data-act="start"]').textContent = "Lanjut";
-            if (s.phase === "play") submitAction({ t: "pause" });
-        } else if (helpOpen) {
-            helpOpen = false;
-            qs('[data-act="start"]').textContent = "Mulai";
-            if (curState() && curState().phase === "paused") submitAction({ t: "pause" });
+        ovMenu.hidden = s.phase !== "menu" || cheatsOpen || helpOpen;
+        ovEnd.hidden = s.phase !== "end" || cheatsOpen || helpOpen;
+        ovPause.hidden = s.phase !== "paused" || cheatsOpen || helpOpen;
+        ovCheats.hidden = !cheatsOpen || helpOpen;
+        ovHelp.hidden = !helpOpen;
+    }
+    function releaseInputs() {
+        kb.l = kb.r = kb.j = kb.a = false;
+        vc.l = vc.r = vc.j = vc.a = false;
+        ms.a = false;
+        applyLocalInput();
+    }
+    function setPaused(on) {
+        const s = curState();
+        if (!s || !isHost) return false;
+        if (on && s.phase === "play") { submitAction({ t: "pause" }); return true; }
+        if (!on && s.phase === "paused") { submitAction({ t: "pause" }); return true; }
+        return false;
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) {
+            cheatsOpen = false;
+            pausedByHelp = setPaused(true);
+        } else if (pausedByHelp) {
+            setPaused(false);
+            pausedByHelp = false;
         }
+        refreshOverlays();
+    }
+    function toggleCheats(on) {
+        if (!cheatsAllowed) return;
+        if (helpOpen) toggleHelp(false);
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        refreshOverlays();
+    }
+    function restartRun() {
+        if (online && !isHost) return;
+        if (helpOpen) toggleHelp(false);
+        if (cheatsOpen) toggleCheats(false);
+        if (!state) return;
+        startRun();
+        showBanner("ULANG", 800);
     }
     function cheatAct(kind) {
         if (!cheatsAllowed || !isHost || !state) return;
@@ -794,25 +917,32 @@ export function mount(root, context = {}) {
         publish();
     }
     root.addEventListener("click", (e) => {
-        const ex = e.target.closest("[data-exit]");
-        if (ex) { onExit(); return; }
-        const ca = e.target.closest("[data-cheatact]");
+        const t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { sfx(440, 0.05); toggleHelp(); return; }
+        if (t.closest("[data-cheats]")) { sfx(440, 0.05); toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { sfx(440, 0.05); submitAction({ t: "pause" }); return; }
+        if (t.closest("[data-restart]")) { sfx(440, 0.05); restartRun(); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        const ca = t.closest("[data-cheatact]");
         if (ca) { cheatAct(ca.dataset.cheatact); sfx(440, 0.05); return; }
-        const b = e.target.closest("[data-act]");
+        const b = t.closest("[data-act]");
         if (!b) return;
         sfx(440, 0.05, "square", 0.02);
         switch (b.dataset.act) {
-            case "start":
-                if (helpOpen) { toggleHelp(); break; }
-                submitAction({ t: "start" }); break;
+            case "start": submitAction({ t: "start" }); break;
             case "next": submitAction({ t: "next" }); break;
             case "retry": submitAction({ t: "retry" }); break;
             case "resume": submitAction({ t: "pause" }); break;
-            case "pause": submitAction({ t: "pause" }); break;
-            case "help": toggleHelp(); break;
-            case "cheats": if (cheatsAllowed) ovCheats.hidden = !ovCheats.hidden; break;
+            case "helpclose": toggleHelp(false); break;
+            case "cheatclose": toggleCheats(false); break;
             case "touch": appEl.classList.toggle("touch-on"); break;
-            case "sound": soundOn = !soundOn; qs('[data-el="soundbtn"]').textContent = soundOn ? "🔊" : "🔇"; break;
+            case "sound": {
+                soundOn = !soundOn;
+                qs('[data-el="soundicon"]').innerHTML = iconSVG(soundOn ? "volume" : "volumeX", { size: 14 });
+                b.setAttribute("aria-label", soundOn ? "Mute" : "Unmute");
+                break;
+            }
         }
     }, sig);
     root.addEventListener("change", (e) => {
@@ -1097,6 +1227,7 @@ export function mount(root, context = {}) {
                 const title = qs('[data-el="endtitle"]');
                 title.textContent = win ? "Menang! 🎉" : online ? "P" + (s.winner + 1) + " sampai duluan" : "Bot sampai duluan!";
                 title.className = win ? "win" : "lose";
+                qs('[data-el="endlv"]').textContent = "LV " + (s.level + 1);
                 if (s.score > best) { best = s.score; try { localStorage.setItem(META.bestKey, String(best)); } catch (e) { } }
                 qs('[data-el="endmsg"]').textContent =
                     (win ? playerName + " mencapai bendera lebih dulu. " : "Lawanmu lebih cepat kali ini. ") +
@@ -1110,21 +1241,48 @@ export function mount(root, context = {}) {
             }
             prevPhase = s.phase;
         }
-        ovMenu.hidden = !(s.phase === "menu" || helpOpen);
-        ovEnd.hidden = s.phase !== "end";
-        ovPause.hidden = !(s.phase === "paused" && !helpOpen);
+        refreshOverlays();
+        const pbtn = qs("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".hs-btn-label");
+            if (label) label.textContent = s.phase === "paused" ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", s.phase === "paused" ? "Resume" : "Pause");
+        }
+        const cbtn = qs("[data-cheats]");
+        if (cbtn) {
+            const active = Object.keys(cheats).filter((k) => cheats[k]).length;
+            cbtn.classList.toggle("on", active > 0);
+            const label = cbtn.querySelector(".hs-btn-label");
+            if (label) label.textContent = cheatsOpen ? "Close" : (active ? "Cheats " + active : "Cheats");
+        }
     }
 
     /* ---------- loop utama ---------- */
+    let wasFrozen = false;
     function frame(now) {
         if (destroyed) return;
         raf = requestAnimationFrame(frame);
         if (!lastT) lastT = now;
         const dt = Math.min(0.033, (now - lastT) / 1000);
         lastT = now;
-        const t = now / 1000;
+        const cur = isHost ? state : (snaps.length ? snaps[snaps.length - 1].s : null);
+        const frozen = helpOpen || cheatsOpen || Boolean(cur && cur.phase === "paused");
 
-        if (isHost && state) {
+        // Jeda/memodal: hentikan sim & efek, lalu geser penanda waktu saat lanjut.
+        if (!wasFrozen && frozen) {
+            pauseAnchor = performance.now();
+            releaseInputs();
+        } else if (wasFrozen && !frozen) {
+            const shift = performance.now() - pauseAnchor;
+            for (const sn of snaps) sn.t += shift;
+            lastSent += shift;
+            lastPub += shift;
+        }
+        wasFrozen = frozen;
+        if (!frozen) visualT += dt;
+        if (!banner.hidden && visualT >= bannerUntil) banner.hidden = true;
+
+        if (isHost && state && !frozen) {
             if (state.phase === "count") {
                 state.countT -= dt;
                 if (state.countT <= 0) {
@@ -1141,15 +1299,17 @@ export function mount(root, context = {}) {
         const vis = isHost ? state : guestVis();
         if (!isHost && snaps.length) consumeEvents(snaps[snaps.length - 1].s);
 
-        // update efek
-        for (const p of particles) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.grav * dt; }
-        particles = particles.filter((p) => p.t < p.life);
-        if (particles.length > 240) particles.splice(0, particles.length - 240);
-        for (const f of floaters) f.t += dt;
-        floaters = floaters.filter((f) => f.t < 0.8);
+        if (!frozen) {
+            // update efek
+            for (const p of particles) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.grav * dt; }
+            particles = particles.filter((p) => p.t < p.life);
+            if (particles.length > 240) particles.splice(0, particles.length - 240);
+            for (const f of floaters) f.t += dt;
+            floaters = floaters.filter((f) => f.t < 0.8);
+        }
 
-        draw(vis, t, dt);
-        if (vis) syncUI(vis, t);
+        draw(vis, visualT, frozen ? 0 : dt);
+        if (vis) syncUI(vis, visualT);
     }
 
     /* ---------- inisialisasi mode ---------- */
@@ -1174,7 +1334,6 @@ export function mount(root, context = {}) {
             ac.abort();
             ro.disconnect();
             if (raf) cancelAnimationFrame(raf);
-            clearTimeout(bannerTimer);
             clearTimeout(inTimer);
             if (AC) { try { AC.close(); } catch (e) { } }
         },

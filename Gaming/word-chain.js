@@ -1,5 +1,7 @@
 /* ==== GAME: word-chain.js ==== */
 
+import { iconSVG } from "../JS/icons.js";
+
 /*
   WORD CHAIN — turn-based word linking game.
   - Format template baru: export META + export mount(root, context).
@@ -163,13 +165,22 @@ export function mount(root, context = {}) {
 
     const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     let kbOpen = coarse;          // keyboard virtual otomatis aktif di perangkat sentuh
-    let openPanel = null;         // null | "help" | "cheats"
+    let helpOpen = false, cheatsOpen = false, paused = false;
+    let frozenAt = 0;             // penanda waktu saat panel lokal membekukan giliran
     let reveal = null;            // cheat reveal lokal: { round, len, word }
     let hintCache = { key: "", text: "" };
     let prevYourTurn = false;
     let botTimer = null, botToken = "";
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey), 10) || 0; } catch (e) { /* abaikan */ }
+
+    /* ---------- internal How to play (first run only) ---------- */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("wordChainHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("wordChainHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     /* ---------- markup (minimalis, semua style di-scope ke .wc-app) ---------- */
 
@@ -186,220 +197,282 @@ export function mount(root, context = {}) {
     }).join("");
 
     root.innerHTML = `
-<div class="game-app wc-app">
 <style>
-.wc-app{--bg:#f8fafc;--card:#fff;--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;--acc:#4f46e5;--soft:#eef2ff;--good:#059669;--bad:#dc2626;--warn:#d97706}
+.wc-app{--bg:#f8fafc;--card:#fff;--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;--acc:#4f46e5;--soft:#eef2ff;--good:#059669;--bad:#dc2626;--warn:#d97706;
+  width:100%;max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:10px;color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wc-app *{box-sizing:border-box}
 .wc-app [hidden]{display:none!important}
-.wc-app .wc-panel{position:relative;display:flex;flex-direction:column;gap:14px;padding:18px;background:var(--bg);border:1px solid var(--line);border-radius:16px;color:var(--ink)}
-.wc-app .wc-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.wc-app .wc-chip{font-size:12px;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px}
-.wc-app .wc-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
-.wc-app .wc-spacer{flex:1}
-.wc-app .wc-btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s}
-.wc-app .wc-btn:hover:not(:disabled){border-color:#c7d2fe}
-.wc-app .wc-btn:disabled{opacity:.45;cursor:default}
-.wc-app .wc-btn.wc-primary{background:var(--acc);border-color:var(--acc);color:#fff}
-.wc-app .wc-btn.wc-primary:hover:not(:disabled){background:#4338ca}
-.wc-app .wc-btn.wc-ghost{background:transparent}
-.wc-app .wc-btn:focus-visible,.wc-app .wc-key:focus-visible,.wc-app .wc-in:focus-visible,.wc-app .wc-tile:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-.wc-app .wc-players{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch}
-.wc-app .wc-player{display:flex;flex-direction:column;gap:2px;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;transition:border-color .15s,box-shadow .15s}
-.wc-app .wc-player.on{border-color:var(--acc);box-shadow:0 0 0 3px var(--soft)}
-.wc-app .wc-prow{display:flex;align-items:center;gap:6px;min-width:0}
-.wc-app .wc-pname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wc-app .wc-ptag{font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--acc);background:var(--soft);border-radius:999px;padding:1px 7px}
-.wc-app .wc-pscore{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
-.wc-app .wc-pskips{font-size:11px;color:var(--mut)}
-.wc-app .wc-vs{align-self:center;font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.1em}
-.wc-app .wc-clock{display:flex;align-items:center;gap:10px}
-.wc-app .wc-track{flex:1;height:4px;border-radius:999px;background:var(--line);overflow:hidden}
-.wc-app .wc-track i{display:block;height:100%;width:100%;border-radius:999px;background:var(--acc);transition:width .1s linear}
-.wc-app .wc-clock.low .wc-track i{background:var(--bad)}
-.wc-app .wc-clock.paused .wc-track i{background:var(--warn)}
-.wc-app .wc-clock b{min-width:44px;text-align:right;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
-.wc-app .wc-chain{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;min-height:44px}
-.wc-app .wc-empty{font-size:13px;color:var(--mut)}
-.wc-app .wc-tile{padding:7px 12px;border-radius:10px;background:var(--card);border:1px solid var(--line);font:inherit;font-size:14px;font-weight:700;letter-spacing:.12em;color:var(--ink)}
-.wc-app .wc-tile.first{background:var(--soft);border-color:#c7d2fe;color:var(--acc)}
-.wc-app .wc-tile.last{border-color:var(--acc)}
-.wc-app .wc-tile.last b{color:var(--acc);text-decoration:underline;text-underline-offset:3px}
-.wc-app button.wc-tile{cursor:pointer}
+.wc-app :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+
+/* --- one HUD bar: info left, icon buttons right --- */
+.wc-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.wc-hud-info,.wc-hud-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.wc-hud-actions{margin-left:auto}
+.wc-spacer{flex:1 1 auto}
+.wc-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--mut);white-space:nowrap}
+.wc-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.wc-chip.wc-active{border-color:var(--acc);box-shadow:0 0 0 2px var(--soft)}
+.wc-chip.wc-turn b{color:var(--acc)}
+.wc-dot{width:7px;height:7px;border-radius:50%;background:var(--mut);flex:none}
+.wc-dot.wc-you{background:var(--acc)}
+.wc-dot.wc-wait{background:var(--warn)}
+.wc-tag{font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--acc);font-style:normal}
+.wc-sub{font-weight:600}
+.wc-clock{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
+.wc-track{width:54px;height:4px;border-radius:999px;background:var(--line);overflow:hidden}
+.wc-track i{display:block;height:100%;width:100%;border-radius:999px;background:var(--acc);transition:width .1s linear}
+.wc-clock.low .wc-track i{background:var(--bad)}
+.wc-clock.low b{color:var(--bad)}
+.wc-clock.paused .wc-track i{background:var(--warn)}
+.wc-clock b{min-width:32px;text-align:right;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+.wc-btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 11px;min-height:34px;font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s,transform .12s}
+.wc-btn:hover:not(:disabled){border-color:#c7d2fe;transform:translateY(-1px)}
+.wc-btn:disabled{opacity:.4;cursor:default}
+.wc-btn.wc-primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.wc-btn.wc-primary:hover:not(:disabled){background:#4338ca}
+.wc-btn.wc-ghost{background:transparent}
+.wc-btn.wc-on{border-color:var(--acc);color:var(--acc);background:var(--soft)}
+.wc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.wc-icon-btn svg{flex:none;display:block}
+
+/* --- board fills the remaining height; content stays proportional --- */
+.wc-app.game-fill > .wc-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.wc-board{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:0;padding:14px;background:var(--bg);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.wc-play{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:720px;max-height:100%;margin:auto;overflow:auto;padding:2px}
+.wc-chain{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;min-height:44px;width:100%}
+.wc-empty{font-size:13px;color:var(--mut)}
+.wc-tile{padding:8px 12px;border-radius:8px;background:var(--card);border:1px solid var(--line);font:inherit;font-size:14px;font-weight:700;letter-spacing:.12em;color:var(--ink)}
+.wc-tile.first{background:var(--soft);border-color:#c7d2fe;color:var(--acc)}
+.wc-tile.last{border-color:var(--acc)}
+.wc-tile.last b{color:var(--acc);text-decoration:underline;text-underline-offset:3px}
+.wc-app button.wc-tile{cursor:pointer;min-height:44px}
 .wc-app button.wc-tile:hover{background:var(--soft)}
-.wc-app .wc-sep{display:grid;place-items:center;width:14px;height:14px;color:#cbd5e1}
-.wc-app .wc-sep svg{width:12px;height:12px}
-.wc-app .wc-next{align-self:center;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--acc);background:var(--soft);border-radius:999px;padding:4px 12px}
-.wc-app .wc-form{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-.wc-app .wc-in{flex:0 1 240px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:inherit;font-size:16px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;text-align:center;padding:10px 14px;outline:none;transition:border-color .15s,box-shadow .15s}
-.wc-app .wc-in::placeholder{letter-spacing:normal;font-weight:500;text-transform:none;color:var(--mut)}
-.wc-app .wc-in:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--soft)}
-.wc-app .wc-in:disabled{opacity:.55}
-.wc-app .wc-msg{min-height:18px;text-align:center;font-size:13px;font-weight:600;color:var(--mut)}
-.wc-app .wc-msg.good{color:var(--good)}
-.wc-app .wc-msg.bad{color:var(--bad)}
-.wc-app .wc-msg.cheat{color:var(--warn)}
-.wc-app .wc-hint{align-self:center;font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--warn);background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 12px}
-.wc-app .wc-kb{display:flex;flex-direction:column;gap:6px;width:min(480px,100%);margin:0 auto}
-.wc-app .wc-kbrow{display:flex;gap:6px}
-.wc-app .wc-key{flex:1;min-width:0;height:clamp(38px,9vw,46px);display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:14px;font-weight:700;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
-.wc-app .wc-key:active:not(:disabled){background:var(--soft);border-color:#c7d2fe}
-.wc-app .wc-key:disabled{opacity:.4;cursor:default}
-.wc-app .wc-key.wc-wide{flex:1.7}
-.wc-app .wc-key.wc-go{background:var(--acc);border-color:var(--acc);color:#fff}
-.wc-app .wc-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:16px;background:rgba(248,250,252,.92);backdrop-filter:blur(3px);border-radius:16px}
-.wc-app .wc-card{width:min(440px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
-.wc-app .wc-ovtitle{margin:0;font-size:18px;font-weight:800}
-.wc-app .wc-ovtitle.win{color:var(--good)}
-.wc-app .wc-ovtitle.lose{color:var(--bad)}
-.wc-app .wc-ovsub{margin:0;font-size:13.5px;line-height:1.55;color:#334155}
-.wc-app .wc-rules{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px;line-height:1.5;color:#334155}
-.wc-app .wc-h4{margin:4px 0 0;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
-.wc-app .wc-note{margin:0;font-size:12px;line-height:1.5;color:var(--mut)}
-.wc-app .wc-recap{font-size:12.5px;font-weight:700;letter-spacing:.06em;line-height:1.7;color:#334155;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;word-break:break-word}
-.wc-app .wc-ovrow{display:flex;flex-wrap:wrap;gap:8px}
-.wc-app .wc-cheat{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 12px;font:inherit;cursor:pointer}
-.wc-app .wc-cheat:hover:not(:disabled){border-color:#fcd34d;background:#fffbeb}
-.wc-app .wc-cheat:disabled{opacity:.45;cursor:default}
-.wc-app .wc-cheat b{font-size:13px}
-.wc-app .wc-cheat span{font-size:11.5px;color:var(--mut)}
-.wc-app .game-status.is-you .game-status-dot{background:var(--acc)}
-.wc-app .game-status.is-wait .game-status-dot{background:var(--warn)}
-@media (max-width:600px){
-.wc-app .wc-panel{padding:12px;gap:12px}
-.wc-app .wc-chip{font-size:11px;padding:3px 8px}
-.wc-app .wc-btn{padding:7px 10px;font-size:12px}
-.wc-app .wc-in{flex:1 1 140px}
+.wc-sep{display:grid;place-items:center;width:14px;height:14px;color:#cbd5e1}
+.wc-sep svg{width:12px;height:12px}
+.wc-next{align-self:center;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--acc);background:var(--soft);border-radius:999px;padding:6px 12px}
+.wc-form{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%}
+.wc-in{flex:0 1 240px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:8px;color:var(--ink);font:inherit;font-size:16px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;text-align:center;padding:10px 14px;min-height:44px;transition:border-color .15s,box-shadow .15s}
+.wc-in::placeholder{letter-spacing:normal;font-weight:500;text-transform:none;color:var(--mut)}
+.wc-in:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--soft)}
+.wc-in:disabled{opacity:.55}
+.wc-msg{min-height:18px;text-align:center;font-size:13px;font-weight:600;color:var(--mut)}
+.wc-msg.good{color:var(--good)}
+.wc-msg.bad{color:var(--bad)}
+.wc-msg.cheat{color:var(--warn)}
+.wc-hint{align-self:center;font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--warn);background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px}
+.wc-kb{display:flex;flex-direction:column;gap:8px;width:min(480px,100%);margin:0 auto}
+.wc-kbrow{display:flex;gap:8px}
+.wc-key{flex:1;min-width:0;height:clamp(40px,9vw,46px);display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:14px;font-weight:700;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.wc-key:active:not(:disabled){background:var(--soft);border-color:#c7d2fe}
+.wc-key:disabled{opacity:.4;cursor:default}
+.wc-key.wc-wide{flex:1.7}
+.wc-key.wc-go{background:var(--acc);border-color:var(--acc);color:#fff}
+
+/* --- overlay modal: fixed head/foot, scrollable body --- */
+.wc-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:12px;background:rgba(248,250,252,.94);backdrop-filter:blur(3px);border-radius:14px}
+.wc-ov[data-ov="help"]{z-index:50}
+.wc-card{display:flex;flex-direction:column;width:min(460px,100%);max-height:100%;padding:16px 18px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 16px rgba(15,23,42,.08);overflow:hidden}
+.wc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.wc-head h3{margin:0;font-size:18px;font-weight:800}
+.wc-head h3.wc-win{color:var(--good)}
+.wc-head h3.wc-lose{color:var(--bad)}
+.wc-body{flex:1 1 auto;min-height:0;overflow:auto}
+.wc-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.wc-ovsub{margin:0 0 12px;font-size:13.5px;line-height:1.55;color:#334155}
+.wc-rules{margin:0 0 12px;padding-left:18px;display:grid;gap:8px;font-size:13px;line-height:1.5;color:#334155}
+.wc-h4{margin:12px 0 4px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.wc-note{font-size:11px;line-height:1.5;color:var(--mut)}
+.wc-recap{font-size:12.5px;font-weight:700;letter-spacing:.06em;line-height:1.7;color:#334155;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;word-break:break-word;margin-bottom:12px}
+.wc-ovrow{display:flex;flex-wrap:wrap;gap:8px}
+.wc-cheat{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;background:var(--card);padding:10px 12px;min-height:44px;font:inherit;cursor:pointer}
+.wc-cheat:hover:not(:disabled){border-color:#fcd34d;background:#fffbeb}
+.wc-cheat:disabled{opacity:.45;cursor:default}
+.wc-cheat b{font-size:13px}
+.wc-cheat span{font-size:11.5px;color:var(--mut)}
+.wc-cheatgrid{display:grid;gap:8px}
+.wc-foot .wc-note{margin:0}
+
+/* --- PALING AKHIR: mobile + coarse overrides --- */
+@media (pointer:coarse){.wc-app .wc-key{min-height:44px}}
+@media (max-width:640px){
+.wc-app.game-fill > .wc-board:not(:has(.wc-ov:not([hidden]))){flex:1 1 auto;min-height:0}
+.wc-app.game-fill > .wc-board:has(.wc-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+.wc-app{gap:8px}
+.wc-app .wc-hud{gap:5px;margin-bottom:0}
+.wc-app .wc-hud .wc-hud-info,
+.wc-app .wc-hud .wc-hud-actions{gap:5px}
+.wc-app .wc-hud .wc-hud-actions{margin-left:auto}
+.wc-app .wc-hud .wc-chip{padding:4px 6px;font-size:9px;min-height:0}
+.wc-app .wc-hud .wc-chip[data-hud="bestchip"],
+.wc-app .wc-hud .wc-chip[data-hud="levelchip"]{display:none}
+.wc-app .wc-hud .wc-chip .wc-sub,
+.wc-app .wc-hud .wc-chip .wc-tag{display:none}
+.wc-app .wc-hud .wc-clock{padding:4px 6px}
+.wc-app .wc-hud .wc-track{width:26px}
+.wc-app .wc-hud .wc-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.wc-app .wc-hud .wc-btn-label,
+.wc-app .wc-hud .wc-spacer{display:none}
+.wc-app .wc-board{padding:10px}
+.wc-app .wc-play{gap:10px}
 .wc-app .wc-tile{font-size:12.5px;padding:6px 9px}
-.wc-app .wc-pscore{font-size:18px}
-.wc-app .wc-card{padding:16px}
+.wc-app .wc-ov{padding:8px}
+.wc-app .wc-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.wc-app .wc-body{scrollbar-width:none}
+.wc-app .wc-body::-webkit-scrollbar{display:none}
+.wc-app .wc-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.wc-app .wc-note{display:none}
+.wc-app .wc-foot [data-overbest]{display:block;font-size:10px}
 }
+@media (prefers-reduced-motion:reduce){.wc-app *{animation:none!important;transition:none!important}}
 </style>
-  <div class="game-intro">
-    <div><h2>Word Chain</h2><p>Link words head-to-tail — every word starts with the last letter of the previous one.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app wc-app game-fill" data-wc>
+  <div class="wc-hud">
+    <div class="wc-hud-info">
+      <span class="wc-chip"><i class="wc-dot" data-dot></i><b data-hud="status">Ready</b></span>
+      <span class="wc-chip" data-hud="levelchip">LV <b data-level>—</b></span>
+      <span class="wc-chip">CHAIN <b data-progress>0/8</b></span>
+      <span class="wc-chip" data-pchip="0"><i class="wc-dot" data-pdot="0"></i><b data-pname="0">Player 1</b><em class="wc-tag" data-ptag="0"></em><b data-pscore="0">0</b><span class="wc-sub" data-pskips="0">2 skips</span></span>
+      <span class="wc-chip" data-pchip="1"><i class="wc-dot" data-pdot="1"></i><b data-pname="1">Player 2</b><em class="wc-tag" data-ptag="1"></em><b data-pscore="1">0</b><span class="wc-sub" data-pskips="1">2 skips</span></span>
+      <span class="wc-clock" data-clock><span class="wc-track"><i data-bar></i></span><b data-time>20s</b></span>
+      <span class="wc-chip" data-hud="bestchip">BEST <b data-best>0</b></span>
+    </div>
+    <span class="wc-spacer"></span>
+    <div class="wc-hud-actions">
+      <button class="wc-btn wc-icon-btn" type="button" data-act="kb" aria-label="Toggle on-screen keys" title="Toggle on-screen keys" aria-pressed="false">${iconSVG("keyboard", { size: 14 })}<span class="wc-btn-label">Keys</span></button>
+      <button class="wc-btn wc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="wc-btn-label">Help</span></button>
+      <button class="wc-btn wc-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="wc-btn-label">Cheats</span></button>
+      <button class="wc-btn wc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P / Esc)">${iconSVG("pause", { size: 14 })}<span class="wc-btn-label">Pause</span></button>
+      <button class="wc-btn wc-icon-btn" type="button" data-restart aria-label="Restart" title="New round (R)">${iconSVG("refresh", { size: 14 })}<span class="wc-btn-label">Restart</span></button>
+      <button class="wc-btn wc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="wc-btn-label">Exit game</span></button>
+    </div>
   </div>
-  <section class="game-panel wc-panel" data-board>
-    <div class="wc-toolbar">
-      <span class="wc-chip">Level <b data-level>—</b></span>
-      <span class="wc-chip">Chain <b data-progress>0/8</b></span>
-      <span class="wc-chip" data-bestchip>Best <b data-best>0</b></span>
-      <span class="wc-spacer"></span>
-      <button class="wc-btn wc-ghost" type="button" data-act="help">How to play</button>
-      <button class="wc-btn wc-ghost" type="button" data-act="cheats">Cheats</button>
-      <button class="wc-btn wc-ghost" type="button" data-act="kb" aria-pressed="false">Keys</button>
-      <button class="wc-btn wc-ghost" type="button" data-act="start">New round</button>
-    </div>
-    <div class="wc-players">
-      <div class="wc-player" data-p="0">
-        <span class="wc-prow"><span class="wc-pname" data-name>Player 1</span><span class="wc-ptag" data-tag hidden></span></span>
-        <b class="wc-pscore" data-score>0</b><span class="wc-pskips" data-skips>2 skips</span>
+  <section class="game-panel wc-board" data-board>
+    <div class="wc-play">
+      <div class="wc-chain" data-chain></div>
+      <span class="wc-next" data-next hidden></span>
+      <div class="wc-form">
+        <input class="wc-in" data-in maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Type a word" aria-label="Next word"/>
+        <button class="wc-btn wc-primary" type="button" data-act="add">Add</button>
+        <button class="wc-btn" type="button" data-act="skip">Skip (2)</button>
       </div>
-      <span class="wc-vs">VS</span>
-      <div class="wc-player" data-p="1">
-        <span class="wc-prow"><span class="wc-pname" data-name>Player 2</span><span class="wc-ptag" data-tag hidden></span></span>
-        <b class="wc-pscore" data-score>0</b><span class="wc-pskips" data-skips>2 skips</span>
-      </div>
+      <div class="wc-msg" data-msg aria-live="polite"></div>
+      <div class="wc-hint" data-hint hidden></div>
+      <div class="wc-kb" data-kb hidden>${kbHtml}</div>
     </div>
-    <div class="wc-clock" data-clock><div class="wc-track"><i data-bar></i></div><b data-time>20s</b></div>
-    <div class="wc-chain" data-chain></div>
-    <span class="wc-next" data-next hidden></span>
-    <div class="wc-form">
-      <input class="wc-in" data-in maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Type a word" aria-label="Next word"/>
-      <button class="wc-btn wc-primary" type="button" data-act="add">Add</button>
-      <button class="wc-btn" type="button" data-act="skip">Skip (2)</button>
-    </div>
-    <div class="wc-msg" data-msg aria-live="polite"></div>
-    <div class="wc-hint" data-hint hidden></div>
-    <div class="wc-kb" data-kb hidden>${kbHtml}</div>
 
     <div class="wc-ov" data-ov="start">
-      <div class="wc-card">
-        <h3 class="wc-ovtitle">Word Chain</h3>
-        <p class="wc-ovsub">Take turns with your rival. Every word must start with the last letter of the previous one — APPLE leads to ECHO, then OLIVE, and so on.</p>
-        <ul class="wc-rules">
-          <li>Grow the shared chain to 8 words; the higher score wins.</li>
-          <li>10 points per letter. A skip auto-plays a word for +5 (2 skips each).</li>
-          <li>20 seconds per turn. Run out of time or valid links and you lose.</li>
-          <li>Stuck? Two wrong tries reveal a letter hint.</li>
-        </ul>
-        <div class="wc-ovrow">
-          <button class="wc-btn wc-primary" type="button" data-act="start">Start game</button>
-          <button class="wc-btn wc-ghost" type="button" data-act="help">Full guide</button>
+      <div class="wc-card" role="dialog" aria-label="Start game">
+        <div class="wc-head"><h3>Word Chain</h3><span class="wc-note">LV <span data-startlevel>—</span></span></div>
+        <div class="wc-body">
+          <p class="wc-ovsub">Take turns with your rival. Every word must start with the last letter of the previous one — APPLE leads to ECHO, then OLIVE, and so on.</p>
+          <ul class="wc-rules">
+            <li>Grow the shared chain to 8 words; the higher score wins.</li>
+            <li>10 points per letter. A skip auto-plays a word for +5 (2 skips each).</li>
+            <li>20 seconds per turn. Run out of time or valid links and you lose.</li>
+            <li>Stuck? Two wrong tries reveal a letter hint.</li>
+          </ul>
+        </div>
+        <div class="wc-foot">
+          <span class="wc-note">Press H for the guide</span>
+          <div class="wc-ovrow">
+            <button class="wc-btn wc-primary" type="button" data-act="start">Start game</button>
+            <button class="wc-btn" type="button" data-act="help">Full guide</button>
+          </div>
         </div>
       </div>
     </div>
     <div class="wc-ov" data-ov="over" hidden>
-      <div class="wc-card">
-        <h3 class="wc-ovtitle" data-result-title>Round over</h3>
-        <p class="wc-ovsub" data-result-sub></p>
-        <div class="wc-recap" data-recap></div>
-        <div class="wc-ovrow">
-          <button class="wc-btn wc-primary" type="button" data-act="start">Play again</button>
-          <button class="wc-btn wc-ghost" type="button" data-act="help">How to play</button>
+      <div class="wc-card" role="dialog" aria-label="Round results">
+        <div class="wc-head"><h3 data-result-title>Round over</h3></div>
+        <div class="wc-body">
+          <p class="wc-ovsub" data-result-sub></p>
+          <div class="wc-recap" data-recap></div>
+        </div>
+        <div class="wc-foot">
+          <span class="wc-note" data-overbest></span>
+          <div class="wc-ovrow">
+            <button class="wc-btn wc-primary" type="button" data-act="start">Play again</button>
+            <button class="wc-btn" type="button" data-act="help">How to play</button>
+          </div>
         </div>
       </div>
     </div>
+    <div class="wc-ov" data-ov="pause" hidden>
+      <div class="wc-card" role="dialog" aria-label="Paused">
+        <div class="wc-head"><h3>Paused</h3></div>
+        <div class="wc-body"><p class="wc-ovsub">The turn clock and the bot are frozen. Online rounds never pause.</p></div>
+        <div class="wc-foot"><span class="wc-note">Press P or Esc to resume</span><button class="wc-btn wc-primary" type="button" data-act="resume">Resume</button></div>
+      </div>
+    </div>
     <div class="wc-ov" data-ov="help" hidden>
-      <div class="wc-card">
-        <h3 class="wc-ovtitle">How to play</h3>
-        <ul class="wc-rules">
-          <li><b>Goal.</b> Build the chain to 8 words together, but finish with more points than your rival.</li>
-          <li><b>Link rule.</b> Your word starts with the last letter of the previous word: APPLE → ECHO → OLIVE.</li>
-          <li><b>Words.</b> Built-in list of 359 words, at least 3 letters, no repeats.</li>
-          <li><b>Turns.</b> Players alternate, 20 seconds each. A coin toss picks who starts; seats are shuffled in multiplayer.</li>
-          <li><b>Scoring.</b> 10 points per letter. Skip auto-plays a valid word for +5 and spends one of your 2 skips.</li>
-          <li><b>Losing.</b> Run out of time, or face a link with no valid word — your rival wins. If the chain completes, the higher score wins.</li>
-          <li><b>Hints.</b> Miss twice on your turn and letters of a safe word start to reveal.</li>
-        </ul>
-        <h4 class="wc-h4">Controls</h4>
-        <ul class="wc-rules">
-          <li><b>Desktop.</b> Just type — letters go to the input. Enter adds the word, Backspace deletes, Esc closes panels. Click the last tile to seed its final letter.</li>
-          <li><b>Mobile.</b> Tap the on-screen keys; toggle them with the Keys button.</li>
-        </ul>
-        <p class="wc-note">Every level is generated with a guaranteed 8-word solution — but a careless word can still corner you. Cheats flag the round and disable best-score saving.</p>
-        <div class="wc-ovrow"><button class="wc-btn" type="button" data-act="close">Close</button></div>
+      <div class="wc-card wc-help" role="dialog" aria-label="How to play">
+        <div class="wc-head"><h3>How to play</h3><button class="wc-btn" type="button" data-act="helpclose" aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wc-body">
+          <h4 class="wc-h4">Goal</h4>
+          <ul class="wc-rules">
+            <li><b>Goal.</b> Build the chain to 8 words together, but finish with more points than your rival.</li>
+            <li><b>Link rule.</b> Your word starts with the last letter of the previous word: APPLE → ECHO → OLIVE.</li>
+            <li><b>Words.</b> Built-in list of 359 words, at least 3 letters, no repeats.</li>
+            <li><b>Turns.</b> Players alternate, 20 seconds each. A coin toss picks who starts; seats are shuffled in multiplayer.</li>
+            <li><b>Scoring.</b> 10 points per letter. Skip auto-plays a valid word for +5 and spends one of your 2 skips.</li>
+            <li><b>Losing.</b> Run out of time, or face a link with no valid word — your rival wins. If the chain completes, the higher score wins.</li>
+            <li><b>Hints.</b> Miss twice on your turn and letters of a safe word start to reveal.</li>
+          </ul>
+          <h4 class="wc-h4">Controls</h4>
+          <ul class="wc-rules">
+            <li><b>Desktop.</b> Just type — letters go to the input. Enter adds the word, Backspace deletes, Esc closes panels. Click the last tile to seed its final letter.</li>
+            <li><b>Shortcuts.</b> Hold <b>Shift</b> for H (help), C (cheats), P (pause), R (new round) while it is your turn; plain keys work otherwise. Esc closes the top panel.</li>
+            <li><b>Mobile.</b> Tap the on-screen keys; toggle them with the Keys button.</li>
+          </ul>
+          <p class="wc-note">Every level is generated with a guaranteed 8-word solution — but a careless word can still corner you. Cheats flag the round and disable best-score saving. Solo rounds pause while this guide, the cheat console or the pause panel is open.</p>
+        </div>
+        <div class="wc-foot"><span class="wc-note">Press H to reopen this guide</span><button class="wc-btn wc-primary" type="button" data-act="helpclose">Got it</button></div>
       </div>
     </div>
     <div class="wc-ov" data-ov="cheats" hidden>
-      <div class="wc-card">
-        <h3 class="wc-ovtitle">Cheats</h3>
-        <button class="wc-cheat" type="button" data-cheat="reveal"><b>Reveal a word</b><span>Show one safe word for the current link (only you see it).</span></button>
-        <button class="wc-cheat" type="button" data-cheat="autoplay"><b>Auto-play</b><span>Let the game place a safe word for you. Scores 0.</span></button>
-        <button class="wc-cheat" type="button" data-cheat="time"><b>+15 seconds</b><span>Add time to the current turn clock.</span></button>
-        <button class="wc-cheat" type="button" data-cheat="freeze"><b>Freeze timer</b><span>Pause or resume the turn clock.</span></button>
-        <button class="wc-cheat" type="button" data-cheat="skips"><b>+2 skips</b><span>Refill your skip supply.</span></button>
-        <p class="wc-note">Cheats are for practice. Using one flags the round for both players and stops best-score saving.</p>
-        <div class="wc-ovrow"><button class="wc-btn" type="button" data-act="close">Close</button></div>
+      <div class="wc-card" role="dialog" aria-label="Cheat console">
+        <div class="wc-head"><h3>Cheats</h3><button class="wc-btn" type="button" data-act="cheatclose" aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wc-body">
+          <div class="wc-cheatgrid">
+            <button class="wc-cheat" type="button" data-cheat="reveal"><b>Reveal a word</b><span>Show one safe word for the current link (only you see it).</span></button>
+            <button class="wc-cheat" type="button" data-cheat="autoplay"><b>Auto-play</b><span>Let the game place a safe word for you. Scores 0.</span></button>
+            <button class="wc-cheat" type="button" data-cheat="time"><b>+15 seconds</b><span>Add time to the current turn clock.</span></button>
+            <button class="wc-cheat" type="button" data-cheat="freeze"><b>Freeze timer</b><span>Pause or resume the turn clock.</span></button>
+            <button class="wc-cheat" type="button" data-cheat="skips"><b>+2 skips</b><span>Refill your skip supply.</span></button>
+          </div>
+          <p class="wc-note">Cheats are for practice. Using one flags the round for both players and stops best-score saving.</p>
+        </div>
+        <div class="wc-foot"><span class="wc-note">Solo only</span><button class="wc-btn" type="button" data-act="cheatclose">Close</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------- refs ---------- */
     const $ = (s) => root.querySelector(s);
-    const statusWrap = $(".game-status"), statusEl = $("[data-status]");
-    const levelEl = $("[data-level]"), progressEl = $("[data-progress]");
-    const bestChip = $("[data-bestchip]"), bestEl = $("[data-best]");
-    const clockEl = $("[data-clock]"), barEl = $("[data-bar]"), timeEl = $("[data-time]");
+    const statusEl = $("[data-hud='status']"), statusDot = $("[data-dot]");
+    const hud = {
+        level: $("[data-level]"), levelChip: $("[data-hud='levelchip']"),
+        progress: $("[data-progress]"),
+        bestChip: $("[data-hud='bestchip']"), best: $("[data-best]"),
+        clock: $("[data-clock]"), bar: $("[data-bar]"), time: $("[data-time]"),
+        players: [0, 1].map((i) => ({
+            chip: $('[data-pchip="' + i + '"]'), dot: $('[data-pdot="' + i + '"]'),
+            name: $('[data-pname="' + i + '"]'), tag: $('[data-ptag="' + i + '"]'),
+            score: $('[data-pscore="' + i + '"]'), skips: $('[data-pskips="' + i + '"]'),
+        })),
+    };
     const chainEl = $("[data-chain]"), nextEl = $("[data-next]");
     const inEl = $("[data-in]"), addBtn = $('[data-act="add"]'), skipBtn = $('[data-act="skip"]');
     const msgEl = $("[data-msg]"), hintEl = $("[data-hint]");
     const kbEl = $("[data-kb]"), kbBtn = $('[data-act="kb"]');
-    const ovStart = $('[data-ov="start"]'), ovOver = $('[data-ov="over"]');
+    const ovStart = $('[data-ov="start"]'), ovOver = $('[data-ov="over"]'), ovPause = $('[data-ov="pause"]');
     const ovHelp = $('[data-ov="help"]'), ovCheats = $('[data-ov="cheats"]');
-    const resultTitle = $("[data-result-title]"), resultSub = $("[data-result-sub]"), recapEl = $("[data-recap]");
+    const startLevel = $("[data-startlevel]");
+    const resultTitle = $("[data-result-title]"), resultSub = $("[data-result-sub]"), recapEl = $("[data-recap]"), overBest = $("[data-overbest]");
     const freezeBtn = $('[data-cheat="freeze"]');
     const cheatBtns = root.querySelectorAll("[data-cheat]");
-    const playerEls = [0, 1].map((i) => {
-        const el = $('[data-p="' + i + '"]');
-        return {
-            el,
-            name: el.querySelector("[data-name]"),
-            tag: el.querySelector("[data-tag]"),
-            score: el.querySelector("[data-score]"),
-            skips: el.querySelector("[data-skips]"),
-        };
-    });
+    const helpBtn = $("[data-help]"), cheatsBtn = $("[data-cheats]"), pauseBtn = $("[data-pause]");
 
     /* ---------- state ---------- */
     function freshState() {
@@ -511,26 +584,78 @@ export function mount(root, context = {}) {
         }
     }
 
+    /* ---------- local pause / freeze (solo only, online stays live) ---------- */
+    const localFrozen = () => !online && (paused || helpOpen || cheatsOpen);
+    function freezeLocal() {
+        if (frozenAt || !state) return;
+        frozenAt = Date.now();
+        stopBot();
+    }
+    function thawLocal() {
+        if (!frozenAt) return;
+        const shift = Date.now() - frozenAt;
+        frozenAt = 0;
+        if (state && state.phase === "playing" && !state.frozen) state.deadline += shift;
+        botToken = ""; // jam robot dijadwalkan ulang oleh clockTick
+    }
+    const syncFreeze = () => { if (localFrozen()) freezeLocal(); else thawLocal(); };
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatsOpen = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function setPaused(on) {
+        if (online) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { helpOpen = false; cheatsOpen = false; }
+        syncFreeze();
+        render();
+    }
+
     /* ---------- rendering ---------- */
+    function syncHudButtons() {
+        const label = pauseBtn.querySelector(".wc-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.disabled = online;
+        cheatsBtn.disabled = online;
+        cheatsBtn.title = online ? "Cheats are disabled in online rooms" : "Cheats (C)";
+        helpBtn.setAttribute("aria-expanded", String(helpOpen));
+        const kbLabel = kbBtn.querySelector(".wc-btn-label");
+        if (kbLabel) kbLabel.textContent = kbOpen ? "Keys on" : "Keys off";
+    }
+
     function updateClock() {
-        if (!state) { timeEl.textContent = "—"; barEl.style.width = "0%"; return; }
+        if (!state) { hud.time.textContent = "—"; hud.bar.style.width = "0%"; return; }
         const playing = state.phase === "playing";
+        const stopped = localFrozen();
         let rem = TURN_MS;
-        if (playing) rem = state.frozen ? state.frozenLeft : Math.max(0, state.deadline - Date.now());
+        if (playing) rem = state.frozen ? state.frozenLeft : Math.max(0, state.deadline - (stopped ? frozenAt : Date.now()));
         else if (state.phase === "over") rem = 0;
-        timeEl.textContent = playing && state.frozen ? "pause" : Math.ceil(rem / 1000) + "s";
-        barEl.style.width = Math.max(0, Math.min(100, (rem / TURN_MS) * 100)).toFixed(1) + "%";
-        clockEl.classList.toggle("low", playing && !state.frozen && rem <= 5000);
-        clockEl.classList.toggle("paused", playing && state.frozen);
+        hud.time.textContent = playing && (state.frozen || stopped) ? "pause" : Math.ceil(rem / 1000) + "s";
+        hud.bar.style.width = Math.max(0, Math.min(100, (rem / TURN_MS) * 100)).toFixed(1) + "%";
+        hud.clock.classList.toggle("low", playing && !state.frozen && !stopped && rem <= 5000);
+        hud.clock.classList.toggle("paused", playing && (state.frozen || stopped));
     }
 
     function render() {
         if (destroyed) return;
+        syncHudButtons();
         if (!state) { // guest menunggu state pertama dari host
             statusEl.textContent = "Connecting…";
             msgEl.textContent = "Waiting for the host to publish the first state…";
             inEl.disabled = addBtn.disabled = skipBtn.disabled = true;
-            ovStart.hidden = ovOver.hidden = ovHelp.hidden = ovCheats.hidden = true;
+            ovStart.hidden = ovOver.hidden = ovPause.hidden = ovHelp.hidden = ovCheats.hidden = true;
+            updateClock();
             return;
         }
         const me = myIndex();
@@ -540,21 +665,24 @@ export function mount(root, context = {}) {
         statusEl.textContent = !playing
             ? (state.phase === "intro" ? "Ready" : "Round over")
             : yourTurn ? "Your turn" : online ? state.names[state.turn] + "'s turn" : "Bot is thinking…";
-        statusWrap.classList.toggle("is-you", yourTurn);
-        statusWrap.classList.toggle("is-wait", playing && !yourTurn);
+        statusDot.classList.toggle("wc-you", yourTurn);
+        statusDot.classList.toggle("wc-wait", playing && !yourTurn);
 
-        levelEl.textContent = state.level ? "LV-" + state.level.id : "—";
-        progressEl.textContent = state.chain.length + "/" + CHAIN_TARGET;
-        bestChip.hidden = online;
-        bestEl.textContent = String(best);
+        hud.level.textContent = state.level ? String(state.level.id) : "—";
+        hud.levelChip.hidden = !state.level;
+        hud.progress.textContent = state.chain.length + "/" + CHAIN_TARGET;
+        hud.bestChip.hidden = online;
+        hud.best.textContent = String(best);
 
-        playerEls.forEach((p, i) => {
+        hud.players.forEach((p, i) => {
             p.name.textContent = state.names[i];
             p.tag.textContent = i === me ? "YOU" : (!online && i === 1 ? "BOT" : "");
             p.tag.hidden = !p.tag.textContent;
             p.score.textContent = String(state.scores[i]);
             p.skips.textContent = state.skips[i] + " skips";
-            p.el.classList.toggle("on", playing && state.turn === i);
+            p.chip.classList.toggle("wc-active", playing && state.turn === i);
+            p.chip.classList.toggle("wc-turn", playing && state.turn === i);
+            p.dot.classList.toggle("wc-you", playing && state.turn === i);
         });
 
         chainEl.textContent = "";
@@ -617,27 +745,32 @@ export function mount(root, context = {}) {
         hintEl.textContent = hintText;
 
         kbEl.hidden = !kbOpen;
-        kbBtn.textContent = kbOpen ? "Keys: on" : "Keys: off";
         kbBtn.setAttribute("aria-pressed", String(kbOpen));
         kbEl.querySelectorAll("button").forEach((b) => { b.disabled = !yourTurn; });
         inEl.setAttribute("inputmode", kbOpen && coarse ? "none" : "text");
 
-        ovStart.hidden = state.phase !== "intro";
-        ovOver.hidden = state.phase !== "over";
-        ovHelp.hidden = openPanel !== "help";
-        ovCheats.hidden = openPanel !== "cheats";
+        const blocked = helpOpen || cheatsOpen || paused;
+        ovStart.hidden = state.phase !== "intro" || blocked;
+        ovOver.hidden = state.phase !== "over" || blocked;
+        ovPause.hidden = !paused || helpOpen || cheatsOpen;
+        ovCheats.hidden = !cheatsOpen || helpOpen || paused;
+        ovHelp.hidden = !helpOpen;
         cheatBtns.forEach((b) => { b.disabled = !playing; });
         freezeBtn.querySelector("b").textContent = state.frozen ? "Resume timer" : "Freeze timer";
 
         if (state.phase === "over") {
             resultTitle.textContent = state.winner === -1 ? "Draw" : state.winner === me ? "You win" : state.names[state.winner] + " wins";
-            resultTitle.className = "wc-ovtitle " + (state.winner === me ? "win" : state.winner === -1 ? "" : "lose");
+            resultTitle.className = state.winner === me ? "wc-win" : state.winner === -1 ? "" : "wc-lose";
             resultSub.textContent = ev.text + (state.cheated ? " (cheats were used)" : "");
             recapEl.textContent = state.chain.join(" \u2192 ");
+            overBest.textContent = best > 0 ? "Best on this device: " + best : "";
+            startLevel.textContent = state.level ? String(state.level.id) : "—";
+        } else if (state.phase === "intro") {
+            startLevel.textContent = state.level ? String(state.level.id) : "—";
         }
 
         updateClock();
-        if (yourTurn && !prevYourTurn && !openPanel && !coarse) inEl.focus();
+        if (yourTurn && !prevYourTurn && !localFrozen() && !coarse) inEl.focus();
         prevYourTurn = yourTurn;
     }
 
@@ -738,7 +871,7 @@ export function mount(root, context = {}) {
     function clockTick() {
         if (destroyed) return;
         updateClock();
-        if (!state || state.phase !== "playing") return;
+        if (!state || state.phase !== "playing" || localFrozen()) return;
         const authority = !online || room.isHost;
         if (authority && !state.frozen && Date.now() >= state.deadline) {
             applyAction({ type: "timeout" }, state.turn);
@@ -776,21 +909,33 @@ export function mount(root, context = {}) {
         if (typeof navigator !== "undefined" && navigator.vibrate) { try { navigator.vibrate(6); } catch (e) { /* abaikan */ } }
     }
 
+    function closeAllPanels() {
+        helpOpen = false; cheatsOpen = false; paused = false;
+        syncFreeze();
+    }
+
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const cheatBtn = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { setPaused(); return; }
+        if (t.closest("[data-restart]")) { closeAllPanels(); submitAction({ type: "start" }); return; }
+        const cheatBtn = t.closest("[data-cheat]");
         if (cheatBtn) { useCheat(cheatBtn.dataset.cheat); return; }
-        const keyBtn = event.target.closest("[data-key]");
+        const keyBtn = t.closest("[data-key]");
         if (keyBtn) { pressKey(keyBtn.dataset.key); return; }
-        const actBtn = event.target.closest("[data-act]");
+        const actBtn = t.closest("[data-act]");
         if (actBtn) {
             const act = actBtn.dataset.act;
-            if (act === "start") { openPanel = null; submitAction({ type: "start" }); }
+            if (act === "start") { closeAllPanels(); submitAction({ type: "start" }); }
             else if (act === "add") submitWord();
             else if (act === "skip") submitAction({ type: "skip" });
-            else if (act === "help") { openPanel = openPanel === "help" ? null : "help"; render(); }
-            else if (act === "cheats") { openPanel = openPanel === "cheats" ? null : "cheats"; render(); }
-            else if (act === "close") { openPanel = null; render(); }
+            else if (act === "help") toggleHelp();
+            else if (act === "helpclose") toggleHelp(false);
+            else if (act === "cheats") toggleCheats();
+            else if (act === "cheatclose") toggleCheats(false);
+            else if (act === "resume") setPaused(false);
             else if (act === "kb") { kbOpen = !kbOpen; render(); }
             else if (act === "seed") {
                 if (state && state.phase === "playing" && state.turn === myIndex()) {
@@ -800,28 +945,62 @@ export function mount(root, context = {}) {
             }
             return;
         }
-        // klik backdrop overlay menutup panel help/cheats
-        if (openPanel && event.target.classList && event.target.classList.contains("wc-ov")) {
-            openPanel = null;
-            render();
+        // klik backdrop overlay menutup panel help/cheats/pause
+        if (t.classList && t.classList.contains("wc-ov") && !t.hidden) {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
         }
     }
 
     function handleKeydown(e) {
-        if (e.key === "Escape" && openPanel) { e.preventDefault(); openPanel = null; render(); return; }
-        if (!state) return;
+        if (destroyed) return;
         const onInput = e.target === inEl;
         const onButton = e.target && e.target.closest && e.target.closest("button");
-        if (e.key === "Enter") {
-            if (onInput) { e.preventDefault(); submitWord(); return; }
-            if (!onButton && !openPanel) {
+        const typing = onInput || Boolean(state && state.phase === "playing" && state.turn === myIndex() && !localFrozen());
+        const shortcut = () => e.shiftKey || !typing;
+        // prioritas: help → cheats → pause / Escape → restart → aksi game
+        if (e.code === "KeyH" || e.key === "?") {
+            if (e.key === "?" || shortcut()) { toggleHelp(); e.preventDefault(); return; }
+        }
+        if (e.code === "KeyC" && shortcut()) { toggleCheats(); e.preventDefault(); return; }
+        if (e.code === "KeyP" && shortcut()) {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else setPaused();
+            e.preventDefault(); return;
+        }
+        if (e.key === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            e.preventDefault(); return;
+        }
+        if (e.code === "KeyR" && shortcut()) {
+            closeAllPanels();
+            submitAction({ type: "start" });
+            e.preventDefault(); return;
+        }
+        if (!state) return;
+        if (helpOpen || cheatsOpen || paused) {
+            if (e.key === "Enter" || e.key === " ") {
+                if (helpOpen) toggleHelp(false);
+                else if (cheatsOpen) toggleCheats(false);
+                else if (paused) setPaused(false);
                 e.preventDefault();
-                if (state.phase === "playing" && state.turn === myIndex()) submitWord();
-                else if (state.phase !== "playing") submitAction({ type: "start" });
             }
             return;
         }
-        if (openPanel || state.phase !== "playing" || state.turn !== myIndex()) return;
+        if (e.key === "Enter") {
+            if (onInput) { e.preventDefault(); submitWord(); return; }
+            if (!onButton) {
+                e.preventDefault();
+                if (state.phase === "playing" && state.turn === myIndex()) submitWord();
+                else if (state.phase !== "playing") { closeAllPanels(); submitAction({ type: "start" }); }
+            }
+            return;
+        }
+        if (state.phase !== "playing" || state.turn !== myIndex()) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         // ketik di mana saja -> huruf otomatis masuk ke input (desktop)
         if (/^[a-zA-Z]$/.test(e.key)) {
@@ -869,6 +1048,7 @@ export function mount(root, context = {}) {
         state = freshState();
         publish();
     }
+    syncFreeze();
 
     return {
         destroy() {

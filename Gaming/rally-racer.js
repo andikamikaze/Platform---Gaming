@@ -1,3 +1,5 @@
+import { iconSVG } from "../JS/icons.js";
+
 /*
  * Rally Racer — game 2D top-down (id harus sama dengan nama file: rally-racer)
  * Setelah menaruh file ini di folder games, jalankan:
@@ -47,6 +49,7 @@ const MODES = [
     { id: "rally", t: "Rally stage", d: "Permukaan campur, damage, pace notes." },
     { id: "daily", t: "Daily challenge", d: "Track harian dan papan skor." },
 ];
+const MODE_SHORT = { trial: "Trial", race: "Race", local: "2P local", rally: "Rally", daily: "Daily" };
 
 /* ---------------------------------------------------------------- track */
 const S = 24, TW = 130, MINR = 300;
@@ -263,8 +266,31 @@ const rankCars = (cars) => [...cars].sort((a, b) => rankScore(b) - rankScore(a))
 /* ---------------------------------------------------------------- game */
 const CSS = `
 .rr *{box-sizing:border-box}
-.rr-board{position:relative}
-.rr-menu{display:grid;gap:16px}
+.rr [hidden]{display:none!important}
+.rr-board{position:relative;width:100%;padding:0;border:0;aspect-ratio:16/9;max-height:74vh;min-height:260px;background:#e4ebdd;border-radius:10px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.rr-board canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.rr-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.rr-hud .rr-btn{min-height:32px;padding:6px 10px;font-size:10px}
+.rr-spacer{flex:1 1 auto}
+.rr-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid rgba(128,128,128,.28);border-radius:999px;background:rgba(255,255,255,.65);color:#6b7280;white-space:nowrap}
+.rr-chip b{color:#111827;font-weight:700;font-variant-numeric:tabular-nums}
+.rr-bar{display:block;width:52px;height:5px;border-radius:3px;background:#d1d5db;overflow:hidden}
+.rr-bar i{display:block;height:100%;width:100%;background:#f97316;transition:width .12s linear}
+.rr-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.rr-icon-btn svg{flex:none;display:block}
+.rr-btn{font:inherit;padding:7px 12px;border:1px solid rgba(0,0,0,.18);border-radius:8px;background:#fff;color:#111827;cursor:pointer}
+.rr-btn:hover:not(:disabled){border-color:#ef4444}
+.rr-btn:disabled{opacity:.45;cursor:not-allowed}
+.rr-btn.on{border-color:#ef4444;color:#b91c1c;background:#fff1f2}
+.rr-btn.p{background:#ef4444;border-color:#ef4444;color:#fff}
+.rr-btn.p:hover:not(:disabled){opacity:.9;color:#fff}
+.rr-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:12px;background:rgba(255,255,255,.72);backdrop-filter:blur(3px);overflow:auto}
+.rr-card{display:flex;flex-direction:column;overflow:hidden;margin:auto;width:100%;max-width:min(620px,100%);max-height:100%;background:#fff;color:#111827;border-radius:12px;padding:16px 18px;box-shadow:0 6px 28px rgba(0,0,0,.16);font-size:13px;line-height:1.55}
+.rr-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.rr-head h3{margin:0;font-size:16px;font-weight:600}
+.rr-head .rr-btn{min-height:34px;padding:5px 10px;font-size:11px}
+.rr-menu,.rr-cheats,.rr-help,.rr-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.rr-menu{display:grid;align-content:start;gap:16px;padding-right:2px}
 .rr-opts{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:13px}
 .rr-opts label{display:flex;gap:6px;align-items:center}
 .rr-opts input[type=text],.rr-opts select{font:inherit;padding:5px 8px;border:1px solid rgba(128,128,128,.35);border-radius:8px;background:transparent;color:inherit;width:auto}
@@ -273,36 +299,60 @@ const CSS = `
 .rr-mode{text-align:left;font:inherit;padding:12px 14px;border:1px solid rgba(128,128,128,.3);border-radius:10px;background:transparent;color:inherit;cursor:pointer;display:grid;gap:3px}
 .rr-mode:hover,.rr-mode:focus-visible{border-color:#ef4444;outline:none}
 .rr-mode b{font-size:14px;font-weight:600}.rr-mode span{font-size:12px;opacity:.65}
-.rr-stage{position:relative;width:100%;aspect-ratio:16/9;max-height:74vh;min-height:260px;background:#e4ebdd;border-radius:10px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
-.rr-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.rr-ov{position:absolute;inset:0;display:flex;background:rgba(255,255,255,.6);backdrop-filter:blur(3px);padding:12px;overflow:auto;z-index:5}
-.rr-card{margin:auto;background:#fff;color:#111827;border-radius:12px;padding:18px 20px;max-width:470px;width:100%;box-shadow:0 6px 28px rgba(0,0,0,.16);font-size:13px;line-height:1.55}
-.rr-card h3{margin:0 0 8px;font-size:16px;font-weight:600}
-.rr-card p{margin:6px 0}.rr-card ul{margin:6px 0;padding-left:18px}
+.rr-cheat-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.rr-sep{margin:12px 0 6px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;color:#6b7280;text-transform:uppercase}
+.rr-foot{flex:none;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end;margin-top:12px}
+.rr-foot .rr-note{margin-right:auto}
+.rr-card p{margin:6px 0}
+.rr-card ul{margin:6px 0;padding-left:18px}
 .rr-card kbd{font:inherit;font-size:12px;padding:1px 5px;border:1px solid #d1d5db;border-radius:5px;background:#f3f4f6}
-.rr-btn{font:inherit;padding:7px 12px;border:1px solid rgba(0,0,0,.18);border-radius:8px;background:#fff;color:#111827;cursor:pointer}
-.rr-btn:hover{border-color:#ef4444}.rr-btn.p{background:#ef4444;border-color:#ef4444;color:#fff}
-.rr-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .rr-line{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #eee}
 .rr-line:last-child{border-bottom:0}
 .rr-tag{color:#b45309;font-size:12px;margin-top:6px}
-.rr-vk{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;padding:10px;pointer-events:none;z-index:3}
-.rr-vk .g{display:flex;gap:8px;align-items:flex-end;pointer-events:auto}
-.rr-vk button{width:56px;height:56px;border-radius:50%;border:1px solid rgba(0,0,0,.22);background:rgba(255,255,255,.62);font:600 14px/1 system-ui,sans-serif;color:#111;touch-action:none;-webkit-tap-highlight-color:transparent}
-.rr-vk button.on{background:#ef4444;color:#fff;border-color:#ef4444}
+.rr-note{color:#6b7280;font-size:11px}
+.rr-help{display:grid;gap:6px 18px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.rr-help b{display:block;margin-top:6px}
+.rr-pad{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;padding:8px 10px 0;pointer-events:none;user-select:none}
+.rr-pad .g{display:flex;gap:8px;align-items:flex-end;pointer-events:auto}
+.rr-pad button{width:56px;height:56px;border-radius:50%;border:1px solid rgba(0,0,0,.22);background:rgba(255,255,255,.62);font:600 14px/1 system-ui,sans-serif;color:#111;touch-action:none;-webkit-tap-highlight-color:transparent}
+.rr-pad button.on{background:#ef4444;color:#fff;border-color:#ef4444}
 .rr-hide{display:none!important}
-`;
 
-const HOWTO = `<div class="rr-card"><h3>Cara main</h3>
-<p>Selesaikan lap secepat mungkin. Lewati checkpoint secara berurutan agar lap dihitung. Track dibuat acak dari seed dan sudah dicek bisa diselesaikan.</p>
-<p><b>Keyboard</b>: <kbd>W</kbd>/<kbd>↑</kbd> gas, <kbd>S</kbd>/<kbd>↓</kbd> rem, <kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> belok, <kbd>Space</kbd> rem tangan (drift), <kbd>Shift</kbd> nitro, <kbd>P</kbd> pause.</p>
-<p><b>Mouse</b> (aktifkan di menu): arahkan kursor ke tujuan, klik kiri gas, klik kanan rem.</p>
-<p><b>Mobile</b>: pakai tombol virtual di layar.</p>
-<p><b>2 pemain</b>: P1 <kbd>WASD</kbd> + <kbd>Shift kiri</kbd> + <kbd>Space</kbd>. P2 <kbd>Panah</kbd> + <kbd>Shift kanan</kbd> + <kbd>Enter</kbd>. Pemain yang tertinggal mendapat bantuan kecepatan kecil.</p>
-<ul><li>Keluar jalur memperlambat mobil; pagar luar membuat mobil memantul.</li>
-<li>Rally stage: permukaan berubah (aspal, kerikil, tanah, salju). Tabrakan merusak mobil, dan co-driver membacakan tikungan di depan.</li>
-<li>Nitro habis cepat dan terisi pelan saat tidak dipakai.</li></ul>
-<div class="rr-row"><button class="rr-btn p" data-close type="button">Mengerti</button></div></div>`;
+/* --- Batch 02 design polish --- */
+.rr :focus-visible,.rr button:focus-visible{outline:2px solid #ef4444;outline-offset:2px}
+.rr-opts{gap:12px 16px}
+.rr-btn,.rr-mode{min-height:44px}
+.rr-card{box-shadow:none}
+.rr-pad button{min-height:44px}
+@media (pointer:coarse){.rr button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.rr *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements --- */
+.rr-card{display:flex;flex-direction:column;overflow:hidden}
+.rr-head,.rr-foot{flex:none}
+.rr-menu,.rr-cheats,.rr-help,.rr-stats{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.rr.game-fill > .rr-board:not(:has(.rr-ov:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
+.rr.game-fill > .rr-board:has(.rr-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.rr .rr-hud{gap:5px;margin-bottom:8px}
+.rr .rr-hud .rr-chip{padding:4px 6px;font-size:9px}
+.rr .rr-hud .rr-chip[data-chip="mode"],
+.rr .rr-hud .rr-chip[data-chip="status"],
+.rr .rr-hud .rr-chip[data-chip="best"],
+.rr .rr-hud .rr-chip[data-chip="spd"],
+.rr .rr-hud .rr-chip[data-chip="surf"],
+.rr .rr-hud .rr-chip[data-chip="dmg"]{display:none}
+.rr .rr-hud .rr-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.rr .rr-hud .rr-btn-label,.rr .rr-hud .rr-spacer{display:none}
+.rr .rr-ov{padding:8px}
+.rr .rr-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.rr .rr-menu,.rr .rr-cheats,.rr .rr-help,.rr .rr-stats{scrollbar-width:none}
+.rr .rr-menu::-webkit-scrollbar,.rr .rr-cheats::-webkit-scrollbar,
+.rr .rr-help::-webkit-scrollbar,.rr .rr-stats::-webkit-scrollbar{display:none}
+.rr .rr-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid #e5e7eb}
+.rr .rr-note{display:none}
+}
+`;
 
 const CHEATS = [
     ["nitro", "Nitro tak terbatas"], ["nodmg", "Tanpa damage"], ["grip", "Grip maksimal"],
@@ -320,80 +370,197 @@ export function mount(root, context = {}) {
     const cheat = { nitro: false, nodmg: false, grip: false, speed: false, slow: false, assist: false, used: false };
     const keys = {}, vk = { l: 0, r: 0, gas: 0, brake: 0, nitro: 0, hand: 0 }, mouse = { x: 0, y: 0, l: 0, r: 0, on: false };
     let game = null, ovName = null, raf = 0, last = 0, acc = 0, W = 0, H = 0, dpr = 1;
+    let helpOpen = false, cheatsOpen = false, wasPaused = false, pausedAt = 0;
+    let seenHelp = true;
+    try { seenHelp = store.get("rr.seenHelp") === 1 || localStorage.getItem("rr.seenHelp") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) { helpOpen = true; store.set("rr.seenHelp", 1); }
 
     root.innerHTML = `<style>${CSS}</style>
-  <div class="game-app rr">
-    <div class="game-intro">
-      <div><h2>Rally Racer</h2><p>Atur gas, rem, dan drift. Kalahkan waktu, bot, atau temanmu.</p></div>
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+  <div class="game-app rr game-fill" data-rr>
+    <div class="rr-hud">
+      <span class="rr-chip" data-chip="mode">MODE <b data-hud="mode">—</b></span>
+      <span class="rr-chip" data-chip="status">STATUS <b data-status>Siap</b></span>
+      <span class="rr-chip">LAP <b data-hud="lap">—</b></span>
+      <span class="rr-chip">TIME <b data-hud="time">0:00.00</b></span>
+      <span class="rr-chip" data-chip="best">BEST <b data-hud="best">--:--.--</b></span>
+      <span class="rr-chip">POS <b data-hud="pos">—</b></span>
+      <span class="rr-chip" data-chip="spd">SPD <b data-hud="spd">0 km/h</b></span>
+      <span class="rr-chip" data-chip="surf">SURF <b data-hud="surf">—</b></span>
+      <span class="rr-chip" data-chip="nitro">N2O <span class="rr-bar"><i data-hud="nitro"></i></span></span>
+      <span class="rr-chip" data-chip="dmg" hidden>DMG <span class="rr-bar"><i data-hud="dmg"></i></span></span>
+      <span class="rr-spacer"></span>
+      <button class="rr-btn rr-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="rr-btn-label">Help</span></button>
+      <button class="rr-btn rr-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="rr-btn-label">Cheats</span></button>
+      <button class="rr-btn rr-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="rr-btn-label">Pause</span></button>
+      <button class="rr-btn rr-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="rr-btn-label">Restart</span></button>
+      <button class="rr-btn rr-icon-btn" type="button" data-tomenu aria-label="Menu" title="Back to menu">${iconSVG("home", { size: 14 })}<span class="rr-btn-label">Menu</span></button>
+      <button class="rr-btn rr-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="rr-btn-label">Exit game</span></button>
     </div>
     <section class="game-panel rr-board" data-board>
-      <div class="rr-menu" data-menu>
-        <div class="rr-opts">
-          <label>Seed <input type="text" data-seed maxlength="24" value="${opt.seed}"></label>
-          <button class="rr-btn" type="button" data-newseed>Acak track</button>
-          <label>Bot <select data-ai><option>3</option><option>4</option><option>5</option></select></label>
-          <label>Level <select data-diff><option value="easy">Mudah</option><option value="normal" selected>Normal</option><option value="hard">Sulit</option></select></label>
-          <label><input type="checkbox" data-mouse> Kemudi mouse</label>
-          <label><input type="checkbox" data-touch ${opt.touch ? "checked" : ""}> Tombol virtual</label>
+      <canvas data-cv></canvas>
+      <div class="rr-ov" data-ov="select">
+        <div class="rr-card">
+          <div class="rr-head"><h3>Rally Racer</h3><span class="rr-tag">Pilih mode & track</span></div>
+          <div class="rr-menu">
+            <div class="rr-opts">
+              <label>Seed <input type="text" data-seed maxlength="24" value="${opt.seed}"></label>
+              <button class="rr-btn" type="button" data-newseed>Acak track</button>
+              <label>Bot <select data-ai><option>3</option><option>4</option><option>5</option></select></label>
+              <label>Level <select data-diff><option value="easy">Mudah</option><option value="normal" selected>Normal</option><option value="hard">Sulit</option></select></label>
+              <label><input type="checkbox" data-mouse> Kemudi mouse</label>
+              <label><input type="checkbox" data-touch ${opt.touch ? "checked" : ""}> Tombol virtual</label>
+            </div>
+            <div class="rr-modes">${MODES.map((m) => `<button class="rr-mode" type="button" data-mode="${m.id}"><b>${m.t}</b><span>${m.d}</span></button>`).join("")}</div>
+          </div>
         </div>
-        <div class="rr-modes">${MODES.map((m) => `<button class="rr-mode" type="button" data-mode="${m.id}"><b>${m.t}</b><span>${m.d}</span></button>`).join("")}</div>
       </div>
-      <div class="rr-stage rr-hide" data-stage>
-        <canvas data-cv></canvas>
-        <div class="rr-vk rr-hide" data-vkroot>
-          <div class="g"><button data-vk="l" type="button">◀</button><button data-vk="r" type="button">▶</button></div>
-          <div class="g"><button data-vk="hand" type="button">Drift</button><button data-vk="nitro" type="button">N2O</button><button data-vk="brake" type="button">Rem</button><button data-vk="gas" type="button">Gas</button></div>
+      <div class="rr-ov" data-ov="wait" hidden>
+        <div class="rr-card">
+          <div class="rr-head"><h3>Menunggu host</h3></div>
+          <p>Balapan dimulai begitu host selesai menyiapkan track.</p>
         </div>
       </div>
-      <div class="rr-ov rr-hide" data-ov></div>
+      <div class="rr-ov" data-ov="pause" hidden>
+        <div class="rr-card">
+          <div class="rr-head"><h3>Pause</h3></div>
+          <div class="rr-foot"><button class="rr-btn p" data-resume type="button">Lanjut</button><button class="rr-btn" data-restart type="button">Ulangi</button></div>
+        </div>
+      </div>
+      <div class="rr-ov" data-ov="cheat" hidden>
+        <div class="rr-card">
+          <div class="rr-head"><h3>Cheat</h3><button class="rr-btn" data-cheat-close type="button">Tutup</button></div>
+          <div class="rr-cheats">
+            <div class="rr-cheat-grid">${CHEATS.map(([k, n]) => `<button class="rr-btn" type="button" data-ch="${k}">${n} · <b data-chv="${k}">Mati</b></button>`).join("")}</div>
+            <div class="rr-sep">Aksi cepat</div>
+            <div class="rr-foot"><button class="rr-btn" data-chact="repair" type="button">Perbaiki mobil</button><button class="rr-btn" data-chact="nitro" type="button">Isi nitro</button><button class="rr-btn" data-chact="cp" type="button">Loncat ke checkpoint</button></div>
+          </div>
+          <div class="rr-foot"><span class="rr-note">Cheat dipakai = rekor dan papan skor tidak disimpan.</span><button class="rr-btn p" data-cheat-close type="button">Tutup</button></div>
+        </div>
+      </div>
+      <div class="rr-ov" data-ov="results" hidden>
+        <div class="rr-card">
+          <div class="rr-head"><h3 data-out="title">Hasil</h3></div>
+          <div class="rr-stats" data-out="html"></div>
+          <div class="rr-foot" data-out="actions">
+            <button class="rr-btn p" data-restart type="button">Ulangi</button>
+            <button class="rr-btn" data-newtrack type="button">Track baru</button>
+            <button class="rr-btn" data-tomenu type="button">Menu</button>
+          </div>
+        </div>
+      </div>
+      <div class="rr-ov" data-ov="help" hidden>
+        <div class="rr-card">
+          <div class="rr-head"><h3>Cara main</h3><button class="rr-btn" data-help-close type="button">Tutup</button></div>
+          <div class="rr-help">
+            <div>
+              <p>Selesaikan lap secepat mungkin. Lewati checkpoint secara berurutan agar lap dihitung. Track dibuat acak dari seed dan sudah dicek bisa diselesaikan.</p>
+              <p><b>Keyboard</b>: <kbd>W</kbd>/<kbd>↑</kbd> gas, <kbd>S</kbd>/<kbd>↓</kbd> rem, <kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> belok, <kbd>Space</kbd> rem tangan (drift), <kbd>Shift</kbd> nitro.</p>
+              <p><b>Mouse</b> (aktifkan di menu): arahkan kursor ke tujuan, klik kiri gas, klik kanan rem.</p>
+              <p><b>Mobile</b>: pakai tombol virtual di bawah layar.</p>
+            </div>
+            <div>
+              <b>2 pemain</b>
+              <ul><li>P1 <kbd>WASD</kbd> + <kbd>Shift kiri</kbd> + <kbd>Space</kbd>.</li>
+                <li>P2 <kbd>Panah</kbd> + <kbd>Shift kanan</kbd> + <kbd>Enter</kbd>.</li>
+                <li>Pemain yang tertinggal mendapat bantuan kecepatan kecil.</li></ul>
+              <b>Aturan</b>
+              <ul><li>Keluar jalur memperlambat mobil; pagar luar membuat mobil memantul.</li>
+                <li>Rally stage: permukaan berubah (aspal, kerikil, tanah, salju). Tabrakan merusak mobil, dan co-driver membacakan tikungan di depan.</li>
+                <li>Nitro habis cepat dan terisi pelan saat tidak dipakai.</li></ul>
+              <p><b>Pintasan</b>: <kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> pause · <kbd>R</kbd> ulangi.</p>
+            </div>
+          </div>
+          <div class="rr-foot"><span class="rr-note">Tekan H untuk membuka panduan ini</span><button class="rr-btn p" data-help-close type="button">Mengerti</button></div>
+        </div>
+      </div>
     </section>
-    <div class="game-actions">
-      <button class="game-action-button" type="button" data-howto>Cara main</button>
-      <button class="game-action-button rr-hide" type="button" data-cheat>Cheat</button>
-      <button class="game-action-button rr-hide" type="button" data-pause>Pause</button>
-      <button class="game-action-button rr-hide" type="button" data-tomenu>Menu</button>
-      <button class="game-action-button" type="button" data-exit>Exit game</button>
+    <div class="rr-pad rr-hide" data-vkroot>
+      <div class="g"><button data-vk="l" type="button">◀</button><button data-vk="r" type="button">▶</button></div>
+      <div class="g"><button data-vk="hand" type="button">Drift</button><button data-vk="nitro" type="button">N2O</button><button data-vk="brake" type="button">Rem</button><button data-vk="gas" type="button">Gas</button></div>
     </div>
   </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const cv = $("[data-cv]"), ctx = cv.getContext("2d"), stage = $("[data-stage]");
+    const cv = $("[data-cv]"), ctx = cv.getContext("2d"), board = $("[data-board]");
+    const ov = {
+        select: $('[data-ov="select"]'), wait: $('[data-ov="wait"]'), pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'), results: $('[data-ov="results"]'), help: $('[data-ov="help"]'),
+    };
+    const hudEl = {
+        mode: $("[data-hud='mode']"), lap: $("[data-hud='lap']"), time: $("[data-hud='time']"),
+        best: $("[data-hud='best']"), pos: $("[data-hud='pos']"), nitro: $("[data-hud='nitro']"),
+        spd: $("[data-hud='spd']"), surf: $("[data-hud='surf']"),
+        dmg: $("[data-hud='dmg']"), dmgChip: $('[data-chip="dmg"]'),
+    };
+    const out = { title: $("[data-out='title']"), html: $("[data-out='html']"), actions: $("[data-out='actions']") };
+    const vkRoot = $("[data-vkroot]");
     const setStatus = (t) => { const e = $("[data-status]"); if (e) e.textContent = t; };
-    const paused = () => !online && (ovName === "howto" || ovName === "cheat" || ovName === "pause");
+    const paused = () => helpOpen || cheatsOpen || ovName === "pause";
 
     /* ------------------------------ DOM state */
+    function syncHud() {
+        const g = game, c = g?.humans[0];
+        hudEl.mode.textContent = g ? (MODE_SHORT[g.cfg.mode] || (online ? "Online" : "—")) : "—";
+        hudEl.lap.textContent = c ? `${Math.min(c.lap + 1, g.cfg.laps)}/${g.cfg.laps}` : "—";
+        hudEl.time.textContent = g ? fmt(g.phase === "countdown" ? 0 : c.finished ? c.finishTime : g.t) : "0:00.00";
+        hudEl.best.textContent = g?.best != null ? fmt(g.best) : "--:--.--";
+        hudEl.pos.textContent = c && !g.cfg.timeAttack ? `P${c.pos}/${g.cars.length}` : "—";
+        hudEl.spd.textContent = c ? `${Math.round(Math.hypot(c.vx, c.vy) * 0.5)} km/h` : "0 km/h";
+        hudEl.surf.textContent = c ? (SURF[c.sid] || SURF.grass).n : "—";
+        hudEl.nitro.style.width = `${c ? c.nitro : 100}%`;
+        hudEl.dmgChip.hidden = !(g?.cfg.dmg);
+        if (g?.cfg.dmg && c) {
+            hudEl.dmg.style.width = `${100 - c.dmg}%`;
+            hudEl.dmg.style.background = c.dmg > 60 ? "#ef4444" : "#10b981";
+        }
+    }
     function render() {
-        const inGame = !!game;
-        $("[data-menu]").classList.toggle("rr-hide", inGame || online);
-        stage.classList.toggle("rr-hide", !inGame);
-        $("[data-pause]").classList.toggle("rr-hide", !inGame || online);
-        $("[data-tomenu]").classList.toggle("rr-hide", !inGame || online);
-        $("[data-cheat]").classList.toggle("rr-hide", !inGame || online);
-        $("[data-vkroot]").classList.toggle("rr-hide", !(inGame && opt.touch && game.cfg.mode !== "local"));
-        const ov = $("[data-ov]");
-        ov.classList.toggle("rr-hide", !ovName);
-        ov.innerHTML = ovName ? overlayHtml() : "";
+        const inGame = !!game, active = inGame && !online, blocking = helpOpen || cheatsOpen;
+        ov.select.hidden = inGame || online || blocking;
+        ov.wait.hidden = ovName !== "wait" || blocking;
+        ov.pause.hidden = ovName !== "pause" || blocking;
+        ov.results.hidden = ovName !== "results" || blocking;
+        ov.cheat.hidden = !cheatsOpen || helpOpen || !inGame;
+        ov.help.hidden = !helpOpen;
+        out.actions.hidden = online;
+        if (ovName === "results" && game?.res) {
+            out.title.textContent = game.res.title;
+            out.html.innerHTML = game.res.html;
+        }
+        vkRoot.classList.toggle("rr-hide", !(inGame && opt.touch && game.cfg.mode !== "local"));
+        const cbtn = root.querySelector("[data-cheats]"), pbtn = root.querySelector("[data-pause]"),
+            rbtn = root.querySelector("[data-restart]"), mbtn = root.querySelector("[data-tomenu]");
+        cbtn.disabled = !active;
+        pbtn.disabled = !active || game.phase === "done";
+        rbtn.disabled = !active;
+        mbtn.disabled = !active;
+        cbtn.classList.toggle("on", Object.keys(cheat).some((k) => cheat[k]));
+        const plabel = pbtn.querySelector(".rr-btn-label");
+        if (plabel) plabel.textContent = ovName === "pause" ? "Resume" : "Pause";
+        pbtn.setAttribute("aria-label", ovName === "pause" ? "Resume" : "Pause");
+        root.querySelectorAll("[data-ch]").forEach((b) => {
+            const on = !!cheat[b.dataset.ch];
+            b.classList.toggle("on", on);
+            const v = b.querySelector("[data-chv]");
+            if (v) v.textContent = on ? "Aktif" : "Mati";
+        });
+        syncHud();
         if (inGame) resize();
     }
-    function overlayHtml() {
-        if (ovName === "howto") return HOWTO;
-        if (ovName === "wait") return `<div class="rr-card"><h3>Menunggu host</h3><p>Balapan dimulai begitu host selesai menyiapkan track.</p></div>`;
-        if (ovName === "pause") return `<div class="rr-card"><h3>Pause</h3><div class="rr-row"><button class="rr-btn p" data-close type="button">Lanjut</button><button class="rr-btn" data-restart type="button">Ulangi</button></div></div>`;
-        if (ovName === "cheat") {
-            return `<div class="rr-card"><h3>Cheat</h3>
-      ${CHEATS.map(([k, n]) => `<div class="rr-line"><span>${n}</span><button class="rr-btn" data-ch="${k}" type="button">${cheat[k] ? "Aktif" : "Mati"}</button></div>`).join("")}
-      <div class="rr-row"><button class="rr-btn" data-chact="repair" type="button">Perbaiki mobil</button><button class="rr-btn" data-chact="nitro" type="button">Isi nitro</button><button class="rr-btn" data-chact="cp" type="button">Loncat ke checkpoint</button></div>
-      <p class="rr-tag">Cheat dipakai = rekor dan papan skor tidak disimpan.</p>
-      <div class="rr-row"><button class="rr-btn p" data-close type="button">Tutup</button></div></div>`;
-        }
-        if (ovName === "results" && game?.res) {
-            return `<div class="rr-card"><h3>${game.res.title}</h3>${game.res.html}
-      <div class="rr-row">${online ? "" : `<button class="rr-btn p" data-restart type="button">Ulangi</button><button class="rr-btn" data-newtrack type="button">Track baru</button><button class="rr-btn" data-tomenu type="button">Menu</button>`}</div></div>`;
-        }
-        return "";
-    }
     function openOv(n) { ovName = n; render(); }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function togglePause() {
+        if (!game || online || game.phase === "done") return;
+        if (helpOpen) { toggleHelp(false); return; }
+        if (cheatsOpen) { cheatsOpen = false; render(); return; }
+        ovName = ovName === "pause" ? null : "pause";
+        render();
+    }
+    function toMenu() { game = null; ovName = null; cheatsOpen = false; setStatus("Siap"); render(); }
 
     /* ------------------------------ game setup */
     function baseGame(T, cfg) {
@@ -423,7 +590,6 @@ export function mount(root, context = {}) {
         game = g; ovName = null; acc = 0;
         setStatus("Siap start");
         render();
-        if (!store.get("rr.seenHelp")) { store.set("rr.seenHelp", 1); openOv("howto"); }
     }
     function startOnline() {
         const T = makeSolvable(state.seed, "asphalt");
@@ -458,9 +624,19 @@ export function mount(root, context = {}) {
     }
     const onKeyDown = (e) => {
         if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
-        keys[e.code] = true;
-        if (game && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
-        if (game && !online && (e.code === "KeyP" || e.code === "Escape") && game.phase !== "done") { ovName === "pause" ? openOv(null) : !ovName && openOv("pause"); }
+        const c = e.code;
+        // Prioritas: help → cheats → pause/escape → aksi game.
+        if (c === "KeyH") { toggleHelp(); keys[c] = false; e.preventDefault(); return; }
+        if (c === "KeyC") { if (!helpOpen && game && !online) { cheatsOpen = !cheatsOpen; render(); } keys[c] = false; e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (game && !online) togglePause();
+            keys[c] = false; e.preventDefault(); return;
+        }
+        if (c === "KeyR") { if (game && !online) startGame(game.cfg.mode, game.cfg.seed); keys[c] = false; e.preventDefault(); return; }
+        keys[c] = true;
+        if (game && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(c)) e.preventDefault();
     };
     const onKeyUp = (e) => { keys[e.code] = false; };
     const onBlur = () => { for (const k in keys) keys[k] = false; for (const k in vk) vk[k] = 0; };
@@ -473,7 +649,7 @@ export function mount(root, context = {}) {
     const onCtx = (e) => e.preventDefault();
     cv.addEventListener("mousemove", onMouseMove); cv.addEventListener("mousedown", onMouseDown); window.addEventListener("mouseup", onMouseUp); cv.addEventListener("contextmenu", onCtx);
 
-    const vkRoot = $("[data-vkroot]"), vkPtr = new Map();
+    const vkPtr = new Map();
     const vkDown = (e) => { const b = e.target.closest("[data-vk]"); if (!b) return; vk[b.dataset.vk] = 1; b.classList.add("on"); vkPtr.set(e.pointerId, b); e.preventDefault(); };
     const vkUp = (e) => { const b = vkPtr.get(e.pointerId); if (!b) return; vk[b.dataset.vk] = 0; b.classList.remove("on"); vkPtr.delete(e.pointerId); };
     vkRoot.addEventListener("pointerdown", vkDown); vkRoot.addEventListener("pointerup", vkUp); vkRoot.addEventListener("pointercancel", vkUp);
@@ -495,19 +671,25 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const b = event.target.closest("button");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { if (game && !online && !helpOpen) { cheatsOpen = !cheatsOpen; render(); } return; }
+        if (t.closest("[data-cheat-close]")) { cheatsOpen = false; render(); return; }
+        if (t.closest("[data-pause]") || t.closest("[data-resume]")) { togglePause(); return; }
+        if (t.closest("[data-tomenu]")) { toMenu(); return; }
+        if (t.closest("[data-restart]") && game) { startGame(game.cfg.mode, game.cfg.seed); return; }
+        if (t.closest("[data-newtrack]") && game) {
+            opt.seed = randSeed(); $("[data-seed]").value = opt.seed;
+            startGame(game.cfg.mode === "daily" ? "trial" : game.cfg.mode); return;
+        }
+        const b = t.closest("button");
         if (!b) return;
         const d = b.dataset;
         if (d.mode) startGame(d.mode);
         else if (d.newseed !== undefined) { opt.seed = randSeed(); $("[data-seed]").value = opt.seed; }
-        else if (d.howto !== undefined) openOv(ovName === "howto" ? null : "howto");
-        else if (d.cheat !== undefined) openOv("cheat");
-        else if (d.pause !== undefined) openOv("pause");
-        else if (d.close !== undefined) openOv(null);
-        else if (d.tomenu !== undefined) { game = null; ovName = null; setStatus("Siap"); render(); }
-        else if (d.restart !== undefined && game) startGame(game.cfg.mode, game.cfg.mode === "daily" ? game.cfg.seed : game.cfg.seed);
-        else if (d.newtrack !== undefined && game) { opt.seed = randSeed(); $("[data-seed]").value = opt.seed; startGame(game.cfg.mode === "daily" ? "trial" : game.cfg.mode); }
         else if (d.ch) { cheat[d.ch] = !cheat[d.ch]; if (cheat[d.ch]) cheat.used = true; render(); }
         else if (d.chact && game) cheatAction(d.chact);
     }
@@ -521,7 +703,8 @@ export function mount(root, context = {}) {
             c.x = p[0]; c.y = p[1]; c.a = a0; c.vx = Math.cos(a0) * sp; c.vy = Math.sin(a0) * sp;
             project(T, c, true); c.lastIdx = c.idx; c.prog = base + 0.6; c.maxProg = c.prog; c.idx = (base + 0.6) % T.N; c.lastIdx = c.idx;
         }
-        openOv(null);
+        cheatsOpen = false;
+        render();
     }
     function handleInput(e) {
         const t = e.target;
@@ -628,11 +811,12 @@ export function mount(root, context = {}) {
     /* ------------------------------ render */
     function resize() {
         dpr = Math.min(2, window.devicePixelRatio || 1);
-        W = stage.clientWidth; H = stage.clientHeight;
+        const r = board.getBoundingClientRect();
+        W = r.width || board.clientWidth; H = r.height || board.clientHeight;
         cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     }
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => game && resize()) : null;
-    ro?.observe(stage);
+    ro?.observe(board);
 
     function pill(txt, x, y, o = {}) {
         const s = o.s || 13; ctx.font = `${o.w || 600} ${s}px ui-monospace,Menlo,Consolas,monospace`;
@@ -697,16 +881,10 @@ export function mount(root, context = {}) {
         hud(g, v, car);
     }
     function hud(g, v, c) {
-        const T = g.T, cfg = g.cfg, s = v.w < 460 ? 0.85 : 1, x0 = v.x + 10, y0 = v.y + 10, rx = v.x + v.w - 10;
+        const T = g.T, cfg = g.cfg, s = v.w < 460 ? 0.85 : 1, y0 = v.y + 10;
         ctx.save(); ctx.beginPath(); ctx.rect(v.x, v.y, v.w, v.h); ctx.clip();
-        pill(Math.round(Math.hypot(c.vx, c.vy) * 0.5) + " km/h", x0, y0, { s: 15 * s, w: 700 });
-        pill((SURF[c.sid] || SURF.grass).n, x0, y0 + 30 * s, { s: 11 * s, bg: "rgba(255,255,255,.6)" });
-        const tt = g.phase === "countdown" ? 0 : c.finished ? c.finishTime : g.t;
-        pill(`Lap ${Math.min(c.lap + 1, cfg.laps)}/${cfg.laps}   ${fmt(tt)}`, v.x + v.w / 2, y0, { al: "c", s: 14 * s });
-        if (cfg.timeAttack) { pill("Terbaik " + fmt(g.best), rx, y0, { al: "r", s: 12 * s }); pill("Par " + fmt(T.par), rx, y0 + 28 * s, { al: "r", s: 11 * s, bg: "rgba(255,255,255,.6)" }); }
-        else pill(`P${c.pos}/${g.cars.length}`, rx, y0, { al: "r", s: 16 * s, w: 700 });
-        bar(x0, v.y + v.h - 26 - (opt.touch && cfg.mode !== "local" ? 70 : 0), 110, 16, c.nitro / 100, "#f97316", "nitro");
-        if (cfg.dmg) bar(x0 + 118, v.y + v.h - 26 - (opt.touch ? 70 : 0), 110, 16, 1 - c.dmg / 100, c.dmg > 60 ? "#ef4444" : "#10b981", "kondisi");
+        // Statistik (waktu, lap, posisi, kecepatan, permukaan, nitro, damage) ada di bar HUD.
+        // Board hanya menampilkan umpan balik dalam arena: pace note, arah salah, dan flash.
         if (cfg.notes) {
             const N = T.N, ns = T.notes.map((n) => ({ n, d: (((n.i - c.idx) % N) + N) % N })).filter((o) => o.d < 30 && o.d > 1).sort((a, b) => a.d - b.d).slice(0, 2);
             ns.forEach((o, i) => pill(`${o.n.txt}  ${Math.round((o.d * S) / 2)}m`, v.x + v.w / 2, y0 + 38 * s + i * 30 * s, { al: "c", s: (i ? 12 : 16) * s, w: 700, bg: i ? "rgba(255,255,255,.65)" : "rgba(17,24,39,.88)", fg: i ? "#111827" : "#fff" }));
@@ -731,11 +909,24 @@ export function mount(root, context = {}) {
             if (g.info) pill(g.info, W / 2, H * 0.78, { al: "c", s: 13 });
         }
     }
+    function syncPauseAnchors() {
+        const p = paused(), now = Date.now();
+        if (p && !wasPaused) pausedAt = now;
+        else if (!p && wasPaused && pausedAt) {
+            const shift = now - pausedAt;
+            if (shift > 0 && online && state?.startAt) state.startAt += shift;
+            pausedAt = 0;
+            last = performance.now(); // hindari lompatan dt/animasi saat resume
+        }
+        wasPaused = p;
+    }
     function frame(ts) {
         raf = requestAnimationFrame(frame);
+        syncPauseAnchors();
         const dt = Math.min(0.05, (ts - last) / 1000 || 0.016); last = ts;
         if (game && !paused()) { acc += dt; let n = 0; while (acc >= 1 / 60 && n++ < 6) { tick(1 / 60); acc -= 1 / 60; } }
         draw();
+        if (game) syncHud();
     }
 
     /* ------------------------------ boot */

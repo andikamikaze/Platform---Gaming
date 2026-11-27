@@ -1,3 +1,5 @@
+import { iconSVG } from "../JS/icons.js";
+
 /*
   mini-soccer.js — Mini Soccer (mengikuti template mount()/META).
   - id META harus sama dengan nama file tanpa .js  -> "mini-soccer"
@@ -547,9 +549,16 @@ export function mount(root, context = {}) {
 
     const settings = { type: "match", size: 3, diff: "normal", dur: 90, levelN: 1, seed: (Math.random() * 1e9) | 0 };
     const cheats = {};                          /* hanya mode lokal */
-    let cheatOpen = false, helpOpen = false, forceTouch = false;
+    let cheatOpen = false, helpOpen = false, forceTouch = false, paused = false;
+    let pauseStart = 0;
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (e) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("miniSoccerHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("miniSoccerHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
 
     /* ---------------- input ---------------- */
     const keys = { up: false, down: false, left: false, right: false };
@@ -564,69 +573,68 @@ export function mount(root, context = {}) {
 
     /* ---------------- DOM ---------------- */
     root.innerHTML = `
-<div class="ms-game game-app">
+<div class="game-app ms-game game-fill" data-ms>
 <style>
-.ms-game{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--panel:#f8fafc;--blue:#2563eb;--red:#ef4444;--acc:#16a34a;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;max-width:920px;margin:0 auto}
+.ms-game{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--panel:#f8fafc;--blue:#2563eb;--red:#ef4444;--acc:#16a34a;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;max-width:920px;width:100%;margin:0 auto;gap:10px}
 .ms-game [hidden]{display:none!important}
 .ms-game *{box-sizing:border-box}
-.ms-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
-.ms-intro h2{margin:0;font-size:18px;letter-spacing:-.01em}
-.ms-intro p{margin:2px 0 0;font-size:12.5px;color:var(--mut)}
-.ms-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:4px 10px;background:#fff;white-space:nowrap}
-.ms-status .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);display:inline-block}
-.ms-panel{border:1px solid var(--line);border-radius:16px;background:#fff;padding:12px}
-.ms-score{display:flex;align-items:center;justify-content:center;gap:16px;padding:2px 0 8px}
-.ms-team{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--mut)}
-.ms-team i{width:9px;height:9px;border-radius:50%;display:inline-block}
-.ms-team strong{font-size:22px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;min-width:20px;text-align:center}
-.ms-mid{text-align:center;line-height:1}
-.ms-mid span{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
-.ms-mid small{display:block;font-size:9.5px;letter-spacing:.12em;color:var(--mut);margin-top:3px}
-.ms-power{height:4px;border-radius:4px;background:var(--line);overflow:hidden;margin:0 0 8px;opacity:0;transition:opacity .15s}
+.ms-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font:600 10.5px/1.35 ui-sans-serif,system-ui,sans-serif}
+.ms-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--mut);white-space:nowrap}
+.ms-chip b{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
+.ms-chip small{font-size:9px;letter-spacing:.08em}
+.ms-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.ms-status-dot{background:var(--acc)}
+.ms-power{width:54px;height:4px;border-radius:4px;background:var(--line);overflow:hidden;opacity:.35;transition:opacity .16s}
 .ms-power i{display:block;height:100%;width:0;background:var(--acc);border-radius:4px;transition:width .05s linear}
-.ms-stage{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fbfdfc}
-.ms-stage svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
-.ms-flash{position:absolute;top:36%;left:50%;transform:translate(-50%,-50%);font-size:clamp(18px,3.6vw,32px);font-weight:800;letter-spacing:.04em;color:var(--ink);text-shadow:0 1px 0 #fff,0 6px 24px rgba(15,23,42,.18);opacity:0;transition:opacity .15s;pointer-events:none;text-align:center;width:92%}
-.ms-ring{animation:msSpin 7s linear infinite;transform-box:fill-box;transform-origin:center}
-@keyframes msSpin{to{transform:rotate(360deg)}}
-.ms-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.88);backdrop-filter:blur(3px);z-index:5;overflow:auto;padding:14px}
-.ms-card{width:100%;max-width:430px;display:flex;flex-direction:column;gap:11px;text-align:center;padding:8px 4px}
-.ms-card h3{margin:0;font-size:21px;letter-spacing:-.01em}
-.ms-card p{margin:0;font-size:12.5px;color:var(--mut);line-height:1.55}
-.ms-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;font-weight:600}
-.ms-select{border:1px solid var(--line);border-radius:9px;background:#fff;padding:6px 9px;font-size:12.5px;font-weight:600;color:var(--ink);min-width:130px}
-.ms-tabs{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
-.ms-tabs button{flex:1;border:0;background:transparent;border-radius:8px;padding:7px 8px;font-size:12.5px;font-weight:700;color:var(--mut);cursor:pointer}
-.ms-tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(15,23,42,.10)}
-.ms-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .12s,background .12s}
+.ms-spacer{flex:1 1 auto}
+.ms-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:6px 10px;min-height:32px;font-size:11px;font-weight:700;cursor:pointer;transition:border-color .16s,background .16s}
 .ms-btn:hover{border-color:#94a3b8;background:var(--panel)}
+.ms-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .ms-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
 .ms-btn.primary:hover{background:#1e293b}
 .ms-btn.ghost{border-color:transparent;background:transparent;color:var(--mut)}
 .ms-btn.ghost:hover{color:var(--ink);background:var(--panel)}
-.ms-btn.big{padding:11px 18px;font-size:14px}
+.ms-btn.big{padding:9px 14px;min-height:40px;font-size:12px}
 .ms-btn:disabled{opacity:.45;cursor:default}
-.ms-btn .n{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:8px;background:var(--acc);color:#fff;font-size:10.5px;line-height:16px}
+.ms-btn.on{border-color:var(--acc);background:#ecfdf5;color:#15803d}
+.ms-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.ms-icon-btn svg{flex:none;display:block}
+.ms-btn-n{display:inline-block;min-width:15px;padding:0 4px;border-radius:8px;background:var(--acc);color:#fff;font-size:9px;line-height:15px;text-align:center}
+.ms-board{position:relative;width:100%;aspect-ratio:880/520;padding:0;border:1px solid var(--line);border-radius:12px;background:#fbfdfc;overflow:hidden}
+.ms-game.game-fill > .ms-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.ms-svg{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.ms-flash{position:absolute;top:36%;left:50%;transform:translate(-50%,-50%);font-size:clamp(18px,3.6vw,32px);font-weight:800;letter-spacing:.04em;color:var(--ink);text-shadow:0 1px 0 #fff,0 6px 24px rgba(15,23,42,.18);opacity:0;transition:opacity .16s;pointer-events:none;text-align:center;width:92%;z-index:2}
+.ms-ring{animation:msSpin 7s linear infinite;transform-box:fill-box;transform-origin:center}
+@keyframes msSpin{to{transform:rotate(360deg)}}
+.ms-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.88);backdrop-filter:blur(3px);overflow:auto;padding:12px}
+.ms-card{width:100%;max-width:460px;max-height:100%;display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:center;box-shadow:0 10px 30px rgba(15,23,42,.08);overflow:hidden}
+.ms-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ms-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+.ms-tag{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 9px;background:var(--panel)}
+.ms-body{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.ms-body p{margin:0;font-size:12.5px;color:var(--mut);line-height:1.55}
+.ms-foot{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.ms-note{font-size:10.5px;color:var(--mut);line-height:1.45}
+.ms-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12.5px;font-weight:600;text-align:left}
+.ms-select{border:1px solid var(--line);border-radius:9px;background:#fff;padding:8px 10px;min-height:40px;font-size:12.5px;font-weight:600;color:var(--ink);min-width:130px;max-width:100%}
+.ms-tabs{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
+.ms-tabs button{flex:1;min-width:0;border:0;background:transparent;border-radius:8px;padding:8px;font-size:12.5px;font-weight:700;color:var(--mut);cursor:pointer;transition:background .16s,color .16s}
+.ms-tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(15,23,42,.08)}
 .ms-help{text-align:left;font-size:12.5px;line-height:1.6;color:var(--ink);display:flex;flex-direction:column;gap:8px}
 .ms-help h4{margin:2px 0 0;font-size:11px;letter-spacing:.1em;color:var(--mut)}
 .ms-help ul{margin:0;padding-left:16px}
 .ms-help li{margin:2px 0}
 .ms-help kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--panel);padding:0 5px;font-size:11px;font-family:inherit;font-weight:700}
-.ms-cheats{position:absolute;top:10px;right:10px;width:232px;max-height:calc(100% - 20px);overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.12);padding:11px;z-index:6;text-align:left}
-.ms-cheats h4{margin:0 0 6px;font-size:12px;letter-spacing:.08em;display:flex;justify-content:space-between;align-items:center}
-.ms-cheats h4 button{border:0;background:none;font-size:15px;cursor:pointer;color:var(--mut);line-height:1}
-.ms-cheats label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:4.5px 0;border-bottom:1px dashed var(--line);cursor:pointer}
-.ms-cheats label:last-of-type{border-bottom:0}
-.ms-cheats input{accent-color:var(--acc);width:15px;height:15px}
-.ms-cheats .ops{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.ms-cheats .ops .ms-btn{padding:5px 9px;font-size:11.5px}
-.ms-cheats .note{font-size:10.5px;color:var(--mut);margin-top:7px}
-.ms-touch{display:none;justify-content:space-between;align-items:center;gap:12px;padding:12px 2px 2px;user-select:none;-webkit-user-select:none}
+.ms-cheats{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;text-align:left}
+.ms-cheats label{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:38px;font-size:12px;font-weight:600;padding:5px 8px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer}
+.ms-cheats input{accent-color:var(--acc);width:16px;height:16px;flex:none}
+.ms-ops{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.ms-ops .ms-btn{padding:6px 10px;font-size:11.5px}
+.ms-touch{display:none;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 2px 2px;user-select:none;-webkit-user-select:none}
 .ms-game.touch .ms-touch{display:flex}
-.ms-game.touch .ms-hints{display:none}
-.ms-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(2,46px);gap:5px}
+.ms-dpad{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(2,48px);gap:4px}
 .ms-dpad span{visibility:hidden}
-.ms-tbtn{border:1px solid var(--line);background:#fff;border-radius:12px;color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;letter-spacing:.05em;cursor:pointer;touch-action:none;-webkit-tap-highlight-color:transparent}
+.ms-tbtn{border:1px solid var(--line);background:#fff;border-radius:10px;color:var(--ink);display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;font-size:10px;font-weight:800;letter-spacing:.05em;cursor:pointer;touch-action:none;-webkit-tap-highlight-color:transparent}
 .ms-tbtn svg{width:20px;height:20px;pointer-events:none}
 .ms-tbtn.on,.ms-tbtn:active{background:var(--ink);color:#fff;border-color:var(--ink)}
 .ms-tbtn.cd{opacity:.4}
@@ -634,56 +642,81 @@ export function mount(root, context = {}) {
 .ms-acts .ms-tbtn{width:52px;height:52px;border-radius:50%}
 .ms-acts .shoot{width:68px;height:68px;background:var(--acc);border-color:var(--acc);color:#fff;font-size:11px}
 .ms-acts .shoot.on,.ms-acts .shoot:active{background:#15803d}
-.ms-hints{margin:9px 0 0;font-size:11.5px;color:var(--mut);text-align:center;line-height:1.9}
-.ms-hints kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--panel);padding:0 5px;font-size:10.5px;font-family:inherit;font-weight:700}
-.ms-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
-.ms-actions .sp{flex:1}
 .ms-spin{width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;margin:0 auto;animation:msRot 1s linear infinite}
 @keyframes msRot{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ms-game *{animation:none!important;transition-duration:.01ms!important}}
+@media (pointer:coarse){.ms-game button:not(:disabled){min-height:44px}}
+
+/* --- fill height + mobile refinements (last: beat pointer:coarse) --- */
 @media (max-width:640px){
-  .ms-panel{padding:8px}
-  .ms-team strong{font-size:18px}
-  .ms-mid span{font-size:17px}
-  .ms-intro p{display:none}
-  .ms-cheats{width:200px}
+.ms-game.game-fill > .ms-board:not(:has(.ms-ov:not([hidden]))){aspect-ratio:880/520;flex:0 0 auto}
+.ms-game.game-fill > .ms-board:has(.ms-ov:not([hidden])){aspect-ratio:auto;flex:0 0 auto;min-height:min(70dvh,620px)}
+.ms-game .ms-hud{gap:5px}
+.ms-game .ms-hud .ms-chip{padding:4px 6px;font-size:9px}
+.ms-game .ms-hud .ms-status-chip{max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.ms-game .ms-hud .ms-status-chip b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-game .ms-hud .ms-power{width:32px}
+.ms-game .ms-hud .ms-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.ms-game .ms-hud .ms-btn-label,.ms-game .ms-hud .ms-spacer{display:none}
+.ms-game .ms-ov{padding:8px}
+.ms-game .ms-card{width:100%;height:100%;max-height:100%;padding:10px;border-radius:10px}
+.ms-game .ms-body,.ms-game .ms-help{scrollbar-width:none}
+.ms-game .ms-body::-webkit-scrollbar,.ms-game .ms-help::-webkit-scrollbar{display:none}
+.ms-game .ms-note{display:none}
+.ms-game .ms-btn{min-height:40px}
+.ms-game .ms-touch{gap:4px}
+.ms-game .ms-dpad{grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,44px)}
 }
 </style>
-<div class="game-intro ms-intro">
-  <div><h2>Mini Soccer</h2><p>Dribble · Slide tackle · Tendangan bertenaga — kalahkan bot atau temanmu.</p></div>
-  <span class="game-status ms-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+<div class="ms-hud">
+  <span class="ms-chip ms-status-chip"><i class="ms-dot ms-status-dot"></i><b data-status>Siap</b></span>
+  <span class="ms-chip"><i class="ms-dot" style="background:var(--blue)"></i><b data-name0>KAMU</b> <b data-s0>0</b></span>
+  <span class="ms-chip"><b data-s1>0</b> <b data-name1>BOT</b><i class="ms-dot" style="background:var(--red)"></i></span>
+  <span class="ms-chip">WAKTU <b data-clock>90</b><small data-sub>DETIK</small></span>
+  <span class="ms-chip" data-levelchip hidden>LV <b data-leveln>1</b> · <b data-goal>0/2</b></span>
+  <span class="ms-chip ms-power" data-powerwrap title="Daya tendangan"><i data-power></i></span>
+  <span class="ms-spacer"></span>
+  <button class="ms-btn ms-icon-btn" type="button" data-help data-act="help" aria-label="Cara main" title="Cara main (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ms-btn-label">Bantuan</span></button>
+  <button class="ms-btn ms-icon-btn" type="button" data-cheats data-act="cheats" aria-label="Cheat" title="Cheat (C)">${iconSVG("wrench", { size: 14 })}<span class="ms-btn-label" data-cheat-label>Cheat</span><b class="ms-btn-n" data-cheatn hidden>0</b></button>
+  <button class="ms-btn ms-icon-btn" type="button" data-pause data-act="pause" aria-label="Jeda" title="Jeda (P)"><span data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span data-resume-icon hidden>${iconSVG("play", { size: 14 })}</span><span class="ms-btn-label" data-pause-label>Jeda</span></button>
+  <button class="ms-btn ms-icon-btn" type="button" data-restart data-act="restart" title="Ulang (R)">${iconSVG("refresh", { size: 14 })}<span class="ms-btn-label">Ulang</span></button>
+  <button class="ms-btn ms-icon-btn" type="button" data-switch data-act="switch" data-hud-switch aria-label="Ganti pemain" title="Ganti pemain (Q)">${iconSVG("arrowLeftRight", { size: 14 })}<span class="ms-btn-label">Ganti</span></button>
+  <button class="ms-btn ms-icon-btn" type="button" data-touch-toggle data-act="touch" data-touchbtn aria-label="Kontrol sentuh" title="Kontrol sentuh">${iconSVG("gamepad2", { size: 14 })}<span class="ms-btn-label">Sentuh</span></button>
+  <button class="ms-btn ms-icon-btn" type="button" data-exit data-act="exit" aria-label="Keluar game" title="Keluar game">${iconSVG("logOut", { size: 14 })}<span class="ms-btn-label">Keluar</span></button>
 </div>
-<section class="game-panel ms-panel" data-board>
-  <div class="ms-score">
-    <span class="ms-team"><i style="background:var(--blue)"></i><b data-name0>KAMU</b><strong data-s0>0</strong></span>
-    <span class="ms-mid"><span data-clock>90</span><small data-sub>DETIK</small></span>
-    <span class="ms-team"><strong data-s1>0</strong><b data-name1>BOT</b><i style="background:var(--red)"></i></span>
-  </div>
-  <div class="ms-power" data-powerwrap><i data-power></i></div>
-  <div class="ms-stage">
-    <svg data-svg viewBox="0 0 880 520" aria-hidden="true"></svg>
-    <div class="ms-flash" data-flash></div>
+<section class="game-panel ms-board" data-board>
+  <svg class="ms-svg" data-svg viewBox="0 0 880 520" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+  <div class="ms-flash" data-flash></div>
 
-    <div class="ms-cheats" data-cheatpanel hidden>
-      <h4>CHEAT <button type="button" data-act="cheat-close" aria-label="Tutup">×</button></h4>
-      <label>Lari cepat <input type="checkbox" data-cheat="speed"></label>
-      <label>Tendangan super <input type="checkbox" data-cheat="power"></label>
-      <label>Magnet bola <input type="checkbox" data-cheat="magnet"></label>
-      <label>Bola jinak <input type="checkbox" data-cheat="tame"></label>
-      <label>Bekukan lawan <input type="checkbox" data-cheat="freeze"></label>
-      <label>Gawang lebar <input type="checkbox" data-cheat="biggoal"></label>
-      <label>Bekukan waktu <input type="checkbox" data-cheat="notime"></label>
-      <label>Tembus rintangan <input type="checkbox" data-cheat="noclip"></label>
-      <div class="ops">
-        <button type="button" class="ms-btn" data-act="cheat-goal">+1 Gol</button>
-        <button type="button" class="ms-btn" data-act="cheat-clear" data-cheatclear hidden>Selesaikan level</button>
-        <button type="button" class="ms-btn" data-act="cheat-reset">Reset</button>
+  <div class="ms-ov" data-ov="cheat" hidden>
+    <div class="ms-card">
+      <div class="ms-head"><h3>Cheat</h3><button class="ms-btn" type="button" data-act="cheat-close" aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+      <div class="ms-body">
+        <div class="ms-cheats">
+          <label>Lari cepat <input type="checkbox" data-cheat="speed"></label>
+          <label>Tendangan super <input type="checkbox" data-cheat="power"></label>
+          <label>Magnet bola <input type="checkbox" data-cheat="magnet"></label>
+          <label>Bola jinak <input type="checkbox" data-cheat="tame"></label>
+          <label>Bekukan lawan <input type="checkbox" data-cheat="freeze"></label>
+          <label>Gawang lebar <input type="checkbox" data-cheat="biggoal"></label>
+          <label>Bekukan waktu <input type="checkbox" data-cheat="notime"></label>
+          <label>Tembus rintangan <input type="checkbox" data-cheat="noclip"></label>
+        </div>
+        <div class="ms-ops">
+          <button type="button" class="ms-btn" data-act="cheat-goal">+1 Gol</button>
+          <button type="button" class="ms-btn" data-act="cheat-clear" data-cheatclear hidden>Selesaikan level</button>
+          <button type="button" class="ms-btn" data-act="cheat-reset">Reset</button>
+        </div>
+        <p class="ms-note">Cheat hanya berlaku di mode lokal (vs bot / level).</p>
       </div>
-      <div class="note">Cheat hanya berlaku di mode lokal (vs bot / level).</div>
+      <div class="ms-foot"><button type="button" class="ms-btn primary" data-act="cheat-close">Selesai</button></div>
     </div>
+  </div>
 
-    <div class="ms-ov" data-ov="setup">
-      <div class="ms-card">
-        <h3>Mini Soccer</h3>
+  <div class="ms-ov" data-ov="setup">
+    <div class="ms-card">
+      <div class="ms-head"><h3>Mini Soccer</h3><span class="ms-tag" data-setuplabel>VS BOT</span></div>
+      <div class="ms-body">
         <p data-setupdesc>Cetak gol lebih banyak sebelum waktu habis. Undian menentukan siapa kick off duluan.</p>
         <div class="ms-tabs" data-tabs>
           <button type="button" data-act="tab" data-tab="match" class="on">Vs Bot</button>
@@ -709,98 +742,103 @@ export function mount(root, context = {}) {
             <option value="90" selected>90 detik</option>
             <option value="120">120 detik</option>
           </select></div>
-        <p data-note></p>
-        <button type="button" class="ms-btn primary big" data-act="start" data-startbtn>Mulai</button>
-        <button type="button" class="ms-btn ghost" data-act="help">Cara main</button>
+        <p class="ms-note" data-note></p>
       </div>
-    </div>
-
-    <div class="ms-ov" data-ov="result" hidden>
-      <div class="ms-card">
-        <h3 data-rtitle>Selesai</h3>
-        <p data-rsub></p>
-        <div data-rbtns style="display:flex;flex-direction:column;gap:8px"></div>
-      </div>
-    </div>
-
-    <div class="ms-ov" data-ov="help" hidden>
-      <div class="ms-card" style="max-width:480px">
-        <h3>Cara Main</h3>
-        <div class="ms-help">
-          <h4>GERAK & BIDIK</h4>
-          <ul>
-            <li>Desktop: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / panah untuk bergerak. Arah hadap mengikuti gerakan, atau <b>kursor mouse</b> untuk membidik bebas.</li>
-            <li>Mobile: D-pad kiri untuk bergerak; arah hadap = arah gerak.</li>
-          </ul>
-          <h4>MEKANIK</h4>
-          <ul>
-            <li><b>Dribble</b> — sentuh bola: bola lengket di depan kaki selama kamu bergerak.</li>
-            <li><b>Shoot</b> — tahan <kbd>Space</kbd> / klik kiri / tombol <b>SHOOT</b> untuk mengisi tenaga, lepas untuk menendang ke arah hadap. Ketuk cepat = tendangan pelan.</li>
-            <li><b>Slide tackle</b> — <kbd>Shift</kbd> / klik kanan / tombol <b>SLIDE</b>: meluncur, merebut bola, dan membuat lawan terpental sesaat. Ada cooldown.</li>
-            <li><b>Pass</b> — <kbd>E</kbd> / tombol <b>PASS</b>: oper ke teman di depan.</li>
-            <li><b>Ganti pemain</b> — <kbd>Q</kbd> / tombol <b>GANTI</b> (mode lokal). Kiper & rekan tim digerakkan AI.</li>
-          </ul>
-          <h4>ATURAN</h4>
-          <ul>
-            <li>Undian acak menentukan kick off pertama; setelah gol, tim yang kebobolan kick off.</li>
-            <li><b>Level Acak</b>: rintangan dibuat acak tetapi <b>dijamin ada jalur</b> ke gawang. Cetak target gol sebelum waktu habis untuk naik level.</li>
-            <li><b>Multiplayer</b>: tim (biru/merah) dan nomor pemain yang kamu kendalikan <b>diacak</b> tiap mulai. Rekan tim lainnya AI.</li>
-            <li>Cheat (tombol <b>Cheat</b> / <kbd>C</kbd>) hanya untuk mode lokal.</li>
-          </ul>
-        </div>
-        <button type="button" class="ms-btn primary" data-act="help-close">Mengerti</button>
-      </div>
-    </div>
-
-    <div class="ms-ov" data-ov="wait" hidden>
-      <div class="ms-card"><div class="ms-spin"></div><h3>Menunggu tuan rumah…</h3><p>Host sedang menyiapkan pertandingan.</p></div>
+      <div class="ms-foot"><button type="button" class="ms-btn" data-act="help">Cara main</button><button type="button" class="ms-btn primary big" data-act="start" data-startbtn>Mulai</button></div>
     </div>
   </div>
 
-  <div class="ms-touch">
-    <div class="ms-dpad">
-      <span></span>
-      <button type="button" class="ms-tbtn" data-tc="up" aria-label="Atas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
-      <span></span>
-      <button type="button" class="ms-tbtn" data-tc="left" aria-label="Kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-      <button type="button" class="ms-tbtn" data-tc="down" aria-label="Bawah"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg></button>
-      <button type="button" class="ms-tbtn" data-tc="right" aria-label="Kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-    </div>
-    <div class="ms-acts">
-      <button type="button" class="ms-tbtn" data-tc="switch" data-switchbtn>GANTI</button>
-      <button type="button" class="ms-tbtn" data-tc="pass">PASS</button>
-      <button type="button" class="ms-tbtn" data-tc="slide" data-slidebtn>SLIDE</button>
-      <button type="button" class="ms-tbtn shoot" data-tc="shoot">SHOOT</button>
+  <div class="ms-ov" data-ov="result" hidden>
+    <div class="ms-card">
+      <div class="ms-head"><h3 data-rtitle>Selesai</h3></div>
+      <div class="ms-body"><p data-rsub></p></div>
+      <div class="ms-foot"><div data-rbtns style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"></div></div>
     </div>
   </div>
-  <p class="ms-hints"><kbd>WASD</kbd> gerak · mouse bidik · tahan <kbd>Space</kbd>/klik = tembak · <kbd>Shift</kbd>/klik kanan = slide · <kbd>E</kbd> oper · <kbd>Q</kbd> ganti pemain · <kbd>C</kbd> cheat · <kbd>H</kbd> bantuan</p>
+
+  <div class="ms-ov" data-ov="help" hidden>
+    <div class="ms-card">
+      <div class="ms-head"><h3>Cara Main</h3><button class="ms-btn" type="button" data-act="help-close" aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+      <div class="ms-body ms-help">
+        <h4>GERAK & BIDIK</h4>
+        <ul>
+          <li>Desktop: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / panah untuk bergerak. Arah hadap mengikuti gerakan, atau <b>kursor mouse</b> untuk membidik bebas.</li>
+          <li>Mobile: D-pad kiri untuk bergerak; arah hadap = arah gerak. Tombol <b>Sentuh</b> di HUD menampilkan kontrol sentuh.</li>
+        </ul>
+        <h4>MEKANIK</h4>
+        <ul>
+          <li><b>Dribble</b> — sentuh bola: bola lengket di depan kaki selama kamu bergerak.</li>
+          <li><b>Shoot</b> — tahan <kbd>Space</kbd> / klik kiri / tombol <b>SHOOT</b> untuk mengisi tenaga, lepas untuk menendang ke arah hadap. Ketuk cepat = tendangan pelan.</li>
+          <li><b>Slide tackle</b> — <kbd>Shift</kbd> / klik kanan / tombol <b>SLIDE</b>: meluncur, merebut bola, dan membuat lawan terpental sesaat. Ada cooldown.</li>
+          <li><b>Pass</b> — <kbd>E</kbd> / tombol <b>PASS</b>: oper ke teman di depan.</li>
+          <li><b>Ganti pemain</b> — <kbd>Q</kbd> / tombol <b>GANTI</b> (mode lokal). Kiper & rekan tim digerakkan AI.</li>
+        </ul>
+        <h4>ATURAN & TOMBOL</h4>
+        <ul>
+          <li>Undian acak menentukan kick off pertama; setelah gol, tim yang kebobolan kick off.</li>
+          <li><b>Level Acak</b>: rintangan dibuat acak tetapi <b>dijamin ada jalur</b> ke gawang. Cetak target gol sebelum waktu habis untuk naik level.</li>
+          <li><b>Multiplayer</b>: tim (biru/merah) dan nomor pemain yang kamu kendalikan <b>diacak</b> tiap mulai. Rekan tim lainnya AI.</li>
+          <li><kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> jeda · <kbd>Esc</kbd> tutup panel · <kbd>R</kbd> ulang. Cheat hanya untuk mode lokal.</li>
+        </ul>
+      </div>
+      <div class="ms-foot"><span class="ms-note">Tekan H untuk membuka lagi</span><button type="button" class="ms-btn primary" data-act="help-close">Mengerti</button></div>
+    </div>
+  </div>
+
+  <div class="ms-ov" data-ov="pause" hidden>
+    <div class="ms-card">
+      <div class="ms-head"><h3>Dijeda</h3></div>
+      <div class="ms-body"><p>Waktu, bola, dan bot dibekukan. Tekan <kbd>P</kbd> atau tombol Lanjut untuk melanjutkan.</p></div>
+      <div class="ms-foot"><button type="button" class="ms-btn primary" data-act="resume">Lanjut</button></div>
+    </div>
+  </div>
+
+  <div class="ms-ov" data-ov="wait" hidden>
+    <div class="ms-card"><div class="ms-body"><div class="ms-spin"></div><h3>Menunggu tuan rumah…</h3><p>Host sedang menyiapkan pertandingan.</p></div></div>
+  </div>
 </section>
-<div class="game-actions ms-actions">
-  <button type="button" class="ms-btn" data-act="restart" data-restartbtn>Ulang</button>
-  <button type="button" class="ms-btn" data-act="help">Cara Main</button>
-  <button type="button" class="ms-btn" data-act="cheats" data-cheatbtn>Cheat<b class="n" data-cheatn hidden>0</b></button>
-  <button type="button" class="ms-btn" data-act="touch">Kontrol Sentuh</button>
-  <span class="sp"></span>
-  <button type="button" class="ms-btn ghost game-action-button" data-exit>Keluar</button>
+
+<div class="ms-touch">
+  <div class="ms-dpad">
+    <span></span>
+    <button type="button" class="ms-tbtn" data-tc="up" aria-label="Atas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+    <span></span>
+    <button type="button" class="ms-tbtn" data-tc="left" aria-label="Kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+    <button type="button" class="ms-tbtn" data-tc="down" aria-label="Bawah"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg></button>
+    <button type="button" class="ms-tbtn" data-tc="right" aria-label="Kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+  </div>
+  <div class="ms-acts">
+    <button type="button" class="ms-tbtn" data-tc="switch" data-switchbtn>GANTI</button>
+    <button type="button" class="ms-tbtn" data-tc="pass">PASS</button>
+    <button type="button" class="ms-tbtn" data-tc="slide" data-slidebtn>SLIDE</button>
+    <button type="button" class="ms-tbtn shoot" data-tc="shoot">SHOOT</button>
+  </div>
 </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const wrap = $(".ms-game");
+    const board = $("[data-board]");
     const svg = $("[data-svg]");
     const el = {
         status: $("[data-status]"), s0: $("[data-s0]"), s1: $("[data-s1]"),
         name0: $("[data-name0]"), name1: $("[data-name1]"),
         clock: $("[data-clock]"), sub: $("[data-sub]"),
+        levelchip: $("[data-levelchip]"), leveln: $("[data-leveln]"), goal: $("[data-goal]"),
         flash: $("[data-flash]"), power: $("[data-power]"), powerwrap: $("[data-powerwrap]"),
         setup: $('[data-ov="setup"]'), result: $('[data-ov="result"]'),
         help: $('[data-ov="help"]'), wait: $('[data-ov="wait"]'),
+        pause: $('[data-ov="pause"]'), cheat: $('[data-ov="cheat"]'),
         rtitle: $("[data-rtitle]"), rsub: $("[data-rsub]"), rbtns: $("[data-rbtns]"),
         tabs: $("[data-tabs]"), note: $("[data-note]"), setupdesc: $("[data-setupdesc]"),
+        setuplabel: $("[data-setuplabel]"),
         startbtn: $("[data-startbtn]"), durrow: $("[data-durrow]"),
-        cheatpanel: $("[data-cheatpanel]"), cheatbtn: $("[data-cheatbtn]"),
+        cheatbtn: $("[data-cheats]"), cheatlabel: $("[data-cheat-label]"),
         cheatn: $("[data-cheatn]"), cheatclear: $("[data-cheatclear]"),
-        restartbtn: $("[data-restartbtn]"), switchbtn: $("[data-switchbtn]"),
+        pausebtn: $("[data-pause]"), pauseicon: $("[data-pause-icon]"),
+        resumeicon: $("[data-resume-icon]"), pauselabel: $("[data-pause-label]"),
+        restartbtn: $("[data-restart]"), hudswitch: $("[data-hud-switch]"),
+        touchbtn: $("[data-touchbtn]"), switchbtn: $("[data-switchbtn]"),
         slidebtn: $("[data-slidebtn]"),
         setrows: root.querySelectorAll("[data-setrow]"),
         selects: root.querySelectorAll("[data-set]"),
@@ -899,15 +937,18 @@ export function mount(root, context = {}) {
         ballSh.setAttribute("cx", disp.ball.x.toFixed(1));
         ballSh.setAttribute("cy", (disp.ball.y + 9).toFixed(1));
 
-        /* HUD */
+        /* HUD — semua info di bar atas, board hanya arena */
         el.s0.textContent = String(state.score[0]);
         el.s1.textContent = String(state.score[1]);
         el.name0.textContent = mt === 0 ? "KAMU" : (online ? "LAWAN" : "BOT");
         el.name1.textContent = mt === 1 ? "KAMU" : (online ? "LAWAN" : "BOT");
         el.clock.textContent = String(Math.max(0, Math.ceil(state.t)));
-        el.sub.textContent = state.type === "level"
-            ? "LV " + state.level.n + " · GOL " + state.score[0] + "/" + state.level.target
-            : "DETIK";
+        el.sub.textContent = state.type === "level" ? "GOL" : "DETIK";
+        el.levelchip.hidden = state.type !== "level";
+        if (state.type === "level") {
+            el.leveln.textContent = String(state.level.n);
+            el.goal.textContent = state.score[0] + "/" + state.level.target;
+        }
         if (state.msg) {
             el.flash.textContent = state.msg.text;
             el.flash.style.color = state.msg.tone === "blue" ? "#2563eb" : state.msg.tone === "red" ? "#ef4444" : "#0f172a";
@@ -919,15 +960,29 @@ export function mount(root, context = {}) {
         el.powerwrap.style.opacity = chg > 0.02 ? "1" : "0";
         el.slidebtn.classList.toggle("cd", Boolean(me && me.scd > 0));
         el.switchbtn.hidden = online;
+        el.hudswitch.hidden = online;
+        el.touchbtn.classList.toggle("on", touchMode);
 
         /* overlay & status */
-        el.setup.hidden = state.phase !== "lobby" || helpOpen;
-        el.result.hidden = !["end", "clear", "fail"].includes(state.phase) || helpOpen;
+        el.setup.hidden = state.phase !== "lobby" || helpOpen || cheatOpen || paused;
+        el.result.hidden = !["end", "clear", "fail"].includes(state.phase) || helpOpen || cheatOpen || paused;
         el.help.hidden = !helpOpen;
-        el.cheatpanel.hidden = !cheatOpen || online;
+        el.pause.hidden = !paused || helpOpen || cheatOpen;
+        el.cheat.hidden = !cheatOpen || helpOpen || online;
         if (!el.result.hidden) fillResult();
         el.restartbtn.disabled = !authority;
         el.cheatbtn.hidden = online;
+        const activeCheats = Object.keys(cheats).filter((k) => cheats[k]).length;
+        el.cheatbtn.classList.toggle("on", activeCheats > 0);
+        if (el.cheatlabel) el.cheatlabel.textContent = activeCheats ? "Cheat " + activeCheats : "Cheat";
+        el.cheatn.hidden = activeCheats === 0;
+        el.cheatn.textContent = String(activeCheats);
+        el.pauseicon.hidden = paused;
+        el.resumeicon.hidden = !paused;
+        if (el.pauselabel) el.pauselabel.textContent = paused ? "Lanjut" : "Jeda";
+        el.pausebtn.setAttribute("aria-label", paused ? "Lanjut" : "Jeda");
+        el.pausebtn.setAttribute("title", paused ? "Lanjut (P)" : "Jeda (P)");
+        el.pausebtn.disabled = online;
         let statusTxt = online
             ? (authority ? "Online · Host" : "Online · Tamu") + (authority && performance.now() > guestUntil ? " · lawan AI" : "")
             : (state.type === "level" ? "Lokal · Level " + state.level.n : "Lokal · Vs Bot");
@@ -935,6 +990,7 @@ export function mount(root, context = {}) {
             const meP = state.players[ms];
             statusTxt += " · Kamu " + (mt === 0 ? "Biru" : "Merah") + " #" + (meP ? meP.num : "?");
         }
+        if (paused) statusTxt += " · DIJEDA";
         el.status.textContent = statusTxt;
     }
 
@@ -966,6 +1022,7 @@ export function mount(root, context = {}) {
 
     function syncSetup() {
         el.tabs.hidden = online;
+        if (el.setuplabel) el.setuplabel.textContent = online ? "ONLINE" : (settings.type === "level" ? "LEVEL ACAK" : "VS BOT");
         el.setrows.forEach((r) => { r.hidden = !authority; });
         el.startbtn.hidden = !authority;
         el.tabs.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tab === settings.type));
@@ -1044,6 +1101,7 @@ export function mount(root, context = {}) {
                 state.kick === 0 ? "blue" : "red", 1.6);
         }
         helpOpen = false; cheatOpen = false;
+        setPause(false);
         syncSetup();
         publishNow();
     }
@@ -1110,9 +1168,46 @@ export function mount(root, context = {}) {
 
     function edge(f) {
         if (f === "sw" && online) return;
-        if (!state || state.phase !== "play") return;
+        if (!state || state.phase !== "play" || paused || helpOpen || cheatOpen) return;
         localInp[f] = true;
         if (!authority) sendInput(true);
+    }
+
+    /* ---------------- panel & pause ---------------- */
+    function releaseInputs() {
+        keys.up = keys.down = keys.left = keys.right = false;
+        touchDirs.clear();
+        spaceHeld = false; mouseHeld = false; touchShoot = false;
+        localInp.x = 0; localInp.y = 0; localInp.held = false;
+        root.querySelectorAll(".ms-tbtn.on").forEach((b) => b.classList.remove("on"));
+    }
+    function setPause(on) {
+        const next = Boolean(on);
+        if (next === paused) return;
+        if (next) {
+            pauseStart = performance.now();
+            releaseInputs();
+            paused = true;
+        } else {
+            /* geser penanda waktu agar tidak loncat setelah jeda */
+            const shift = Math.max(0, performance.now() - pauseStart);
+            mouseT += shift; guestUntil += shift; lastSend += shift; lastPub += shift;
+            lastT = performance.now();
+            paused = false; pauseStart = 0;
+        }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatOpen = false; setPause(false); releaseInputs(); }
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) { helpOpen = false; setPause(false); releaseInputs(); }
+    }
+    function togglePause() {
+        if (online || helpOpen || cheatOpen) return;
+        setPause(!paused);
     }
 
     /* ---------------- event handler ---------------- */
@@ -1123,16 +1218,19 @@ export function mount(root, context = {}) {
         const act = t.dataset.act;
         if (act === "start" || act === "restart" || act === "again" || act === "retry") { if (authority) startMatch(); }
         else if (act === "next") { if (authority) { settings.levelN++; settings.seed = (Math.random() * 1e9) | 0; startMatch(); } }
-        else if (act === "menu") { if (authority) { state = makeState(settings, online); syncSetup(); publishNow(); } }
+        else if (act === "menu") { if (authority) { state = makeState(settings, online); toggleHelp(false); toggleCheats(false); setPause(false); syncSetup(); publishNow(); } }
         else if (act === "tab") { if (authority && !online) { settings.type = t.dataset.tab; state = makeState(settings, false); syncSetup(); } }
-        else if (act === "help") helpOpen = !helpOpen;
-        else if (act === "help-close") helpOpen = false;
-        else if (act === "cheats") { if (!online) cheatOpen = !cheatOpen; }
-        else if (act === "cheat-close") cheatOpen = false;
+        else if (act === "help") toggleHelp();
+        else if (act === "help-close") toggleHelp(false);
+        else if (act === "cheats") toggleCheats();
+        else if (act === "cheat-close") toggleCheats(false);
+        else if (act === "pause") togglePause();
+        else if (act === "resume") setPause(false);
         else if (act === "cheat-reset") { for (const k of Object.keys(cheats)) cheats[k] = false; syncCheats(); }
         else if (act === "cheat-goal") cheatGoal();
         else if (act === "cheat-clear") { if (authority && !online && state && state.type === "level") { state.phase = "clear"; noteBest(); } }
         else if (act === "touch") { forceTouch = !forceTouch; applyTouchMode(); }
+        else if (act === "switch") edge("sw");
     }
 
     function handleChange(e) {
@@ -1152,22 +1250,38 @@ export function mount(root, context = {}) {
         const tag = e.target && e.target.tagName;
         if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
         const k = e.key.toLowerCase();
+        /* prioritas: bantuan → cheat → jeda → Escape → aksi game */
+        if (k === "h" || k === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "c") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (k === "p") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else togglePause();
+            e.preventDefault(); return;
+        }
+        if (k === "escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (paused) setPause(false);
+            e.preventDefault(); return;
+        }
+        if (helpOpen || cheatOpen || paused) {
+            if (k === " " || e.code === "Space") e.preventDefault();
+            return;
+        }
         if (k === "arrowleft" || k === "a") { keys.left = true; e.preventDefault(); }
         else if (k === "arrowright" || k === "d") { keys.right = true; e.preventDefault(); }
         else if (k === "arrowup" || k === "w") { keys.up = true; e.preventDefault(); }
         else if (k === "arrowdown" || k === "s") { keys.down = true; e.preventDefault(); }
         else if (k === " " || e.code === "Space") {
             e.preventDefault();
-            if (e.repeat || helpOpen) return;
+            if (e.repeat) return;
             if (state && authority && ["lobby", "end", "clear", "fail"].includes(state.phase)) startByPhase();
             else spaceHeld = true;
         }
         else if (k === "shift") { if (!e.repeat) edge("sl"); }
         else if (k === "e") edge("pa");
         else if (k === "q") edge("sw");
-        else if (k === "c" && !online) cheatOpen = !cheatOpen;
-        else if (k === "h" || k === "?") helpOpen = !helpOpen;
-        else if (k === "escape") { helpOpen = false; cheatOpen = false; }
         else if (k === "r" && authority && state && state.phase === "play") startMatch();
     }
 
@@ -1186,6 +1300,7 @@ export function mount(root, context = {}) {
     }
 
     function onPointerDown(e) {
+        if (paused || helpOpen || cheatOpen) return;
         const b = e.target.closest ? e.target.closest("[data-tc]") : null;
         if (b) {
             e.preventDefault();
@@ -1226,23 +1341,21 @@ export function mount(root, context = {}) {
     }
 
     function onPointerMove(e) {
-        if (e.pointerType !== "mouse") return;
+        if (e.pointerType !== "mouse" || paused || helpOpen || cheatOpen) return;
         if (!(e.target.closest && e.target.closest("[data-svg]"))) return;
         const r = svg.getBoundingClientRect();
-        if (!r.width) return;
-        mouseX = (e.clientX - r.left) / r.width * W;
-        mouseY = (e.clientY - r.top) / r.height * H;
+        if (!r.width || !r.height) return;
+        /* SVG memakai preserveAspectRatio meet: petakan ke viewBox yang sebenarnya terlihat */
+        const scale = Math.min(r.width / W, r.height / H);
+        const ox = (r.width - W * scale) / 2, oy = (r.height - H * scale) / 2;
+        mouseX = clamp((e.clientX - r.left - ox) / scale, 0, W);
+        mouseY = clamp((e.clientY - r.top - oy) / scale, 0, H);
         mouseT = performance.now();
     }
 
     function onCtx(e) { if (e.target.closest && e.target.closest("[data-svg]")) e.preventDefault(); }
     function onVis() { lastT = performance.now(); }
-    function onBlur() {
-        keys.up = keys.down = keys.left = keys.right = false;
-        touchDirs.clear();
-        spaceHeld = false; mouseHeld = false; touchShoot = false;
-        root.querySelectorAll(".ms-tbtn.on").forEach((b) => b.classList.remove("on"));
-    }
+    function onBlur() { releaseInputs(); }
 
     /* ---------------- mode sentuh ---------------- */
     const mqCoarse = matchMedia("(pointer: coarse)");
@@ -1260,6 +1373,12 @@ export function mount(root, context = {}) {
         rafId = requestAnimationFrame(frame);
         const dt = Math.min(0.04, (t - lastT) / 1000 || 0.016);
         lastT = t;
+        if (paused) {
+            localInp.x = 0; localInp.y = 0; localInp.ao = false; localInp.held = false;
+            localInp.rel = false; localInp.sl = false; localInp.pa = false; localInp.sw = false;
+            renderFrame(dt);
+            return;
+        }
         buildLocalInput();
         if (state && state.phase !== "play") {
             localInp.rel = false; localInp.sl = false; localInp.pa = false; localInp.sw = false;

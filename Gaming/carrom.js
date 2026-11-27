@@ -4,6 +4,8 @@
    virtual buttons + keyboard + slingshot drag, random first turn,
    random side assignment in room mode. */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "carrom", // harus sama dengan nama file (tanpa .js)
     name: "Carrom",
@@ -224,177 +226,297 @@ export function mount(root, context = {}) {
     let acc = 0, simTime = 0, pubT = 0, lastT = 0, raf = null;
     let best = 0;
     let destroyed = false;
-    const timers = [];
+    let cheatsOpen = false;
+    let helpOpen = false;
+    let paused = false;
+    const timers = new Set();
+    const timerRec = new Map();
+    let deferredTimers = [];
     const holdStops = [];
     const unsubs = [];
 
+    /* pause-aware timers: keep Date.now() due anchors, replay the remaining
+       delay on resume so the AI bot and FX never jump ahead after a pause. */
     const later = (fn, ms) => {
-        const tm = setTimeout(() => {
-            const i = timers.indexOf(tm);
-            if (i >= 0) timers.splice(i, 1);
+        if (paused) { deferredTimers.push({ wait: ms, fn }); return null; }
+        const id = setTimeout(() => {
+            timers.delete(id);
+            timerRec.delete(id);
             if (!destroyed) fn();
         }, ms);
-        timers.push(tm);
-        return tm;
+        timers.add(id);
+        timerRec.set(id, { due: Date.now() + ms, fn });
+        return id;
     };
-    const clearAiTimers = () => { timers.forEach(clearTimeout); timers.length = 0; };
+    const clearAiTimers = () => {
+        for (const id of timers) clearTimeout(id);
+        timers.clear();
+        timerRec.clear();
+        deferredTimers = [];
+    };
+    function pauseTimers() {
+        const now = Date.now();
+        for (const [id, rec] of timerRec) {
+            clearTimeout(id);
+            deferredTimers.push({ wait: Math.max(0, rec.due - now), fn: rec.fn });
+        }
+        timers.clear();
+        timerRec.clear();
+    }
+    function resumeTimers() {
+        const queue = deferredTimers;
+        deferredTimers = [];
+        for (const t of queue) later(t.wait, t.fn);
+    }
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("carromHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("carromHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (_) { }
 
     /* ---------- DOM ---------- */
     root.innerHTML = `
 <style>
-.carrom-game{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:12px;color:#3a3f47;font-family:inherit}
+/* Carrom — single HUD bar, fill-height square board, overlay sheets. */
+.carrom-game{--ca-ink:#3a3f47;--ca-mut:#9aa1ab;--ca-line:#e4e1d8;--ca-acc:#4c7dff;--ca-soft:#f1efe8;
+  width:100%;height:100%;min-height:0;margin:0;display:flex;flex-direction:column;gap:8px;color:var(--ca-ink);font-family:inherit;font-size:13px;line-height:1.45}
+.carrom-game *{box-sizing:border-box}
 .carrom-game [hidden]{display:none!important}
-.carrom-game .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.carrom-game .game-intro h2{margin:0;font-size:20px;font-weight:700;letter-spacing:.2px}
-.carrom-game .ca-hud{display:flex;gap:8px;justify-content:center}
-.carrom-game .ca-side{flex:1;max-width:200px;display:flex;align-items:center;gap:7px;padding:7px 12px;border:1px solid #e4e1d8;border-radius:12px;background:#fff;font-size:12.5px;transition:border-color .2s,box-shadow .2s}
-.carrom-game .ca-side.on{border-color:#4c7dff;box-shadow:0 0 0 1px #4c7dff22}
-.carrom-game .ca-dot{width:11px;height:11px;border-radius:50%;flex:none}
-.carrom-game .ca-dot-w{background:#fff;border:1.5px solid #c9c4b8}
-.carrom-game .ca-dot-b{background:#2b2f36}
-.carrom-game .ca-side b{margin-left:auto;font-size:14px}
-.carrom-game .ca-side em{font-style:normal;color:#9aa1ab;font-size:11.5px;min-width:30px;text-align:right}
-.carrom-game .ca-tag{color:#9aa1ab;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px}
-.carrom-game .ca-stage{position:relative}
-.carrom-game .ca-board-wrap{width:min(440px,100%);aspect-ratio:1/1;margin:0 auto}
-.carrom-game .ca-board{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
-.carrom-game .ca-note{min-height:18px;text-align:center;color:#9aa1ab;font-size:12.5px;font-weight:600;margin-top:6px}
-.carrom-game .ca-controls{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:flex-end;margin-top:8px}
-.carrom-game .ca-controls.off{opacity:.45;pointer-events:none}
-.carrom-game .ca-group{display:flex;flex-direction:column;gap:4px;align-items:center}
-.carrom-game .ca-lab{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#9aa1ab}
-.carrom-game .ca-btns{display:flex;gap:4px;align-items:center}
-.carrom-game .ca-btn{width:40px;height:40px;border:1px solid #e2dfd6;border-radius:10px;background:#fff;color:#3a3f47;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}
-.carrom-game .ca-btn:active{background:#f1efe8}
-.carrom-game .ca-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.carrom-game .ca-meter{width:54px;height:6px;border-radius:3px;background:#e8e5dd;overflow:hidden}
-.carrom-game .ca-meter i{display:block;height:100%;width:55%;background:#4c7dff;border-radius:3px;transition:width .08s}
-.carrom-game .ca-shoot{height:40px;padding:0 22px;border:none;border-radius:10px;background:#4c7dff;color:#fff;font-size:13.5px;font-weight:700;letter-spacing:.4px;cursor:pointer}
-.carrom-game .ca-shoot:active{background:#3d68e0}
-.carrom-game .ca-shoot:disabled{opacity:.45;cursor:default}
-.carrom-game .game-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.carrom-game .ca-sheet{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(250,249,245,.88);backdrop-filter:blur(2px);border-radius:16px;z-index:5}
-.carrom-game .ca-card{width:min(320px,92%);background:#fff;border:1px solid #e4e1d8;border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 30px rgba(30,30,40,.08)}
-.carrom-game .ca-card-head{display:flex;align-items:center;justify-content:space-between;font-size:15px}
-.carrom-game .ca-x{border:none;background:none;font-size:20px;line-height:1;color:#9aa1ab;cursor:pointer;padding:2px 6px}
-.carrom-game .ca-row{display:flex;align-items:center;justify-content:space-between;font-size:13.5px;cursor:pointer;padding:2px 0}
-.carrom-game .ca-row input{position:absolute;opacity:0;pointer-events:none}
-.carrom-game .ca-sw{width:34px;height:20px;border-radius:10px;background:#e2dfd6;position:relative;flex:none;transition:background .15s}
-.carrom-game .ca-sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
-.carrom-game .ca-row input:checked+.ca-sw{background:#4c7dff}
-.carrom-game .ca-row input:checked+.ca-sw::after{left:16px}
-.carrom-game .ca-cheat-acts{display:flex;gap:8px;margin-top:4px}
-.carrom-game .ca-cheat-acts button{flex:1;height:36px;border:1px solid #e2dfd6;border-radius:9px;background:#faf9f5;font-size:12px;font-weight:600;color:#3a3f47;cursor:pointer}
-.carrom-game .ca-cheat-acts button:active{background:#f1efe8}
-.carrom-game .ca-over-title{margin:0;font-size:20px;font-weight:800;text-align:center}
-.carrom-game .ca-over-title.win{color:#2f9e6e}
-.carrom-game .ca-over-title.lose{color:#d9534f}
-.carrom-game .ca-over-sub{margin:0;text-align:center;color:#9aa1ab;font-size:13px}
-.carrom-game .ca-again{height:40px;border:none;border-radius:10px;background:#4c7dff;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer}
+.carrom-game :is(button,input,select,[tabindex]):focus-visible{outline:2px solid var(--ca-acc);outline-offset:2px}
+.ca-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.ca-hud .ca-chip{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:5px 8px;border:1px solid var(--ca-line);border-radius:999px;background:#fff;white-space:nowrap;color:var(--ca-mut)}
+.ca-hud .ca-chip b{color:var(--ca-ink);font-weight:700;font-variant-numeric:tabular-nums}
+.ca-hud .ca-chip em{font-style:normal;color:var(--ca-mut)}
+.ca-hud .ca-chip.on{border-color:var(--ca-acc);box-shadow:0 0 0 1px #4c7dff22}
+.ca-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.ca-dot-w{background:#fff;border:1.5px solid #c9c4b8}
+.ca-dot-b{background:#2b2f36}
+.ca-hud .ca-note{max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.ca-spacer{flex:1 1 auto;min-width:6px}
+.ca-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:32px;padding:6px 10px;border:1px solid var(--ca-line);border-radius:9px;background:#fff;color:var(--ca-ink);font:700 10px/1 inherit;letter-spacing:.04em;cursor:pointer}
+.ca-btn svg{flex:none;display:block}
+.ca-btn:hover:not(:disabled){border-color:var(--ca-acc);color:var(--ca-acc)}
+.ca-btn:active:not(:disabled){background:var(--ca-soft)}
+.ca-btn:disabled{opacity:.45;cursor:default}
+.ca-btn.on{border-color:var(--ca-acc);background:#f0f4ff;color:var(--ca-acc)}
+.ca-btn-label{white-space:nowrap}
+.ca-icon-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.carrom-game.game-fill>.ca-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:1px solid var(--ca-line);border-radius:12px;background:#f4f1e8;overflow:hidden}
+.ca-svg{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.ca-controls{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:center}
+.ca-controls.off{opacity:.45;pointer-events:none}
+.ca-group{display:flex;align-items:center;gap:5px}
+.ca-lab{font-size:9px;text-transform:uppercase;letter-spacing:.7px;color:var(--ca-mut)}
+.ca-btns{display:flex;gap:4px;align-items:center}
+.ca-controls .ca-btn{width:36px;height:36px;min-height:36px;padding:0;font-size:14px;touch-action:none}
+.ca-controls .ca-btn svg{width:15px;height:15px}
+.ca-meter{width:48px;height:6px;border-radius:3px;background:#e8e5dd;overflow:hidden}
+.ca-meter i{display:block;height:100%;width:55%;background:var(--ca-acc);border-radius:3px;transition:width .08s}
+.ca-shoot{min-height:36px;padding:0 16px;border:1px solid var(--ca-acc);border-radius:9px;background:var(--ca-acc);color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+.ca-shoot:active{background:#3d68e0}
+.ca-shoot:disabled{opacity:.45;cursor:default}
+.ca-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(250,249,245,.88);backdrop-filter:blur(2px)}
+.ca-card{width:min(380px,100%);max-height:100%;display:flex;flex-direction:column;overflow:hidden;padding:16px;border:1px solid var(--ca-line);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(30,30,40,.1)}
+.ca-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.ca-head h3{margin:0;font-size:15px;font-weight:800}
+.ca-x{width:36px;height:36px;min-height:36px;border:1px solid var(--ca-line);border-radius:9px;background:#fff;color:var(--ca-mut);font-size:18px;line-height:1;cursor:pointer}
+.ca-cheats,.ca-help,.ca-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.ca-cheats{display:flex;flex-direction:column;gap:2px;margin-top:10px}
+.ca-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;padding:4px 0;font-size:12.5px;cursor:pointer}
+.ca-row input{position:absolute;opacity:0;pointer-events:none}
+.ca-sw{width:36px;height:20px;border-radius:10px;background:#e2dfd6;position:relative;flex:none;transition:background .15s}
+.ca-sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.ca-row input:checked+.ca-sw{background:var(--ca-acc)}
+.ca-row input:checked+.ca-sw::after{left:18px}
+.ca-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;margin-top:10px}
+.ca-foot .ca-note{font-size:11px;color:var(--ca-mut)}
+.ca-acts{display:flex;gap:8px;flex-wrap:wrap}
+.ca-acts button,.ca-again{min-height:38px;padding:0 14px;border:1px solid var(--ca-line);border-radius:9px;background:#faf9f5;color:var(--ca-ink);font-size:11.5px;font-weight:700;cursor:pointer}
+.ca-acts button:active,.ca-again:active{background:var(--ca-soft)}
+.ca-again{border-color:var(--ca-acc);background:var(--ca-acc);color:#fff}
+.ca-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:10px}
+.ca-help b{display:block;margin-bottom:5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.09em;color:var(--ca-mut);text-transform:uppercase}
+.ca-help ul{margin:0 0 10px;padding-left:16px;font-size:11.5px;line-height:1.6;color:var(--ca-ink)}
+.ca-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--ca-line);border-bottom-width:2px;border-radius:5px;background:var(--ca-soft);font:600 10px/1.4 ui-monospace,monospace}
+.ca-stats{text-align:center;padding:10px 0}
+.ca-over-title{margin:0;font-size:20px;font-weight:800}
+.ca-over-title.win{color:#2f9e6e}
+.ca-over-title.lose{color:#d9534f}
+.ca-over-sub{margin:6px 0 0;color:var(--ca-mut);font-size:13px}
 @keyframes carrom-pop{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-28px)}}
-.carrom-game .ca-pop{font:800 15px inherit;fill:#3a3f47;paint-order:stroke;stroke:#faf9f5;stroke-width:4px;animation:carrom-pop .8s ease-out forwards;pointer-events:none}
+.ca-pop{font:800 15px inherit;fill:var(--ca-ink);paint-order:stroke;stroke:#faf9f5;stroke-width:4px;animation:carrom-pop .8s ease-out forwards;pointer-events:none}
+@media (prefers-reduced-motion:reduce){.carrom-game *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* --- layout overrides (last, higher specificity than touch defaults) --- */
+@media (max-width:640px){
+  .carrom-game{gap:6px}
+  .carrom-game .ca-hud{gap:4px}
+  .carrom-game .ca-hud .ca-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .carrom-game .ca-hud .ca-note{display:none}
+  .carrom-game .ca-hud .ca-btn-label,.carrom-game .ca-hud .ca-spacer{display:none}
+  .carrom-game .ca-hud .ca-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .carrom-game .ca-board:has(.ca-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+  .carrom-game .ca-ov{padding:8px}
+  .carrom-game .ca-card{width:100%;height:100%;max-height:100%;padding:12px}
+  .carrom-game .ca-help{grid-template-columns:1fr;gap:8px}
+  .carrom-game .ca-cheats,.carrom-game .ca-help,.carrom-game .ca-stats{scrollbar-width:none}
+  .carrom-game .ca-cheats::-webkit-scrollbar,.carrom-game .ca-help::-webkit-scrollbar,.carrom-game .ca-stats::-webkit-scrollbar{display:none}
+  .carrom-game .ca-foot{margin-top:8px}
+}
+@media (pointer:coarse){
+  .carrom-game .ca-hud .ca-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .carrom-game .ca-controls .ca-btn{min-height:40px;padding:0}
+  .carrom-game .ca-x{min-height:40px}
+}
 </style>
-<div class="carrom-game">
-  <div class="game-intro">
-    <div><h2>Carrom</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
+<div class="game-app carrom-game game-fill" data-carrom>
   <div class="ca-hud">
-    <div class="ca-side" data-pill="w"><i class="ca-dot ca-dot-w"></i><span>White</span><span class="ca-tag" data-tag="w"></span><b data-left="w">9</b><em data-score="w">0</em></div>
-    <div class="ca-side" data-pill="b"><i class="ca-dot ca-dot-b"></i><span>Black</span><span class="ca-tag" data-tag="b"></span><b data-left="b">9</b><em data-score="b">0</em></div>
+    <span class="ca-chip ca-chip-w"><i class="ca-dot ca-dot-w"></i>W <b data-hud="wleft">9</b><em data-hud="wscore">0</em></span>
+    <span class="ca-chip ca-chip-b"><i class="ca-dot ca-dot-b"></i>B <b data-hud="bleft">9</b><em data-hud="bscore">0</em></span>
+    <span class="ca-chip" data-hud="turn">TURN —</span>
+    <span class="ca-chip" data-hud="power-chip">PWR <b data-hud="power">55</b>%</span>
+    <span class="ca-chip ca-note" data-hud="note"></span>
+    <span class="ca-spacer"></span>
+    <button class="ca-btn ca-icon-btn" type="button" data-shoot aria-label="Shoot" title="Shoot (Space)">${iconSVG("target", { size: 14 })}<span class="ca-btn-label">Shoot</span></button>
+    <button class="ca-btn ca-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ca-btn-label">Help</span></button>
+    <button class="ca-btn ca-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)" ${online ? "disabled" : ""}>${iconSVG("wrench", { size: 14 })}<span class="ca-btn-label">Cheats</span></button>
+    <button class="ca-btn ca-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" ${online ? "disabled" : ""}>${iconSVG("pause", { size: 14 })}<span class="ca-btn-label">Pause</span></button>
+    <button class="ca-btn ca-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ca-btn-label">Restart</span></button>
+    <button class="ca-btn ca-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ca-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="ca-stage">
-      <div class="ca-board-wrap">
-        <svg class="ca-board" viewBox="0 0 440 440" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Carrom board">
-          <g data-g="world">
-            <g data-g="board"></g>
-            <g data-g="guide"></g>
-          </g>
-          <g data-g="fx"></g>
-          <rect data-hit x="0" y="0" width="440" height="440" fill="transparent"/>
-        </svg>
-      </div>
-      <div class="ca-note" data-note></div>
-      <div class="ca-controls" data-controls>
-        <div class="ca-group"><span class="ca-lab">Move</span>
-          <div class="ca-btns">
-            <button class="ca-btn" type="button" data-ctl="left" aria-label="Move striker left"><svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg></button>
-            <button class="ca-btn" type="button" data-ctl="right" aria-label="Move striker right"><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></button>
-          </div>
-        </div>
-        <div class="ca-group"><span class="ca-lab">Aim</span>
-          <div class="ca-btns">
-            <button class="ca-btn" type="button" data-ctl="rotl" aria-label="Rotate aim left"><svg viewBox="0 0 16 16"><path d="M13 8A5 5 0 1 1 8 3"/><path d="M8 0.8 11 3 8 5.2"/></svg></button>
-            <button class="ca-btn" type="button" data-ctl="rotr" aria-label="Rotate aim right"><svg viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 5-5"/><path d="M8 0.8 5 3l3 2.2"/></svg></button>
-          </div>
-        </div>
-        <div class="ca-group"><span class="ca-lab">Power</span>
-          <div class="ca-btns">
-            <button class="ca-btn" type="button" data-ctl="powd" aria-label="Less power">−</button>
-            <div class="ca-meter"><i data-power></i></div>
-            <button class="ca-btn" type="button" data-ctl="powu" aria-label="More power">+</button>
-          </div>
-        </div>
-        <button class="ca-shoot" type="button" data-ctl="shoot">Shoot</button>
-      </div>
-      <div class="ca-sheet" data-cheats hidden>
-        <div class="ca-card">
-          <div class="ca-card-head"><b>Cheats</b><button class="ca-x" type="button" data-cheat-close aria-label="Close">×</button></div>
+  <section class="game-panel ca-board" data-board>
+    <svg class="ca-svg" viewBox="0 0 440 440" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Carrom board">
+      <g data-g="world">
+        <g data-g="board"></g>
+        <g data-g="guide"></g>
+      </g>
+      <g data-g="fx"></g>
+      <rect data-hit x="0" y="0" width="440" height="440" fill="transparent"/>
+    </svg>
+    <div class="ca-ov" data-ov="cheat" hidden>
+      <div class="ca-card">
+        <div class="ca-head"><h3>Cheats</h3><button class="ca-x" type="button" data-close aria-label="Close">×</button></div>
+        <div class="ca-cheats">
           <label class="ca-row"><span>Aim assist</span><input type="checkbox" data-cheat="assist"><i class="ca-sw"></i></label>
           <label class="ca-row"><span>Magnet pockets</span><input type="checkbox" data-cheat="magnet"><i class="ca-sw"></i></label>
           <label class="ca-row"><span>Ignore fouls</span><input type="checkbox" data-cheat="noFoul"><i class="ca-sw"></i></label>
           <label class="ca-row"><span>Slow motion</span><input type="checkbox" data-cheat="slow"><i class="ca-sw"></i></label>
           <label class="ca-row"><span>Weak AI</span><input type="checkbox" data-cheat="weakAI"><i class="ca-sw"></i></label>
-          <div class="ca-cheat-acts">
-            <button type="button" data-cheat-act="skip">Skip AI turn</button>
-            <button type="button" data-cheat-act="pocket">Pocket a white</button>
-          </div>
         </div>
+        <div class="ca-foot"><span class="ca-note">AI mode only</span><span class="ca-acts">
+          <button type="button" data-cheat-act="skip">Skip AI turn</button>
+          <button type="button" data-cheat-act="pocket">Pocket a white</button>
+        </span></div>
       </div>
-      <div class="ca-sheet" data-over hidden>
-        <div class="ca-card">
+    </div>
+    <div class="ca-ov" data-ov="pause" hidden>
+      <div class="ca-card">
+        <div class="ca-head"><h3>Paused</h3></div>
+        <div class="ca-stats"><p class="ca-over-sub">The board, AI and timers are frozen.</p></div>
+        <div class="ca-foot"><span class="ca-note">Press P or Esc to resume</span><button class="ca-again" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="ca-ov" data-ov="over" hidden>
+      <div class="ca-card">
+        <div class="ca-head"><h3>Game over</h3></div>
+        <div class="ca-stats">
           <h3 class="ca-over-title" data-over-title></h3>
           <p class="ca-over-sub" data-over-sub></p>
-          <button class="ca-again" type="button" data-act="restart">Play again</button>
+        </div>
+        <div class="ca-foot"><span class="ca-note">Press R to restart</span><button class="ca-again" type="button" data-restart>Play again</button></div>
+      </div>
+    </div>
+    <div class="ca-ov" data-ov="help" hidden>
+      <div class="ca-card">
+        <div class="ca-head"><h3>How to play</h3><button class="ca-x" type="button" data-help-close aria-label="Close">×</button></div>
+        <div class="ca-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="ca-kbd">← →</span> slide the striker, <span class="ca-kbd">A D</span> rotate aim</li>
+              <li><span class="ca-kbd">↑ ↓</span> raise / lower power, <span class="ca-kbd">Space</span> shoot</li>
+              <li>Drag the striker backwards on the board to slingshot.</li>
+              <li><span class="ca-kbd">H</span> help · <span class="ca-kbd">C</span> cheats · <span class="ca-kbd">P</span> pause · <span class="ca-kbd">R</span> restart</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Use the Move / Aim / Power buttons below the board, then Shoot.</li>
+              <li>Or drag on the board to aim and release to shoot.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Pocket all 9 of your colour before your opponent does.</li>
+              <li>The red queen is worth +200; every normal coin is +100.</li>
+              <li>Pocketing a coin earns an extra turn; a foul costs 50 points.</li>
+              <li>A coin toss decides who starts; in rooms sides are random.</li>
+              <li>Cheats are available in AI mode only.</li>
+            </ul>
+            <div class="ca-foot"><span class="ca-note">Press H to reopen this guide</span><button class="ca-again" type="button" data-help-close>Got it</button></div>
+          </div>
         </div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-cheat-open ${online ? "hidden" : ""}>Cheats</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="ca-controls" data-controls>
+    <div class="ca-group"><span class="ca-lab">Move</span><span class="ca-btns">
+      <button class="ca-btn" type="button" data-ctl="left" aria-label="Move striker left" title="Move left">${iconSVG("arrowLeft", { size: 15 })}</button>
+      <button class="ca-btn" type="button" data-ctl="right" aria-label="Move striker right" title="Move right">${iconSVG("arrowRight", { size: 15 })}</button>
+    </span></div>
+    <div class="ca-group"><span class="ca-lab">Aim</span><span class="ca-btns">
+      <button class="ca-btn" type="button" data-ctl="rotl" aria-label="Rotate aim left" title="Aim left">${iconSVG("rotateCcw", { size: 15 })}</button>
+      <button class="ca-btn" type="button" data-ctl="rotr" aria-label="Rotate aim right" title="Aim right">${iconSVG("rotateCw", { size: 15 })}</button>
+    </span></div>
+    <div class="ca-group"><span class="ca-lab">Power</span><span class="ca-btns">
+      <button class="ca-btn" type="button" data-ctl="powd" aria-label="Less power" title="Less power">${iconSVG("minus", { size: 15 })}</button>
+      <span class="ca-meter"><i data-power></i></span>
+      <button class="ca-btn" type="button" data-ctl="powu" aria-label="More power" title="More power">${iconSVG("plus", { size: 15 })}</button>
+    </span></div>
+    <button class="ca-shoot" type="button" data-ctl="shoot">Shoot</button>
   </div>
 </div>`;
 
     const $ = (s, r) => (r || root).querySelector(s);
-    const svgEl = $(".ca-board");
+    const app = $("[data-carrom]");
+    const board = $("[data-board]");
+    const svgEl = $(".ca-svg");
     const worldG = $('[data-g="world"]');
     const boardG = $('[data-g="board"]');
     const guideG = $('[data-g="guide"]');
     const fxG = $('[data-g="fx"]');
-    const noteEl = $("[data-note]");
-    const statusEl = $("[data-status]");
     const controlsEl = $("[data-controls]");
     const powerEl = $("[data-power]");
     const shootBtn = $('[data-ctl="shoot"]');
-    const cheatSheet = $("[data-cheats]");
-    const overSheet = $("[data-over]");
+    const hudShoot = $("[data-shoot]");
+    const ov = {
+        cheat: $('[data-ov="cheat"]'),
+        pause: $('[data-ov="pause"]'),
+        over: $('[data-ov="over"]'),
+        help: $('[data-ov="help"]'),
+    };
     const overTitle = $("[data-over-title]");
     const overSub = $("[data-over-sub]");
-    const pills = { w: $('[data-pill="w"]'), b: $('[data-pill="b"]') };
-    const lefts = { w: $('[data-left="w"]'), b: $('[data-left="b"]') };
-    const scoresEls = { w: $('[data-score="w"]'), b: $('[data-score="b"]') };
-    const tags = { w: $('[data-tag="w"]'), b: $('[data-tag="b"]') };
+    const hud = {
+        wleft: $('[data-hud="wleft"]'),
+        bleft: $('[data-hud="bleft"]'),
+        wscore: $('[data-hud="wscore"]'),
+        bscore: $('[data-hud="bscore"]'),
+        turn: $('[data-hud="turn"]'),
+        power: $('[data-hud="power"]'),
+        note: $('[data-hud="note"]'),
+    };
+    const chips = { w: $(".ca-chip-w"), b: $(".ca-chip-b") };
 
     /* ---------- helpers ---------- */
     const mySide = () => (online ? (state ? state.sides[playerIndex] : "w") : "w");
     const flipped = () => mySide() === "b";
     const isMyTurnAim = () =>
-        Boolean(state) && state.phase === "aim" && !state.winner && state.turn === mySide();
+        Boolean(state) && !paused && !helpOpen && !cheatsOpen &&
+        state.phase === "aim" && !state.winner && state.turn === mySide();
     const pocketRFor = (b) =>
         !online && cheats.magnet && (b.queen || b.color === "white") ? 27 : POCKET_R;
 
@@ -501,53 +623,73 @@ export function mount(root, context = {}) {
     function render() {
         if (!state) {
             boardG.innerHTML = STATIC;
-            statusEl.textContent = "Waiting for host…";
+            hud.note.textContent = "Waiting for host…";
+            hud.note.hidden = false;
+            hud.turn.textContent = "WAIT HOST";
             controlsEl.classList.add("off");
             shootBtn.disabled = true;
-            return;
+            hudShoot.disabled = true;
+        } else {
+            syncTurnUi();
+            const flip = flipped();
+            worldG.setAttribute("transform", flip ? "rotate(180 220 220)" : "");
+            let s = STATIC;
+            for (const c of state.coins) s += coinSvg(c);
+            s += strikerSvg(state.striker);
+            boardG.innerHTML = s;
+            renderGuide();
+
+            hud.wleft.textContent = N_COINS - clearedCount(state, "white");
+            hud.bleft.textContent = N_COINS - clearedCount(state, "black");
+            hud.wscore.textContent = state.scores.w;
+            hud.bscore.textContent = state.scores.b;
+            const live = state.phase !== "over";
+            chips.w.classList.toggle("on", live && state.turn === "w");
+            chips.b.classList.toggle("on", live && state.turn === "b");
+            hud.turn.textContent =
+                state.phase === "over"
+                    ? "GAME OVER"
+                    : state.phase === "sim"
+                        ? "IN PLAY"
+                        : isMyTurnAim()
+                            ? "YOUR TURN"
+                            : online ? "RIVAL TURN" : "AI TURN";
+            const noteText = state.note || "";
+            hud.note.textContent = noteText;
+            hud.note.hidden = !noteText;
+            hud.power.textContent = Math.round(aimPower * 100);
+            powerEl.style.width = Math.round(aimPower * 100) + "%";
+            const can = isMyTurnAim();
+            controlsEl.classList.toggle("off", !can);
+            shootBtn.disabled = !can;
+            hudShoot.disabled = !can;
+
+            const isOver = state.phase === "over";
+            if (isOver) {
+                const iWin = state.winner === mySide();
+                overTitle.textContent = online ? (iWin ? "You win" : "Opponent wins") : (iWin ? "You win" : "AI wins");
+                overTitle.className = "ca-over-title " + (iWin ? "win" : "lose");
+                overSub.textContent =
+                    "White " + state.scores.w + " · Black " + state.scores.b +
+                    (!online ? " · Best " + best : "");
+            }
         }
-        syncTurnUi();
-        const flip = flipped();
-        worldG.setAttribute("transform", flip ? "rotate(180 220 220)" : "");
-        let s = STATIC;
-        for (const c of state.coins) s += coinSvg(c);
-        s += strikerSvg(state.striker);
-        boardG.innerHTML = s;
-        renderGuide();
+        syncUI();
+    }
 
-        lefts.w.textContent = N_COINS - clearedCount(state, "white");
-        lefts.b.textContent = N_COINS - clearedCount(state, "black");
-        scoresEls.w.textContent = state.scores.w;
-        scoresEls.b.textContent = state.scores.b;
-        tags.w.textContent = online ? (mySide() === "w" ? "You" : "Opp") : "You";
-        tags.b.textContent = online ? (mySide() === "b" ? "You" : "Opp") : "AI";
-        const live = state.phase !== "over";
-        pills.w.classList.toggle("on", live && state.turn === "w");
-        pills.b.classList.toggle("on", live && state.turn === "b");
-
-        statusEl.textContent =
-            state.phase === "over"
-                ? (state.winner === "w" ? "White wins" : "Black wins")
-                : state.phase === "sim"
-                    ? "In play…"
-                    : isMyTurnAim()
-                        ? "Your turn"
-                        : online ? "Opponent turn" : "AI turn";
-        noteEl.textContent = state.note || "";
-        powerEl.style.width = Math.round(aimPower * 100) + "%";
-        const can = isMyTurnAim();
-        controlsEl.classList.toggle("off", !can);
-        shootBtn.disabled = !can;
-
-        const isOver = state.phase === "over";
-        overSheet.hidden = !isOver;
-        if (isOver) {
-            const iWin = state.winner === mySide();
-            overTitle.textContent = online ? (iWin ? "You win" : "Opponent wins") : (iWin ? "You win" : "AI wins");
-            overTitle.className = "ca-over-title " + (iWin ? "win" : "lose");
-            overSub.textContent =
-                "White " + state.scores.w + " · Black " + state.scores.b +
-                (!online ? " · Best " + best : "");
+    function syncUI() {
+        const isOver = Boolean(state && state.phase === "over");
+        ov.over.hidden = !isOver || cheatsOpen || helpOpen || paused;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) cbtn.classList.toggle("on", Object.values(cheats).some(Boolean));
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".ca-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
         }
     }
 
@@ -695,14 +837,32 @@ export function mount(root, context = {}) {
 
     function newGame() {
         clearAiTimers();
+        paused = false;
+        lastT = 0;
         state = freshState();
         lastTurnId = -1;
         acc = 0;
         simTime = 0;
         pubT = 0;
-        cheatSheet.hidden = true;
+        cheatsOpen = false;
         publish();
         if (!online && state.turn === "b") scheduleAi();
+    }
+
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) pauseTimers();
+        else { resumeTimers(); lastT = 0; /* discard the wall-clock gap */ }
+        render();
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
     }
 
     /* ---------- main loop ---------- */
@@ -711,6 +871,7 @@ export function mount(root, context = {}) {
         if (!lastT) { lastT = t; return; }
         const dt = Math.min(0.05, (t - lastT) / 1000);
         lastT = t;
+        if (paused) return; /* freeze physics + bot; lastT keeps advancing */
         if (!state || state.phase !== "sim") return;
         const scale = !online && cheats.slow ? 0.45 : 1;
         acc += dt * scale;
@@ -741,8 +902,11 @@ export function mount(root, context = {}) {
     /* ---------- pointer input (slingshot pull + baseline slide) ---------- */
     function toBoard(e) {
         const r = svgEl.getBoundingClientRect();
-        let x = (e.clientX - r.left) * (BOARD / r.width);
-        let y = (e.clientY - r.top) * (BOARD / r.height);
+        const scale = Math.min(r.width, r.height) / BOARD || 1; /* xMidYMid meet */
+        const ox = (r.width - BOARD * scale) / 2;
+        const oy = (r.height - BOARD * scale) / 2;
+        let x = (e.clientX - r.left - ox) / scale;
+        let y = (e.clientY - r.top - oy) / scale;
         if (flipped()) { x = BOARD - x; y = BOARD - y; }
         return { x, y };
     }
@@ -854,28 +1018,31 @@ export function mount(root, context = {}) {
         if (destroyed) return;
         const tag = (e.target && e.target.tagName) || "";
         if (tag === "INPUT" || tag === "TEXTAREA") return;
-        if (e.code === "KeyC" && !online) {
+        const c = e.code;
+        /* priority: help -> cheats -> pause/escape -> game actions */
+        if (c === "KeyH") { if (!e.repeat) toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!e.repeat && !online && !helpOpen) { cheatsOpen = !cheatsOpen; render(); } e.preventDefault(); return; }
+        if (c === "KeyP") { if (!e.repeat && !helpOpen && !cheatsOpen) togglePause(); e.preventDefault(); return; }
+        if (c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (paused) togglePause(false);
             e.preventDefault();
-            if (!e.repeat) cheatSheet.hidden = !cheatSheet.hidden;
             return;
         }
-        if (e.code === "Escape") { cheatSheet.hidden = true; return; }
-        if (e.code === "KeyR") {
-            e.preventDefault();
-            if (!e.repeat) submitAction({ t: "restart" });
-            return;
-        }
+        if (c === "KeyR") { if (!e.repeat && !helpOpen && !cheatsOpen) submitAction({ t: "restart" }); e.preventDefault(); return; }
+        if (helpOpen || cheatsOpen || paused) { e.preventDefault(); return; }
         const gameKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD"];
-        if (!gameKeys.includes(e.code)) return;
+        if (!gameKeys.includes(c)) return;
         e.preventDefault();
         if (!isMyTurnAim()) return;
-        if (e.code === "ArrowLeft") slideTo(state.striker.x + screenDir(-8));
-        else if (e.code === "ArrowRight") slideTo(state.striker.x + screenDir(8));
-        else if (e.code === "ArrowUp") { aimPower = clamp01(aimPower + 0.05); render(); }
-        else if (e.code === "ArrowDown") { aimPower = clamp01(aimPower - 0.05); render(); }
-        else if (e.code === "KeyA") { aimAngle -= 0.035; render(); }
-        else if (e.code === "KeyD") { aimAngle += 0.035; render(); }
-        else if ((e.code === "Space" || e.code === "Enter") && !e.repeat) fireShot();
+        if (c === "ArrowLeft") slideTo(state.striker.x + screenDir(-8));
+        else if (c === "ArrowRight") slideTo(state.striker.x + screenDir(8));
+        else if (c === "ArrowUp") { aimPower = clamp01(aimPower + 0.05); render(); }
+        else if (c === "ArrowDown") { aimPower = clamp01(aimPower - 0.05); render(); }
+        else if (c === "KeyA") { aimAngle -= 0.035; render(); }
+        else if (c === "KeyD") { aimAngle += 0.035; render(); }
+        else if ((c === "Space" || c === "Enter") && !e.repeat) fireShot();
     }
     document.addEventListener("keydown", onKey);
 
@@ -886,7 +1053,7 @@ export function mount(root, context = {}) {
         cheats[k] = Boolean(e.target.checked);
         render();
     }
-    cheatSheet.addEventListener("change", onCheatChange);
+    ov.cheat.addEventListener("change", onCheatChange);
 
     function cheatAction(kind) {
         if (online || !state) return;
@@ -926,19 +1093,27 @@ export function mount(root, context = {}) {
     /* ---------- click delegation ---------- */
     function handleClick(e) {
         const t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
-        if (t.closest('[data-act="restart"]')) { submitAction({ t: "restart" }); return; }
-        if (t.closest("[data-cheat-open]")) { if (!online) cheatSheet.hidden = !cheatSheet.hidden; return; }
-        if (t.closest("[data-cheat-close]")) { cheatSheet.hidden = true; return; }
+        if (t.closest("[data-cheats]")) { if (!online) { cheatsOpen = !cheatsOpen; render(); } return; }
+        if (t.closest("[data-close]")) { cheatsOpen = false; render(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { submitAction({ t: "restart" }); return; }
         const ca = t.closest("[data-cheat-act]");
         if (ca) { cheatAction(ca.dataset.cheatAct); return; }
-        if (t.closest('[data-ctl="shoot"]')) { fireShot(); return; }
-        if (t === cheatSheet) cheatSheet.hidden = true;
+        if (t.closest("[data-shoot]") || t.closest('[data-ctl="shoot"]')) { fireShot(); return; }
+        if (t === ov.cheat) { cheatsOpen = false; render(); return; }
+        if (t === ov.pause) { togglePause(false); return; }
+        if (t === ov.help) { toggleHelp(false); return; }
     }
     root.addEventListener("click", handleClick);
 
     /* ---------- boot ---------- */
     boardG.innerHTML = STATIC;
+    syncUI();
     if (online) {
         const u1 = room.onRoom((nextRoom) => { roomData = nextRoom; render(); });
         if (typeof u1 === "function") unsubs.push(u1);
@@ -971,7 +1146,7 @@ export function mount(root, context = {}) {
             svgEl.removeEventListener("pointermove", onPointerMove);
             svgEl.removeEventListener("pointerup", onPointerUp);
             svgEl.removeEventListener("pointercancel", onPointerCancel);
-            cheatSheet.removeEventListener("change", onCheatChange);
+            ov.cheat.removeEventListener("change", onCheatChange);
             clearAiTimers();
             holdStops.forEach((stop) => stop());
             unsubs.forEach((u) => { try { u(); } catch (_) { } });

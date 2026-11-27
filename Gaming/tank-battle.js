@@ -8,6 +8,8 @@
   - Peta dibuat procedural (5 tema) dan DIJAMIN bisa diselesaikan.
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "tank-battle", // harus sama dengan nama file (tanpa .js)
     name: "Tank Battle",
@@ -394,11 +396,13 @@ export function mount(root, context = {}) {
 
     /* ---------- state lokal (tidak ikut disinkronkan) ---------- */
     let destroyed = false;
-    let guideOpen = false, cheatsOpen = false;
+    let helpOpen = false, cheatsOpen = false, paused = false;
     let previewDir = null, lastTurnKey = "";
     let seenState = false, lastFxSeq = 0;
     let botTimer = null;
     let lastMoveT = 0, lastRotT = 0;
+    let pauseStart = 0, timeAnchor = 0;
+    const nowMs = () => performance.now() - timeAnchor;
     const cheats = { god: false, ap: false, onehit: false, freeze: false };
     const fxTimers = new Set();
     const holdBinds = [];
@@ -406,55 +410,75 @@ export function mount(root, context = {}) {
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (_) { }
 
+    /* Panduan internal: tampil sekali per game (flag localStorage). */
+    const HELP_KEY = "tank-battle-help-seen";
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem(HELP_KEY) === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem(HELP_KEY, "1"); } catch (_) { /* storage blocked */ }
+    }
+
     /* ---------- shell (design minimalis, mengikuti template) ---------- */
     root.innerHTML = `
 <style>
-.tb-app{--tb-line:#ffffff14;--tb-text:#e2e8f0;--tb-mut:#8fa3bf;--tb-amber:#f59e0b;color:var(--tb-text);display:flex;flex-direction:column;gap:10px}
+.tb-app{--tb-line:#ffffff14;--tb-text:#e2e8f0;--tb-mut:#8fa3bf;--tb-amber:#f59e0b;color:var(--tb-text);width:100%;height:100%;min-height:0;margin:0 auto;padding:2px 10px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;box-sizing:border-box;font:14px/1.5 ui-sans-serif,system-ui,sans-serif}
+.tb-app *{box-sizing:border-box}
 .tb-app [hidden]{display:none!important}
-.tb-app .tb-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.tb-app .tb-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--tb-line);border-radius:999px;background:#ffffff06;font-size:12px;color:var(--tb-mut)}
-.tb-app .tb-chip b{color:var(--tb-text);font-weight:600}
+.tb-app .tb-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.tb-app .tb-chip{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:5px 9px;border:1px solid var(--tb-line);border-radius:999px;background:#ffffff06;color:var(--tb-mut);white-space:nowrap}
+.tb-app .tb-chip b{color:var(--tb-text);font-weight:600;font-variant-numeric:tabular-nums}
+.tb-app .tb-chip[data-status]{max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.tb-app .tb-tag{font:600 10px/1 ui-monospace,monospace;color:var(--tb-mut);border:1px solid var(--tb-line);border-radius:999px;padding:5px 9px}
 .tb-app .tb-dot{width:9px;height:9px;border-radius:50%;background:var(--c,#fff);display:inline-block;flex:none}
 .tb-app .tb-pips{display:inline-flex;gap:3px}
 .tb-app .tb-pip{width:7px;height:10px;border-radius:2px;background:#ffffff1c}
 .tb-app .tb-pip.on{background:var(--c,#4ade80)}
 .tb-app .tb-ap .tb-pip{width:9px;height:9px;border-radius:50%}
 .tb-app .tb-ap .tb-pip.on{background:var(--tb-amber)}
-.tb-app .tb-spacer{flex:1}
-.tb-app .tb-icon{border:1px solid var(--tb-line);background:#ffffff08;color:var(--tb-mut);border-radius:999px;min-width:30px;height:30px;padding:0 11px;font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer}
-.tb-app .tb-icon:hover{color:var(--tb-text);border-color:#ffffff30}
-.tb-app .tb-panel{padding:12px;display:flex;flex-direction:column;gap:8px}
-.tb-app .tb-wrap{position:relative;width:min(100%,720px);margin:0 auto;aspect-ratio:680/520}
-.tb-app .tb-svg{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;border-radius:12px}
+.tb-app .tb-spacer{flex:1 1 auto;min-width:6px}
+.tb-app .tb-icon{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:6px 10px;border:1px solid var(--tb-line);background:#ffffff08;color:var(--tb-mut);border-radius:9px;font:inherit;font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+.tb-app .tb-icon svg{flex:none;display:block}
+.tb-app .tb-icon-label{white-space:nowrap}
+.tb-app .tb-icon:hover:not(:disabled){color:var(--tb-text);border-color:#ffffff30}
+.tb-app .tb-icon:disabled{opacity:.4;cursor:default}
+.tb-app.game-fill > .tb-board[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:1px solid var(--tb-line);border-radius:12px;background:#0b1226;overflow:hidden}
+.tb-app .tb-svg{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .tb-app .tb-log{min-height:18px;text-align:center;font-size:12px;color:var(--tb-mut)}
 .tb-app .tb-controls{display:flex;gap:18px;align-items:center;justify-content:center;flex-wrap:wrap;padding:2px 0}
 .tb-app .tb-pad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(2,46px);gap:6px}
 .tb-app .tb-btn{border:1px solid var(--tb-line);background:#ffffff0a;color:var(--tb-text);border-radius:10px;width:46px;height:46px;display:grid;place-items:center;cursor:pointer;touch-action:none;padding:0}
 .tb-app .tb-btn:active{background:#ffffff1f}
 .tb-app .tb-btn svg{width:22px;height:22px}
+.tb-app .tb-close{width:32px;height:32px;border-radius:8px}
+.tb-app .tb-close svg{width:14px;height:14px}
 .tb-app .tb-mid{display:flex;flex-direction:column;gap:6px;align-items:center}
 .tb-app .tb-rotrow{display:flex;gap:6px}
-.tb-app .tb-end{border:1px solid var(--tb-line);background:transparent;color:var(--tb-mut);border-radius:10px;height:34px;padding:0 14px;font-size:11px;font-weight:700;letter-spacing:.08em;cursor:pointer}
-.tb-app .tb-end:hover{color:var(--tb-text)}
-.tb-app .tb-fire{border:0;border-radius:14px;width:86px;height:86px;background:var(--tb-amber);color:#111827;font-weight:800;font-size:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;box-shadow:0 6px 18px #f59e0b33}
+.tb-app .tb-end{border:1px solid var(--tb-line);background:transparent;color:var(--tb-mut);border-radius:10px;min-height:44px;padding:0 14px;font-size:11px;font-weight:700;letter-spacing:.08em;cursor:pointer}
+.tb-app .tb-end:hover:not(:disabled){color:var(--tb-text)}
+.tb-app .tb-fire{border:0;border-radius:14px;width:86px;height:86px;background:var(--tb-amber);color:#111827;font-weight:800;font-size:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;box-shadow:0 4px 12px #f59e0b22}
 .tb-app .tb-fire small{font-size:10px;font-weight:700;opacity:.7}
 .tb-app .tb-btn:disabled,.tb-app .tb-fire:disabled,.tb-app .tb-end:disabled{opacity:.35;cursor:default}
 .tb-app .tb-keys{text-align:center;font-size:11px;color:var(--tb-mut)}
 .tb-app kbd{border:1px solid var(--tb-line);border-bottom-width:2px;border-radius:4px;padding:1px 5px;font-size:10px;background:#ffffff08;font-family:inherit}
-.tb-app .tb-ov{position:absolute;inset:0;display:grid;place-items:center;background:#0b1226d9;backdrop-filter:blur(3px);border-radius:12px;z-index:5;padding:14px;overflow:auto}
-.tb-app .tb-card{width:min(100%,440px);background:#101b33;border:1px solid var(--tb-line);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;gap:8px}
-.tb-app .tb-card h3{margin:0;font-size:18px}
+.tb-app .tb-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:#0b1226d9;backdrop-filter:blur(3px);border-radius:12px;padding:12px;overflow:auto}
+.tb-app .tb-card{display:flex;flex-direction:column;overflow:hidden;width:min(100%,440px);max-height:100%;padding:18px 20px;border:1px solid var(--tb-line);border-radius:14px;background:#101b33;gap:8px}
+.tb-app .tb-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.tb-app .tb-head h3{margin:0;font-size:18px}
+.tb-app .tb-help,.tb-app .tb-cheats,.tb-app .tb-stats{flex:1 1 auto;min-height:0;overflow:auto}
 .tb-app .tb-card h4{margin:6px 0 2px;font-size:11px;letter-spacing:.12em;color:var(--tb-mut);text-transform:uppercase}
 .tb-app .tb-card p,.tb-app .tb-card li{font-size:13px;line-height:1.5;color:#c3cfdf;margin:2px 0}
 .tb-app .tb-card ul{margin:0;padding-left:16px}
 .tb-app .tb-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-.tb-app .tb-primary{border:0;border-radius:10px;background:var(--tb-amber);color:#111827;font-weight:800;padding:10px 14px;font-size:14px;cursor:pointer}
-.tb-app .tb-ghost{border:1px solid var(--tb-line);background:transparent;color:var(--tb-text);border-radius:10px;padding:9px 14px;font-size:13px;cursor:pointer}
+.tb-app .tb-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:6px;padding-top:10px;border-top:1px solid var(--tb-line)}
+.tb-app .tb-note{font-size:11px;color:var(--tb-mut)}
+.tb-app .tb-primary{border:0;border-radius:10px;background:var(--tb-amber);color:#111827;font-weight:800;min-height:44px;padding:10px 14px;font-size:14px;cursor:pointer}
+.tb-app .tb-ghost{border:1px solid var(--tb-line);background:transparent;color:var(--tb-text);border-radius:10px;min-height:44px;padding:9px 14px;font-size:13px;cursor:pointer}
 .tb-app .tb-legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
 .tb-app .tb-legend span{display:flex;align-items:center;gap:7px;font-size:12px;color:#c3cfdf}
 .tb-app .tb-sw{width:16px;height:16px;border-radius:3px;flex:none;border:1px solid #ffffff22}
-.tb-app .tb-cheat{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--tb-line);border-radius:10px;font-size:13px;cursor:pointer}
-.tb-app .tb-cheat input{accent-color:var(--tb-amber);width:16px;height:16px;flex:none}
+.tb-app .tb-cheat{display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 10px;border:1px solid var(--tb-line);border-radius:10px;font-size:13px;cursor:pointer}
+.tb-app .tb-cheat input{accent-color:var(--tb-amber);width:18px;height:18px;flex:none}
 .tb-app .tb-cheat small{display:block;color:var(--tb-mut);font-size:11px}
 .tb-app .tb-active{animation:tb-pulse 1.6s ease-in-out infinite}
 @keyframes tb-pulse{50%{opacity:.3}}
@@ -462,34 +486,67 @@ export function mount(root, context = {}) {
 @keyframes tb-boom{from{transform:scale(.3);opacity:.95}to{transform:scale(2);opacity:0}}
 .tb-app .tb-trace{animation:tb-trace .38s linear forwards}
 @keyframes tb-trace{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
+.tb-app :focus-visible,.tb-app button:focus-visible{outline:2px solid var(--tb-amber);outline-offset:2px}
 @media (hover:hover) and (pointer:fine) and (min-width:900px){.tb-app .tb-pad,.tb-app .tb-rotrow{display:none}}
-@media (max-width:560px){.tb-app .tb-fire{width:72px;height:72px}.tb-app .tb-keys{display:none}.tb-app .tb-chip{font-size:11px;padding:3px 8px}}
+@media (prefers-reduced-motion:reduce){.tb-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- layout overrides terakhir (spesifisitas > pointer:coarse 44px) --- */
+@media (max-width:640px){
+.tb-app.game-fill > .tb-board[data-board]:not(:has(.tb-ov:not([hidden]))){aspect-ratio:680/520;flex:0 0 auto}
+.tb-app.game-fill > .tb-board[data-board]:has(.tb-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.tb-app{gap:5px;padding:2px 6px 6px}
+.tb-app .tb-hud{gap:4px;margin-bottom:2px}
+.tb-app .tb-hud .tb-chip{padding:4px 6px;min-height:0;font-size:9px}
+.tb-app .tb-hud .tb-chip[data-hud="theme"],.tb-app .tb-hud .tb-chip[data-hud="best"],.tb-app .tb-hud .tb-chip[data-hud="turn"]{display:none}
+.tb-app .tb-hud .tb-icon{min-height:32px;padding:5px 8px;font-size:9px}
+.tb-app .tb-hud .tb-icon-label,.tb-app .tb-hud .tb-spacer{display:none}
+.tb-app .tb-log{font-size:10px;min-height:14px}
+.tb-app .tb-controls{gap:8px;padding:0}
+.tb-app .tb-fire{width:72px;height:72px}
+.tb-app .tb-keys{display:none}
+.tb-app .tb-ov{padding:8px}
+.tb-app .tb-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.tb-app .tb-help,.tb-app .tb-cheats,.tb-app .tb-stats{scrollbar-width:none}
+.tb-app .tb-help::-webkit-scrollbar,.tb-app .tb-cheats::-webkit-scrollbar,.tb-app .tb-stats::-webkit-scrollbar{display:none}
+.tb-app .tb-note{display:none}
+}
+@media (pointer:coarse){
+.tb-app .tb-hud .tb-icon{min-height:32px;padding:5px 8px;font-size:9px}
+.tb-app .tb-ov .tb-btn{min-height:44px}
+}
 </style>
-<div class="game-app tb-app">
-  <div class="game-intro">
-    <div><h2>Tank Battle</h2><p>Turn-based tank duel on a random, always-solvable map. Breach the walls, outmaneuver the enemy, destroy their tank.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
-  </div>
+<div class="game-app tb-app game-fill" data-tb>
   <div class="tb-hud">
-    <span class="tb-chip"><i class="tb-dot" style="--c:#818cf8"></i><b data-name-you>You</b><span class="tb-pips" data-hp-you style="--c:#818cf8"></span></span>
-    <span class="tb-chip"><i class="tb-dot" style="--c:#f87171"></i><b data-name-foe>Bot</b><span class="tb-pips" data-hp-foe style="--c:#f87171"></span></span>
+    <span class="tb-chip"><i class="tb-dot" data-dot></i><span data-status>Ready</span></span>
+    <span class="tb-chip"><b data-name-you>You</b><span class="tb-pips" data-hp-you style="--c:#818cf8"></span></span>
+    <span class="tb-chip"><b data-name-foe>Bot</b><span class="tb-pips" data-hp-foe style="--c:#f87171"></span></span>
     <span class="tb-chip">AP <span class="tb-pips tb-ap" data-ap></span></span>
-    <span class="tb-chip">Turn <b data-turn>1</b></span>
-    <span class="tb-chip">Map <b data-theme>-</b></span>
+    <span class="tb-chip" data-hud="turn">Turn <b data-turn>1</b></span>
+    <span class="tb-chip" data-hud="theme">Map <b data-theme>-</b></span>
     <span class="tb-chip">Score <b data-score>0</b></span>
-    <span class="tb-chip">Best <b data-best>0</b></span>
+    <span class="tb-chip" data-hud="best">Best <b data-best>0</b></span>
     <span class="tb-spacer"></span>
-    <button class="tb-icon" type="button" data-guide title="How to play (H)">?</button>
-    <button class="tb-icon" type="button" data-cheats title="Cheats - solo only (C)">CHEATS</button>
+    <button class="tb-icon" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="tb-icon-label">Help</span></button>
+    <button class="tb-icon" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="tb-icon-label">Cheats</span></button>
+    <button class="tb-icon" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="tb-icon-label">Pause</span></button>
+    <button class="tb-icon" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="tb-icon-label">Restart</span></button>
+    <button class="tb-icon" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="tb-icon-label">Exit game</span></button>
   </div>
-  <section class="game-panel tb-panel" data-board>
-    <div class="tb-wrap">
-      <svg class="tb-svg" data-svg viewBox="0 0 680 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Tank Battle arena">
-        <g data-terrain></g><g data-reach></g><g data-ents></g><g data-aim></g><g data-fx></g>
-      </svg>
-      <div class="tb-ov" data-ov="help">
-        <div class="tb-card">
-          <h3>How to play</h3>
+  <section class="game-panel tb-board" data-board>
+    <svg class="tb-svg" data-svg viewBox="0 0 680 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Tank Battle arena">
+      <g data-terrain></g><g data-reach></g><g data-ents></g><g data-aim></g><g data-fx></g>
+    </svg>
+    <div class="tb-ov" data-ov="intro" hidden>
+      <div class="tb-card">
+        <div class="tb-head"><h3>Ready when you are</h3><span class="tb-tag" data-intro-tag>Tank Battle</span></div>
+        <div class="tb-stats"><p>Turn-based tank duel on a random, always-solvable map. Breach the walls, outmaneuver the enemy, destroy their tank.</p></div>
+        <div class="tb-foot"><span class="tb-note" data-intro-note></span><button class="tb-primary" type="button" data-start>Start battle</button></div>
+      </div>
+    </div>
+    <div class="tb-ov" data-ov="help" hidden>
+      <div class="tb-card">
+        <div class="tb-head"><h3>How to play</h3><button class="tb-btn tb-close" type="button" data-help-close aria-label="Close help" title="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="tb-help">
           <p>Destroy the enemy tank. Each tank has <b>4 hull points</b> - every shell that lands takes one.</p>
           <h4>Your turn</h4>
           <ul>
@@ -507,26 +564,29 @@ export function mount(root, context = {}) {
           <p><kbd>WASD</kbd> / <kbd>arrows</kbd> move &middot; mouse aims &middot; <kbd>click</kbd> / <kbd>Space</kbd> fire &middot; <kbd>right-click</kbd> a floor cell to auto-move &middot; <kbd>Q</kbd><kbd>E</kbd> rotate &middot; <kbd>Enter</kbd> end turn.</p>
           <h4>Mobile</h4>
           <p>D-pad moves (hold to keep moving) &middot; rotate buttons aim &middot; <b>FIRE</b> shoots &middot; <b>END</b> passes the turn.</p>
+          <h4>Shortcuts</h4>
+          <p><kbd>H</kbd> help &middot; <kbd>C</kbd> cheats &middot; <kbd>P</kbd> pause &middot; <kbd>R</kbd> restart.</p>
           <h4>Fair play</h4>
           <p>Every battle uses a fresh random map (5 themes, guaranteed solvable). A coin toss decides who moves first, and in multiplayer your base is randomly assigned.</p>
-          <div class="tb-row">
-            <button class="tb-primary" type="button" data-start>Start battle</button>
-            <button class="tb-ghost" type="button" data-close-guide hidden>Back to battle</button>
-          </div>
         </div>
+        <div class="tb-foot"><span class="tb-note">Press H to reopen this guide</span><button class="tb-primary" type="button" data-help-close>Got it</button></div>
       </div>
-      <div class="tb-ov" data-ov="over" hidden>
-        <div class="tb-card">
-          <h3 data-over-title>Victory</h3>
+    </div>
+    <div class="tb-ov" data-ov="over" hidden>
+      <div class="tb-card">
+        <div class="tb-head"><h3 data-over-title>Victory</h3></div>
+        <div class="tb-stats">
           <p data-over-reason></p>
-          <p style="color:#8fa3bf;font-size:12px">Rematch generates a new random map and a fresh coin toss.</p>
-          <div class="tb-row"><button class="tb-primary" type="button" data-rematch>Rematch</button></div>
+          <p class="tb-note">Rematch generates a new random map and a fresh coin toss.</p>
         </div>
+        <div class="tb-foot"><span class="tb-note"></span><button class="tb-primary" type="button" data-rematch>Rematch</button></div>
       </div>
-      <div class="tb-ov" data-ov="cheats" hidden>
-        <div class="tb-card">
-          <h3>Cheats</h3>
-          <p style="color:#8fa3bf;font-size:12px">Solo mode only - automatically disabled in multiplayer.</p>
+    </div>
+    <div class="tb-ov" data-ov="cheats" hidden>
+      <div class="tb-card">
+        <div class="tb-head"><h3>Cheats</h3><button class="tb-btn tb-close" type="button" data-close-cheats aria-label="Close cheats" title="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="tb-cheats">
+          <p class="tb-note">Solo mode only - automatically disabled in multiplayer.</p>
           <label class="tb-cheat"><input type="checkbox" data-cheat="god"><span>God mode<small>Enemy shells cannot hurt you.</small></span></label>
           <label class="tb-cheat"><input type="checkbox" data-cheat="ap"><span>Infinite AP<small>Moving and firing cost nothing.</small></span></label>
           <label class="tb-cheat"><input type="checkbox" data-cheat="onehit"><span>One-hit kill<small>Your shells destroy the enemy instantly.</small></span></label>
@@ -536,15 +596,25 @@ export function mount(root, context = {}) {
             <button class="tb-ghost" type="button" data-cheat-act="clear">Clear bricks</button>
             <button class="tb-ghost" type="button" data-cheat-act="skip">Skip enemy turn</button>
           </div>
-          <div class="tb-row"><button class="tb-primary" type="button" data-close-cheats>Back to battle</button></div>
         </div>
-      </div>
-      <div class="tb-ov" data-ov="wait" hidden>
-        <div class="tb-card"><h3>Waiting for host</h3><p>The host is setting up the battle. The arena will appear here automatically.</p></div>
+        <div class="tb-foot"><span class="tb-note"></span><button class="tb-primary" type="button" data-close-cheats>Back to battle</button></div>
       </div>
     </div>
-    <div class="tb-log" data-log aria-live="polite"></div>
+    <div class="tb-ov" data-ov="pause" hidden>
+      <div class="tb-card">
+        <div class="tb-head"><h3>Paused</h3></div>
+        <div class="tb-stats"><p>The battle is frozen - the bot will not move and the turn clock is stopped.</p></div>
+        <div class="tb-foot"><span class="tb-note">Press P or Esc to resume</span><button class="tb-primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="tb-ov" data-ov="wait" hidden>
+      <div class="tb-card">
+        <div class="tb-head"><h3>Waiting for host</h3></div>
+        <div class="tb-stats"><p>The host is setting up the battle. The arena will appear here automatically.</p></div>
+      </div>
+    </div>
   </section>
+  <div class="tb-log" data-log aria-live="polite"></div>
   <div class="tb-controls">
     <div class="tb-pad" aria-label="Movement pad">
       <span></span>
@@ -563,16 +633,13 @@ export function mount(root, context = {}) {
     </div>
     <button class="tb-fire" type="button" data-fire>FIRE<small>3 AP</small></button>
   </div>
-  <div class="tb-keys">Move <kbd>WASD</kbd> / <kbd>&#8592;&#8593;&#8595;&#8594;</kbd> &middot; Aim mouse / <kbd>Q</kbd><kbd>E</kbd> &middot; Fire <kbd>Space</kbd> / click &middot; Auto-move <kbd>right-click</kbd> &middot; End <kbd>Enter</kbd> &middot; Guide <kbd>H</kbd></div>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-    <button class="game-action-button" type="button" data-rematch>New battle</button>
-  </div>
+  <div class="tb-keys">Move <kbd>WASD</kbd> / <kbd>&#8592;&#8593;&#8595;&#8594;</kbd> &middot; Aim mouse / <kbd>Q</kbd><kbd>E</kbd> &middot; Fire <kbd>Space</kbd> / click &middot; Auto-move <kbd>right-click</kbd> &middot; End <kbd>Enter</kbd> &middot; Help <kbd>H</kbd> &middot; Pause <kbd>P</kbd> &middot; Restart <kbd>R</kbd></div>
 </div>`;
 
     /* ---------- referensi DOM ---------- */
     const $ = (s) => root.querySelector(s);
     const $$ = (s) => Array.from(root.querySelectorAll(s));
+    const board = $("[data-board]");
     const svg = $("[data-svg]");
     const terrainG = $("[data-terrain]"), reachG = $("[data-reach]"),
         entsG = $("[data-ents]"), aimG = $("[data-aim]"), fxG = $("[data-fx]");
@@ -584,11 +651,13 @@ export function mount(root, context = {}) {
         score: $("[data-score]"), best: $("[data-best]"),
     };
     const logEl = $("[data-log]");
-    const ovHelp = $('[data-ov="help"]'), ovOver = $('[data-ov="over"]'),
-        ovCheats = $('[data-ov="cheats"]'), ovWait = $('[data-ov="wait"]');
-    const startBtn = $("[data-start]"), closeGuideBtn = $("[data-close-guide]");
+    const ovIntro = $('[data-ov="intro"]'), ovHelp = $('[data-ov="help"]'),
+        ovOver = $('[data-ov="over"]'), ovCheats = $('[data-ov="cheats"]'),
+        ovPause = $('[data-ov="pause"]'), ovWait = $('[data-ov="wait"]');
+    const startBtn = $("[data-start]"), introNote = $("[data-intro-note]");
+    const introTag = $("[data-intro-tag]");
     const overTitle = $("[data-over-title]"), overReason = $("[data-over-reason]");
-    const cheatBtn = $("[data-cheats]");
+    const cheatBtn = $("[data-cheats]"), pauseBtn = $("[data-pause]");
     const fireBtn = $("[data-fire]"), endBtn = $("[data-end]");
     const moveBtns = $$("[data-move]"), rotBtns = $$("[data-rot]");
     const rematchBtns = $$("[data-rematch]");
@@ -677,7 +746,7 @@ export function mount(root, context = {}) {
     }
 
     function updateAim() {
-        if (!state || state.phase !== "playing" || state.turn !== playerIndex || guideOpen || cheatsOpen) {
+        if (!state || state.phase !== "playing" || state.turn !== playerIndex || helpOpen || cheatsOpen || paused) {
             aimG.innerHTML = ""; return;
         }
         const me = state.tanks[playerIndex];
@@ -726,13 +795,14 @@ export function mount(root, context = {}) {
         if (destroyed) return;
         const st = state;
         let status = "Ready", dot = "#94a3b8";
-        if (!st) status = online ? "Waiting for host..." : "Ready";
-        else if (st.phase === "intro") status = "Ready - read the guide";
+        if (!st) status = online ? "Waiting" : "Ready";
+        else if (st.phase === "intro") status = "Ready";
         else if (st.phase === "over") {
             status = st.winner == null ? "Draw" : (st.winner === playerIndex ? "Victory" : "Defeat");
             dot = st.winner == null ? "#94a3b8" : (st.winner === playerIndex ? "#4ade80" : "#f87171");
-        } else if (st.turn === playerIndex) { status = "Your turn - " + st.ap + " AP"; dot = "#4ade80"; }
-        else { status = online ? "Opponent is thinking..." : "Bot is thinking..."; dot = "#f59e0b"; }
+        } else if (st.turn === playerIndex) { status = "Your turn " + st.ap + " AP"; dot = "#4ade80"; }
+        else { status = online ? "Rival thinking" : "Bot thinking"; dot = "#f59e0b"; }
+        if (paused) { status = "Paused"; dot = "#f59e0b"; }
         statusEl.textContent = status;
         dotEl.style.background = dot;
 
@@ -772,12 +842,21 @@ export function mount(root, context = {}) {
         }
 
         logEl.textContent = st && st.log.length ? st.log[st.log.length - 1] : "";
-        ovWait.hidden = !(online && !st);
-        ovHelp.hidden = !st || (st.phase !== "intro" && !guideOpen);
-        startBtn.hidden = !st || st.phase !== "intro";
-        closeGuideBtn.hidden = !st || st.phase === "intro";
-        ovOver.hidden = !st || st.phase !== "over" || guideOpen || cheatsOpen;
-        ovCheats.hidden = !cheatsOpen || online;
+        if (st) {
+            introTag.textContent = st.theme;
+            introNote.textContent = "Map: " + st.theme + " \u00b7 " + COLORS[st.first] + " moves first";
+        }
+        ovWait.hidden = !(online && !st) || helpOpen || cheatsOpen;
+        ovIntro.hidden = !st || st.phase !== "intro" || helpOpen || cheatsOpen || paused;
+        ovHelp.hidden = !helpOpen;
+        ovOver.hidden = !st || st.phase !== "over" || helpOpen || cheatsOpen || paused;
+        ovCheats.hidden = !cheatsOpen || helpOpen || online;
+        ovPause.hidden = !paused || helpOpen || cheatsOpen;
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".tb-icon-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        }
         if (st && st.phase === "over") {
             if (st.winner == null) {
                 overTitle.textContent = "Stalemate"; overTitle.style.color = "#94a3b8";
@@ -791,13 +870,41 @@ export function mount(root, context = {}) {
             }
         }
 
-        const canAct = !!st && st.phase === "playing" && st.turn === playerIndex;
+        const canAct = !!st && st.phase === "playing" && st.turn === playerIndex && !paused && !helpOpen && !cheatsOpen;
         const freeAp = solo && cheats.ap;
         moveBtns.forEach((b) => { b.disabled = !canAct || (!freeAp && st.ap < COST_MOVE); });
         rotBtns.forEach((b) => { b.disabled = !canAct; });
         fireBtn.disabled = !canAct || (!freeAp && st.ap < COST_SHOT);
         endBtn.disabled = !canAct;
         rematchBtns.forEach((b) => { b.disabled = online && (!st || st.phase !== "over"); });
+    }
+
+    /* ---------- overlay/pause: prioritas help > cheats > pause > aksi ---------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) {
+            pauseStart = performance.now();
+            if (botTimer != null) { clearTimeout(botTimer); botTimer = null; }
+        } else {
+            /* Geser penanda waktu agar throttle input tidak loncat setelah resume. */
+            if (pauseStart) timeAnchor += performance.now() - pauseStart;
+            pauseStart = 0;
+            maybeBot();
+        }
+        render();
     }
 
     /* ---------- alur state (host-authoritative) ---------- */
@@ -824,33 +931,40 @@ export function mount(root, context = {}) {
 
     /* ---------- bot (mode ai, ritme santai: jeda 0.6-1.1 dtk per aksi) ---------- */
     function maybeBot() {
-        if (online || destroyed || botTimer != null) return;
+        if (online || destroyed || paused || botTimer != null) return;
         if (state && state.phase === "playing" && state.turn === 1)
             botTimer = setTimeout(botStep, 620 + Math.random() * 520);
     }
     function botStep() {
         botTimer = null;
         if (destroyed || !state || state.phase !== "playing" || state.turn !== 1) return;
-        if (guideOpen || cheatsOpen) { maybeBot(); return; }
+        if (paused) return;
+        if (helpOpen || cheatsOpen) { maybeBot(); return; }
         const a = decideBot(state, 1, Math.random, cheats.freeze);
         if (a) applyAction(a, 1); else maybeBot();
     }
 
     /* ---------- input: keyboard + mouse (desktop) ---------- */
-    const myTurnNow = () => !!state && state.phase === "playing" && state.turn === playerIndex;
+    const myTurnNow = () => !!state && state.phase === "playing" && state.turn === playerIndex &&
+        !paused && !helpOpen && !cheatsOpen;
     function doFire() {
-        if (!state || state.phase !== "playing" || state.turn !== playerIndex) return;
+        if (!myTurnNow()) return;
         const d = previewDir == null ? state.tanks[playerIndex].dir : previewDir;
         submitAction({ type: "fire", dir: d });
     }
     function eventCell(e) {
+        /* peta koordinat klien -> viewBox 680x520,termasuk letterbox saat board
+           diregangkan mengikuti tinggi window (preserveAspectRatio=meet). */
         const rect = svg.getBoundingClientRect();
-        const x = (e.clientX - rect.left) / rect.width * BW;
-        const y = (e.clientY - rect.top) / rect.height * BH;
+        const scale = Math.min(rect.width / BW || 0, rect.height / BH || 0);
+        if (!scale) return [-1, -1, -1, -1];
+        const ox = (rect.width - BW * scale) / 2, oy = (rect.height - BH * scale) / 2;
+        const x = (e.clientX - rect.left - ox) / scale;
+        const y = (e.clientY - rect.top - oy) / scale;
         return [Math.floor(x / CELL), Math.floor(y / CELL), x, y];
     }
     function onAim(e) {
-        if (!state || state.phase !== "playing" || state.turn !== playerIndex) return;
+        if (!state || state.phase !== "playing" || state.turn !== playerIndex || paused || helpOpen || cheatsOpen) return;
         const me = state.tanks[playerIndex];
         const [, , x, y] = eventCell(e);
         const dx = x - (me.c + 0.5) * CELL, dy = y - (me.r + 0.5) * CELL;
@@ -859,12 +973,12 @@ export function mount(root, context = {}) {
         if (d !== previewDir) { previewDir = d; updateAim(); }
     }
     function onBoardClick() {
-        if (guideOpen || cheatsOpen) return;
+        if (paused || helpOpen || cheatsOpen) return;
         doFire();
     }
     function onCtx(e) {
         e.preventDefault();
-        if (!state || state.phase !== "playing" || state.turn !== playerIndex || guideOpen || cheatsOpen) return;
+        if (!state || state.phase !== "playing" || state.turn !== playerIndex || paused || helpOpen || cheatsOpen) return;
         const [c, r] = eventCell(e);
         if (!inGrid(c, r)) return;
         const me = state.tanks[playerIndex], foe = state.tanks[1 - playerIndex];
@@ -876,38 +990,56 @@ export function mount(root, context = {}) {
         if (destroyed || !state) return;
         const tag = (e.target && e.target.tagName) || "";
         if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
-        if (e.code === "Escape") {
-            if (guideOpen || cheatsOpen) { guideOpen = false; cheatsOpen = false; render(); e.preventDefault(); }
+        const c = e.code;
+        /* Prioritas: help -> cheats -> pause/Escape -> aksi game. */
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP") {
+            if (!helpOpen && !cheatsOpen) togglePause();
+            e.preventDefault();
             return;
         }
-        if (e.code === "KeyH") { guideOpen = !guideOpen; cheatsOpen = false; render(); e.preventDefault(); return; }
-        if (e.code === "KeyC" && !online) { cheatsOpen = !cheatsOpen; guideOpen = false; render(); e.preventDefault(); return; }
-        if (guideOpen || cheatsOpen) return;
-        if (state.phase === "intro" && (e.code === "Enter" || e.code === "Space")) {
+        if (c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            e.preventDefault();
+            return;
+        }
+        if (c === "Enter") {
+            if (helpOpen) { toggleHelp(false); e.preventDefault(); return; }
+            if (cheatsOpen) { toggleCheats(false); e.preventDefault(); return; }
+            if (paused) { togglePause(false); e.preventDefault(); return; }
+        } else if (helpOpen || cheatsOpen || paused) return;
+        if (c === "KeyR" && !e.repeat) {
+            e.preventDefault();
+            submitAction({ type: "rematch" });
+            return;
+        }
+        if (state.phase === "intro" && (c === "Enter" || c === "Space")) {
             e.preventDefault(); submitAction({ type: "start" }); return;
         }
-        if (state.phase === "over" && e.code === "KeyR") { e.preventDefault(); submitAction({ type: "rematch" }); return; }
         const mv = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 2, ArrowLeft: 3, KeyA: 3 };
-        if (e.code in mv) {
+        if (c in mv) {
             e.preventDefault();
-            const now = performance.now();
+            const now = nowMs();
             if (e.repeat && now - lastMoveT < 140) return;
             lastMoveT = now;
-            if (myTurnNow()) submitAction({ type: "move", dirs: [mv[e.code]] });
+            if (myTurnNow()) submitAction({ type: "move", dirs: [mv[c]] });
             return;
         }
-        if (e.code === "KeyQ" || e.code === "KeyE") {
+        if (c === "KeyQ" || c === "KeyE") {
             e.preventDefault();
-            const now = performance.now();
+            const now = nowMs();
             if (e.repeat && now - lastRotT < 140) return;
             lastRotT = now;
             if (!myTurnNow()) return;
             const me = state.tanks[playerIndex];
-            submitAction({ type: "aim", dir: (me.dir + (e.code === "KeyQ" ? 3 : 1)) % 4 });
+            submitAction({ type: "aim", dir: (me.dir + (c === "KeyQ" ? 3 : 1)) % 4 });
             return;
         }
-        if (e.code === "Space" || e.code === "KeyF") { e.preventDefault(); if (!e.repeat) doFire(); return; }
-        if (e.code === "Enter") { e.preventDefault(); if (!e.repeat && myTurnNow()) submitAction({ type: "end" }); }
+        if (c === "Space" || c === "KeyF") { e.preventDefault(); if (!e.repeat) doFire(); return; }
+        if (c === "Enter") { e.preventDefault(); if (!e.repeat && myTurnNow()) submitAction({ type: "end" }); }
     }
 
     /* ---------- input: klik tombol ---------- */
@@ -915,19 +1047,31 @@ export function mount(root, context = {}) {
         const b = event.target.closest("button");
         if (!b) return;
         if (b.dataset.exit !== undefined) { onExit(); return; }
-        if (b.dataset.guide !== undefined) { guideOpen = true; cheatsOpen = false; render(); b.blur(); return; }
-        if (b.dataset.closeGuide !== undefined) { guideOpen = false; render(); return; }
-        if (b.dataset.start !== undefined) { guideOpen = false; submitAction({ type: "start" }); return; }
-        if (b.dataset.rematch !== undefined) { submitAction({ type: "rematch" }); b.blur(); return; }
-        if (b.dataset.cheats !== undefined) { cheatsOpen = true; guideOpen = false; render(); return; }
-        if (b.dataset.closeCheats !== undefined) { cheatsOpen = false; render(); return; }
-        if (b.dataset.cheatAct) { submitAction({ type: "cheat", op: b.dataset.cheatAct }); return; }
+        if (b.dataset.help !== undefined) { toggleHelp(true); b.blur(); return; }
+        if (b.dataset.helpClose !== undefined) { toggleHelp(false); return; }
+        if (b.dataset.start !== undefined) { toggleHelp(false); submitAction({ type: "start" }); return; }
+        if (b.dataset.restart !== undefined || b.dataset.rematch !== undefined) {
+            submitAction({ type: "rematch" }); b.blur(); return;
+        }
+        if (b.dataset.cheats !== undefined) { toggleCheats(true); b.blur(); return; }
+        if (b.dataset.closeCheats !== undefined) { toggleCheats(false); return; }
+        if (b.dataset.pause !== undefined) { togglePause(); b.blur(); return; }
+        if (b.dataset.resume !== undefined) { togglePause(false); return; }
+        if (b.dataset.cheatAct) {
+            if (!paused && !helpOpen) submitAction({ type: "cheat", op: b.dataset.cheatAct });
+            return;
+        }
         if (b.dataset.fire !== undefined) { doFire(); b.blur(); return; }
-        if (b.dataset.end !== undefined) { submitAction({ type: "end" }); b.blur(); return; }
+        if (b.dataset.end !== undefined) {
+            if (myTurnNow()) submitAction({ type: "end" });
+            b.blur(); return;
+        }
         if (b.dataset.move !== undefined && event.detail === 0) {
-            submitAction({ type: "move", dirs: [parseInt(b.dataset.move, 10)] }); return;
+            if (myTurnNow()) submitAction({ type: "move", dirs: [parseInt(b.dataset.move, 10)] });
+            return;
         }
         if (b.dataset.rot !== undefined && event.detail === 0 && state) {
+            if (!myTurnNow()) return;
             const me = state.tanks[playerIndex];
             submitAction({ type: "aim", dir: (me.dir + parseInt(b.dataset.rot, 10) + 4) % 4 });
         }

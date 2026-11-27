@@ -6,6 +6,8 @@
     - Regenerate manifest: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "word-builder",
     name: "Word Builder",
@@ -176,88 +178,155 @@ export function mount(root, context = {}) {
     let pendingWord = null;   // guest: word awaiting host confirmation
     let lastSync = 0;         // guest: for clock interpolation
     let localMsg = null;
-    let showHelp = false, showCheats = false;
+    let showHelp = false, showCheats = false, paused = false;
     let cheatReveal = false, freezeClock = false;
     let tickTimer = null, guestTimer = null, botTimer = null, pubAcc = 0;
-    let timers = [];
 
+    /* Virtual timers: freeze while help/cheats/pause are open, then shift
+       every due time by the frozen span so the bot and messages never jump. */
+    let timers = [], timerTick = null, frozenAt = 0;
+    const virtualNow = () => frozenAt || Date.now();
+    const frozen = () => !online && (paused || showHelp || showCheats);
+
+    function ensureTimer() {
+        if (timerTick || frozen() || !timers.length) return;
+        const next = Math.min.apply(null, timers.map((t) => t.due));
+        timerTick = setTimeout(() => {
+            timerTick = null;
+            if (frozen()) return;
+            const now = Date.now();
+            const due = timers.filter((t) => t.due <= now);
+            timers = timers.filter((t) => t.due > now);
+            due.forEach((t) => t.fn());
+            ensureTimer();
+        }, Math.max(0, next - Date.now()));
+    }
     const later = (fn, ms) => {
-        const tm = setTimeout(() => { timers = timers.filter((x) => x !== tm); fn(); }, ms);
-        timers.push(tm);
-        return tm;
+        const t = { fn, due: virtualNow() + ms };
+        timers.push(t);
+        ensureTimer();
+        return t;
     };
-    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; botTimer = null; };
+    const cancelLater = (t) => {
+        if (!t) return;
+        timers = timers.filter((x) => x !== t);
+        if (!timers.length && timerTick) { clearTimeout(timerTick); timerTick = null; }
+    };
+    const clearTimers = () => {
+        if (timerTick) { clearTimeout(timerTick); timerTick = null; }
+        timers = []; botTimer = null;
+    };
+    function freezeTimers() {
+        if (frozenAt) return;
+        frozenAt = Date.now();
+        if (timerTick) { clearTimeout(timerTick); timerTick = null; }
+        stopTick();
+        if (guestTimer) { clearInterval(guestTimer); guestTimer = null; }
+    }
+    function thawTimers() {
+        if (!frozenAt) return;
+        const shift = Date.now() - frozenAt;
+        frozenAt = 0;
+        timers.forEach((t) => { t.due += shift; });
+        if (online) lastSync += shift;
+        ensureTimer();
+        startTick();
+        if (online && !room.isHost && !guestTimer) guestTimer = setInterval(renderClocks, TICK_MS);
+    }
+    const syncFreeze = () => { if (frozen()) freezeTimers(); else thawTimers(); };
 
-    /* ---------- markup (minimalist, scoped under .wb-app) ---------- */
+    /* ---------- internal How to play (first run only) ---------- */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("wordBuilderHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        showHelp = true;
+        try { localStorage.setItem("wordBuilderHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* ---------- markup (single HUD + fill-height board) ---------- */
     root.innerHTML = `
-<div class="game-app wb-app">
 <style>
-.wb-app{--wb-ink:#17181c;--wb-mut:#7a7f8a;--wb-line:#e7e7ea;--wb-card:#ffffff;--wb-bg:#fbfbfc;--wb-acc:#4f46e5;--wb-rose:#e11d48;--wb-good:#059669;--wb-bad:#dc2626;max-width:680px;margin:0 auto;color:var(--wb-ink)}
-.wb-app .wb-panel{position:relative;display:flex;flex-direction:column;gap:12px;background:var(--wb-bg);border:1px solid var(--wb-line);border-radius:18px;padding:16px;min-height:470px;overflow:hidden}
-.wb-app .wb-score{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.wb-app .wb-pcard{background:var(--wb-card);border:1.5px solid var(--wb-line);border-radius:14px;padding:10px 12px;transition:border-color .15s,box-shadow .15s}
-.wb-app .wb-pcard.wb-active{border-color:var(--wb-acc);box-shadow:0 4px 14px rgba(79,70,229,.10)}
-.wb-app .wb-pname{display:flex;align-items:center;gap:7px;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wb-app .wb-pname em{font-style:normal;color:var(--wb-mut);font-weight:600;font-size:12px}
-.wb-app .wb-ptag{margin-left:auto;font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--wb-mut);border:1px solid var(--wb-line);border-radius:999px;padding:1px 7px}
-.wb-app .wb-dot{width:8px;height:8px;border-radius:50%;flex:none}
-.wb-app .wb-dot.p0{background:var(--wb-acc)} .wb-app .wb-dot.p1{background:var(--wb-rose)}
-.wb-app .wb-active .wb-dot{animation:wb-pulse 1.2s ease-in-out infinite}
-.wb-app .wb-pstats{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;color:var(--wb-mut)}
-.wb-app .wb-pstats b{color:var(--wb-ink);font-variant-numeric:tabular-nums}
-.wb-app .wb-pstats b.wb-low{color:var(--wb-bad);animation:wb-pulse 1s ease-in-out infinite}
-.wb-app .wb-rack{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;padding:6px 0 2px}
-.wb-app .wb-tile{position:relative;width:52px;height:60px;border-radius:13px;background:var(--wb-card);border:1.5px solid var(--wb-line);display:grid;place-items:center;font-size:24px;font-weight:800;color:var(--wb-ink);cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.05);transition:transform .12s,border-color .12s,opacity .12s;font-family:inherit}
-.wb-app .wb-tile:hover:not(:disabled){transform:translateY(-3px);border-color:var(--wb-acc)}
-.wb-app .wb-tile:active:not(:disabled){transform:translateY(0)}
-.wb-app .wb-tile:disabled{cursor:default}
-.wb-app .wb-tile.wb-used{opacity:.28}
-.wb-app .wb-tile.wb-lock{opacity:.55}
-.wb-app .wb-idx{position:absolute;top:4px;right:7px;font-size:9px;font-style:normal;font-weight:700;color:var(--wb-mut)}
-.wb-app .wb-tray{display:flex;gap:7px;align-items:center;justify-content:center;flex-wrap:wrap;min-height:52px;border:1.5px dashed var(--wb-line);border-radius:13px;background:var(--wb-card);padding:8px 10px}
-.wb-app .wb-ghost{color:var(--wb-mut);font-size:13px}
-.wb-app .wb-chip-in{display:inline-flex;align-items:center;gap:5px;background:#eef2ff;color:#3730a3;border:none;border-radius:9px;padding:7px 11px;font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;animation:wb-pop .18s ease-out}
-.wb-app .wb-chip-in i{font-style:normal;font-size:11px;opacity:.45}
-.wb-app .wb-chip-in:hover i{opacity:1;color:var(--wb-bad)}
-.wb-app .wb-keys{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.wb-app .wb-btn{appearance:none;border:1px solid var(--wb-line);background:var(--wb-card);color:var(--wb-ink);border-radius:11px;padding:9px 14px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s,transform .12s}
-.wb-app .wb-btn:hover:not(:disabled){border-color:#c9cbd4;transform:translateY(-1px)}
-.wb-app .wb-btn:disabled{opacity:.4;cursor:default}
-.wb-app .wb-btn.wb-primary{background:var(--wb-ink);border-color:var(--wb-ink);color:#fff}
-.wb-app .wb-btn.wb-primary:hover:not(:disabled){background:#000}
-.wb-app .wb-btn.wb-on{border-color:var(--wb-acc);color:var(--wb-acc);background:#eef2ff}
-.wb-app .wb-msg{min-height:20px;text-align:center;font-size:13px;font-weight:600;color:var(--wb-mut)}
-.wb-app .wb-msg.wb-good{color:var(--wb-good)} .wb-app .wb-msg.wb-bad{color:var(--wb-bad)}
-.wb-app .wb-hint{text-align:center;font-size:13px;font-weight:700;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:8px 12px;letter-spacing:.08em}
-.wb-app .wb-hint small{display:block;font-weight:600;letter-spacing:0;color:#b45309;margin-top:2px}
-.wb-app .wb-found{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;min-height:30px}
-.wb-app .wb-chip{border-radius:999px;padding:4px 11px;font-size:12.5px;font-weight:700;letter-spacing:.05em;animation:wb-pop .22s ease-out}
-.wb-app .wb-chip.p0{background:#eef2ff;color:#3730a3} .wb-app .wb-chip.p1{background:#fff1f2;color:#9f1239}
-.wb-app .wb-meta{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--wb-mut);margin-top:auto}
-.wb-app .wb-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(251,251,252,.94);backdrop-filter:blur(3px);z-index:5;padding:14px}
-.wb-app .wb-card{background:var(--wb-card);border:1px solid var(--wb-line);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.08);padding:20px;max-width:460px;width:100%;max-height:100%;overflow:auto}
-.wb-app .wb-card h3{margin:0 0 6px;font-size:20px}
-.wb-app .wb-card h3.wb-win{color:var(--wb-good)} .wb-app .wb-card h3.wb-lose{color:var(--wb-bad)}
-.wb-app .wb-sub{margin:0 0 10px;font-size:13.5px;color:var(--wb-mut);line-height:1.5}
-.wb-app .wb-rules{margin:0 0 10px;padding-left:18px;font-size:13px;line-height:1.65;color:var(--wb-ink)}
-.wb-app .wb-info{font-size:12.5px;color:var(--wb-mut);background:var(--wb-bg);border:1px solid var(--wb-line);border-radius:10px;padding:8px 10px;margin:0 0 12px}
-.wb-app .wb-ovbtns{display:flex;gap:8px;flex-wrap:wrap}
-.wb-app .wb-help h4{margin:12px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--wb-mut)}
-.wb-app .wb-help ul{margin:0;padding-left:18px;font-size:13px;line-height:1.65}
-.wb-app .wb-help kbd{background:var(--wb-bg);border:1px solid var(--wb-line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11.5px;font-family:inherit;font-weight:700}
-.wb-app .wb-results{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.wb-app .wb-res{border:1px solid var(--wb-line);border-radius:11px;padding:9px 11px;font-size:12.5px}
-.wb-app .wb-res b{display:block;font-size:13.5px}
-.wb-app .wb-res span{color:var(--wb-mut)}
-.wb-app .wb-res em{display:block;font-style:normal;margin-top:3px;letter-spacing:.04em;font-weight:600}
-.wb-app .wb-res.p0{border-left:3px solid var(--wb-acc)} .wb-app .wb-res.p1{border-left:3px solid var(--wb-rose)}
-.wb-app .wb-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.wb-app .wb-answer{max-height:170px;overflow:auto;border:1px solid var(--wb-line);border-radius:11px;padding:9px;margin-bottom:12px;background:var(--wb-bg)}
-.wb-app .wb-answer p{margin:0 0 7px;font-size:12px;color:var(--wb-mut)}
-.wb-app .wb-wordpick{display:inline-flex;gap:5px;align-items:baseline;margin:0 5px 5px 0;border:1px solid var(--wb-line);background:var(--wb-card);border-radius:8px;padding:4px 9px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
-.wb-app .wb-wordpick:hover{border-color:var(--wb-acc);color:var(--wb-acc)}
-.wb-app .wb-wordpick small{color:var(--wb-mut);font-weight:600}
-.wb-app .wb-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.wb-app{--wb-ink:#17181c;--wb-mut:#7a7f8a;--wb-line:#e7e7ea;--wb-card:#ffffff;--wb-bg:#fbfbfc;--wb-acc:#4f46e5;--wb-rose:#e11d48;--wb-good:#059669;--wb-bad:#dc2626;
+  width:100%;max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:10px;color:var(--wb-ink);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wb-app *{box-sizing:border-box}
+.wb-app [hidden]{display:none!important}
+.wb-app button:focus-visible{outline:2px solid var(--wb-acc);outline-offset:2px}
+
+/* --- one HUD bar: info left, icon buttons right --- */
+.wb-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.wb-hud-info,.wb-hud-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.wb-hud-actions{margin-left:auto}
+.wb-spacer{flex:1 1 auto}
+.wb-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--wb-line);border-radius:999px;background:var(--wb-card);color:var(--wb-mut);white-space:nowrap}
+.wb-chip b{color:var(--wb-ink);font-weight:700;font-variant-numeric:tabular-nums}
+.wb-chip.wb-active{border-color:var(--wb-acc);box-shadow:0 1px 5px rgba(79,70,229,.12)}
+.wb-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.wb-low{color:var(--wb-bad)!important;animation:wb-pulse 1s ease-in-out infinite}
+.wb-btn{appearance:none;border:1px solid var(--wb-line);background:var(--wb-card);color:var(--wb-ink);border-radius:8px;padding:7px 11px;min-height:34px;font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s,transform .12s}
+.wb-btn:hover:not(:disabled){border-color:#c9cbd4;transform:translateY(-1px)}
+.wb-btn:disabled{opacity:.4;cursor:default}
+.wb-btn.wb-primary{background:var(--wb-ink);border-color:var(--wb-ink);color:#fff}
+.wb-btn.wb-primary:hover:not(:disabled){background:#000}
+.wb-btn.wb-on{border-color:var(--wb-acc);color:var(--wb-acc);background:#eef2ff}
+.wb-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.wb-icon-btn svg{flex:none;display:block}
+
+/* --- board fills the remaining height, content stays proportional --- */
+.wb-board{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:0;padding:14px;background:var(--wb-bg);border:1px solid var(--wb-line);border-radius:14px;overflow:hidden}
+.wb-play{display:flex;flex-direction:column;gap:12px;width:100%;max-width:600px;max-height:100%;margin:auto;overflow:auto;padding:2px}
+.wb-rack{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;padding:4px 0 0}
+.wb-tile{position:relative;width:clamp(46px,7vw,56px);height:clamp(54px,8vw,62px);border-radius:10px;background:var(--wb-card);border:1px solid var(--wb-line);display:grid;place-items:center;font-size:24px;font-weight:800;color:var(--wb-ink);cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.05);transition:transform .12s,border-color .12s,opacity .12s;font-family:inherit}
+.wb-tile:hover:not(:disabled){transform:translateY(-3px);border-color:var(--wb-acc)}
+.wb-tile:active:not(:disabled){transform:translateY(0)}
+.wb-tile:disabled{cursor:default}
+.wb-tile.wb-used{opacity:.28}
+.wb-tile.wb-lock{opacity:.55}
+.wb-idx{position:absolute;top:4px;right:7px;font-size:9px;font-style:normal;font-weight:700;color:var(--wb-mut)}
+.wb-tray{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;min-height:52px;border:1px dashed var(--wb-line);border-radius:10px;background:var(--wb-card);padding:8px 10px}
+.wb-ghost{color:var(--wb-mut);font-size:13px}
+.wb-chip-in{display:inline-flex;align-items:center;gap:6px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:8px;padding:8px 12px;font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;animation:wb-pop .18s ease-out}
+.wb-chip-in:focus-visible{outline:2px solid var(--wb-acc);outline-offset:2px}
+.wb-chip-in i{font-style:normal;font-size:11px;opacity:.45}
+.wb-chip-in:hover i{opacity:1;color:var(--wb-bad)}
+.wb-keys{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.wb-msg{min-height:20px;text-align:center;font-size:13px;font-weight:600;color:var(--wb-mut)}
+.wb-msg.wb-good{color:var(--wb-good)} .wb-msg.wb-bad{color:var(--wb-bad)}
+.wb-hint{text-align:center;font-size:13px;font-weight:700;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;letter-spacing:.08em}
+.wb-hint small{display:block;font-weight:600;letter-spacing:0;color:#b45309;margin-top:4px}
+.wb-found{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;min-height:30px}
+.wb-chip-found{display:inline-block;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;letter-spacing:.05em;animation:wb-pop .22s ease-out}
+.wb-chip-found.p0{background:#eef2ff;color:#3730a3} .wb-chip-found.p1{background:#fff1f2;color:#9f1239}
+
+/* --- overlay modal: fixed head/foot, scrollable body --- */
+.wb-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:12px;background:rgba(251,251,252,.94);backdrop-filter:blur(3px)}
+.wb-ov[data-ov="help"]{z-index:50}
+.wb-card{display:flex;flex-direction:column;width:min(470px,100%);max-height:100%;padding:16px 18px;background:var(--wb-card);border:1px solid var(--wb-line);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.06);overflow:hidden}
+.wb-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.wb-head h3{margin:0;font-size:19px}
+.wb-head h3.wb-win{color:var(--wb-good)} .wb-head h3.wb-lose{color:var(--wb-bad)}
+.wb-body{flex:1 1 auto;min-height:0;overflow:auto}
+.wb-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.wb-note{font-size:11px;color:var(--wb-mut)}
+.wb-sub{margin:0 0 12px;font-size:13.5px;color:var(--wb-mut);line-height:1.5}
+.wb-rules{margin:0 0 12px;padding-left:18px;font-size:13px;line-height:1.65;color:var(--wb-ink)}
+.wb-info{font-size:12.5px;color:var(--wb-mut);background:var(--wb-bg);border:1px solid var(--wb-line);border-radius:8px;padding:8px 10px;margin:0 0 12px}
+.wb-ovbtns{display:flex;gap:8px;flex-wrap:wrap}
+.wb-help h4{margin:12px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--wb-mut)}
+.wb-help ul{margin:0;padding-left:18px;font-size:13px;line-height:1.65}
+.wb-help kbd{background:var(--wb-bg);border:1px solid var(--wb-line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11.5px;font-family:inherit;font-weight:700}
+.wb-results{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.wb-res{border:1px solid var(--wb-line);border-radius:8px;padding:10px 12px;font-size:12.5px}
+.wb-res b{display:block;font-size:13.5px}
+.wb-res span{color:var(--wb-mut)}
+.wb-res em{display:block;font-style:normal;margin-top:4px;letter-spacing:.04em;font-weight:600}
+.wb-res.p0{border-left:3px solid var(--wb-acc)} .wb-res.p1{border-left:3px solid var(--wb-rose)}
+.wb-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wb-answer{max-height:170px;overflow:auto;border:1px solid var(--wb-line);border-radius:8px;padding:10px;margin-bottom:12px;background:var(--wb-bg)}
+.wb-answer p{margin:0 0 8px;font-size:12px;color:var(--wb-mut)}
+.wb-wordpick{display:inline-flex;gap:6px;align-items:baseline;margin:0 8px 8px 0;border:1px solid var(--wb-line);background:var(--wb-card);border-radius:8px;padding:6px 10px;min-height:40px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.wb-wordpick:hover{border-color:var(--wb-acc);color:var(--wb-acc)}
+.wb-wordpick small{color:var(--wb-mut);font-weight:600}
 @keyframes wb-pop{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes wb-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @media (pointer:coarse){
@@ -267,133 +336,202 @@ export function mount(root, context = {}) {
   .wb-app .wb-chip-in{padding:10px 13px;font-size:19px}
 }
 @media (max-width:520px){
-  .wb-app .wb-panel{padding:12px;min-height:440px}
+  .wb-app .wb-board{padding:10px}
   .wb-app .wb-tile{width:clamp(42px,12vw,52px);height:56px;font-size:21px}
-  .wb-app .wb-pstats{gap:8px;font-size:11.5px}
+  .wb-app .wb-hud-info{gap:5px}
   .wb-app .wb-cheatgrid{grid-template-columns:1fr}
 }
+@media (max-width:390px){.wb-app .wb-tile{width:clamp(38px,11vw,46px);height:52px;font-size:19px}}
+@media (prefers-reduced-motion:reduce){.wb-app *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (PALING AKHIR) --- */
+.wb-icon-btn svg{flex:none;display:block}
+.wb-card{overflow:hidden}
+.wb-head,.wb-foot{flex:none}
+.wb-body{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.wb-app.game-fill > .wb-board:not(:has(.wb-ov:not([hidden]))){flex:1 1 auto;min-height:0}
+.wb-app.game-fill > .wb-board:has(.wb-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+.wb-app .wb-hud{gap:5px;margin-bottom:0}
+.wb-app .wb-hud .wb-hud-info,
+.wb-app .wb-hud .wb-hud-actions{gap:5px}
+.wb-app .wb-hud .wb-hud-actions{margin-left:auto}
+.wb-app .wb-hud .wb-chip{padding:4px 6px;font-size:9px;min-height:0}
+.wb-app .wb-hud .wb-chip[data-hud="bestchip"]{display:none}
+.wb-app .wb-hud .wb-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.wb-app .wb-hud .wb-btn-label,
+.wb-app .wb-hud .wb-spacer{display:none}
+.wb-app .wb-ov{padding:8px}
+.wb-app .wb-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.wb-app .wb-body{scrollbar-width:none}
+.wb-app .wb-body::-webkit-scrollbar{display:none}
+.wb-app .wb-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--wb-line)}
+.wb-app .wb-note{display:none}
+}
 </style>
-  <div class="game-intro">
-    <div><h2>Word Builder</h2><p>Turn-based word duel — first to ${TARGET} words wins.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
-  </div>
-  <section class="game-panel wb-panel" data-board>
-    <div class="wb-score" data-score></div>
-    <div class="wb-rack" data-tiles></div>
-    <div class="wb-tray" data-tray></div>
-    <div class="wb-keys">
-      <button type="button" class="wb-btn" data-act="back" title="Backspace">⌫</button>
-      <button type="button" class="wb-btn" data-act="clear">Clear</button>
-      <button type="button" class="wb-btn" data-act="shuffle" title="Space">Shuffle</button>
-      <button type="button" class="wb-btn wb-primary" data-act="submit" title="Enter">Submit ↵</button>
+<div class="game-app wb-app game-fill" data-wb>
+  <div class="wb-hud">
+    <div class="wb-hud-info">
+      <span class="wb-chip"><i class="wb-dot" data-dot></i><b data-hud="status">Ready</b></span>
+      <span class="wb-chip">LV <b data-hud="level">1</b></span>
+      <span class="wb-chip">YOU <b data-hud="seat">P1</b></span>
+      <span class="wb-chip" data-pchip="0">P1 <b data-hud="words0">0/${TARGET}</b> · <b data-hud="score0">0</b> · <b data-clock="0">${TIME_MS / 1000}s</b></span>
+      <span class="wb-chip" data-pchip="1">P2 <b data-hud="words1">0/${TARGET}</b> · <b data-hud="score1">0</b> · <b data-clock="1">${TIME_MS / 1000}s</b></span>
+      <span class="wb-chip" data-hud="bestchip">BEST <b data-hud="best">0</b></span>
     </div>
-    <div class="wb-msg" data-msg aria-live="polite"></div>
-    <div class="wb-hint" data-hint hidden></div>
-    <div class="wb-found" data-found></div>
-    <div class="wb-meta"><span data-brief></span><span data-best></span></div>
+    <span class="wb-spacer"></span>
+    <div class="wb-hud-actions">
+      <button class="wb-btn wb-icon-btn" type="button" data-act="shuffle" aria-label="Shuffle rack" title="Shuffle rack (Space)">${iconSVG("repeat", { size: 14 })}<span class="wb-btn-label">Shuffle</span></button>
+      <button class="wb-btn wb-icon-btn" type="button" data-act="pass" data-passbtn aria-label="Pass turn" title="Pass turn (−5s)">${iconSVG("skipForward", { size: 14 })}<span class="wb-btn-label">Pass</span></button>
+      <button class="wb-btn wb-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="wb-btn-label">Help</span></button>
+      <button class="wb-btn wb-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="wb-btn-label">Cheats</span></button>
+      <button class="wb-btn wb-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P / Esc)">${iconSVG("pause", { size: 14 })}<span class="wb-btn-label">Pause</span></button>
+      <button class="wb-btn wb-icon-btn" type="button" data-restart aria-label="Restart" title="New rack (R)">${iconSVG("refresh", { size: 14 })}<span class="wb-btn-label">Restart</span></button>
+      <button class="wb-btn wb-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="wb-btn-label">Exit game</span></button>
+    </div>
+  </div>
+  <section class="game-panel wb-board" data-board>
+    <div class="wb-play">
+      <div class="wb-rack" data-tiles></div>
+      <div class="wb-tray" data-tray></div>
+      <div class="wb-keys">
+        <button type="button" class="wb-btn" data-act="back" title="Backspace">⌫</button>
+        <button type="button" class="wb-btn" data-act="clear">Clear</button>
+        <button type="button" class="wb-btn wb-primary" data-act="submit" title="Enter">Submit ↵</button>
+      </div>
+      <div class="wb-msg" data-msg aria-live="polite"></div>
+      <div class="wb-hint" data-hint hidden></div>
+      <div class="wb-found" data-found></div>
+    </div>
 
     <div class="wb-ov" data-ov="start">
       <div class="wb-card" role="dialog" aria-label="Start game">
-        <h3>Word Builder</h3>
-        <p class="wb-sub">A turn-based word duel. Same seven tiles, two players — first to <b>${TARGET} words</b> wins.</p>
-        <ul class="wb-rules">
-          <li>Build words of <b>${MIN_LEN}+ letters</b> from the rack; each tile at most once per word.</li>
-          <li>The rack is shared — every word can be claimed <b>only once</b> per round.</li>
-          <li>Each side has a <b>${TIME_MS / 1000}s</b> clock. Passing costs ${PASS_COST_MS / 1000}s. Longer words score more.</li>
-          <li>Two wrong guesses unlock a <b>hint</b> — more misses reveal more letters.</li>
-        </ul>
-        <p class="wb-info" data-startinfo></p>
-        <div class="wb-ovbtns">
-          <button type="button" class="wb-btn wb-primary" data-act="start">Start game</button>
-          <button type="button" class="wb-btn" data-act="help">How to play</button>
+        <div class="wb-head"><h3>Word Builder</h3><span class="wb-note">LV <span data-startlevel>1</span></span></div>
+        <div class="wb-body">
+          <p class="wb-sub">A turn-based word duel. Same seven tiles, two players — first to <b>${TARGET} words</b> wins.</p>
+          <ul class="wb-rules">
+            <li>Build words of <b>${MIN_LEN}+ letters</b> from the rack; each tile at most once per word.</li>
+            <li>The rack is shared — every word can be claimed <b>only once</b> per round.</li>
+            <li>Each side has a <b>${TIME_MS / 1000}s</b> clock. Passing costs ${PASS_COST_MS / 1000}s. Longer words score more.</li>
+            <li>Two wrong guesses unlock a <b>hint</b> — more misses reveal more letters.</li>
+          </ul>
+          <p class="wb-info" data-startinfo></p>
+        </div>
+        <div class="wb-foot">
+          <span class="wb-note">Press H for the guide</span>
+          <div class="wb-ovbtns">
+            <button type="button" class="wb-btn wb-primary" data-act="start">Start game</button>
+            <button type="button" class="wb-btn" data-act="help">How to play</button>
+          </div>
         </div>
       </div>
     </div>
     <div class="wb-ov" data-ov="wait" hidden>
-      <div class="wb-card"><h3>Waiting for host…</h3><p class="wb-sub">The host will start the round. Seats and the first move are drawn randomly.</p></div>
+      <div class="wb-card">
+        <div class="wb-head"><h3>Waiting for host…</h3></div>
+        <div class="wb-body"><p class="wb-sub">The host will start the round. Seats and the first move are drawn randomly.</p></div>
+      </div>
     </div>
     <div class="wb-ov" data-ov="over" hidden>
       <div class="wb-card" role="dialog" aria-label="Round results">
-        <h3 data-overtitle>Game over</h3>
-        <p class="wb-sub" data-overreason></p>
-        <div class="wb-results" data-overresults></div>
-        <p class="wb-info" data-overbest></p>
-        <div class="wb-ovbtns">
-          <button type="button" class="wb-btn wb-primary" data-act="next">Next level</button>
-          <button type="button" class="wb-btn" data-act="restart">Replay level</button>
+        <div class="wb-head"><h3 data-overtitle>Game over</h3><span class="wb-note">LV <span data-overlevel>1</span></span></div>
+        <div class="wb-body">
+          <p class="wb-sub" data-overreason></p>
+          <div class="wb-results" data-overresults></div>
+          <p class="wb-info" data-overbest></p>
         </div>
+        <div class="wb-foot">
+          <span class="wb-note">Best is kept on this device</span>
+          <div class="wb-ovbtns">
+            <button type="button" class="wb-btn wb-primary" data-act="next">Next level</button>
+            <button type="button" class="wb-btn" data-act="restart">Replay level</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wb-ov" data-ov="pause" hidden>
+      <div class="wb-card">
+        <div class="wb-head"><h3>Paused</h3></div>
+        <div class="wb-body"><p class="wb-sub">Clocks, the bot and pending timers are frozen. Online rounds never pause.</p></div>
+        <div class="wb-foot"><span class="wb-note">Press P or Esc to resume</span><button type="button" class="wb-btn wb-primary" data-act="resume">Resume</button></div>
       </div>
     </div>
     <div class="wb-ov" data-ov="help" hidden>
       <div class="wb-card wb-help" role="dialog" aria-label="How to play">
-        <h3>How to play</h3>
-        <h4>Goal</h4>
-        <ul>
-          <li>Take turns building words (≥ ${MIN_LEN} letters) from the shared 7-tile rack. Each tile once per word, each word once per round.</li>
-          <li>First to <b>${TARGET} words</b> wins. If the rack runs dry, the higher word count (then score) wins. If your ${TIME_MS / 1000}s clock empties, you lose.</li>
-          <li>Score = letters × 10. <b>Pass</b> skips your turn and costs ${PASS_COST_MS / 1000}s.</li>
-        </ul>
-        <h4>Hints</h4>
-        <ul><li>After <b>2 wrong guesses in a row</b>, a hint appears: the length + first letter of an easy remaining word. Every extra miss reveals one more letter. A correct word resets the streak.</li></ul>
-        <h4>Desktop — keyboard &amp; mouse</h4>
-        <ul>
-          <li>Type <kbd>A</kbd>–<kbd>Z</kbd> to add letters, or press <kbd>1</kbd>–<kbd>7</kbd> / click a tile.</li>
-          <li><kbd>Enter</kbd> submit · <kbd>Backspace</kbd> delete · <kbd>Space</kbd> shuffle · <kbd>Esc</kbd> close panels · <kbd>?</kbd> this guide.</li>
-          <li>Click a letter chip in the tray to remove it.</li>
-        </ul>
-        <h4>Mobile — virtual keys</h4>
-        <ul><li>Tap the letter tiles as your keyboard, then use the on-screen <b>⌫ / Clear / Shuffle / Submit</b> buttons. Tap a tray chip to remove a letter.</li></ul>
-        <h4>Levels &amp; fairness</h4>
-        <ul>
-          <li>Every rack is randomly generated and <b>verified solvable</b> (≥ ${MIN_WORDS} valid words). Next level = fresh rack.</li>
-          <li>VS bot: a coin flip decides who starts. Multiplayer: seats (P1/P2) <b>and</b> the first move are re-drawn every round.</li>
-          <li>Solo play pauses while this guide or the cheat console is open. Online play never pauses.</li>
-        </ul>
-        <h4>Cheats</h4>
-        <ul><li>The cheat console works in solo/vs-bot only — it is disabled in online rooms.</li></ul>
-        <div class="wb-ovbtns"><button type="button" class="wb-btn wb-primary" data-act="helpclose">Got it</button></div>
+        <div class="wb-head"><h3>How to play</h3><button type="button" class="wb-btn" data-act="helpclose" aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wb-body wb-help">
+          <h4>Goal</h4>
+          <ul>
+            <li>Take turns building words (≥ ${MIN_LEN} letters) from the shared 7-tile rack. Each tile once per word, each word once per round.</li>
+            <li>First to <b>${TARGET} words</b> wins. If the rack runs dry, the higher word count (then score) wins. If your ${TIME_MS / 1000}s clock empties, you lose.</li>
+            <li>Score = letters × 10. <b>Pass</b> skips your turn and costs ${PASS_COST_MS / 1000}s.</li>
+          </ul>
+          <h4>Hints</h4>
+          <ul><li>After <b>2 wrong guesses in a row</b>, a hint appears: the length + first letter of an easy remaining word. Every extra miss reveals one more letter. A correct word resets the streak.</li></ul>
+          <h4>Desktop — keyboard &amp; mouse</h4>
+          <ul>
+            <li>Type <kbd>A</kbd>–<kbd>Z</kbd> to add letters, or press <kbd>1</kbd>–<kbd>7</kbd> / click a tile.</li>
+            <li><kbd>Enter</kbd> submit · <kbd>Backspace</kbd> delete · <kbd>Space</kbd> shuffle · <kbd>Esc</kbd> close panels · <kbd>?</kbd> this guide.</li>
+            <li><kbd>H</kbd> help · <kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>R</kbd> new rack — hold <kbd>Shift</kbd> for these while it is your turn, since letters are game input.</li>
+            <li>Click a letter chip in the tray to remove it.</li>
+          </ul>
+          <h4>Mobile — virtual keys</h4>
+          <ul><li>Tap the letter tiles as your keyboard, then use the on-screen <b>⌫ / Clear / Submit</b> buttons. Tap a tray chip to remove a letter. Shuffle, Pass and the other controls live in the HUD.</li></ul>
+          <h4>Levels &amp; fairness</h4>
+          <ul>
+            <li>Every rack is randomly generated and <b>verified solvable</b> (≥ ${MIN_WORDS} valid words). Next level = fresh rack.</li>
+            <li>VS bot: a coin flip decides who starts. Multiplayer: seats (P1/P2) <b>and</b> the first move are re-drawn every round.</li>
+            <li>Solo play pauses while this guide, the cheat console or the pause panel is open. Online play never pauses.</li>
+          </ul>
+          <h4>Cheats</h4>
+          <ul><li>The cheat console works in solo/vs-bot only — it is disabled in online rooms.</li></ul>
+        </div>
+        <div class="wb-foot"><span class="wb-note">Press H to reopen this guide</span><button type="button" class="wb-btn wb-primary" data-act="helpclose">Got it</button></div>
       </div>
     </div>
     <div class="wb-ov" data-ov="cheats" hidden>
       <div class="wb-card" role="dialog" aria-label="Cheat console">
-        <h3>Cheat console</h3>
-        <p class="wb-sub">Solo only. The clock is paused while this panel is open.</p>
-        <div class="wb-cheatgrid">
-          <button type="button" class="wb-btn" data-act="cheat-reveal" data-cheat="reveal">Reveal answers</button>
-          <button type="button" class="wb-btn" data-act="cheat-freeze" data-cheat="freeze">Freeze my clock</button>
-          <button type="button" class="wb-btn" data-act="cheat-time" data-cheat="needplay">+30s clock</button>
-          <button type="button" class="wb-btn" data-act="cheat-auto" data-cheat="needplay">Auto-play best word</button>
-          <button type="button" class="wb-btn" data-act="cheat-turn" data-cheat="needplay">Force my turn</button>
-          <button type="button" class="wb-btn" data-act="cheat-win" data-cheat="needplay">Win instantly</button>
+        <div class="wb-head"><h3>Cheat console</h3><button type="button" class="wb-btn" data-act="cheatclose" aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wb-body">
+          <p class="wb-sub">Solo only. The clock is paused while this panel is open.</p>
+          <div class="wb-cheatgrid">
+            <button type="button" class="wb-btn" data-act="cheat-reveal" data-cheat="reveal">Reveal answers</button>
+            <button type="button" class="wb-btn" data-act="cheat-freeze" data-cheat="freeze">Freeze my clock</button>
+            <button type="button" class="wb-btn" data-act="cheat-time" data-cheat="needplay">+30s clock</button>
+            <button type="button" class="wb-btn" data-act="cheat-auto" data-cheat="needplay">Auto-play best word</button>
+            <button type="button" class="wb-btn" data-act="cheat-turn" data-cheat="needplay">Force my turn</button>
+            <button type="button" class="wb-btn" data-act="cheat-win" data-cheat="needplay">Win instantly</button>
+          </div>
+          <div class="wb-answer" data-answers hidden></div>
         </div>
-        <div class="wb-answer" data-answers hidden></div>
-        <div class="wb-ovbtns"><button type="button" class="wb-btn" data-act="cheatclose">Close</button></div>
+        <div class="wb-foot"><span class="wb-note">Solo only</span><button type="button" class="wb-btn" data-act="cheatclose">Close</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions wb-actions">
-    <button class="game-action-button" type="button" data-act="help">How to play</button>
-    <button class="game-action-button" type="button" data-act="cheats" data-cheatbtn>Cheats</button>
-    <button class="game-action-button" type="button" data-act="pass" data-passbtn>Pass −5s</button>
-    <button class="game-action-button" type="button" data-act="restart" data-restartbtn>New rack</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------- refs ---------- */
     const $ = (s, r) => (r || root).querySelector(s);
-    const statusEl = $("[data-status]"), dotEl = $("[data-dot]");
-    const scoreEl = $("[data-score]"), tilesEl = $("[data-tiles]"), trayEl = $("[data-tray]");
+    const hud = {
+        status: $('[data-hud="status"]'), dot: $('[data-dot]'),
+        level: $('[data-hud="level"]'), seat: $('[data-hud="seat"]'),
+        words: [$('[data-hud="words0"]'), $('[data-hud="words1"]')],
+        score: [$('[data-hud="score0"]'), $('[data-hud="score1"]')],
+        best: $('[data-hud="best"]'), bestChip: $('[data-hud="bestchip"]'),
+        pchip: [$('[data-pchip="0"]'), $('[data-pchip="1"]')],
+    };
+    const tilesEl = $("[data-tiles]"), trayEl = $("[data-tray]");
     const msgEl = $("[data-msg]"), hintEl = $("[data-hint]"), foundEl = $("[data-found]");
-    const briefEl = $("[data-brief]"), bestEl = $("[data-best]");
     const ovStart = $('[data-ov="start"]'), ovWait = $('[data-ov="wait"]'), ovOver = $('[data-ov="over"]');
-    const ovHelp = $('[data-ov="help"]'), ovCheats = $('[data-ov="cheats"]');
-    const startInfo = $("[data-startinfo]"), overTitle = $("[data-overtitle]");
+    const ovPause = $('[data-ov="pause"]'), ovHelp = $('[data-ov="help"]'), ovCheats = $('[data-ov="cheats"]');
+    const startInfo = $("[data-startinfo]"), startLevel = $("[data-startlevel]");
+    const overTitle = $("[data-overtitle]"), overLevel = $("[data-overlevel]");
     const overReason = $("[data-overreason]"), overResults = $("[data-overresults]"), overBest = $("[data-overbest]");
     const answersEl = $("[data-answers]");
     const btnSubmit = $('[data-act="submit"]'), btnBack = $('[data-act="back"]');
     const btnClear = $('[data-act="clear"]'), btnShuffle = $('[data-act="shuffle"]');
-    const btnPass = $("[data-passbtn]"), btnRestart = $("[data-restartbtn]"), btnCheats = $("[data-cheatbtn]");
+    const btnPass = $("[data-passbtn]"), btnRestart = $("[data-restart]");
+    const btnCheats = $("[data-cheats]"), btnPause = $("[data-pause]");
 
     /* ---------- small helpers ---------- */
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -430,7 +568,7 @@ export function mount(root, context = {}) {
 
     /* ---------- tray (tile-index based: duplicate letters are safe) ---------- */
     function addTile(i) {
-        if (!playing()) return;
+        if (!playing() || frozen()) return;
         if (!myTurn()) { msgLocal("Wait for your turn.", "bad"); return; }
         if (tray.includes(i)) { msgLocal("That tile is already used.", "bad"); return; }
         if (tray.length >= state.letters.length) return;
@@ -438,14 +576,14 @@ export function mount(root, context = {}) {
         render();
     }
     function addLetter(ch) {
-        if (!playing() || !myTurn()) { if (playing()) msgLocal("Wait for your turn.", "bad"); return; }
+        if (!playing() || !myTurn() || frozen()) { if (playing() && !frozen()) msgLocal("Wait for your turn.", "bad"); return; }
         for (let i = 0; i < state.letters.length; i++) {
             if (state.letters[i] === ch && !tray.includes(i)) { tray.push(i); render(); return; }
         }
         msgLocal(`No free “${ch}” tile left.`, "bad");
     }
     function removeAt(pos) {
-        if (pos < 0 || pos >= tray.length) return;
+        if (pos < 0 || pos >= tray.length || frozen()) return;
         tray.splice(pos, 1);
         render();
     }
@@ -512,7 +650,7 @@ export function mount(root, context = {}) {
         state.winner = winner;
         state.endReason = reason;
         state.seq++;
-        if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+        if (botTimer) { cancelLater(botTimer); botTimer = null; }
         saveBest();
         commit();
     }
@@ -610,12 +748,14 @@ export function mount(root, context = {}) {
         }
     }
     function submitAction(action) {
+        if (!action || typeof action !== "object") return;
+        if (frozen() && ["submit", "shuffle", "pass", "start"].indexOf(action.type) >= 0) return;
         if (online && !room.isHost) { room.sendAction(action).catch(console.warn); return; }
         applyAction(action, mySeat());
     }
     function trySubmit() {
         const word = trayWord();
-        if (!word || !playing()) return;
+        if (!word || !playing() || frozen()) return;
         if (!myTurn()) { msgLocal("Wait for your turn.", "bad"); return; }
         if (pendingWord) return;
         if (online && !room.isHost) {
@@ -660,13 +800,13 @@ export function mount(root, context = {}) {
         return best;
     }
     function scheduleBot() {
-        if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+        if (botTimer) { cancelLater(botTimer); botTimer = null; }
         if (online || !state || state.phase !== "playing" || state.turn !== BOT) return;
         const delay = Math.max(700, 1400 + Math.random() * 2200 - state.level * 60);
         botTimer = later(() => {
             botTimer = null;
             if (!state || state.phase !== "playing" || state.turn !== BOT) return;
-            if (showHelp || showCheats) { scheduleBot(); return; } // solo pause while panels are open
+            if (frozen()) { scheduleBot(); return; } // solo pause while panels are open
             const w = pickBotWord();
             if (!w) { endByExhausted(); return; }
             applyAction({ type: "submit", word: w }, BOT);
@@ -675,10 +815,11 @@ export function mount(root, context = {}) {
 
     /* ---------- clocks ---------- */
     function startTick() {
+        if (tickTimer || frozen()) return;
         stopTick();
         tickTimer = setInterval(() => {
             if (!state || state.phase !== "playing") return;
-            if (!online && (showHelp || showCheats)) return; // pause solo while reading/cheating
+            if (frozen()) return;
             const i = state.turn;
             if (!online && freezeClock && i === mySeat()) { renderClocks(); return; }
             state.players[i].timeMs = Math.max(0, state.players[i].timeMs - TICK_MS);
@@ -718,22 +859,27 @@ export function mount(root, context = {}) {
             text = w === -1 ? "Draw" : w === mySeat() ? "You win!" : "You lose";
             color = w === mySeat() ? "#10b981" : w === -1 ? "#9ca3af" : "#ef4444";
         }
-        statusEl.textContent = text;
-        dotEl.style.background = color;
+        hud.status.textContent = text;
+        hud.dot.style.background = color;
     }
     function renderScore() {
-        scoreEl.innerHTML = [0, 1].map((i) => {
-            const p = state.players[i], mine = i === mySeat();
-            const active = state.phase === "playing" && state.turn === i;
-            return `<div class="wb-pcard p${i}${active ? " wb-active" : ""}">
-        <div class="wb-pname"><i class="wb-dot p${i}"></i>${esc(p.name)}${mine ? " <em>(you)</em>" : ""}<span class="wb-ptag">P${i + 1}</span></div>
-        <div class="wb-pstats"><span>Words <b>${p.words.length}/${TARGET}</b></span><span>Score <b>${p.score}</b></span><span>Time <b data-clock="${i}">${Math.ceil(p.timeMs / 1000)}s</b></span></div>
-      </div>`;
-        }).join("");
+        const me = mySeat();
+        hud.level.textContent = String(state.level);
+        hud.seat.textContent = "P" + (me + 1);
+        for (let i = 0; i < 2; i++) {
+            const p = state.players[i];
+            if (hud.words[i]) hud.words[i].textContent = `${p.words.length}/${TARGET}`;
+            if (hud.score[i]) hud.score[i].textContent = String(p.score);
+            const chip = hud.pchip[i];
+            if (chip) chip.classList.toggle("wb-active", state.phase === "playing" && state.turn === i);
+        }
+        const b = bestScore();
+        if (hud.best) hud.best.textContent = b > 0 ? String(b) : "0";
+        if (hud.bestChip) hud.bestChip.hidden = b <= 0;
         renderClocks();
     }
     function renderTiles() {
-        const locked = !myTurn();
+        const locked = !myTurn() || frozen();
         tilesEl.innerHTML = state.letters.split("").map((ch, i) => {
             const used = tray.includes(i);
             const dis = used || locked;
@@ -744,7 +890,7 @@ export function mount(root, context = {}) {
         trayEl.innerHTML = tray.length
             ? tray.map((ti, pos) => `<button type="button" class="wb-chip-in" data-traychip="${pos}" title="Remove ${state.letters[ti]}">${state.letters[ti]}<i>×</i></button>`).join("")
             : `<span class="wb-ghost">${myTurn() ? "Tap tiles or type a word…" : "Waiting…"}</span>`;
-        const locked = !myTurn();
+        const locked = !myTurn() || frozen();
         btnSubmit.disabled = locked || !tray.length || Boolean(pendingWord);
         btnBack.disabled = locked || !tray.length;
         btnClear.disabled = locked || !tray.length;
@@ -777,22 +923,27 @@ export function mount(root, context = {}) {
     }
     function renderFound() {
         foundEl.innerHTML = state.log.length
-            ? state.log.map((m) => `<span class="wb-chip p${m.by}">${m.word} +${m.pts}</span>`).join("")
+            ? state.log.map((m) => `<span class="wb-chip-found p${m.by}">${m.word} +${m.pts}</span>`).join("")
             : `<span class="wb-ghost">No words claimed yet — first to ${TARGET} wins.</span>`;
     }
     function renderOverlays() {
-        ovStart.hidden = !(state.phase === "ready" && (!online || room.isHost));
-        ovWait.hidden = !(online && !room.isHost && state.phase === "ready");
-        ovOver.hidden = state.phase !== "over";
+        const ready = Boolean(state && state.phase === "ready");
+        const solo = !online || room.isHost;
+        ovStart.hidden = !ready || !solo || showHelp || showCheats || paused;
+        ovWait.hidden = !(online && !room.isHost && (!state || ready)) || showHelp || showCheats || paused;
+        ovOver.hidden = !(state && state.phase === "over") || showHelp || showCheats || paused;
+        ovPause.hidden = !paused || showHelp || showCheats;
+        ovCheats.hidden = !showCheats || showHelp || paused;
         ovHelp.hidden = !showHelp;
-        ovCheats.hidden = !showCheats;
         if (!ovStart.hidden) {
+            startLevel.textContent = String(state.level);
             startInfo.innerHTML = `You are <b>P${mySeat() + 1}</b> (${esc(nameOf(mySeat()))}). Coin flip: <b>${esc(nameOf(state.first))}</b> starts.${online ? " Seats &amp; first move are re-drawn every round." : ""}`;
         }
         if (!ovOver.hidden) {
             const w = state.winner, me = mySeat();
             overTitle.textContent = w === -1 ? "Draw" : w === me ? "You win!" : "You lose";
             overTitle.className = w === -1 ? "" : w === me ? "wb-win" : "wb-lose";
+            overLevel.textContent = String(state.level);
             const r = state.endReason;
             overReason.textContent =
                 r === "target" ? (w === me ? `You reached ${TARGET} words first.` : `${nameOf(w)} reached ${TARGET} words first.`)
@@ -809,6 +960,7 @@ export function mount(root, context = {}) {
     function renderCheats() {
         btnCheats.disabled = online;
         btnCheats.title = online ? "Cheats are disabled in online rooms" : "Open the cheat console";
+        btnCheats.classList.toggle("wb-on", showCheats);
         if (!showCheats || !state) return;
         const revealBtn = $('[data-cheat="reveal"]'), freezeBtn = $('[data-cheat="freeze"]');
         revealBtn.textContent = `Reveal answers: ${cheatReveal ? "ON" : "OFF"}`;
@@ -823,11 +975,22 @@ export function mount(root, context = {}) {
                 (rem.map((w) => `<button type="button" class="wb-wordpick" data-wordpick="${w}">${w}<small>${w.length}</small></button>`).join("") || "<p>Nothing left!</p>");
         }
     }
+    function syncHudButtons() {
+        const label = btnPause.querySelector(".wb-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        btnPause.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        btnPause.disabled = online;
+    }
     function render() {
         renderStatus();
+        syncHudButtons();
         if (!state) {
-            ovStart.hidden = true; ovWait.hidden = false; ovOver.hidden = true;
-            ovHelp.hidden = !showHelp; ovCheats.hidden = true;
+            ovStart.hidden = true;
+            ovWait.hidden = !(online && !room.isHost) || showHelp || showCheats || paused;
+            ovOver.hidden = true;
+            ovPause.hidden = !paused || showHelp || showCheats;
+            ovCheats.hidden = !showCheats || showHelp;
+            ovHelp.hidden = !showHelp;
             btnSubmit.disabled = btnBack.disabled = btnClear.disabled = btnShuffle.disabled = btnPass.disabled = true;
             return;
         }
@@ -839,24 +1002,49 @@ export function mount(root, context = {}) {
         renderFound();
         renderOverlays();
         renderCheats();
-        briefEl.textContent = `Level ${state.level} · rack verified: ≥ ${MIN_WORDS} valid words`;
-        bestEl.textContent = bestScore() > 0 ? `Best: ${bestScore()} pts` : "";
+    }
+
+    /* ---------- overlay toggles (mutually exclusive, freeze-aware) ---------- */
+    function toggleHelp(on) {
+        showHelp = typeof on === "boolean" ? on : !showHelp;
+        if (showHelp) { showCheats = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        showCheats = typeof on === "boolean" ? on : !showCheats;
+        if (showCheats) { showHelp = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function setPaused(on) {
+        if (online) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { showHelp = false; showCheats = false; }
+        syncFreeze();
+        render();
     }
 
     /* ---------- input: mouse / touch (delegated) ---------- */
     function handleClick(event) {
-        const el = event.target.closest("[data-exit],[data-act],[data-tile],[data-traychip],[data-wordpick]");
+        const el = event.target.closest("[data-exit],[data-act],[data-tile],[data-traychip],[data-wordpick],[data-help],[data-cheats],[data-pause],[data-restart]");
         if (!el || !root.contains(el)) return;
         if (el.hasAttribute("data-exit")) { onExit(); return; }
+        if (el.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (el.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (el.hasAttribute("data-pause")) { setPaused(); return; }
+        if (el.hasAttribute("data-restart")) { submitAction({ type: "restart", next: false }); return; }
         if (el.dataset.tile !== undefined) { addTile(Number(el.dataset.tile)); return; }
         if (el.dataset.traychip !== undefined) { removeAt(Number(el.dataset.traychip)); return; }
         if (el.dataset.wordpick) {
-            if (myTurn() && fillTray(el.dataset.wordpick)) { showCheats = false; render(); }
+            if (myTurn() && !paused && !showHelp && fillTray(el.dataset.wordpick)) { showCheats = false; syncFreeze(); render(); }
             else msgLocal("Wait for your turn.", "bad");
             return;
         }
         switch (el.dataset.act) {
             case "start": submitAction({ type: "start" }); break;
+            case "resume": setPaused(false); break;
             case "submit": trySubmit(); break;
             case "back": removeAt(tray.length - 1); break;
             case "clear": tray = []; render(); break;
@@ -864,12 +1052,10 @@ export function mount(root, context = {}) {
             case "pass": submitAction({ type: "pass" }); break;
             case "restart": submitAction({ type: "restart", next: false }); break;
             case "next": submitAction({ type: "restart", next: true }); break;
-            case "help": showHelp = !showHelp; showCheats = false; render(); break;
-            case "helpclose": showHelp = false; render(); break;
-            case "cheats":
-                if (online) { msgLocal("Cheats are disabled in online rooms.", "bad"); return; }
-                showCheats = !showCheats; showHelp = false; render(); break;
-            case "cheatclose": showCheats = false; render(); break;
+            case "help": toggleHelp(); break;
+            case "helpclose": toggleHelp(false); break;
+            case "cheats": toggleCheats(); break;
+            case "cheatclose": toggleCheats(false); break;
             case "cheat-reveal": cheatReveal = !cheatReveal; render(); break;
             case "cheat-freeze": freezeClock = !freezeClock; render(); break;
             case "cheat-time": submitAction({ type: "cheat", op: "time" }); break;
@@ -885,13 +1071,39 @@ export function mount(root, context = {}) {
         const t = event.target;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
         if (event.ctrlKey || event.metaKey || event.altKey) return;
-        const k = event.key;
+        if ((event.key === "Enter" || event.key === " ") && t && t.closest && t.closest("button")) return;
+        const k = event.key, c = event.code;
+        /* Letters are gameplay input on the player's turn; Shift (or any
+           non-typing context) turns H/C/P/R into HUD shortcuts. */
+        const typing = Boolean(state && state.phase === "playing" && myTurn() && !frozen());
+        const shortcut = () => event.shiftKey || !typing;
+        /* priority: help → cheats → pause/Escape → restart → game actions */
+        if (c === "KeyH" && shortcut()) { toggleHelp(); event.preventDefault(); return; }
+        if (k === "?") { toggleHelp(); event.preventDefault(); return; }
+        if (c === "KeyC" && shortcut()) { toggleCheats(); event.preventDefault(); return; }
+        if (c === "KeyP" && shortcut()) {
+            if (showHelp) toggleHelp(false);
+            else if (showCheats) toggleCheats(false);
+            else setPaused();
+            event.preventDefault(); return;
+        }
         if (k === "Escape") {
-            if (showHelp || showCheats) { showHelp = false; showCheats = false; render(); event.preventDefault(); }
+            if (showHelp) toggleHelp(false);
+            else if (showCheats) toggleCheats(false);
+            else if (paused) setPaused(false);
+            event.preventDefault(); return;
+        }
+        if (c === "KeyR" && shortcut()) { submitAction({ type: "restart", next: false }); event.preventDefault(); return; }
+        if (frozen()) {
+            if (k === "Enter" || k === " ") {
+                if (showHelp) toggleHelp(false);
+                else if (showCheats) toggleCheats(false);
+                else if (paused) setPaused(false);
+                event.preventDefault();
+            }
             return;
         }
-        if (k === "?") { showHelp = !showHelp; showCheats = false; render(); event.preventDefault(); return; }
-        if (showHelp || showCheats || !state) return;
+        if (!state) return;
         if (state.phase === "ready") {
             if (k === "Enter" && (!online || room.isHost)) { submitAction({ type: "start" }); event.preventDefault(); }
             return;
@@ -950,6 +1162,7 @@ export function mount(root, context = {}) {
         commit();
         startTick();
     }
+    syncFreeze();
 
     return {
         destroy() {

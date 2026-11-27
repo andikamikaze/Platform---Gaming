@@ -1,4 +1,5 @@
 /* ==== GAME: maze-escape.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
  * Maze Escape — ESM game module (mount(root, context) -> { destroy }).
  * Metadata diekspor lewat META dan dibaca oleh tools/build-games-manifest.mjs.
@@ -211,7 +212,7 @@ export function mount(root, context = {}) {
         levels = LEVELS.map(parseLevel);
     } catch (err) {
         console.error("[maze-escape]", err);
-        root.innerHTML = `<div class="game-app"><div class="game-intro"><div><h2>Maze Escape</h2><p>Level data error: ${err.message}</p></div></div><div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div></div>`;
+        root.innerHTML = `<div class="game-app" style="display:flex;flex-direction:column;gap:12px"><section class="game-panel" data-board style="flex:1;display:grid;place-items:center;text-align:center"><div><h3>Maze Escape — level data error</h3><p>${err.message}</p><button type="button" data-exit>Exit game</button></div></section></div>`;
         const h = (e) => { if (e.target.closest("[data-exit]")) onExit(); };
         root.addEventListener("click", h);
         return { destroy() { root.removeEventListener("click", h); } };
@@ -222,9 +223,6 @@ export function mount(root, context = {}) {
   <style>
     .mz{--bg:#fafaf9;--panel:#fff;--ink:#1c1917;--mut:#78716c;--line:#e7e5e4;--acc:#4f46e5;--acc-soft:#eef2ff;--gold:#d97706;--gem:#0d9488;--bad:#e11d48;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;-webkit-tap-highlight-color:transparent}
     .mz [hidden]{display:none!important}
-    .mz .game-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
-    .mz .game-intro h2{margin:0 0 4px;font-size:20px;font-weight:650;letter-spacing:-.01em}
-    .mz .game-intro p{margin:0;font-size:13px;color:var(--mut);line-height:1.5;max-width:52ch}
     .mz .game-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);border:1px solid var(--line);background:var(--panel);padding:5px 10px;border-radius:999px;white-space:nowrap}
     .mz .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);display:inline-block}
     .mz-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:12px}
@@ -284,7 +282,7 @@ export function mount(root, context = {}) {
     .mz-msg-show{opacity:1;transform:translate(-50%,0)}
     .mz-msg-gem{background:var(--gem)}.mz-msg-gold{background:var(--gold)}.mz-msg-danger{background:var(--bad)}.mz-msg-cheat{background:var(--acc)}
     .mz-screen{position:absolute;inset:0;display:grid;place-items:center;background:rgba(250,250,249,.88);backdrop-filter:blur(3px);padding:16px;z-index:4}
-    .mz-card{width:min(100%,330px);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;text-align:center;box-shadow:0 8px 24px rgba(28,25,23,.06)}
+    .mz-card{width:min(100%,330px);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;text-align:center;box-shadow:0 4px 12px rgba(28,25,23,.06)}
     .mz-card h3{margin:0 0 6px;font-size:18px;font-weight:650}
     .mz-card p{margin:0 0 14px;font-size:13px;color:var(--mut);line-height:1.55}
     .mz-card .mz-btn{width:100%;margin-top:8px}
@@ -313,69 +311,143 @@ export function mount(root, context = {}) {
     .mz-cheat-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
     .mz-cheat-actions .mz-btn{font-size:12px;padding:8px 10px}
     .mz-cheats-foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--mut)}
-    .mz-hint{margin:10px 4px 0;font-size:11.5px;color:var(--mut);text-align:center;line-height:1.6}
     .mz-room{display:flex;align-items:stretch;gap:8px;margin-bottom:12px}
     .mz-room-card{flex:1;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
     .mz-room-name{font-size:12px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .mz-room-meta{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
     .mz-room-vs{align-self:center;font-size:11px;color:var(--mut)}
-    .mz .game-actions{margin-top:14px}
     @keyframes mz-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
     @keyframes mz-blink{50%{opacity:.25}}
     @keyframes mz-pop{to{transform:scale(1.8);opacity:0}}
     @media (max-width:520px){.mz-hud{gap:6px 10px}.mz-stat{min-width:38px}.mz-card{padding:18px}}
     @media (prefers-reduced-motion:reduce){.mz *{animation:none!important;transition:none!important}}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.mz{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.mz *,.mz *::before,.mz *::after{box-sizing:border-box}
+.mz :where(svg,canvas,img){max-width:100%;height:auto}
+.mz :where(button,[role="button"],select,input){touch-action:manipulation}
+.mz :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* 4px spacing grid: HUD/control rows wrap instead of overflowing on narrow screens. */
+.mz :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+/* Thin borders and calm surfaces instead of heavy elevation. */
+.mz :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+/* Clear type hierarchy: 12px metadata, compact headings. */
+.mz :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.mz :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .mz :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .mz :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .mz :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .mz :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .mz *,.mz *::before,.mz *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* ==== layout contract: single HUD + fill-height board + overlay modals ==== */
+.mz.game-fill > .mz-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;width:100%}
+.mz .mz-hud{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin:0 0 10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.mz .mz-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--mut);white-space:nowrap;text-transform:uppercase;letter-spacing:.04em}
+.mz .mz-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums;text-transform:none}
+.mz .mz-chip.mz-got b{color:var(--gold)}
+.mz .mz-chip.mz-hot b{color:var(--bad)}
+.mz .mz-chip.mz-frozen b{color:var(--acc)}
+.mz .mz-status-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);display:inline-block}
+.mz .mz-spacer{flex:1 1 auto}
+.mz .mz-icon-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;min-height:32px;font-size:10px}
+.mz .mz-icon-btn .mz-btn-icon{display:inline-flex;align-items:center;justify-content:center;flex:none}
+.mz .mz-icon-btn svg{flex:none;display:block;width:14px;height:14px}
+.mz .mz-badge{margin-left:2px}
+.mz .mz-room-chip{font-size:10px;letter-spacing:0}
+.mz .mz-room-chip b{color:var(--ink)}
+.mz-board{position:relative;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden;box-shadow:0 1px 2px rgba(28,25,23,.04)}
+.mz-board.mz-shaking{animation:mz-shake .4s}
+.mz .mz-maze{display:block;width:100%;height:100%;aspect-ratio:auto}
+.mz-ov{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:16px;background:rgba(250,250,249,.9);backdrop-filter:blur(3px)}
+.mz-ov[data-ov="cheat"],.mz-ov[data-ov="help"]{z-index:5;background:rgba(28,25,23,.42)}
+.mz-card{display:flex;flex-direction:column;overflow:hidden;width:min(100%,360px);max-height:100%;text-align:left}
+.mz-ov[data-ov="help"] .mz-card,.mz-ov[data-ov="cheat"] .mz-card{width:min(100%,560px)}
+.mz-head,.mz-foot{flex:none}
+.mz-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.mz-head h3{margin:0}
+.mz-body,.mz-help,.mz-cheats{flex:1 1 auto;min-height:0;overflow:auto}
+.mz-body p{margin:0 0 12px}
+.mz-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px}
+.mz-foot .mz-btn{width:auto;flex:1 1 auto;margin-top:0}
+.mz-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px 18px;padding-right:4px}
+.mz-help b{display:block;margin:0 0 4px;font-size:11px;color:var(--ink)}
+.mz-help ul,.mz-help p{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.55;color:var(--mut)}
+.mz-ov[data-ov="cheat"] .mz-cheats{max-height:min(60dvh,460px)}
+/* Mobile overrides stay last: they beat the coarse-pointer 44px rule above. */
+@media (max-width:640px){
+.mz.game-fill > .mz-board:not(:has(.mz-ov:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
+.mz.game-fill > .mz-board:has(.mz-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.mz .mz-hud{gap:5px;margin-bottom:8px}
+.mz .mz-hud .mz-chip{padding:4px 6px;font-size:9px}
+.mz .mz-hud .mz-chip[data-hud="status"],.mz .mz-hud .mz-room-chip{display:none}
+.mz .mz-hud .mz-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.mz .mz-hud .mz-btn-label,.mz .mz-hud .mz-spacer{display:none}
+.mz .mz-ov{padding:8px}
+.mz .mz-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.mz .mz-body,.mz .mz-help,.mz .mz-cheats{scrollbar-width:none}
+.mz .mz-body::-webkit-scrollbar,.mz .mz-help::-webkit-scrollbar,.mz .mz-cheats::-webkit-scrollbar{display:none}
+.mz .mz-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.mz .mz-note{display:none}
+}
   </style>
-  <div class="game-app mz">
-    <div class="game-intro">
-      <div><h2>Maze Escape</h2><p>Grab the golden key, unlock the door, and get out before time runs out. ${levels.length} fixed levels — every one is solvable.</p></div>
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+  <div class="game-app mz game-fill" data-mz>
+    <div class="mz-hud">
+      <span class="mz-chip" data-hud="status"><i class="mz-status-dot"></i><span data-status>Ready</span></span>
+      <span class="mz-chip">LV <b data-level>1/${levels.length}</b></span>
+      <span class="mz-chip">SCORE <b data-score>0</b></span>
+      <span class="mz-chip">GEMS <b data-gems>0/0</b></span>
+      <span class="mz-chip" data-keychip>KEY <b data-keytext>No key</b></span>
+      <span class="mz-chip">LIVES <span class="mz-lives" data-lives></span></span>
+      <span class="mz-chip" data-timerchip>TIME <b data-timer>0:00</b></span>
+      <span class="mz-chip mz-room-chip" data-room hidden><b data-room-you-name>You</b> <span data-room-you-meta>—</span> · <b data-room-rival-name>Rival</b> <span data-room-rival-meta>Waiting…</span></span>
+      <span class="mz-spacer"></span>
+      <button class="mz-btn mz-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="mz-btn-label">Help</span></button>
+      <button class="mz-btn mz-icon-btn" type="button" data-action="cheats" aria-label="Cheats" title="Cheats (C)"><span class="mz-btn-icon">${iconSVG("wrench", { size: 14 })}</span><span class="mz-btn-label">Cheats</span><span class="mz-badge" data-cheatbadge hidden>0</span></button>
+      <button class="mz-btn mz-icon-btn" type="button" data-action="pause" aria-label="Pause" title="Pause (P)"><span class="mz-btn-icon">${iconSVG("pause", { size: 14 })}</span><span class="mz-btn-label">Pause</span></button>
+      <button class="mz-btn mz-icon-btn" type="button" data-action="restart" aria-label="Restart" title="Restart level (R)"><span class="mz-btn-icon">${iconSVG("refresh", { size: 14 })}</span><span class="mz-btn-label">Restart</span></button>
+      <button class="mz-btn mz-icon-btn" type="button" data-action="mute" aria-label="Mute sound" title="Mute sound (M)"><span class="mz-btn-icon">${iconSVG("volume", { size: 14 })}</span><span class="mz-btn-label">Mute</span></button>
+      <button class="mz-btn mz-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="mz-btn-label">Exit game</span></button>
     </div>
-    <section class="game-panel" data-board>
-      <div class="mz-room" data-room hidden>
-        <div class="mz-room-card"><span class="mz-room-name" data-room-you-name>You</span><span class="mz-room-meta" data-room-you-meta>—</span></div>
-        <span class="mz-room-vs">vs</span>
-        <div class="mz-room-card"><span class="mz-room-name" data-room-rival-name>Rival</span><span class="mz-room-meta" data-room-rival-meta>Waiting…</span></div>
-      </div>
-      <div class="mz-hud">
-        <span class="mz-stat"><span class="mz-label">Level</span><b data-level>1/${levels.length}</b></span>
-        <span class="mz-stat"><span class="mz-label">Score</span><b data-score>0</b></span>
-        <span class="mz-stat"><span class="mz-label">Gems</span><b data-gems>0/0</b></span>
-        <span class="mz-stat" data-keychip><span class="mz-label">Key</span><b data-keytext>No key</b></span>
-        <span class="mz-stat"><span class="mz-label">Lives</span><span class="mz-lives" data-lives></span></span>
-        <span class="mz-stat" data-timerchip><span class="mz-label">Time</span><b data-timer>0:00</b></span>
-        <span class="mz-spacer"></span>
-        <button class="mz-btn mz-btn-ghost mz-cheatbtn" type="button" data-action="cheats">Cheats<span class="mz-badge" data-cheatbadge hidden>0</span></button>
-        <button class="mz-iconbtn" type="button" data-action="pause" aria-label="Pause"></button>
-        <button class="mz-iconbtn" type="button" data-action="mute" aria-label="Mute sound"></button>
-      </div>
-      <div class="mz-stage" data-stage>
-        <svg class="mz-maze" data-maze role="img" aria-label="Maze"></svg>
-        <div class="mz-msg" data-msg></div>
+    <section class="game-panel mz-board" data-board>
+      <svg class="mz-maze" data-maze role="img" aria-label="Maze"></svg>
+      <div class="mz-msg" data-msg></div>
 
-        <div class="mz-screen" data-screen="start">
-          <div class="mz-card">
-            <h3>Maze Escape</h3>
+      <div class="mz-ov" data-ov="start">
+        <div class="mz-card">
+          <div class="mz-head"><h3>Maze Escape</h3></div>
+          <div class="mz-body">
             <p>Find the golden key, then reach the door. Avoid the ghosts — you have 3 lives.</p>
             <div class="mz-bestline">Best score <b data-best>0</b></div>
-            <button class="mz-btn" type="button" data-action="start">Start run</button>
             <p class="mz-fine">${levels.length} handcrafted levels · no random layouts</p>
           </div>
+          <div class="mz-foot"><button class="mz-btn" type="button" data-action="start">Start run</button></div>
         </div>
+      </div>
 
-        <div class="mz-screen" data-screen="pause" hidden>
-          <div class="mz-card">
-            <h3>Paused</h3>
-            <p>Take a breath. The ghosts will wait.</p>
+      <div class="mz-ov" data-ov="pause" hidden>
+        <div class="mz-card">
+          <div class="mz-head"><h3>Paused</h3></div>
+          <div class="mz-body"><p>Take a breath. The ghosts will wait — timers are frozen until you resume.</p></div>
+          <div class="mz-foot">
             <button class="mz-btn" type="button" data-action="resume">Resume</button>
             <button class="mz-btn mz-btn-ghost" type="button" data-action="restart">Restart level</button>
             <button class="mz-btn mz-btn-ghost" type="button" data-action="quit">Quit to menu</button>
           </div>
         </div>
+      </div>
 
-        <div class="mz-screen" data-screen="level" hidden>
-          <div class="mz-card">
-            <h3 data-lv-title>Level cleared</h3>
+      <div class="mz-ov" data-ov="level" hidden>
+        <div class="mz-card">
+          <div class="mz-head"><h3 data-lv-title>Level cleared</h3></div>
+          <div class="mz-body">
             <div class="mz-rows">
               <div class="mz-row"><span>Gems</span><b data-lv-gems>0/0</b></div>
               <div class="mz-row"><span>Clear bonus</span><b>+150</b></div>
@@ -384,13 +456,15 @@ export function mount(root, context = {}) {
               <div class="mz-row mz-row-total"><span>Total score</span><b data-lv-total>0</b></div>
             </div>
             <p class="mz-note" data-cheatnote hidden>Cheats were used — best score is not recorded.</p>
-            <button class="mz-btn" type="button" data-action="next">Next level</button>
           </div>
+          <div class="mz-foot"><button class="mz-btn" type="button" data-action="next">Next level</button></div>
         </div>
+      </div>
 
-        <div class="mz-screen" data-screen="over" hidden>
-          <div class="mz-card">
-            <h3>Game over</h3>
+      <div class="mz-ov" data-ov="over" hidden>
+        <div class="mz-card">
+          <div class="mz-head"><h3>Game over</h3></div>
+          <div class="mz-body">
             <p data-over-reason>The ghosts caught you.</p>
             <span class="mz-newbest" data-over-best hidden>New best score!</span>
             <div class="mz-rows">
@@ -399,14 +473,18 @@ export function mount(root, context = {}) {
               <div class="mz-row"><span>Best</span><b data-best>0</b></div>
             </div>
             <p class="mz-note" data-cheatnote hidden>Cheats were used — best score is not recorded.</p>
+          </div>
+          <div class="mz-foot">
             <button class="mz-btn" type="button" data-action="retry">Retry level</button>
             <button class="mz-btn mz-btn-ghost" type="button" data-action="newrun">New run</button>
           </div>
         </div>
+      </div>
 
-        <div class="mz-screen" data-screen="win" hidden>
-          <div class="mz-card">
-            <h3>You escaped!</h3>
+      <div class="mz-ov" data-ov="win" hidden>
+        <div class="mz-card">
+          <div class="mz-head"><h3>You escaped!</h3></div>
+          <div class="mz-body">
             <p>All ${levels.length} levels cleared. The maze has nothing left on you.</p>
             <span class="mz-newbest" data-win-best hidden>New best score!</span>
             <div class="mz-rows">
@@ -414,17 +492,18 @@ export function mount(root, context = {}) {
               <div class="mz-row"><span>Best</span><b data-best>0</b></div>
             </div>
             <p class="mz-note" data-cheatnote hidden>Cheats were used — best score is not recorded.</p>
+          </div>
+          <div class="mz-foot">
             <button class="mz-btn" type="button" data-action="again">Play again</button>
             <button class="mz-btn mz-btn-ghost" type="button" data-action="menu">Back to menu</button>
           </div>
         </div>
+      </div>
 
-        <div class="mz-overlay" data-cheat-overlay hidden>
+      <div class="mz-ov" data-ov="cheat" hidden>
+        <div class="mz-card">
+          <div class="mz-head"><h3>Cheat console</h3><button class="mz-btn mz-btn-ghost" type="button" data-action="cheat-close" aria-label="Close cheats">Close</button></div>
           <div class="mz-cheats">
-            <div class="mz-cheats-head">
-              <h3>Cheat console</h3>
-              <button class="mz-iconbtn" type="button" data-action="cheat-close" aria-label="Close cheats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-            </div>
             <p class="mz-fine">Cheats make the run easier but disable best-score saving.</p>
             <label class="mz-cheatrow"><span><b>X-Ray path</b><small>Show the route to the key / exit</small></span><input type="checkbox" data-cheat="path"><i class="mz-switch"></i></label>
             <label class="mz-cheatrow"><span><b>Reveal map</b><small>Remove the fog of war</small></span><input type="checkbox" data-cheat="map"><i class="mz-switch"></i></label>
@@ -436,26 +515,56 @@ export function mount(root, context = {}) {
               <button class="mz-btn mz-btn-ghost" type="button" data-action="ck-gems">Collect all gems</button>
               <button class="mz-btn mz-btn-ghost" type="button" data-action="ck-warp">Warp to exit</button>
             </div>
-            <div class="mz-cheats-foot"><span data-cheat-count>0 cheats active</span><button class="mz-btn mz-btn-ghost" type="button" data-action="cheat-off">Disable all</button></div>
+          </div>
+          <div class="mz-foot"><span data-cheat-count>0 cheats active</span><button class="mz-btn mz-btn-ghost" type="button" data-action="cheat-off">Disable all</button></div>
+        </div>
+      </div>
+
+      <div class="mz-ov" data-ov="help" hidden>
+        <div class="mz-card">
+          <div class="mz-head"><h3>How to play</h3><button class="mz-btn mz-btn-ghost" type="button" data-help-close aria-label="Close help">Close</button></div>
+          <div class="mz-help">
+            <div>
+              <b>Desktop</b>
+              <ul>
+                <li>W A S D / arrow keys — move one tile at a time</li>
+                <li>Click a tile — auto-walk there along the shortest route</li>
+                <li>H help · C cheats · P pause · R restart · M mute</li>
+              </ul>
+              <b>Mobile</b>
+              <ul>
+                <li>Tap a tile to walk to it</li>
+                <li>Swipe to run until you hit a wall</li>
+              </ul>
+            </div>
+            <div>
+              <b>Rules</b>
+              <ul>
+                <li>Find the golden key, then reach the exit door to clear the level.</li>
+                <li>Each gem is worth 50 points; clearing a level grants time and life bonuses.</li>
+                <li>You have 3 lives and a per-level timer — ghosts and the clock can end the run.</li>
+                <li>Using cheats disables best-score saving. Room mode only syncs progress.</li>
+              </ul>
+              <div class="mz-foot"><span class="mz-note">Press H to reopen this guide</span><button class="mz-btn" type="button" data-help-close>Got it</button></div>
+            </div>
           </div>
         </div>
       </div>
-      <p class="mz-hint">Keyboard: WASD / arrows · Mouse: click a tile to walk · Touch: tap a tile, or swipe to run until a wall · P pause · C cheats · M mute</p>
     </section>
-    <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
   </div>`;
 
     /* ---------------- refs + lifecycle plumbing ---------------- */
     const q = (s) => root.querySelector(s);
     const qa = (s) => Array.from(root.querySelectorAll(s));
     const el = {
-        status: q("[data-status]"), stage: q("[data-stage]"), maze: q("[data-maze]"), msg: q("[data-msg]"),
+        status: q("[data-status]"), board: q("[data-board]"), maze: q("[data-maze]"), msg: q("[data-msg]"),
         level: q("[data-level]"), score: q("[data-score]"), gems: q("[data-gems]"),
         keychip: q("[data-keychip]"), keytext: q("[data-keytext]"), lives: q("[data-lives]"),
         timerchip: q("[data-timerchip]"), timer: q("[data-timer]"),
         pausebtn: q('[data-action="pause"]'), mutebtn: q('[data-action="mute"]'),
+        restartbtn: q('[data-action="restart"]'), helpbtn: q("[data-help]"),
         cheatbtn: q('[data-action="cheats"]'), cheatbadge: q("[data-cheatbadge]"),
-        cheatOverlay: q("[data-cheat-overlay]"), cheatCount: q("[data-cheat-count]"),
+        cheatOverlay: q('[data-ov="cheat"]'), helpOverlay: q('[data-ov="help"]'), cheatCount: q("[data-cheat-count]"),
         lvTitle: q("[data-lv-title]"), lvGems: q("[data-lv-gems]"), lvTime: q("[data-lv-time]"),
         lvBonus: q("[data-lv-bonus]"), lvTotal: q("[data-lv-total]"),
         overReason: q("[data-over-reason]"), overLevel: q("[data-over-level]"),
@@ -465,24 +574,66 @@ export function mount(root, context = {}) {
         roomRivalName: q("[data-room-rival-name]"), roomRivalMeta: q("[data-room-rival-meta]"),
     };
     const screens = {
-        start: q('[data-screen="start"]'), pause: q('[data-screen="pause"]'),
-        level: q('[data-screen="level"]'), over: q('[data-screen="over"]'), win: q('[data-screen="win"]'),
+        start: q('[data-ov="start"]'), pause: q('[data-ov="pause"]'),
+        level: q('[data-ov="level"]'), over: q('[data-ov="over"]'), win: q('[data-ov="win"]'),
     };
+
+    /* Internal How-to-play guide: shown once, then reopenable with H. */
+    let helpOpen = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("mazeEscapeHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("mazeEscapeHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
 
     const ac = new AbortController();
     const sig = { signal: ac.signal };
+    /* Pause-aware timers: wall-clock anchors (performance.now here) are shifted
+       on resume so no delayed effect fires early after a freeze. */
     const timers = new Set();
-    const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; };
+    let freezeAt = 0;
+    function later(fn, ms) {
+        const rec = { fn, due: (freezeAt || performance.now()) + ms, id: 0 };
+        rec.arm = () => {
+            rec.id = setTimeout(() => {
+                rec.id = 0;
+                if (freezeAt) return;
+                timers.delete(rec);
+                fn();
+            }, Math.max(0, rec.due - performance.now()));
+        };
+        timers.add(rec);
+        if (!freezeAt) rec.arm();
+        return rec;
+    }
+    function cancelLater(rec) {
+        if (!rec) return;
+        if (rec.id) clearTimeout(rec.id);
+        rec.id = 0;
+        timers.delete(rec);
+    }
+    function freezeClocks() {
+        if (freezeAt) return;
+        freezeAt = performance.now();
+        timers.forEach((rec) => { if (rec.id) { clearTimeout(rec.id); rec.id = 0; } });
+    }
+    function thawClocks() {
+        if (!freezeAt) return;
+        const shift = performance.now() - freezeAt;
+        freezeAt = 0;
+        G.lastTick += shift;
+        if (G.player && G.player.t0) { G.player.t0 += shift; G.player.lastStep += shift; }
+        G.ghosts.forEach((gh) => { if (gh.t0) gh.t0 += shift; });
+        if (G.invulnUntil) G.invulnUntil += shift;
+        timers.forEach((rec) => { rec.due += shift; rec.arm(); });
+    }
     const unsubs = [];
     const sub = (fn) => { try { const u = fn(); if (typeof u === "function") unsubs.push(u); } catch (err) { console.warn(err); } };
 
     /* ---------------- icons ---------------- */
     const HEART = "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z";
     const ICON = {
-        pause: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
-        play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8V4z"/></svg>',
-        volOn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>',
-        volOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M23 9l-6 6M17 9l6 6"/></svg>',
         heartOn: '<svg viewBox="0 0 24 24" fill="#e11d48" stroke="#e11d48" stroke-width="2" aria-hidden="true"><path d="' + HEART + '"/></svg>',
         heartOff: '<svg viewBox="0 0 24 24" fill="none" stroke="#d6d3d1" stroke-width="2" aria-hidden="true"><path d="' + HEART + '"/></svg>',
     };
@@ -697,7 +848,7 @@ export function mount(root, context = {}) {
         eyeL.setAttribute("cx", EYE_BASE.L[0] + o[0]); eyeL.setAttribute("cy", EYE_BASE.L[1] + o[1]);
         eyeR.setAttribute("cx", EYE_BASE.R[0] + o[0]); eyeR.setAttribute("cy", EYE_BASE.R[1] + o[1]);
     }
-    function playable() { return G.running && !G.paused && !G.consoleOpen; }
+    function playable() { return G.running && !G.paused && !G.consoleOpen && !helpOpen; }
     function canStep(dir) {
         const p = G.player, dd = DIRS[dir];
         const nx = p.x + dd[0], ny = p.y + dd[1];
@@ -758,8 +909,8 @@ export function mount(root, context = {}) {
             playerNode.classList.add("mz-invuln");
             later(() => { if (playerNode) playerNode.classList.remove("mz-invuln"); }, 2300);
         }
-        el.stage.classList.add("mz-shaking");
-        later(() => el.stage.classList.remove("mz-shaking"), 420);
+        el.board.classList.add("mz-shaking");
+        later(() => el.board.classList.remove("mz-shaking"), 420);
         SFX.hit();
         if (G.lives <= 0) gameOver("caught");
         else showMsg("Caught by a ghost — " + G.lives + (G.lives === 1 ? " life" : " lives") + " left", "danger");
@@ -809,16 +960,38 @@ export function mount(root, context = {}) {
 
     /* ---------------- game flow ---------------- */
     function setStatus(text) { el.status.textContent = text; }
+    function syncFreeze() {
+        const frozen = !G.running || G.paused || G.consoleOpen || helpOpen;
+        if (frozen) freezeClocks(); else thawClocks();
+    }
+    function syncUI() {
+        syncFreeze();
+        const blocked = helpOpen || G.consoleOpen;
+        for (const k in screens) screens[k].hidden = blocked || k !== screenName;
+        el.helpOverlay.hidden = !helpOpen;
+        el.cheatOverlay.hidden = !G.consoleOpen || helpOpen;
+        syncButtons();
+    }
     function showScreen(name) {
-        for (const k in screens) screens[k].hidden = k !== name;
         screenName = name;
         if (name !== null) { swipeDir = null; autoPath = []; hideCursor(); hideTarget(); }
+        syncUI();
+    }
+    function setIconButton(btn, name, label) {
+        if (!btn) return;
+        const icon = btn.querySelector(".mz-btn-icon");
+        if (icon) icon.innerHTML = iconSVG(name, { size: 14 });
+        const span = btn.querySelector(".mz-btn-label");
+        if (span) span.textContent = label;
+        btn.setAttribute("aria-label", label);
+        btn.title = label + (btn === el.helpbtn ? " (H)" : btn === el.cheatbtn ? " (C)" : btn === el.pausebtn ? " (P)" : btn === el.mutebtn ? " (M)" : "");
     }
     function syncButtons() {
         el.pausebtn.disabled = !G.running;
         el.cheatbtn.disabled = !G.running;
-        el.pausebtn.innerHTML = G.paused ? ICON.play : ICON.pause;
-        el.pausebtn.setAttribute("aria-label", G.paused ? "Resume" : "Pause");
+        el.restartbtn.disabled = !G.running && screenName !== "over" && screenName !== "level" && screenName !== "win";
+        setIconButton(el.pausebtn, G.paused ? "play" : "pause", G.paused ? "Resume" : "Pause");
+        setIconButton(el.mutebtn, muted ? "volumeX" : "volume", muted ? "Unmute" : "Mute");
     }
     function startRun() { G.score = 0; G.lives = 3; G.cheatUses = 0; resetCheats(); startLevel(1); }
     function startLevel(n) {
@@ -899,10 +1072,11 @@ export function mount(root, context = {}) {
         syncProgress("over");
     }
     function togglePause(force) {
-        if (!G.running) return;
+        if (!G.running || helpOpen || G.consoleOpen) return;
         G.paused = force !== undefined ? force : !G.paused;
         if (G.paused) held.clear();
-        syncButtons();
+        swipeDir = null; autoPath = []; hideTarget();
+        syncFreeze();
         showScreen(G.paused ? "pause" : null);
         setStatus(G.paused ? "Paused" : "Playing");
     }
@@ -933,7 +1107,7 @@ export function mount(root, context = {}) {
     function showMsg(text, tone) {
         el.msg.textContent = text;
         el.msg.className = "mz-msg mz-msg-show mz-msg-" + (tone || "info");
-        clearTimeout(msgTimer); timers.delete(msgTimer);
+        cancelLater(msgTimer);
         msgTimer = later(() => el.msg.classList.remove("mz-msg-show"), 1900);
     }
     function render() { updateHUDAll(); renderRoom(); }
@@ -1006,17 +1180,30 @@ export function mount(root, context = {}) {
         refreshFog(); updateCheatUI();
         onCell(p.x, p.y);
     }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) {
+            if (G.consoleOpen) closeConsole();
+            held.clear(); swipeDir = null; autoPath = []; hideTarget();
+        }
+        syncFreeze();
+        syncUI();
+        setStatus(helpOpen ? "Help" : G.paused ? "Paused" : G.running ? "Playing" : "Ready");
+    }
     function openConsole() {
-        if (!G.running) return;
+        if (!G.running || helpOpen) return;
         G.consoleOpen = true;
         held.clear(); swipeDir = null; autoPath = []; hideTarget();
-        el.cheatOverlay.hidden = false;
+        syncFreeze();
+        syncUI();
         setStatus("Cheats");
     }
     function closeConsole() {
+        if (!G.consoleOpen) return;
         G.consoleOpen = false;
-        el.cheatOverlay.hidden = true;
-        if (G.running) setStatus(G.paused ? "Paused" : "Playing");
+        syncFreeze();
+        syncUI();
+        if (G.running) setStatus(helpOpen ? "Help" : G.paused ? "Paused" : "Playing");
     }
 
     /* ---------------- input: keyboard ---------------- */
@@ -1032,9 +1219,29 @@ export function mount(root, context = {}) {
     }
     function onKeyDown(e) {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
-        const dir = KEYMAP[e.key];
+        const tag = e.target && e.target.tagName;
+        if (tag === "INPUT" && e.key !== "Escape") return;
+        const k = e.key;
+        /* Overlay priority: help → cheats → pause/Escape → game actions. */
+        if (k === "h" || k === "H") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "c" || k === "C") {
+            if (!helpOpen) { if (G.consoleOpen) closeConsole(); else openConsole(); }
+            e.preventDefault(); return;
+        }
+        if (k === "p" || k === "P" || k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (G.consoleOpen) closeConsole();
+            else if (G.running) togglePause(k === "Escape" ? true : undefined);
+            e.preventDefault(); return;
+        }
+        if (k === "r" || k === "R") {
+            if (!helpOpen && !G.consoleOpen && (G.running || screenName === "over" || screenName === "level" || screenName === "win")) retryLevel();
+            e.preventDefault(); return;
+        }
+        if (helpOpen || G.consoleOpen) return;
+        const dir = KEYMAP[k];
         if (dir) {
-            if (G.running || G.consoleOpen) e.preventDefault();
+            if (G.running) e.preventDefault();
             if (playable()) {
                 swipeDir = null; autoPath = []; hideTarget();
                 if (!held.has(dir)) held.add(dir);
@@ -1042,21 +1249,15 @@ export function mount(root, context = {}) {
             }
             return;
         }
-        const tag = e.target && e.target.tagName;
-        if (tag === "INPUT" && e.key !== "Escape") return;
-        if (e.key === "Enter") {
+        if (k === "Enter") {
             if (e.target && e.target.closest && e.target.closest("button")) return;
             primaryAction();
-        } else if (e.key === "p" || e.key === "P") togglePause();
-        else if (e.key === "m" || e.key === "M") toggleMute();
-        else if (e.key === "c" || e.key === "C") { if (G.consoleOpen) closeConsole(); else openConsole(); }
-        else if (e.key === "Escape") { if (G.consoleOpen) closeConsole(); else if (G.running) togglePause(); }
+        } else if (k === "m" || k === "M") toggleMute();
     }
     function onKeyUp(e) { const dir = KEYMAP[e.key]; if (dir) held.delete(dir); }
     function toggleMute() {
         muted = !muted;
-        el.mutebtn.innerHTML = muted ? ICON.volOff : ICON.volOn;
-        el.mutebtn.setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
+        setIconButton(el.mutebtn, muted ? "volumeX" : "volume", muted ? "Unmute" : "Mute");
     }
 
     /* ---------------- input: mouse + touch (no virtual buttons) ---------------- */
@@ -1128,9 +1329,17 @@ export function mount(root, context = {}) {
 
     /* ---------------- delegated clicks + cheat switches ---------------- */
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const btn = event.target.closest("[data-action]");
-        if (!btn) { if (event.target === el.cheatOverlay) closeConsole(); return; }
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        const btn = t.closest("[data-action]");
+        if (!btn) {
+            if (t === el.helpOverlay) toggleHelp(false);
+            else if (t === el.cheatOverlay) closeConsole();
+            return;
+        }
         const a = btn.dataset.action;
         if (a === "start" || a === "again" || a === "newrun") startRun();
         else if (a === "resume") togglePause(false);
@@ -1139,7 +1348,7 @@ export function mount(root, context = {}) {
         else if (a === "next") nextLevel();
         else if (a === "pause") togglePause();
         else if (a === "mute") toggleMute();
-        else if (a === "cheats") openConsole();
+        else if (a === "cheats") { if (!helpOpen) openConsole(); }
         else if (a === "cheat-close") closeConsole();
         else if (a === "cheat-off") deactivateAll();
         else if (a === "ck-gems") cheatCollectGems();
@@ -1281,11 +1490,10 @@ export function mount(root, context = {}) {
     updateBestLabel();
     updateCheatUI();
     showScreen("start");
-    syncButtons();
-    el.mutebtn.innerHTML = ICON.volOn;
-    setStatus(online ? "Room · Ready" : "Ready");
+    setStatus(helpOpen ? "Help" : online ? "Room · Ready" : "Ready");
     renderRoom();
     G.lastTick = performance.now();
+    syncFreeze();
     rafId = requestAnimationFrame(tick);
 
     /* ---------------- teardown ---------------- */
@@ -1294,7 +1502,7 @@ export function mount(root, context = {}) {
             ac.abort();                       // removes every listener registered with sig
             if (rafId) cancelAnimationFrame(rafId);
             rafId = 0;
-            timers.forEach((id) => clearTimeout(id));
+            timers.forEach((rec) => { if (rec.id) clearTimeout(rec.id); });
             timers.clear();
             unsubs.forEach((u) => { try { u(); } catch (err) { /* already gone */ } });
             if (AC) { try { AC.close(); } catch (err) { /* already closed */ } AC = null; }

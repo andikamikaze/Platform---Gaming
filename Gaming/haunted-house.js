@@ -17,6 +17,8 @@ export const META = {
     bestKey: "hauntedHouseBestTime",
 };
 
+import { iconSVG } from "../JS/icons.js";
+
 /* ================= pure helpers (also used by tests) ================= */
 
 const VIEW_W = 960, VIEW_H = 540, WORLD_H = 600;
@@ -264,47 +266,63 @@ export function mount(root, context = {}) {
     let best = null;
     try { best = Number(localStorage.getItem(META.bestKey)) || null; } catch (e) { best = null; }
 
+    /* UI lokal: jeda membekukan simulasi, panduan internal sekali per instalasi. */
+    let paused = false, pauseAnchor = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("hauntedHouseHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        ui.help = true;
+        try { localStorage.setItem("hauntedHouseHelpSeen", "1"); } catch (e) { /* storage diblokir */ }
+    }
+
     /* ------------------------------ DOM ------------------------------ */
     root.innerHTML = `
 <style>
-.hh{--hh-line:#26304a;--hh-dim:#8b93a7;--hh-fg:#e7eaf2;--hh-cyan:#22d3ee;--hh-amber:#fbbf24;--hh-red:#f87171;--hh-card:#0d1220;color:var(--hh-fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.hh{--hh-line:#26304a;--hh-dim:#8b93a7;--hh-fg:#e7eaf2;--hh-cyan:#22d3ee;--hh-amber:#fbbf24;--hh-red:#f87171;--hh-card:#0d1220;color:var(--hh-fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;gap:10px}
 .hh [hidden]{display:none!important}
-.hh .hh-panel{display:flex;flex-direction:column;gap:10px}
 .hh .hh-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.hh .hh-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--hh-line);border-radius:999px;font-size:12px;color:var(--hh-dim);background:#ffffff06;white-space:nowrap}
-.hh .hh-chip b{color:var(--hh-fg);font-weight:600}
+.hh .hh-chip{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:5px 10px;border:1px solid var(--hh-line);border-radius:999px;font-size:11px;color:var(--hh-dim);background:#ffffff06;white-space:nowrap}
+.hh .hh-chip b{color:var(--hh-fg);font-weight:700;font-variant-numeric:tabular-nums}
 .hh .hh-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .hh .hh-batt{width:46px;height:8px;border-radius:99px;background:#1b2236;overflow:hidden;display:inline-block}
 .hh .hh-batt i{display:block;height:100%;background:var(--hh-cyan);border-radius:99px;transition:width .2s}
-.hh .hh-spacer{flex:1}
-.hh .hh-btn{border:1px solid var(--hh-line);background:transparent;color:var(--hh-fg);border-radius:8px;padding:5px 11px;font-size:12px;cursor:pointer;transition:background .15s,border-color .15s}
+.hh .hh-spacer{flex:1 1 8px}
+.hh .hh-btn{min-height:38px;border:1px solid var(--hh-line);background:transparent;color:var(--hh-fg);border-radius:9px;padding:7px 12px;font-size:11px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
 .hh .hh-btn:hover{background:#ffffff10;border-color:#3b476b}
-.hh .hh-btn.hh-acc{border-color:#22d3ee55;color:var(--hh-cyan)}
+.hh .hh-btn.hh-acc{border-color:#22d3ee55;color:var(--hh-cyan);background:#22d3ee14}
 .hh .hh-btn.hh-warn{border-color:#fbbf2455;color:var(--hh-amber)}
-.hh .hh-stage{position:relative;width:100%;border:1px solid var(--hh-line);border-radius:14px;overflow:hidden;background:#0a0e17}
-.hh canvas{display:block;width:100%;height:auto;touch-action:none}
-.hh .hh-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);max-width:92%;padding:6px 14px;border-radius:999px;background:#0d1220ee;border:1px solid var(--hh-line);font-size:12.5px;color:var(--hh-fg);opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:5}
+.hh .hh-btn.on{border-color:var(--hh-cyan);color:var(--hh-cyan);background:#22d3ee14}
+.hh .hh-btn:disabled{opacity:.4;cursor:default}
+.hh .hh-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.hh .hh-icon-btn svg{flex:none;display:block}
+.hh .hh-panel{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:0;padding:0;border:1px solid var(--hh-line);border-radius:12px;overflow:hidden;background:#0a0e17}
+.hh canvas{display:block;width:auto;height:auto;max-width:100%;max-height:100%;aspect-ratio:16/9;touch-action:none;cursor:crosshair}
+.hh .hh-toast{position:absolute;top:8px;left:50%;transform:translateX(-50%);max-width:92%;padding:8px 14px;border-radius:999px;background:#0d1220ee;border:1px solid var(--hh-line);font-size:12px;color:var(--hh-fg);opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:5}
 .hh .hh-flash{position:absolute;inset:0;background:radial-gradient(ellipse at center,#ef444400 35%,#7f1d1dbb 100%);opacity:0;pointer-events:none;z-index:4}
-.hh .hh-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#05070dd9;backdrop-filter:blur(3px);z-index:6;padding:14px}
-.hh .hh-card{width:min(430px,100%);max-height:100%;overflow:auto;background:var(--hh-card);border:1px solid var(--hh-line);border-radius:14px;padding:20px 22px;text-align:center}
-.hh .hh-card h3{margin:0 0 6px;font-size:17px;font-weight:650;letter-spacing:.2px}
-.hh .hh-card p{margin:0 0 12px;font-size:13px;line-height:1.55;color:var(--hh-dim)}
-.hh .hh-card .hh-btn{margin:3px}
-.hh .hh-keys{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;text-align:left;font-size:12.5px;color:var(--hh-dim);margin:0 0 14px}
+.hh .hh-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto;background:#05070dd9;z-index:6}
+.hh .hh-card{width:min(430px,100%);max-height:100%;display:flex;flex-direction:column;gap:10px;overflow:hidden;background:var(--hh-card);border:1px solid var(--hh-line);border-radius:12px;padding:16px 18px;text-align:center}
+.hh .hh-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+.hh .hh-head h3{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px}
+.hh .hh-body{flex:1 1 auto;min-height:0;overflow:auto}
+.hh .hh-body p{margin:0 0 12px;font-size:13px;line-height:1.55;color:var(--hh-dim)}
+.hh .hh-foot{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;flex:none}
+.hh .hh-hint{font-size:11.5px;line-height:1.5;color:#5b6478;text-align:center}
+.hh .hh-keys{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;text-align:left;font-size:12.5px;line-height:1.45;color:var(--hh-dim);margin:0 0 12px}
 .hh .hh-keys b{color:var(--hh-fg);font-weight:600;white-space:nowrap}
-.hh .hh-list{list-style:none;margin:0 0 14px;padding:0;text-align:left;font-size:13px;line-height:2;color:var(--hh-dim)}
+.hh .hh-list{list-style:none;margin:0;padding:0;text-align:left;font-size:13px;line-height:1.9;color:var(--hh-dim)}
 .hh .hh-list b{color:var(--hh-amber)}
+.hh .hh-scroll{flex:1 1 auto;min-height:0;overflow:auto}
 .hh .hh-digits{display:flex;gap:8px;justify-content:center;margin-bottom:12px}
-.hh .hh-digits span{width:38px;height:46px;border:1px solid var(--hh-line);border-radius:10px;display:grid;place-items:center;font-size:20px;font-weight:700;background:#0a0e17}
-.hh .hh-pad{display:grid;grid-template-columns:repeat(3,64px);gap:8px;justify-content:center;margin-bottom:12px}
-.hh .hh-pad button{height:42px;border:1px solid var(--hh-line);border-radius:10px;background:#ffffff08;color:var(--hh-fg);font-size:15px;font-weight:650;cursor:pointer}
+.hh .hh-digits span{width:40px;height:48px;border:1px solid var(--hh-line);border-radius:10px;display:grid;place-items:center;font-size:20px;font-weight:700;background:#0a0e17}
+.hh .hh-pad{display:grid;grid-template-columns:repeat(3,minmax(0,64px));gap:8px;justify-content:center;margin-bottom:12px}
+.hh .hh-pad button{min-height:44px;border:1px solid var(--hh-line);border-radius:9px;background:#ffffff08;color:var(--hh-fg);font-size:15px;font-weight:650;cursor:pointer}
 .hh .hh-pad button:hover{background:#ffffff18}
-.hh .hh-cheat{display:flex;align-items:center;gap:10px;text-align:left;font-size:13px;color:var(--hh-fg);padding:7px 2px;border-bottom:1px solid #1b2236;cursor:pointer}
-.hh .hh-cheat input{accent-color:var(--hh-amber);width:15px;height:15px}
+.hh .hh-cheats{flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.hh .hh-cheat{display:flex;align-items:center;gap:10px;min-height:44px;text-align:left;font-size:13px;color:var(--hh-fg);padding:8px 2px;border-bottom:1px solid #1b2236;cursor:pointer}
+.hh .hh-cheat input{accent-color:var(--hh-amber);width:18px;height:18px}
 .hh .hh-cheat small{color:var(--hh-dim);margin-left:auto;font-size:11px}
-.hh .hh-hint{font-size:11.5px;color:#5b6478;text-align:center}
-.hh .hh-touch{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;padding:12px;z-index:5;pointer-events:none}
-.hh .hh-touch button{pointer-events:auto;width:52px;height:52px;border-radius:14px;border:1px solid #3b476b88;background:#0d1220bb;color:var(--hh-fg);font-size:17px;touch-action:none;user-select:none;-webkit-user-select:none}
+.hh .hh-touch{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding:8px 4px 0;pointer-events:none}
+.hh .hh-touch button{pointer-events:auto;width:52px;height:52px;min-width:44px;min-height:44px;border-radius:12px;border:1px solid #3b476b88;background:#0d1220bb;color:var(--hh-fg);font-size:17px;touch-action:none;user-select:none;-webkit-user-select:none}
 .hh .hh-touch button:active{background:#22d3ee33}
 .hh .hh-dpad{display:flex;flex-direction:column;align-items:center;gap:6px}
 .hh .hh-dpad .hh-row{display:flex;gap:6px}
@@ -312,36 +330,61 @@ export function mount(root, context = {}) {
 .hh .hh-acts button{border-radius:50%}
 .hh .hh-acts .hh-e{width:62px;height:62px;border-color:#22d3ee66;color:var(--hh-cyan)}
 .hh .hh-shake{animation:hh-shake .3s}
+.hh :is(button,input):focus-visible{outline:2px solid var(--hh-cyan);outline-offset:2px}
 @keyframes hh-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
-@media (max-width:640px){.hh .hh-hint{display:none}.hh .hh-chip{padding:3px 8px;font-size:11px}}
+@media (prefers-reduced-motion:reduce){.hh *{animation:none!important;transition:none!important}}
+
+/* --- layout akhir: override mobile + HUD (paling akhir) --- */
+.hh .hh-card{display:flex;flex-direction:column;overflow:hidden}
+.hh .hh-head,.hh .hh-foot{flex:none}
+.hh .hh-body,.hh .hh-cheats,.hh .hh-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.hh{gap:6px}
+.hh.game-fill > .hh-panel[data-board]:not(:has(.hh-ov:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
+.hh.game-fill > .hh-panel[data-board]:has(.hh-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.hh .hh-hud{gap:5px}
+.hh .hh-hud .hh-chip{padding:4px 6px;font-size:9px;min-height:26px}
+.hh .hh-hud .hh-chip[data-el="statusChip"],.hh .hh-hud .hh-chip[data-el="nerveChip"],.hh .hh-hud .hh-chip[data-el="matchChip"]{display:none}
+.hh .hh-hud .hh-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.hh .hh-hud .hh-btn-label,.hh .hh-hud .hh-spacer{display:none}
+.hh .hh-ov{padding:8px}
+.hh .hh-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.hh .hh-body,.hh .hh-cheats,.hh .hh-scroll{scrollbar-width:none}
+.hh .hh-body::-webkit-scrollbar,.hh .hh-cheats::-webkit-scrollbar,.hh .hh-scroll::-webkit-scrollbar{display:none}
+.hh .hh-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--hh-line)}
+.hh .hh-hint{display:none}
+.hh .hh-digits span{width:36px;height:44px;font-size:18px}
+.hh .hh-pad{grid-template-columns:repeat(3,minmax(0,56px))}
+.hh .hh-touch{padding:6px 2px 0;gap:8px}
+}
+@media (pointer:coarse){.hh .hh-hud .hh-btn{min-height:32px;padding:5px 9px;font-size:9px}}
 </style>
-<div class="game-app hh">
-  <div class="game-intro">
-    <div><h2>Haunted House</h2><p>A dark house, four hidden digits, one way out.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app hh game-fill" data-hh>
+  <div class="hh-hud">
+    <span class="hh-chip" data-el="nerveChip" title="Nerves">Nerve <span data-hud="nerves"></span></span>
+    <span class="hh-chip">Time <b data-hud="time">4:00</b></span>
+    <span class="hh-chip" title="Flashlight battery">Torch <span class="hh-batt"><i data-hud="batt"></i></span></span>
+    <span class="hh-chip" data-el="matchChip">Matches <b data-hud="matches">2</b></span>
+    <span class="hh-chip">Clues <b data-hud="clues">0/4</b></span>
+    <span class="hh-chip">Ghost <b data-hud="ghost">-</b></span>
+    <span class="hh-chip" data-el="statusChip">Status <b data-status>Ready</b></span>
+    <span class="hh-spacer"></span>
+    <button class="hh-btn hh-icon-btn" type="button" data-act="journal" data-el="journalBtn" aria-label="Clue journal" title="Clue journal (J)">${iconSVG("bookOpen", { size: 14 })}<span class="hh-btn-label">Journal</span></button>
+    <button class="hh-btn hh-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="hh-btn-label">Help</span></button>
+    <button class="hh-btn hh-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="hh-btn-label">Cheats</span></button>
+    <button class="hh-btn hh-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="hh-btn-label">Pause</span></button>
+    <button class="hh-btn hh-icon-btn" type="button" data-restart aria-label="Restart" title="Restart game (R)">${iconSVG("refresh", { size: 14 })}<span class="hh-btn-label">Restart</span></button>
+    <button class="hh-btn hh-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="hh-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel hh-panel" data-board>
-    <div class="hh-hud">
-      <span class="hh-chip" title="Nerves">Nerve <span data-hud="nerves"></span></span>
-      <span class="hh-chip">Time <b data-hud="time">4:00</b></span>
-      <span class="hh-chip" title="Flashlight battery">Torch <span class="hh-batt"><i data-hud="batt"></i></span></span>
-      <span class="hh-chip">Matches <b data-hud="matches">2</b></span>
-      <span class="hh-chip">Clues <b data-hud="clues">0/4</b></span>
-      <span class="hh-chip">Ghost <b data-hud="ghost">-</b></span>
-      <span class="hh-spacer"></span>
-      <button class="hh-btn" data-act="journal" title="Clue journal (J)">Journal</button>
-      <button class="hh-btn" data-act="help" title="How to play (H)">?</button>
-      <button class="hh-btn hh-warn" data-act="cheats" title="Cheats (C)">Cheats</button>
-      <button class="hh-btn" data-act="restart">Restart</button>
-    </div>
-    <div class="hh-stage">
-      <canvas width="960" height="540"></canvas>
-      <div class="hh-toast" data-el="toast"></div>
-      <div class="hh-flash" data-el="flash"></div>
+    <canvas width="960" height="540"></canvas>
+    <div class="hh-toast" data-el="toast"></div>
+    <div class="hh-flash" data-el="flash"></div>
 
-      <div class="hh-ov" data-ov="help" hidden>
-        <div class="hh-card">
-          <h3>How to play</h3>
+    <div class="hh-ov" data-ov="help" hidden>
+      <div class="hh-card">
+        <div class="hh-head"><h3>How to play</h3><button class="hh-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="hh-body">
           <p>Find the <b>4 digits</b> hidden in the house and the note that tells their order, then unlock the <b>front door in the Foyer</b>. The ghost drifts through walls - light keeps it away. You have <b>3 nerves</b> and <b>4 minutes</b>.</p>
           <div class="hh-keys">
             <b>A / D or arrows</b><span>move left / right</span>
@@ -349,25 +392,30 @@ export function mount(root, context = {}) {
             <b>E / click</b><span>inspect, open doors, flip switches</span>
             <b>F</b><span>flashlight (drains battery, repels the ghost)</span>
             <b>M</b><span>strike a match (short glow, repels the ghost)</span>
-            <b>J / C / H</b><span>journal / cheats / help</span>
+            <b>J / C / P / R</b><span>journal / cheats / pause / restart</span>
+            <b>H / Esc</b><span>help / close overlay</span>
           </div>
           <p>Lit rooms are safe - the ghost refuses to enter. The basement hatch is locked; the brass key is somewhere upstairs. Salts in the basement restore a nerve.</p>
+        </div>
+        <div class="hh-foot">
+          <span class="hh-hint">Press H to reopen this guide</span>
           <button class="hh-btn hh-acc" data-act="start" data-el="startBtn">Start</button>
-          <button class="hh-btn" data-act="closehelp">Close</button>
+          <button class="hh-btn hh-acc" data-act="closehelp" data-el="closeHelpBtn">Got it</button>
         </div>
       </div>
+    </div>
 
-      <div class="hh-ov" data-ov="journal" hidden>
-        <div class="hh-card">
-          <h3>Clue journal</h3>
-          <ul class="hh-list" data-el="journalList"></ul>
-          <button class="hh-btn" data-act="closejournal">Close</button>
-        </div>
+    <div class="hh-ov" data-ov="journal" hidden>
+      <div class="hh-card">
+        <div class="hh-head"><h3>Clue journal</h3><button class="hh-btn" type="button" data-act="closejournal" aria-label="Close journal">Close</button></div>
+        <ul class="hh-list hh-scroll" data-el="journalList"></ul>
       </div>
+    </div>
 
-      <div class="hh-ov" data-ov="keypad" hidden>
-        <div class="hh-card" data-el="padCard">
-          <h3>Front door keypad</h3>
+    <div class="hh-ov" data-ov="keypad" hidden>
+      <div class="hh-card" data-el="padCard">
+        <div class="hh-head"><h3>Front door keypad</h3><button class="hh-btn" type="button" data-act="closepad" aria-label="Close keypad">Close</button></div>
+        <div class="hh-body">
           <p data-el="padMsg">Enter the 4-digit code.</p>
           <div class="hh-digits"><span data-d="0"></span><span data-d="1"></span><span data-d="2"></span><span data-d="3"></span></div>
           <div class="hh-pad" data-el="pad">
@@ -376,54 +424,65 @@ export function mount(root, context = {}) {
             <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
             <button data-k="clr">CLR</button><button data-k="0">0</button><button data-k="ok">OK</button>
           </div>
-          <button class="hh-btn" data-act="closepad">Back</button>
         </div>
       </div>
+    </div>
 
-      <div class="hh-ov" data-ov="cheats" hidden>
-        <div class="hh-card">
-          <h3>Cheats</h3>
+    <div class="hh-ov" data-ov="cheats" hidden>
+      <div class="hh-card">
+        <div class="hh-head"><h3>Cheats</h3><button class="hh-btn" type="button" data-act="closecheats" aria-label="Close cheats">Close</button></div>
+        <div class="hh-cheats">
           <p>Using cheats disables your best-time record.</p>
           <label class="hh-cheat"><input type="checkbox" data-cheat="god"> Invincible <small>ghost can't hurt you</small></label>
           <label class="hh-cheat"><input type="checkbox" data-cheat="freeze"> Freeze ghost <small>it stops moving</small></label>
           <label class="hh-cheat"><input type="checkbox" data-cheat="light"> Lights on <small>see the whole house</small></label>
           <label class="hh-cheat"><input type="checkbox" data-cheat="power"> Infinite power <small>battery & matches</small></label>
           <label class="hh-cheat"><input type="checkbox" data-cheat="reveal"> Reveal code <small>digits shown in journal</small></label>
-          <div style="margin-top:12px">
-            <button class="hh-btn hh-warn" data-act="cheatTime">+60 seconds</button>
-            <button class="hh-btn" data-act="closecheats">Close</button>
-          </div>
+        </div>
+        <div class="hh-foot">
+          <button class="hh-btn hh-warn" data-act="cheatTime">+60 seconds</button>
+          <button class="hh-btn" data-act="closecheats">Close</button>
         </div>
       </div>
+    </div>
 
-      <div class="hh-ov" data-ov="end" hidden>
-        <div class="hh-card">
-          <h3 data-el="endTitle">Game over</h3>
-          <p data-el="endSub"></p>
+    <div class="hh-ov" data-ov="pause" hidden>
+      <div class="hh-card">
+        <div class="hh-head"><h3>Paused</h3></div>
+        <div class="hh-body"><p>The house is frozen. Press P or Esc to resume.</p></div>
+        <div class="hh-foot">
+          <button class="hh-btn hh-acc" type="button" data-resume>Resume</button>
+          <button class="hh-btn" type="button" data-exit>Exit game</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="hh-ov" data-ov="end" hidden>
+      <div class="hh-card">
+        <div class="hh-head"><h3 data-el="endTitle">Game over</h3></div>
+        <div class="hh-body"><p data-el="endSub"></p></div>
+        <div class="hh-foot">
           <button class="hh-btn hh-acc" data-act="restart">Play again</button>
           <button class="hh-btn" data-exit>Exit game</button>
         </div>
       </div>
-
-      <div class="hh-touch" data-el="touch" hidden>
-        <div class="hh-dpad">
-          <button data-vk="u">&#9650;</button>
-          <div class="hh-row">
-            <button data-vk="l">&#9664;</button>
-            <button data-vk="d">&#9660;</button>
-            <button data-vk="r">&#9654;</button>
-          </div>
-        </div>
-        <div class="hh-acts">
-          <button data-va="match">M</button>
-          <button data-va="flash">F</button>
-          <button data-va="interact" class="hh-e">E</button>
-        </div>
+    </div>
+  </section>
+  <div class="hh-touch" data-el="touch" hidden>
+    <div class="hh-dpad">
+      <button type="button" data-vk="u" aria-label="Up">&#9650;</button>
+      <div class="hh-row">
+        <button type="button" data-vk="l" aria-label="Left">&#9664;</button>
+        <button type="button" data-vk="d" aria-label="Down">&#9660;</button>
+        <button type="button" data-vk="r" aria-label="Right">&#9654;</button>
       </div>
     </div>
-    <div class="hh-hint">Move: A/D or arrows &middot; Stairs: W/S &middot; Interact: E or click &middot; Torch: F &middot; Match: M &middot; Journal: J &middot; Cheats: C</div>
-  </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+    <div class="hh-acts">
+      <button type="button" data-va="match" aria-label="Strike a match">M</button>
+      <button type="button" data-va="flash" aria-label="Flashlight">F</button>
+      <button type="button" data-va="interact" class="hh-e" aria-label="Interact">E</button>
+    </div>
+  </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
@@ -441,7 +500,15 @@ export function mount(root, context = {}) {
         nerves: $('[data-hud="nerves"]'), time: $('[data-hud="time"]'), batt: $('[data-hud="batt"]'),
         matches: $('[data-hud="matches"]'), clues: $('[data-hud="clues"]'), ghost: $('[data-hud="ghost"]'),
     };
-    const ov = { help: $('[data-ov="help"]'), journal: $('[data-ov="journal"]'), keypad: $('[data-ov="keypad"]'), cheats: $('[data-ov="cheats"]'), end: $('[data-ov="end"]') };
+    const ov = {
+        help: $('[data-ov="help"]'), journal: $('[data-ov="journal"]'), keypad: $('[data-ov="keypad"]'),
+        cheats: $('[data-ov="cheats"]'), pause: $('[data-ov="pause"]'), end: $('[data-ov="end"]'),
+    };
+    const buttons = {
+        help: $("[data-help]"), cheats: $("[data-cheats]"), pause: $("[data-pause]"),
+        journal: $('[data-el="journalBtn"]'), start: $('[data-el="startBtn"]'),
+        closeHelp: $('[data-el="closeHelpBtn"]'),
+    };
     const isTouch = window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
     if (isTouch) $('[data-el="touch"]').removeAttribute("hidden");
 
@@ -738,6 +805,8 @@ export function mount(root, context = {}) {
 
     function applyAction(a, actor) {
         if (!state || !a || typeof a !== "object") return;
+        /* Jeda membekukan aksi game; restart/start tetap diizinkan. */
+        if (paused && a.type !== "restart" && a.type !== "start") return;
         if (actor !== 0 && actor !== 1) return;
         if (actor >= state.playerCount) return;
         const p = state.players[actor];
@@ -1097,8 +1166,17 @@ export function mount(root, context = {}) {
         }
         setTxt(hud.ghost, "ghost", gt);
         hud.ghost.style.color = gt === "CLOSE!" ? "#f87171" : "";
-        setTxt(statusEl, "status",
+        setTxt(statusEl, "status", paused ? "Paused" :
             state.phase === "intro" ? "Ready" : state.phase === "playing" ? (online ? "Live" : "Playing") : state.phase === "won" ? "Escaped" : "Caught");
+
+        /* Label teks tombol ikon diperbarui lewat span, bukan textContent. */
+        const plabel = buttons.pause.querySelector(".hh-btn-label");
+        if (plabel) plabel.textContent = paused ? "Resume" : "Pause";
+        buttons.pause.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        buttons.pause.title = paused ? "Resume (P)" : "Pause (P)";
+        buttons.pause.disabled = !(state.phase === "playing" || paused);
+        buttons.cheats.classList.toggle("on", Object.keys(state.cheats).some((k) => state.cheats[k]));
+        buttons.journal.classList.toggle("on", ui.journal);
     }
 
     function renderJournal() {
@@ -1119,19 +1197,60 @@ export function mount(root, context = {}) {
     }
     function syncOverlays() {
         const ph = state ? state.phase : "waiting";
+        const modal = ui.help || ui.cheats || paused;
         ov.help.hidden = !(ui.help || ph === "intro");
-        $('[data-el="startBtn"]').hidden = ph !== "intro";
-        $('[data-act="closehelp"]').hidden = ph === "intro";
-        ov.journal.hidden = !ui.journal || ph === "intro";
-        ov.keypad.hidden = !ui.keypad || ph !== "playing";
-        ov.cheats.hidden = !ui.cheats;
-        ov.end.hidden = !(ph === "won" || ph === "lost");
-        if (ui.journal && state) {
+        buttons.start.hidden = ph !== "intro";
+        buttons.closeHelp.hidden = ph === "intro";
+        ov.journal.hidden = !ui.journal || ph === "intro" || modal;
+        ov.keypad.hidden = !ui.keypad || ph !== "playing" || modal;
+        ov.cheats.hidden = !ui.cheats || ui.help;
+        ov.pause.hidden = !paused || ui.help || ui.cheats;
+        ov.end.hidden = !(ph === "won" || ph === "lost") || modal;
+        if (ui.journal && state && !ov.journal.hidden) {
             const sig = JSON.stringify([state.found, state.orderKnown, state.hasKey, state.cheats.reveal]);
             if (hudCache.journal !== sig) { hudCache.journal = sig; renderJournal(); }
         }
-        if (ui.cheats && state) root.querySelectorAll("[data-cheat]").forEach((c) => { c.checked = Boolean(state.cheats[c.dataset.cheat]); });
+        if (ui.cheats && state && !ov.cheats.hidden) root.querySelectorAll("[data-cheat]").forEach((c) => { c.checked = Boolean(state.cheats[c.dataset.cheat]); });
     }
+
+    /* Overlay saling menekan: help → cheats → pause. */
+    function toggleHelp(on) {
+        ui.help = typeof on === "boolean" ? on : !ui.help;
+        if (ui.help) {
+            ui.cheats = false; ui.journal = false; ui.keypad = false;
+            if (paused) togglePause(false);
+        }
+    }
+    function toggleCheats(on) {
+        const next = typeof on === "boolean" ? on : !ui.cheats;
+        if (next === ui.cheats) return;
+        ui.cheats = next;
+        if (ui.cheats) { ui.journal = false; ui.keypad = false; if (paused) togglePause(false); }
+    }
+    function togglePause(on) {
+        if (!state || (state.phase !== "playing" && !paused)) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) {
+            pauseAnchor = Date.now();
+            ui.cheats = false; ui.journal = false; ui.keypad = false;
+            hover = null;
+            held.key = { l: 0, r: 0, u: 0, d: 0 };
+            held.touch = { l: 0, r: 0, u: 0, d: 0 };
+            refreshInput();
+        } else {
+            /* Geser anchor waktu: durasi jeda tidak ikut terhitung. */
+            if (pauseAnchor) pauseAnchor = 0;
+            lastT = 0;
+        }
+    }
+    function restartGame() {
+        ui.help = false; ui.cheats = false; ui.journal = false; ui.keypad = false;
+        if (paused) togglePause(false);
+        submitAction({ type: "restart" });
+    }
+
     function localToast(text) { toastEl.textContent = text; toastT = 2.4; }
     function openKeypad() { ui.pad = ""; ui.padMsg = "Enter the 4-digit code."; ui.keypad = true; updatePad(); }
     function padPress(k) {
@@ -1194,7 +1313,7 @@ export function mount(root, context = {}) {
         submitAction({ type: "input", input: i });
     }
     function interactLocal() {
-        if (!state || state.phase !== "playing") return;
+        if (!state || state.phase !== "playing" || paused || ui.help || ui.cheats || ui.journal || ui.keypad) return;
         const me = state.players[playerIndex];
         const t = nearestTarget(me);
         if (t && t.kind === "exit") { openKeypad(); return; }
@@ -1206,21 +1325,41 @@ export function mount(root, context = {}) {
     };
     function onKeyDown(e) {
         if (destroyed || !root.isConnected || !state) return;
-        if (ui.keypad && state.phase === "playing") {
+        const code = e.code || "";
+        const k = e.key.toLowerCase();
+
+        /* Keypad menyimpan inputnya sendiri. */
+        if (ui.keypad && state.phase === "playing" && !paused && !ui.help && !ui.cheats) {
             if (/^[0-9]$/.test(e.key)) { e.preventDefault(); padPress(e.key); return; }
-            if (e.key === "Enter") { e.preventDefault(); padPress("ok"); return; }
+            if (code === "Enter") { e.preventDefault(); padPress("ok"); return; }
             if (e.key === "Backspace") { e.preventDefault(); padPress("clr"); return; }
             if (e.key === "Escape") { e.preventDefault(); ui.keypad = false; return; }
             return;
         }
-        if (e.key === "Escape") { ui.help = false; ui.journal = false; ui.cheats = false; return; }
-        const k = e.key.toLowerCase();
-        if (k === "e" || e.key === "Enter") { e.preventDefault(); if (!e.repeat) interactLocal(); return; }
+
+        /* Prioritas: help → cheats → pause → Escape/Enter → aksi game. */
+        if (code === "KeyH" || e.key === "?") { e.preventDefault(); toggleHelp(); return; }
+        if (code === "KeyC") { e.preventDefault(); if (!ui.help) toggleCheats(); return; }
+        if (code === "KeyP") { e.preventDefault(); if (!ui.help && !ui.cheats) togglePause(); return; }
+        if (code === "KeyR") { e.preventDefault(); restartGame(); return; }
+        if (e.key === "Escape" || code === "Enter") {
+            e.preventDefault();
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheats) toggleCheats(false);
+            else if (paused) togglePause(false);
+            else if (ui.keypad) ui.keypad = false;
+            else if (code === "Enter" && !e.repeat) {
+                if (state.phase === "intro") { ui.help = false; submitAction({ type: "start" }); }
+                else if (state.phase === "won" || state.phase === "lost") restartGame();
+                else interactLocal();
+            }
+            return;
+        }
+        if (ui.help || ui.cheats || paused || ui.journal || ui.keypad) return;
+        if (k === "e") { e.preventDefault(); if (!e.repeat) interactLocal(); return; }
         if (k === "f") { if (!e.repeat) submitAction({ type: "flash" }); return; }
         if (k === "m") { if (!e.repeat) submitAction({ type: "match" }); return; }
-        if (k === "j") { ui.journal = !ui.journal; return; }
-        if (k === "h" || e.key === "?") { ui.help = !ui.help; return; }
-        if (k === "c") { ui.cheats = !ui.cheats; return; }
+        if (k === "j") { ui.journal = !ui.journal; if (ui.journal) { ui.cheats = false; if (paused) togglePause(false); } return; }
         const dir = KEYMAP[e.key];
         if (dir) { e.preventDefault(); held.key[dir] = 1; refreshInput(); }
     }
@@ -1273,7 +1412,9 @@ export function mount(root, context = {}) {
         return null;
     }
     function onPointerMove(e) {
-        if (!state || state.phase !== "playing") { hover = null; cv.style.cursor = "default"; return; }
+        if (!state || state.phase !== "playing" || paused || ui.help || ui.cheats || ui.journal) {
+            hover = null; cv.style.cursor = "default"; return;
+        }
         const h = hitTest(canvasWorld(e));
         if (h) {
             const me = state.players[playerIndex];
@@ -1283,7 +1424,7 @@ export function mount(root, context = {}) {
         cv.style.cursor = h && h.ok ? "pointer" : "default";
     }
     function onPointerDown(e) {
-        if (!state || state.phase !== "playing") return;
+        if (!state || state.phase !== "playing" || paused || ui.help || ui.cheats || ui.journal || ui.keypad) return;
         const h = hitTest(canvasWorld(e));
         if (!h) return;
         const me = state.players[playerIndex];
@@ -1299,7 +1440,7 @@ export function mount(root, context = {}) {
     /* touch: virtual d-pad + action buttons */
     root.querySelectorAll("[data-vk]").forEach((b) => {
         const k = b.dataset.vk;
-        const down = (e) => { e.preventDefault(); held.touch[k] = 1; refreshInput(); };
+        const down = (e) => { e.preventDefault(); if (paused || ui.help || ui.cheats || ui.journal || ui.keypad) return; held.touch[k] = 1; refreshInput(); };
         const up = (e) => { e.preventDefault(); held.touch[k] = 0; refreshInput(); };
         b.addEventListener("pointerdown", down);
         b.addEventListener("pointerup", up);
@@ -1309,25 +1450,32 @@ export function mount(root, context = {}) {
 
     /* buttons */
     function onClick(e) {
-        const el = e.target.closest("[data-act],[data-k],[data-exit],[data-va]");
+        const el = e.target.closest("[data-act],[data-k],[data-exit],[data-va],[data-help],[data-help-close],[data-cheats],[data-pause],[data-resume],[data-restart]");
         if (!el) return;
         if (el.hasAttribute("data-exit")) { onExit(); return; }
-        if (el.dataset.k) { padPress(el.dataset.k); return; }
-        if (el.dataset.va === "interact") { interactLocal(); return; }
-        if (el.dataset.va === "flash") { submitAction({ type: "flash" }); return; }
-        if (el.dataset.va === "match") { submitAction({ type: "match" }); return; }
+        if (el.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (el.hasAttribute("data-help-close")) { toggleHelp(false); return; }
+        if (el.hasAttribute("data-cheats")) { if (!ui.help) toggleCheats(); return; }
+        if (el.hasAttribute("data-pause")) { if (!ui.help && !ui.cheats) togglePause(); return; }
+        if (el.hasAttribute("data-resume")) { togglePause(false); return; }
+        if (el.hasAttribute("data-restart")) { restartGame(); return; }
         switch (el.dataset.act) {
-            case "start": ui.help = false; submitAction({ type: "start" }); break;
-            case "restart": ui.keypad = false; ui.journal = false; ui.cheats = false; submitAction({ type: "restart" }); break;
-            case "journal": ui.journal = !ui.journal; break;
-            case "help": ui.help = !ui.help; break;
-            case "cheats": ui.cheats = !ui.cheats; break;
-            case "closehelp": ui.help = false; break;
-            case "closejournal": ui.journal = false; break;
-            case "closecheats": ui.cheats = false; break;
-            case "closepad": ui.keypad = false; break;
-            case "cheatTime": submitAction({ type: "cheat", key: "time" }); break;
+            case "start": ui.help = false; submitAction({ type: "start" }); return;
+            case "restart": restartGame(); return;
+            case "journal": ui.journal = !ui.journal; if (ui.journal) { ui.cheats = false; if (paused) togglePause(false); } return;
+            case "help": toggleHelp(); return;
+            case "cheats": toggleCheats(); return;
+            case "closehelp": toggleHelp(false); return;
+            case "closejournal": ui.journal = false; return;
+            case "closecheats": toggleCheats(false); return;
+            case "closepad": ui.keypad = false; return;
+            case "cheatTime": if (!paused) submitAction({ type: "cheat", key: "time" }); return;
         }
+        if (el.dataset.k) { if (!paused && !ui.help && !ui.cheats) padPress(el.dataset.k); return; }
+        if (el.dataset.va === "interact") { interactLocal(); return; }
+        if (paused || ui.help || ui.cheats || ui.journal) return;
+        if (el.dataset.va === "flash") { submitAction({ type: "flash" }); return; }
+        if (el.dataset.va === "match") { submitAction({ type: "match" }); }
     }
     function onChange(e) {
         const c = e.target.closest("[data-cheat]");
@@ -1343,10 +1491,12 @@ export function mount(root, context = {}) {
         raf = requestAnimationFrame(frame);
         if (!lastT) lastT = t;
         let dt = (t - lastT) / 1000; lastT = t;
+        /* Jeda: dt = 0 membuat timer, ghost dan efek benar-benar berhenti. */
+        if (paused) dt = 0;
         if (!(dt > 0)) dt = 0;
         if (dt > 0.05) dt = 0.05;
         clock += dt;
-        if (isHost) {
+        if (isHost && !paused) {
             simulate(dt);
             if (online && state && state.phase === "playing") {
                 pubAcc += dt;

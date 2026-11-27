@@ -2,7 +2,9 @@
 /* Minimal ten-pin bowling. Real 2D physics (ball / pin / kickback collisions),
    10 frames, classic scoring. vs Bot (local) or vs friend (room, host-authoritative).
    Controls: aim (mouse / drag / arrows) + hold-release BOWL (space / button / click lane).
-   No tutorial, no levels. Cheats overlay (offline only). Random first player & seats. */
+   Internal How-to-play, HUD bar, pause/resume, cheats overlay (offline only). */
+
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "bowling",
@@ -175,10 +177,11 @@ export function mount(root, context = {}) {
     const online = mode === "room" && Boolean(room);
 
     let state = null, destroyed = false;
-    let animId = null, animRaf = null, meterRaf = null;
-    let aiTimer = null, advanceTimer = null, bannerTimer = null;
+    let animId = null, animRaf = null, meterRaf = null, animCtx = null;
     let aimX = 230, hookVal = 0, charging = false, chargeT0 = 0, powerVal = 0;
     let lastTurnKey = "", animRefs = null;
+    let helpOpen = false, cheatsOpen = false, paused = false;
+    let frozen = false, freezeAt = 0, clockShift = 0, perfShift = 0;
     const offs = [];
     const cheats = { guide: false, pocket: false, power: false, strike: false, weak: false };
     const CHEAT_ROWS = [
@@ -186,112 +189,280 @@ export function mount(root, context = {}) {
         ["strike", "Auto strike"], ["weak", "Weak bot"],
     ];
 
+    /* Stopwatch base: frozen time does not advance, so Date.now()-based
+       anchors keep their meaning after a pause / overlay is dismissed. */
+    const dateNow = () => Date.now() - clockShift;
+    const perfNow = () => performance.now() - perfShift;
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("bowlingHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("bowlingHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
     /* ---------- DOM ---------- */
     root.innerHTML = `
-<div class="game-app bw">
+<div class="game-app bw game-fill" data-bw>
 <style>
-.bw{max-width:480px;margin:0 auto;color:#e5e7eb;font-variant-numeric:tabular-nums}
-.bw .game-intro h2{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em}
+.bw{--bw-bg:#0b1020;--bw-panel:#ffffff05;--bw-line:#ffffff1c;--bw-ink:#e5e7eb;--bw-mut:#9ca3af;--bw-weak:#6b7280;--bw-acc:#818cf8;
+  max-width:520px;width:100%;height:100%;margin:0 auto;display:flex;flex-direction:column;gap:8px;color:var(--bw-ink);font-variant-numeric:tabular-nums}
+.bw *{box-sizing:border-box}
 .bw [hidden]{display:none!important}
-.bw-panel{position:relative;display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid #ffffff14;border-radius:16px;background:#ffffff05}
-.bw-score{display:grid;grid-template-columns:58px repeat(10,1fr) 34px;gap:2px;font-size:9.5px;user-select:none}
-.bw-score .n{display:flex;align-items:center;font-weight:700;font-size:10px;color:#9ca3af;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding-right:4px}
+.bw-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.bw-hud-info,.bw-hud-ctrl,.bw-hud-btns{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.bw-hud-btns{margin-left:auto}
+.bw-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--bw-line);border-radius:999px;background:var(--bw-panel);color:var(--bw-mut);white-space:nowrap}
+.bw-chip b{color:var(--bw-ink);font-weight:700}
+.bw-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:6px 9px;font:inherit;font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--bw-ink);background:transparent;border:1px solid var(--bw-line);border-radius:9px;cursor:pointer;touch-action:manipulation;transition:border-color .16s,background .16s}
+.bw-btn:hover{border-color:var(--bw-mut);background:var(--bw-panel)}
+.bw-btn.on{border-color:var(--bw-acc);color:#a5b4fc}
+.bw-icon svg{flex:none;display:block}
+.bw-btn-label{white-space:nowrap}
+.bw-meter{width:58px;height:4px;border-radius:99px;background:var(--bw-line);overflow:hidden;flex:none}
+.bw-meter i{display:block;height:100%;width:0;background:var(--bw-acc);transition:none}
+.bw-panel{position:relative;display:flex;flex-direction:column;gap:8px;min-height:0;padding:8px;border:1px solid var(--bw-line);border-radius:12px;background:var(--bw-panel)}
+.bw.game-fill > .bw-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.bw-score{flex:none;display:grid;grid-template-columns:58px repeat(10,minmax(0,1fr)) 34px;gap:2px;font-size:9.5px;user-select:none;min-width:0;overflow:hidden}
+.bw-score .n{display:flex;align-items:center;font-weight:700;font-size:10px;color:var(--bw-mut);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding-right:4px;min-width:0}
 .bw-score .n.me{color:#a5b4fc}
-.bw-score .c{border:1px solid #ffffff10;border-radius:5px;min-height:32px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden}
-.bw-score .c.cur{border-color:#818cf8}
-.bw-score .m{text-align:center;color:#cbd5e1;padding:1px 0;letter-spacing:.05em}
-.bw-score .t{text-align:center;font-weight:700;color:#f9fafb;border-top:1px solid #ffffff0d;padding:1px 0}
+.bw-score .c{border:1px solid var(--bw-line);border-radius:4px;min-height:30px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;min-width:0}
+.bw-score .c.cur{border-color:var(--bw-acc)}
+.bw-score .m{text-align:center;color:var(--bw-ink);padding:1px 0;letter-spacing:.05em}
+.bw-score .t{text-align:center;font-weight:700;color:var(--bw-ink);border-top:1px solid var(--bw-line);padding:1px 0}
 .bw-score .tot{display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:#a5b4fc}
-.bw-lane{position:relative;width:min(100%,380px);margin:0 auto;aspect-ratio:360/620;touch-action:none;user-select:none;-webkit-user-select:none}
-.bw-lane svg{width:100%;height:100%;display:block;border-radius:12px}
-.bw-banner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-size:26px;font-weight:800;letter-spacing:.35em;color:#fff;text-shadow:0 2px 18px #000a;animation:bwpop .9s ease forwards}
+.bw-lanearea{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center}
+.bw-lane{position:relative;height:100%;max-height:100%;width:auto;max-width:100%;aspect-ratio:360/620;margin:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+.bw-lane svg{width:100%;height:100%;display:block;border-radius:10px}
+.bw-banner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-size:24px;font-weight:800;letter-spacing:.3em;color:var(--bw-ink);text-shadow:0 2px 18px #000a;animation:bwpop .9s ease forwards}
 @keyframes bwpop{0%{opacity:0;transform:scale(.85)}18%{opacity:1;transform:scale(1)}75%{opacity:1}100%{opacity:0}}
-.bw-meter{height:4px;border-radius:99px;background:#ffffff12;overflow:hidden}
-.bw-meter i{display:block;height:100%;width:0;background:#818cf8;transition:none}
-.bw-pad{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.bw-pad button,.bw-hooks button,.bw-cheatbtn,.bw-sheet button,.bw-over button{font:inherit;color:#e5e7eb;background:transparent;border:1px solid #ffffff1c;border-radius:10px;cursor:pointer;touch-action:manipulation}
-.bw-pad button:hover,.bw-hooks button:hover,.bw-cheatbtn:hover{background:#ffffff10}
-.bw-pad .nav{width:52px;height:46px;font-size:15px}
-.bw-hooks{display:flex;gap:6px}
-.bw-hooks button{width:44px;height:46px;font-size:15px;color:#9ca3af}
-.bw-hooks button.on{border-color:#818cf8;color:#a5b4fc}
-.bw button:disabled{opacity:.3;cursor:default;pointer-events:none}
-.bw-bowl{width:100%;padding:14px;border:none;border-radius:12px;background:#818cf8;color:#0b1020;font:inherit;font-weight:800;font-size:14px;letter-spacing:.3em;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+.bw-actions{flex:none;display:flex;justify-content:center}
+.bw-bowl{width:min(100%,380px);min-height:46px;padding:10px 16px;border:1px solid var(--bw-acc);border-radius:10px;background:var(--bw-acc);color:var(--bw-bg);font:inherit;font-weight:800;font-size:14px;letter-spacing:.3em;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:filter .16s}
+.bw-bowl:hover{filter:brightness(1.06)}
 .bw-bowl:active{background:#6d78f0}
-.bw-bowl:disabled{opacity:.3;cursor:default}
-.bw-meta{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#6b7280}
-.bw-cheatbtn{padding:5px 12px;font-size:11px;letter-spacing:.08em;color:#9ca3af}
-.bw-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:#0b1020d9;backdrop-filter:blur(6px);border-radius:16px}
-.bw-card{display:flex;flex-direction:column;gap:12px;align-items:center;padding:26px 30px;text-align:center}
-.bw-card h3{margin:0;font-size:22px;font-weight:800;letter-spacing:.04em}
-.bw-card p{margin:0;font-size:13px;color:#9ca3af}
-.bw-card button{padding:10px 26px;font-weight:700}
-.bw-card button:hover{background:#ffffff10}
-.bw-sheet{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:#0b1020e6;backdrop-filter:blur(6px);border-radius:16px}
-.bw-sheet .in{width:min(86%,300px);display:flex;flex-direction:column;gap:8px}
-.bw-sheet .hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
-.bw-sheet .hd b{font-size:13px;letter-spacing:.25em;color:#9ca3af}
-.bw-sheet .hd button{width:30px;height:30px}
-.bw-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;font-size:13px}
-.bw-row .sw{width:36px;height:20px;border-radius:99px;border:1px solid #ffffff2a;position:relative}
-.bw-row .sw::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:99px;background:#6b7280;transition:left .15s,background .15s}
-.bw-row.on .sw{border-color:#818cf8}
-.bw-row.on .sw::after{left:19px;background:#818cf8}
-.bw .game-status{font-size:12px;color:#9ca3af}
-@media (max-width:420px){.bw-score{grid-template-columns:44px repeat(10,1fr) 28px;font-size:8.5px}.bw-score .n{font-size:9px}}
+.bw button:disabled{opacity:.3;cursor:default;pointer-events:none}
+.bw-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:12px;background:#0b1020d9;backdrop-filter:blur(4px);border-radius:12px}
+.bw-card{display:flex;flex-direction:column;gap:10px;align-items:stretch;width:min(340px,100%);max-height:100%;overflow:hidden;padding:16px 18px;text-align:left;border:1px solid var(--bw-line);border-radius:12px;background:var(--bw-bg)}
+.bw-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none}
+.bw-head h3{margin:0;font-size:18px;font-weight:800;letter-spacing:.04em}
+.bw-body{flex:1 1 auto;min-height:0;overflow:auto}
+.bw-body p{margin:0;font-size:13px;color:var(--bw-mut);line-height:1.5}
+.bw-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;margin-top:2px}
+.bw-foot .bw-note{font-size:10px;color:var(--bw-weak)}
+.bw-card button{min-height:44px;padding:10px 20px;font:inherit;font-weight:700;color:var(--bw-ink);background:transparent;border:1px solid var(--bw-line);border-radius:9px;cursor:pointer;touch-action:manipulation}
+.bw-card button:hover{background:var(--bw-panel)}
+.bw-card button.primary{background:var(--bw-acc);border-color:var(--bw-acc);color:var(--bw-bg)}
+.bw-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.bw-help b{display:block;margin-bottom:4px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--bw-mut)}
+.bw-help ul{margin:0 0 10px;padding-left:16px;font:600 11px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--bw-mut)}
+.bw-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--bw-line);border-bottom-width:2px;border-radius:5px;background:var(--bw-panel);color:var(--bw-ink);font:inherit}
+.bw-cheats{display:flex;flex-direction:column;gap:6px}
+.bw-row{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:44px;padding:8px 12px;font-size:12px}
+.bw-row .sw{width:36px;height:20px;border-radius:99px;border:1px solid var(--bw-line);position:relative;flex:none}
+.bw-row .sw::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:99px;background:var(--bw-weak);transition:left .16s,background .16s}
+.bw-row.on .sw{border-color:var(--bw-acc)}
+.bw-row.on .sw::after{left:19px;background:var(--bw-acc)}
+@media (max-width:420px){
+  .bw-score{grid-template-columns:44px repeat(10,minmax(0,1fr)) 28px;font-size:8.5px}
+  .bw-score .n{font-size:9px}
+}
+@media (prefers-reduced-motion:reduce){.bw *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* --- design polish --- */
+.bw :focus-visible,.bw button:focus-visible{outline:2px solid var(--bw-acc);outline-offset:2px}
+.bw-chip{padding:6px 10px}
+@media (pointer:coarse){.bw button:not(:disabled){min-height:44px}}
+
+/* --- fill height + mobile refinements (keep LAST) --- */
+.bw .bw-hud{gap:6px}
+.bw .bw-hud .bw-btn-label{display:none}
+.bw .bw-hud .bw-icon{min-width:32px}
+@media (max-width:640px){
+  .bw .bw-panel[data-board]:not(:has(.bw-ov:not([hidden]))){aspect-ratio:auto}
+  .bw .bw-panel[data-board]:has(.bw-ov:not([hidden])){min-height:min(70dvh,620px);aspect-ratio:auto}
+  .bw .bw-hud{gap:5px;margin-bottom:0}
+  .bw .bw-hud .bw-chip{padding:4px 6px;font-size:9px}
+  .bw .bw-hud .bw-chip[data-hud="bestChip"]{display:none}
+  .bw .bw-hud .bw-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .bw .bw-hud .bw-btn-label{display:none}
+  .bw .bw-hud .bw-meter{width:38px}
+  .bw .bw-ov{padding:8px}
+  .bw .bw-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .bw .bw-body{scrollbar-width:none}
+  .bw .bw-body::-webkit-scrollbar{display:none}
+  .bw .bw-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--bw-line)}
+  .bw .bw-note{display:none}
+}
+@media (max-width:420px){
+  .bw .bw-hud{gap:4px}
+  .bw .bw-hud-ctrl,.bw .bw-hud-btns{gap:3px}
+  .bw .bw-hud .bw-btn{min-width:0;min-height:30px;padding:4px 6px}
+  .bw .bw-hud .bw-meter{width:26px}
+}
 </style>
-  <div class="game-intro">
-    <div><h2>Bowling</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+  <div class="bw-hud">
+    <div class="bw-hud-info">
+      <span class="bw-chip">FRAME <b data-hud="frame">1/10</b></span>
+      <span class="bw-chip">TURN <b data-hud="turn">Ready</b></span>
+      <span class="bw-chip">YOU <b data-hud="p0">0</b></span>
+      <span class="bw-chip"><span data-hud="rivalLabel">BOT</span> <b data-hud="p1">0</b></span>
+      <span class="bw-chip" data-hud="bestChip">BEST <b data-hud="best">—</b></span>
+    </div>
+    <div class="bw-hud-ctrl">
+      <button class="bw-btn" type="button" data-act="left" aria-label="Aim left" title="Aim left (←)">◀</button>
+      <button class="bw-btn" type="button" data-hook="-1" aria-label="Hook left" title="Hook left (A)">↰</button>
+      <button class="bw-btn" type="button" data-hook="0" aria-label="Straight" title="Straight (S)">↑</button>
+      <button class="bw-btn" type="button" data-hook="1" aria-label="Hook right" title="Hook right (D)">↱</button>
+      <button class="bw-btn" type="button" data-act="right" aria-label="Aim right" title="Aim right (→)">▶</button>
+      <span class="bw-meter" title="Power"><i data-mfill></i></span>
+    </div>
+    <div class="bw-hud-btns">
+      <button class="bw-btn bw-icon" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="bw-btn-label">Help</span></button>
+      <button class="bw-btn bw-icon" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="bw-btn-label">Cheats</span></button>
+      <button class="bw-btn bw-icon" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="bw-btn-label">Pause</span></button>
+      <button class="bw-btn bw-icon" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="bw-btn-label">Restart</span></button>
+      <button class="bw-btn bw-icon" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="bw-btn-label">Exit game</span></button>
+    </div>
   </div>
   <section class="game-panel bw-panel" data-board>
     <div class="bw-score" data-score></div>
-    <div class="bw-lane" data-lane>
-      <svg viewBox="0 0 360 620" data-svg aria-hidden="true"></svg>
-      <div class="bw-banner" data-banner hidden></div>
-    </div>
-    <div class="bw-meter"><i data-mfill></i></div>
-    <div class="bw-pad">
-      <button type="button" class="nav" data-act="left" aria-label="Aim left">◀</button>
-      <div class="bw-hooks">
-        <button type="button" data-hook="-1" aria-label="Hook left">↰</button>
-        <button type="button" data-hook="0" aria-label="Straight">↑</button>
-        <button type="button" data-hook="1" aria-label="Hook right">↱</button>
+    <div class="bw-lanearea">
+      <div class="bw-lane" data-lane>
+        <svg viewBox="0 0 360 620" data-svg aria-hidden="true"></svg>
+        <div class="bw-banner" data-banner hidden></div>
       </div>
-      <button type="button" class="nav" data-act="right" aria-label="Aim right">▶</button>
     </div>
-    <button type="button" class="bw-bowl" data-act="bowl">BOWL</button>
-    <div class="bw-meta">
-      <button type="button" class="bw-cheatbtn" data-act="cheats" ${online ? "hidden" : ""}>CHEATS</button>
-      <span data-best></span>
-    </div>
-    <div class="bw-ov" data-over hidden>
+    <div class="bw-ov" data-ov="over" hidden>
       <div class="bw-card">
-        <h3 data-ov-title></h3>
-        <p data-ov-score></p>
-        <button type="button" data-act="rematch">Play again</button>
+        <div class="bw-head"><h3 data-ov-title></h3></div>
+        <div class="bw-body"><p data-ov-score></p></div>
+        <div class="bw-foot"><span class="bw-note">10 frames completed</span><button class="primary" type="button" data-act="rematch">Play again</button></div>
       </div>
     </div>
-    <div class="bw-sheet" data-sheet hidden>
-      <div class="in">
-        <div class="hd"><b>CHEATS</b><button type="button" data-act="cheats">✕</button></div>
-        ${CHEAT_ROWS.map(([k, label]) =>
+    <div class="bw-ov" data-ov="pause" hidden>
+      <div class="bw-card">
+        <div class="bw-head"><h3>Paused</h3></div>
+        <div class="bw-body"><p>Timers, the bot and the roll animation are frozen.</p></div>
+        <div class="bw-foot"><span class="bw-note">Press P or Esc to resume</span><button class="primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="bw-ov" data-ov="cheat" hidden>
+      <div class="bw-card">
+        <div class="bw-head"><h3>Cheats</h3><button type="button" data-ov-close aria-label="Close cheats">✕</button></div>
+        <div class="bw-body bw-cheats" data-cheatgrid>
+          ${CHEAT_ROWS.map(([k, label]) =>
         `<button type="button" class="bw-row" data-cheat="${k}"><span>${label}</span><span class="sw"></span></button>`
     ).join("")}
+        </div>
+        <div class="bw-foot"><span class="bw-note">Offline only</span><button type="button" data-ov-close>Close</button></div>
+      </div>
+    </div>
+    <div class="bw-ov" data-ov="help" hidden>
+      <div class="bw-card">
+        <div class="bw-head"><h3>How to play</h3><button type="button" data-help-close aria-label="Close help">✕</button></div>
+        <div class="bw-body bw-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Move the mouse over the lane to aim, hold and release to set power.</li>
+              <li><span class="bw-kbd">←</span> <span class="bw-kbd">→</span> aim · <span class="bw-kbd">A</span> <span class="bw-kbd">S</span> <span class="bw-kbd">D</span> hook left / straight / right.</li>
+              <li><span class="bw-kbd">Space</span> hold &amp; release to bowl · <span class="bw-kbd">Enter</span> play again.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Drag on the lane to aim, then hold &amp; release BOWL to charge.</li>
+              <li>The ◀ ▶ and hook buttons above the lane also aim the ball.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Ten frames; two rolls per frame (three in the tenth with a strike or spare).</li>
+              <li>Strike = 10 + the next two rolls; spare = 10 + the next roll.</li>
+              <li>A coin flip decides who bowls first; you alternate with the bot each frame.</li>
+              <li>Your best game is saved locally. Cheats are available offline only.</li>
+              <li><span class="bw-kbd">H</span> help · <span class="bw-kbd">C</span> cheats · <span class="bw-kbd">P</span> pause · <span class="bw-kbd">R</span> restart.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="bw-foot"><span class="bw-note">Press H to reopen this guide</span><button class="primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="bw-actions"><button type="button" class="bw-bowl" data-act="bowl">BOWL</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const svgEl = $('[data-svg]'), laneEl = $('[data-lane]'), scoreEl = $('[data-score]');
-    const statusEl = $('[data-status]'), bannerEl = $('[data-banner]'), mfill = $('[data-mfill]');
-    const overEl = $('[data-over]'), ovTitle = $('[data-ov-title]'), ovScore = $('[data-ov-score]');
-    const sheetEl = $('[data-sheet]'), bestEl = $('[data-best]');
+    const bannerEl = $('[data-banner]'), mfill = $('[data-mfill]');
+    const ov = {
+        over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'), help: $('[data-ov="help"]'),
+    };
+    const ovTitle = $('[data-ov-title]'), ovScore = $('[data-ov-score]');
+    const hud = {
+        frame: $('[data-hud="frame"]'), turn: $('[data-hud="turn"]'),
+        p0: $('[data-hud="p0"]'), p1: $('[data-hud="p1"]'),
+        best: $('[data-hud="best"]'), bestChip: $('[data-hud="bestChip"]'),
+        rival: $('[data-hud="rivalLabel"]'),
+    };
     const bowlBtn = $('[data-act="bowl"]');
+    const cheatBtns = [...root.querySelectorAll('[data-cheat]')];
     const hookBtns = [...root.querySelectorAll('[data-hook]')];
-    const navBtns = [...root.querySelectorAll('.nav')];
+    const navBtns = [...root.querySelectorAll('.bw-hud-ctrl [data-act]')];
+
+    /* ---------- freeze-aware timers & animation ---------- */
+    const timerIds = { ai: null, advance: null, banner: null };
+    const timerJobs = { ai: null, advance: null, banner: null };
+    function setTimer(key, delay, fn) {
+        if (timerIds[key]) clearTimeout(timerIds[key]);
+        timerJobs[key] = { due: dateNow() + delay, left: delay, fn };
+        timerIds[key] = frozen ? null : setTimeout(() => runTimer(key), delay);
+    }
+    function runTimer(key) {
+        timerIds[key] = null;
+        const job = timerJobs[key]; timerJobs[key] = null;
+        if (job && !frozen) job.fn();
+    }
+    function clearTimer(key) {
+        if (timerIds[key]) clearTimeout(timerIds[key]);
+        timerIds[key] = null; timerJobs[key] = null;
+    }
+    function suspendClocks() {
+        for (const key of Object.keys(timerIds)) {
+            if (timerIds[key] != null) {
+                clearTimeout(timerIds[key]); timerIds[key] = null;
+                if (timerJobs[key]) timerJobs[key].left = Math.max(0, timerJobs[key].due - dateNow());
+            }
+        }
+        if (meterRaf) cancelAnimationFrame(meterRaf);
+        meterRaf = null;
+        if (animRaf) cancelAnimationFrame(animRaf);
+        animRaf = null;
+        if (charging) { charging = false; mfill.style.width = "0"; }
+    }
+    function resumeClocks() {
+        for (const key of Object.keys(timerIds)) {
+            if (timerIds[key] == null && timerJobs[key])
+                timerIds[key] = setTimeout(() => runTimer(key), timerJobs[key].left);
+        }
+        if (animCtx && !animRaf) {
+            animCtx.last = performance.now();
+            animRaf = requestAnimationFrame(animFrame);
+        }
+        if (!destroyed && state) maybeAI();
+    }
+    function updateFreeze() {
+        const want = paused || helpOpen || cheatsOpen;
+        if (want === frozen) return;
+        if (want) {
+            frozen = true; freezeAt = Date.now(); suspendClocks();
+        } else {
+            const away = Date.now() - freezeAt;
+            clockShift += away; perfShift += away; /* shift Date.now()/performance.now() anchors */
+            frozen = false; resumeClocks();
+        }
+    }
 
     /* ---------- lane svg ---------- */
     function laneSVG() {
@@ -337,7 +508,7 @@ export function mount(root, context = {}) {
     }
     const seatColor = (s) => (s === 0 ? "#818cf8" : "#fb7185");
     const mySeat = () => (!state ? 0 : online ? (room.isHost ? state.seats.host : state.seats.guest) : 0);
-    const canAct = () => !!state && state.phase === "aim" && !state.pending && state.turn === mySeat();
+    const canAct = () => !!state && !frozen && state.phase === "aim" && !state.pending && state.turn === mySeat();
 
     /* ---------- rendering ---------- */
     function renderScore() {
@@ -395,15 +566,39 @@ export function mount(root, context = {}) {
         } else guideEl.setAttribute("opacity", "0");
     }
 
+    function syncOverlays() {
+        if (!state) return;
+        ov.over.hidden = state.phase !== "over" || frozen;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) cbtn.classList.toggle("on", Object.values(cheats).some(Boolean));
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".bw-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pbtn.disabled = (online && !room.isHost) || state.phase === "over";
+        }
+        const rbtn = root.querySelector("[data-restart]");
+        if (rbtn) rbtn.disabled = online && !room.isHost;
+        const cbtnOnline = root.querySelector("[data-cheats]");
+        if (cbtnOnline) cbtnOnline.hidden = online;
+        cheatBtns.forEach((b) => b.classList.toggle("on", !!cheats[b.dataset.cheat]));
+    }
+
     function renderStatus() {
         if (!state) return;
         const me = mySeat();
-        let txt;
-        if (state.phase === "over") txt = "Game over";
-        else if (state.pending) txt = `${state.names[state.pending.by]} rolls…`;
-        else if (state.turn === me) txt = `Frame ${state.frame + 1} · Your turn`;
-        else txt = `Frame ${state.frame + 1} · ${state.names[state.turn]}…`;
-        statusEl.textContent = txt;
+        if (state.phase === "over") hud.turn.textContent = "Game over";
+        else if (state.pending) hud.turn.textContent = `${state.names[state.pending.by]} rolls…`;
+        else if (state.turn === me) hud.turn.textContent = "Your turn";
+        else hud.turn.textContent = `${state.names[state.turn]} to bowl`;
+        hud.frame.textContent = `${state.frame + 1}/10`;
+        hud.p0.textContent = scoreGame(state.rolls[0]).total;
+        hud.p1.textContent = scoreGame(state.rolls[1]).total;
+        hud.rival.textContent = online ? "P2" : "BOT";
         const dis = !canAct();
         bowlBtn.disabled = dis;
         navBtns.forEach((b) => (b.disabled = dis));
@@ -411,7 +606,6 @@ export function mount(root, context = {}) {
             b.disabled = dis;
             b.classList.toggle("on", Number(b.dataset.hook) === hookVal);
         });
-        overEl.hidden = state.phase !== "over";
         if (state.phase === "over") {
             const a = scoreGame(state.rolls[0]).total, b = scoreGame(state.rolls[1]).total;
             const win = a === b ? -1 : a > b ? 0 : 1;
@@ -421,22 +615,52 @@ export function mount(root, context = {}) {
         if (!online) {
             let best = 0;
             try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { }
-            bestEl.textContent = best ? `Best ${best}` : "";
-        }
+            hud.best.textContent = best ? String(best) : "—";
+            hud.bestChip.hidden = false;
+        } else hud.bestChip.hidden = true;
     }
 
+    function refreshUI() { renderStatus(); syncOverlays(); }
+
     function banner(txt) {
-        clearTimeout(bannerTimer);
+        setTimer("banner", 950, () => { bannerEl.hidden = true; });
         bannerEl.textContent = txt;
         bannerEl.hidden = false;
         bannerEl.style.animation = "none";
         void bannerEl.offsetWidth;
         bannerEl.style.animation = "";
-        bannerTimer = setTimeout(() => { bannerEl.hidden = true; }, 950);
     }
 
     /* ---------- roll animation (same deterministic sim on every client) ---------- */
-    function stopAnim() { if (animRaf) cancelAnimationFrame(animRaf); animRaf = null; animRefs = null; }
+    function stopAnim() {
+        if (animRaf) cancelAnimationFrame(animRaf);
+        animRaf = null; animRefs = null; animCtx = null;
+    }
+
+    function animFrame(now) {
+        const ctx = animCtx;
+        if (!ctx || destroyed || animId !== ctx.p.id || frozen) { animRaf = null; return; }
+        ctx.acc += Math.min(.1, (now - ctx.last) / 1000); ctx.last = now;
+        while (ctx.acc >= DT && !ctx.sim.done) { ctx.sim.step(); ctx.acc -= DT; }
+        const b = ctx.sim.ball;
+        ctx.bn.setAttribute("transform", `translate(${b.x.toFixed(1)},${b.y.toFixed(1)})`);
+        ctx.bn.setAttribute("opacity", b.active && b.y > 46 ? "1" : "0");
+        for (const q of ctx.sim.pins) {
+            const n = ctx.refs[q.i]; if (!n) continue;
+            if (!q.active) { n.setAttribute("opacity", "0"); continue; }
+            n.setAttribute("transform", `translate(${q.x.toFixed(1)},${q.y.toFixed(1)})${q.down ? ` rotate(${q.i % 2 ? 76 : -76})` : ""}`);
+            n.setAttribute("opacity", q.down ? ".38" : "1");
+        }
+        if (ctx.sim.done) {
+            animRaf = null;
+            const p = ctx.p;
+            if (p.knocked.length === 10 && p.standing.length === 10) banner("STRIKE");
+            else if (p.knocked.length === p.standing.length && p.knocked.length > 0) banner("SPARE");
+            else if (p.knocked.length === 0) banner("GUTTER");
+            return;
+        }
+        animRaf = requestAnimationFrame(animFrame);
+    }
 
     function startRollAnim(p) {
         stopAnim();
@@ -453,31 +677,8 @@ export function mount(root, context = {}) {
         const bn = ballNode(seatColor(p.by), p.cheat ? 24 : 10);
         ballLayer.appendChild(bn);
         animRefs = { refs, bn };
-        const sim = createSim(p, p.standing, p.cheat);
-        let last = performance.now(), acc = 0;
-        const frame = (now) => {
-            if (destroyed || animId !== p.id) return;
-            acc += Math.min(.1, (now - last) / 1000); last = now;
-            while (acc >= DT && !sim.done) { sim.step(); acc -= DT; }
-            const b = sim.ball;
-            bn.setAttribute("transform", `translate(${b.x.toFixed(1)},${b.y.toFixed(1)})`);
-            bn.setAttribute("opacity", b.active && b.y > 46 ? "1" : "0");
-            for (const q of sim.pins) {
-                const n = refs[q.i]; if (!n) continue;
-                if (!q.active) { n.setAttribute("opacity", "0"); continue; }
-                n.setAttribute("transform", `translate(${q.x.toFixed(1)},${q.y.toFixed(1)})${q.down ? ` rotate(${q.i % 2 ? 76 : -76})` : ""}`);
-                n.setAttribute("opacity", q.down ? ".38" : "1");
-            }
-            if (sim.done) {
-                animRaf = null;
-                if (p.knocked.length === 10 && p.standing.length === 10) banner("STRIKE");
-                else if (p.knocked.length === p.standing.length && p.knocked.length > 0) banner("SPARE");
-                else if (p.knocked.length === 0) banner("GUTTER");
-                return;
-            }
-            animRaf = requestAnimationFrame(frame);
-        };
-        animRaf = requestAnimationFrame(frame);
+        animCtx = { p, sim: createSim(p, p.standing, p.cheat), refs, bn, acc: 0, last: performance.now() };
+        animRaf = frozen ? null : requestAnimationFrame(animFrame);
     }
 
     /* ---------- state ---------- */
@@ -512,6 +713,7 @@ export function mount(root, context = {}) {
         if (!state.pending && animId === null && !animRefs) renderStatic();
         updateAimMarks();
         maybeAI();
+        syncOverlays();
     }
 
     function applyAction(a, actor) {
@@ -519,6 +721,18 @@ export function mount(root, context = {}) {
         if (a.type === "hello") {
             state.names[actor] = String(a.name || "Player").slice(0, 18);
             publish(); return;
+        }
+        if (a.type === "restart") {
+            if (online && !room.isHost) return;
+            clearTimers(); stopAnim(); animId = null;
+            const names = state.names;
+            helpOpen = false; cheatsOpen = false; paused = false;
+            updateFreeze();
+            state = newGame(names);
+            lastTurnKey = "";
+            publish();
+            banner(`${state.names[state.first]} first`);
+            return;
         }
         if (a.type === "rematch") {
             if (state.phase !== "over") return;
@@ -546,8 +760,7 @@ export function mount(root, context = {}) {
             };
             state.phase = "rolling";
             publish();
-            clearTimeout(advanceTimer);
-            advanceTimer = setTimeout(advance, out.dur * 1000 + 700);
+            setTimer("advance", out.dur * 1000 + 700, advance);
         }
     }
 
@@ -590,16 +803,41 @@ export function mount(root, context = {}) {
 
     /* ---------- bot ---------- */
     function maybeAI() {
-        clearTimeout(aiTimer); aiTimer = null;
-        if (online || !state || state.phase !== "aim" || state.pending || state.turn !== 1) return;
-        aiTimer = setTimeout(() => {
-            if (destroyed || !state || state.phase !== "aim" || state.turn !== 1) return;
+        clearTimer("ai");
+        if (frozen || online || !state || state.phase !== "aim" || state.pending || state.turn !== 1) return;
+        setTimer("ai", 900, () => {
+            if (destroyed || frozen || !state || state.phase !== "aim" || state.turn !== 1) return;
             const weak = cheats.weak;
             const hook = Math.random() < .15 ? (Math.random() < .5 ? -1 : 1) : 0;
             const x0 = clamp(237 - hook * 15 + (Math.random() - .5) * (weak ? 90 : 18), AIM_MIN, AIM_MAX);
             const power = weak ? .15 + Math.random() * .3 : .55 + Math.random() * .4;
             applyAction({ type: "roll", x0, hook, power, seed: (Math.random() * 0x7fffffff) | 0 }, 1);
-        }, 900);
+        });
+    }
+
+    /* ---------- overlay controls ---------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        updateFreeze();
+        refreshUI();
+    }
+    function setCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        updateFreeze();
+        refreshUI();
+    }
+    function setPaused(on) {
+        if (!state || state.phase === "over" || (online && !room.isHost)) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        updateFreeze();
+        refreshUI();
+    }
+    function restartGame() {
+        if (online && !room.isHost) return;
+        submitAction({ type: "restart" });
     }
 
     /* ---------- input: one gesture (aim, then hold & release to bowl) ---------- */
@@ -616,10 +854,10 @@ export function mount(root, context = {}) {
     }
     function startCharge() {
         if (!canAct() || charging) return;
-        charging = true; chargeT0 = performance.now();
-        const tick = (t) => {
+        charging = true; chargeT0 = perfNow();
+        const tick = () => {
             if (!charging || destroyed) return;
-            powerVal = 1 - Math.abs(1 - (((t - chargeT0) / 550) % 2));
+            powerVal = 1 - Math.abs(1 - (((perfNow() - chargeT0) / 550) % 2));
             mfill.style.width = (powerVal * 100).toFixed(1) + "%";
             meterRaf = requestAnimationFrame(tick);
         };
@@ -630,7 +868,7 @@ export function mount(root, context = {}) {
         charging = false;
         if (meterRaf) cancelAnimationFrame(meterRaf);
         meterRaf = null;
-        const held = performance.now() - chargeT0;
+        const held = perfNow() - chargeT0;
         let power = held < 150 ? .85 : powerVal;   /* quick tap = solid default */
         mfill.style.width = "0";
         if (!canAct()) return;
@@ -665,53 +903,74 @@ export function mount(root, context = {}) {
 
     const onKeyDown = (e) => {
         if (destroyed || !state) return;
-        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-            e.preventDefault(); setAim(aimX + (e.key === "ArrowLeft" ? -5 : 5));
-        } else if (e.key === " " || e.code === "Space") {
+        const c = e.code;
+        /* priority: help -> cheats -> pause -> escape -> game actions */
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!helpOpen) setCheats(); e.preventDefault(); return; }
+        if (c === "KeyP") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) setCheats(false);
+            else setPaused();
+            e.preventDefault(); return;
+        }
+        if (c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) setCheats(false);
+            else if (paused) setPaused(false);
+            e.preventDefault(); return;
+        }
+        if (frozen) return;
+        if (c === "KeyR") { restartGame(); e.preventDefault(); return; }
+        if (c === "ArrowLeft" || c === "ArrowRight") {
+            e.preventDefault(); setAim(aimX + (c === "ArrowLeft" ? -5 : 5));
+        } else if (c === "Space") {
             e.preventDefault();
             if (state.phase === "over") { submitAction({ type: "rematch" }); return; }
             if (!e.repeat) startCharge();
-        } else if (e.key === "a" || e.key === "A") { if (canAct()) { hookVal = -1; renderStatus(); updateAimMarks(); } }
-        else if (e.key === "s" || e.key === "S") { if (canAct()) { hookVal = 0; renderStatus(); updateAimMarks(); } }
-        else if (e.key === "d" || e.key === "D") { if (canAct()) { hookVal = 1; renderStatus(); updateAimMarks(); } }
-        else if ((e.key === "c" || e.key === "C") && !online) sheetEl.hidden = !sheetEl.hidden;
-        else if (e.key === "Escape") sheetEl.hidden = true;
-        else if (e.key === "Enter" && state.phase === "over") submitAction({ type: "rematch" });
+        } else if (c === "KeyA") { if (canAct()) { hookVal = -1; renderStatus(); updateAimMarks(); } }
+        else if (c === "KeyS") { if (canAct()) { hookVal = 0; renderStatus(); updateAimMarks(); } }
+        else if (c === "KeyD") { if (canAct()) { hookVal = 1; renderStatus(); updateAimMarks(); } }
+        else if (c === "Enter" && state.phase === "over") submitAction({ type: "rematch" });
     };
-    const onKeyUp = (e) => { if (e.key === " " || e.code === "Space") releaseCharge(); };
+    const onKeyUp = (e) => { if (e.code === "Space") releaseCharge(); };
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
 
     function handleClick(e) {
-        const btn = e.target.closest?.("[data-act],[data-hook],[data-cheat],[data-exit]");
+        const btn = e.target.closest?.("button");
         if (!btn) return;
+        if (btn.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (btn.hasAttribute("data-help-close")) { toggleHelp(false); return; }
         if (btn.hasAttribute("data-exit")) { onExit(); return; }
-        const act = btn.dataset.act;
-        if (act === "cheats" && !online) { sheetEl.hidden = !sheetEl.hidden; return; }
+        if (btn.hasAttribute("data-cheats")) { setCheats(); return; }
+        if (btn.hasAttribute("data-ov-close")) { setCheats(false); return; }
+        if (btn.hasAttribute("data-pause")) { setPaused(); return; }
+        if (btn.hasAttribute("data-resume")) { setPaused(false); return; }
+        if (btn.hasAttribute("data-restart")) { restartGame(); return; }
+        if (btn.dataset.act === "rematch") { submitAction({ type: "rematch" }); return; }
         if (btn.dataset.cheat && !online) {
             const k = btn.dataset.cheat;
             cheats[k] = !cheats[k];
             btn.classList.toggle("on", cheats[k]);
             if (k === "pocket" && cheats.pocket && canAct()) setAim(237);
             updateAimMarks();
+            syncOverlays();
             return;
         }
-        if (act === "rematch") { submitAction({ type: "rematch" }); return; }
+        if (frozen) return;
         if (!canAct()) return;
-        if (act === "left") setAim(aimX - 5);
-        else if (act === "right") setAim(aimX + 5);
+        if (btn.dataset.act === "left") setAim(aimX - 5);
+        else if (btn.dataset.act === "right") setAim(aimX + 5);
         else if (btn.dataset.hook !== undefined) {
             hookVal = Number(btn.dataset.hook); renderStatus(); updateAimMarks();
         }
     }
     root.addEventListener("click", handleClick);
 
-    function clearTimers() {
-        clearTimeout(aiTimer); clearTimeout(advanceTimer); clearTimeout(bannerTimer);
-        aiTimer = advanceTimer = bannerTimer = null;
-    }
+    function clearTimers() { for (const key of Object.keys(timerIds)) clearTimer(key); }
 
     /* ---------- boot ---------- */
+    updateFreeze();
     if (online) {
         const offRoom = room.onRoom(() => { });
         if (typeof offRoom === "function") offs.push(offRoom);
@@ -731,12 +990,14 @@ export function mount(root, context = {}) {
         sync();
         banner(`${state.names[state.first]} first`);
     }
+    refreshUI();
 
     return {
         destroy() {
             destroyed = true;
             clearTimers(); stopAnim();
             if (meterRaf) cancelAnimationFrame(meterRaf);
+            meterRaf = null;
             charging = false;
             root.removeEventListener("click", handleClick);
             laneEl.removeEventListener("pointerdown", onLaneDown);

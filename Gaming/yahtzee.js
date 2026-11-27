@@ -1,4 +1,5 @@
 /* ==== GAME: yahtzee.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /* ===================================================================== */
 /* YAHTZEE — aturan resmi: 5 dadu, maks 3 lemparan/giliran, 13 kategori.  */
 /* Bonus upper +35 (>=63), bonus Yahtzee +100 + aturan Joker.             */
@@ -229,7 +230,7 @@ export function mount(root, context = {}) {
     let state = null;
 
     /* lokal (tidak disinkronkan) */
-    let destroyed = false, helpOpen = false, cheatOpen = false;
+    let destroyed = false, helpOpen = false, cheatOpen = false, paused = false;
     let cheatUsed = false, lastNewBest = false;
     const cheats = { loaded: 0, infinite: false, dumb: false };
     let aiTimer = null;
@@ -237,30 +238,44 @@ export function mount(root, context = {}) {
     let cursor = 0, kbMode = false, gotState = false;
     const offs = [];
 
+    /* panduan internal: tampil sekali per browser */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("yahtzee-help-seen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("yahtzee-help-seen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
     /* ---------------- shell (minimalis) ---------------- */
     root.innerHTML = `
-<div class="game-app yz-app">
+<div class="game-app yz-app game-fill" data-yz>
 <style>
-.yz-app{--yz-bg:#f6f7f9;--yz-card:#fff;--yz-ink:#1f2937;--yz-mut:#6b7280;--yz-line:#e5e7eb;--yz-acc:#059669;--yz-acc-soft:#ecfdf5;--yz-warn:#b45309;--yz-warn-soft:#fffbeb;--yz-bad:#dc2626;color:var(--yz-ink);font-size:14px;line-height:1.45}
+.yz-app{--yz-bg:#f6f7f9;--yz-card:#fff;--yz-ink:#1f2937;--yz-mut:#6b7280;--yz-line:#e5e7eb;--yz-acc:#059669;--yz-acc-soft:#ecfdf5;--yz-warn:#b45309;--yz-warn-soft:#fffbeb;--yz-bad:#dc2626;color:var(--yz-ink);font-size:14px;line-height:1.45;min-width:0}
 .yz-app [hidden]{display:none!important}
-.yz-panel{position:relative;background:var(--yz-bg);border:1px solid var(--yz-line);border-radius:16px;padding:14px;min-height:440px}
-.yz-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
-.yz-chip{display:inline-flex;align-items:center;gap:6px;background:var(--yz-card);border:1px solid var(--yz-line);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--yz-mut)}
+.yz-panel{position:relative;background:var(--yz-bg);border:1px solid var(--yz-line);border-radius:12px;padding:16px;min-height:440px;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.yz-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.yz-chip{display:inline-flex;align-items:center;gap:6px;background:var(--yz-card);border:1px solid var(--yz-line);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--yz-mut)}
 .yz-chip b{color:var(--yz-ink);font-variant-numeric:tabular-nums}
 .yz-chip.badge{background:var(--yz-warn-soft);border-color:#fde68a;color:var(--yz-warn);font-weight:700;letter-spacing:.4px}
-.yz-spacer{flex:1}
-.yz-btn{appearance:none;border:1px solid var(--yz-line);background:var(--yz-card);color:var(--yz-ink);border-radius:10px;padding:7px 13px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,transform .1s}
-.yz-btn:hover:not(:disabled){background:#f3f4f6}
+.yz-spacer{flex:1 1 auto}
+.yz-btn{appearance:none;border:1px solid var(--yz-line);background:var(--yz-card);color:var(--yz-ink);border-radius:9px;padding:8px 14px;min-height:44px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s ease,border-color .15s ease,transform .1s ease}
+.yz-btn:hover:not(:disabled){background:var(--yz-bg)}
 .yz-btn:active:not(:disabled){transform:scale(.97)}
 .yz-btn:disabled{opacity:.45;cursor:default}
 .yz-btn.primary{background:var(--yz-acc);border-color:var(--yz-acc);color:#fff}
 .yz-btn.primary:hover:not(:disabled){background:#047857}
-.yz-btn.big{padding:11px 22px;font-size:14px;border-radius:12px}
+.yz-btn.big{padding:12px 24px;font-size:14px;border-radius:10px;min-height:48px}
 .yz-btn.on{background:var(--yz-acc-soft);border-color:var(--yz-acc);color:var(--yz-acc)}
-.yz-main{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
-.yz-left{flex:1 1 260px;min-width:250px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.yz-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.yz-icon-btn svg{flex:none;display:block}
+.yz-btn-label{white-space:nowrap}
+.yz-hud .yz-btn{min-height:32px;padding:6px 10px;font-size:10px}
+.yz-hud .yz-roll{background:var(--yz-acc);border-color:var(--yz-acc);color:#fff}
+.yz-hud .yz-roll:hover:not(:disabled){background:#047857}
+.yz-main{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;min-width:0;flex:1 1 auto;min-height:0}
+.yz-left{flex:1 1 260px;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;max-width:100%}
 .yz-turnline{font-size:13px;font-weight:700;color:var(--yz-acc);min-height:18px;text-align:center}
-.yz-dice{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;min-height:64px}
+.yz-dice{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;min-height:64px;max-width:100%}
 .yz-die{width:56px;height:56px;padding:0;border:none;background:none;cursor:pointer;transition:transform .15s ease}
 .yz-die svg{display:block;width:100%;height:100%}
 .yz-die .face{fill:var(--yz-card);stroke:var(--yz-line);stroke-width:2.5;transition:stroke .15s,fill .15s}
@@ -271,88 +286,111 @@ export function mount(root, context = {}) {
 .yz-die.locked{cursor:default}
 .yz-die.rolling{animation:yzTumble .3s linear infinite}
 @keyframes yzTumble{0%{transform:rotate(0) translateY(0)}25%{transform:rotate(-10deg) translateY(-6px)}50%{transform:rotate(8deg) translateY(-3px)}75%{transform:rotate(-5deg) translateY(-7px)}100%{transform:rotate(0) translateY(0)}}
-.yz-msg{min-height:38px;max-width:320px;text-align:center;font-size:12.5px;color:var(--yz-mut)}
-.yz-controls{display:flex;gap:8px;justify-content:center;width:100%}
+.yz-msg{min-height:38px;max-width:320px;text-align:center;font-size:12.5px;color:var(--yz-mut);line-height:1.5}
 .yz-touch{display:none;flex-direction:column;gap:8px;width:100%;max-width:360px}
-.yz-touchrow{display:flex;gap:6px;justify-content:center}
+.yz-touchrow{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
 .yz-touch .yz-btn{flex:1;padding:11px 0;font-size:13px}
-.yz-keys{font-size:11px;color:var(--yz-mut);text-align:center;max-width:320px}
-.yz-prog{width:100%;max-width:320px;display:flex;flex-direction:column;gap:5px}
+.yz-prog{width:100%;max-width:320px;display:flex;flex-direction:column;gap:8px}
 .yz-prow{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--yz-mut)}
-.yz-prow span{width:74px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.yz-track{flex:1;height:4px;background:var(--yz-line);border-radius:2px;overflow:hidden}
-.yz-fill{height:100%;background:var(--yz-acc);border-radius:2px;transition:width .3s}
-.yz-prow b{width:64px;font-variant-numeric:tabular-nums;color:var(--yz-ink)}
-.yz-cardwrap{flex:1 1 300px;min-width:290px;max-width:430px;background:var(--yz-card);border:1px solid var(--yz-line);border-radius:14px;padding:10px 12px}
-.yz-card{width:100%;border-collapse:collapse;font-size:12.5px}
-.yz-card th{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--yz-mut);font-weight:700;padding:4px 8px;text-align:right;border-bottom:1px solid var(--yz-line);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yz-prow span{width:74px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.yz-track{flex:1;min-width:40px;height:4px;background:var(--yz-line);border-radius:2px;overflow:hidden}
+.yz-fill{height:100%;background:var(--yz-acc);border-radius:2px;transition:width .2s ease}
+.yz-prow b{width:64px;flex:none;font-variant-numeric:tabular-nums;color:var(--yz-ink)}
+.yz-cardwrap{flex:1 1 320px;min-width:0;max-width:440px;width:100%;max-height:100%;background:var(--yz-card);border:1px solid var(--yz-line);border-radius:12px;padding:12px;overflow:auto}
+.yz-card{width:100%;min-width:300px;border-collapse:collapse;font-size:12.5px}
+.yz-card th{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--yz-mut);font-weight:700;padding:6px 8px;text-align:right;border-bottom:1px solid var(--yz-line);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .yz-card th:first-child{text-align:left}
-.yz-card td{padding:4px 8px;text-align:right;border-bottom:1px solid #f1f2f4;font-variant-numeric:tabular-nums;color:var(--yz-ink)}
-.yz-card td.lab{text-align:left;color:#374151;font-weight:600;white-space:nowrap}
-.yz-card td.c{min-width:52px;color:#9ca3af}
+.yz-card td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--yz-line);font-variant-numeric:tabular-nums;color:var(--yz-ink)}
+.yz-card td.lab{text-align:left;color:var(--yz-ink);font-weight:600;white-space:nowrap}
+.yz-card td.c{min-width:52px;color:var(--yz-mut)}
 .yz-card td.c.free{color:var(--yz-acc);cursor:pointer;font-weight:600}
 .yz-card td.c.free:hover{background:var(--yz-acc-soft)}
 .yz-card td.c.taken{color:var(--yz-ink);font-weight:700}
-.yz-card td.c.blocked{color:#d1d5db}
+.yz-card td.c.blocked{color:var(--yz-mut);opacity:.6}
 .yz-card td.c.cursor{outline:2px solid var(--yz-acc);outline-offset:-2px;border-radius:6px}
 .yz-card tr.last td.c.taken{background:var(--yz-acc-soft)}
-.yz-card tr.sub td{color:var(--yz-mut);border-bottom:none;background:#fafafa;font-size:11.5px}
-.yz-card tr.tot td{color:var(--yz-ink);font-weight:800;border-bottom:none;border-top:2px solid var(--yz-line);background:#fafafa}
-.yz-card .hint{color:#9ca3af;font-weight:400;font-size:10px}
+.yz-card tr.sub td{color:var(--yz-mut);border-bottom:none;background:var(--yz-bg);font-size:11.5px}
+.yz-card tr.tot td{color:var(--yz-ink);font-weight:800;border-bottom:none;border-top:2px solid var(--yz-line);background:var(--yz-bg)}
+.yz-card .hint{color:var(--yz-mut);font-weight:400;font-size:10px}
 .yz-solo th:nth-child(3),.yz-solo td:nth-child(3){display:none}
-.yz-joker{margin-top:8px;font-size:11.5px;background:var(--yz-warn-soft);border:1px solid #fde68a;color:var(--yz-warn);border-radius:8px;padding:6px 9px}
-.yz-legend{margin-top:6px;font-size:10.5px;color:#9ca3af}
-.yz-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(246,247,249,.94);border-radius:16px;padding:14px}
-.yz-ovcard{background:var(--yz-card);border:1px solid var(--yz-line);border-radius:16px;padding:20px 22px;max-width:560px;width:100%;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.yz-joker{margin-top:8px;font-size:11.5px;background:var(--yz-warn-soft);border:1px solid #fde68a;color:var(--yz-warn);border-radius:8px;padding:8px 12px;line-height:1.45}
+.yz-legend{margin-top:8px;font-size:10.5px;color:var(--yz-mut)}
+.yz-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(246,247,249,.94);border-radius:12px;padding:16px}
+.yz-ovcard{background:var(--yz-card);border:1px solid var(--yz-line);border-radius:12px;padding:20px;max-width:560px;width:100%;max-height:100%;overflow:hidden;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.yz-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.yz-body{flex:1 1 auto;min-height:0;overflow:auto}
+.yz-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap}
+.yz-hint{font-size:10.5px;color:var(--yz-mut)}
 .yz-ovcard h3{margin:0;font-size:19px}
 .yz-ovcard h4{margin:6px 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--yz-mut)}
-.yz-ovcard p{margin:0;font-size:13px;color:#4b5563}
+.yz-ovcard p{margin:0 0 8px;font-size:13px;color:var(--yz-ink);line-height:1.55}
 .yz-ovbtns{display:flex;gap:8px;flex-wrap:wrap}
 .yz-rules{width:100%;border-collapse:collapse;font-size:12px}
-.yz-rules td{padding:3.5px 6px;border-bottom:1px solid #f1f2f4;color:#4b5563}
+.yz-rules td{padding:6px;border-bottom:1px solid var(--yz-line);color:var(--yz-ink)}
 .yz-rules td:first-child{font-weight:600;color:var(--yz-ink);white-space:nowrap}
 .yz-rules td:last-child{text-align:right;font-weight:700;color:var(--yz-acc);white-space:nowrap}
 .yz-cheatrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
 .yz-cheatrow .lbl{min-width:112px;font-weight:600}
 .yz-stepper{display:inline-flex;align-items:center;gap:4px}
 .yz-stepper b{width:20px;text-align:center}
-.yz-stepper .yz-btn{padding:3px 9px}
-.yz-note{font-size:11.5px;color:var(--yz-warn);background:var(--yz-warn-soft);border:1px solid #fde68a;border-radius:8px;padding:6px 9px}
+.yz-stepper .yz-btn{padding:6px 12px}
+.yz-note{font-size:11.5px;color:var(--yz-warn);background:var(--yz-warn-soft);border:1px solid #fde68a;border-radius:8px;padding:8px 12px;line-height:1.45}
 .yz-break{width:100%;border-collapse:collapse;font-size:12.5px}
-.yz-break td{padding:3px 6px;border-bottom:1px solid #f1f2f4;text-align:right;color:#4b5563}
+.yz-break td{padding:6px;border-bottom:1px solid var(--yz-line);text-align:right;color:var(--yz-ink)}
 .yz-break td:first-child{text-align:left}
 .yz-break tr.t td{font-weight:800;color:var(--yz-ink)}
 .yz-win{color:var(--yz-acc)}
 .yz-lose{color:var(--yz-bad)}
+.yz-app button:focus-visible,.yz-card td.c.free:focus-visible{outline:2px solid var(--yz-acc);outline-offset:2px}
 @media (pointer:coarse),(max-width:760px){
 .yz-touch{display:flex}
-.yz-keys{display:none}
-.yz-die{width:50px;height:50px}
-.yz-controls .yz-btn{width:100%;max-width:360px}
+.yz-die{width:52px;height:52px}
+.yz-cardwrap{max-width:100%}
+}
+@media (pointer:coarse){.yz-card td.c{min-height:44px}.yz-stepper .yz-btn{min-height:44px}}
+@media (prefers-reduced-motion:reduce){.yz-die.rolling{animation:none}.yz-btn,.yz-die,.yz-fill,.yz-die .face{transition:none}.yz-die.held{transform:none}}
+
+/* --- fill height + mobile refinements (last — beat pointer:coarse 44px) --- */
+.yz-app.game-fill > .yz-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.yz-app .yz-hud .yz-btn{min-height:32px;padding:5px 9px;font-size:9px}
+@media (max-width:640px){
+.yz-app.game-fill > .yz-panel[data-board]:not(:has(.yz-ov:not([hidden]))){aspect-ratio:auto;flex:1 1 auto;min-height:min(70dvh,620px)}
+.yz-app.game-fill > .yz-panel[data-board]:has(.yz-ov:not([hidden])){aspect-ratio:auto;flex:1 1 auto;min-height:min(70dvh,620px)}
+.yz-app .yz-hud{gap:5px;margin-bottom:0}
+.yz-app .yz-hud .yz-chip{padding:4px 6px;font-size:9px}
+.yz-app .yz-hud .yz-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.yz-app .yz-hud .yz-btn-label,.yz-app .yz-hud .yz-spacer{display:none}
+.yz-app .yz-card{min-width:270px}
+.yz-app .yz-card td.c{min-width:44px}
+.yz-app .yz-ov{padding:8px}
+.yz-app .yz-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.yz-app .yz-body{scrollbar-width:none}
+.yz-app .yz-body::-webkit-scrollbar{display:none}
+.yz-app .yz-foot{position:static;margin:0;padding-top:10px;border-top:1px solid var(--yz-line)}
+.yz-app .yz-hint{display:none}
 }
 </style>
-<div class="game-intro">
-  <div><h2>Yahtzee</h2><p>Roll up to 3 times, hold your best dice, fill 13 boxes. Real rules: upper bonus +35 at 63, extra Yahtzee +100 with Joker rules.</p></div>
-  <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="yz-hud">
+  <span class="yz-chip">ROUND <b data-el="round">1</b>/13</span>
+  <span class="yz-chip"><span data-el="youlab">You</span> <b data-el="you">0</b></span>
+  <span class="yz-chip"><span data-el="rivallab">Rival</span> <b data-el="rival">0</b></span>
+  <span class="yz-chip">ROLLS <b data-el="rolls">3</b></span>
+  <span class="yz-chip"><span data-status>Ready</span></span>
+  <span class="yz-chip badge" data-el="cheatbadge" hidden>CHEATS</span>
+  <span class="yz-spacer"></span>
+  <button class="yz-btn primary yz-icon-btn yz-roll" type="button" data-act="roll" data-el="rollbtn" aria-label="Roll dice" title="Roll dice (Space)" disabled>${iconSVG("rotateCcw", { size: 14 })}<span class="yz-btn-label">Roll</span></button>
+  <button class="yz-btn yz-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="yz-btn-label">Help</span></button>
+  <button class="yz-btn yz-icon-btn" type="button" data-cheats data-el="cheatbtn" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="yz-btn-label">Cheats</span></button>
+  <button class="yz-btn yz-icon-btn" type="button" data-pause data-el="pausebtn" aria-label="Pause" title="Pause (P)" disabled>${iconSVG("pause", { size: 14 })}<span class="yz-btn-label">Pause</span></button>
+  <button class="yz-btn yz-icon-btn" type="button" data-restart data-el="restartbtn" aria-label="Restart" title="Restart (R)" disabled>${iconSVG("refresh", { size: 14 })}<span class="yz-btn-label">Restart</span></button>
+  <button class="yz-btn yz-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="yz-btn-label">Exit game</span></button>
 </div>
 <section class="game-panel yz-panel" data-board>
-  <div class="yz-toolbar">
-    <span class="yz-chip">Round <b data-el="round">1</b>/13</span>
-    <span class="yz-chip"><span data-el="youlab">You</span> <b data-el="you">0</b></span>
-    <span class="yz-chip"><span data-el="rivallab">Rival</span> <b data-el="rival">0</b></span>
-    <span class="yz-chip">Rolls left <b data-el="rolls">3</b></span>
-    <span class="yz-chip badge" data-el="cheatbadge" hidden>CHEATS</span>
-    <span class="yz-spacer"></span>
-    <button class="yz-btn" type="button" data-act="help" title="How to play (T)">? Help</button>
-    <button class="yz-btn" type="button" data-act="cheat" title="Cheats (X)" data-el="cheatbtn">Cheats</button>
-    <button class="yz-btn" type="button" data-act="restart" data-el="restartbtn" disabled>Restart</button>
-  </div>
   <div class="yz-main">
     <div class="yz-left">
       <div class="yz-turnline" data-el="turnline"></div>
       <div class="yz-dice" data-el="dice"></div>
       <div class="yz-msg" data-el="msg">Pick a mode to begin.</div>
-      <div class="yz-controls"><button class="yz-btn primary big" type="button" data-act="roll" data-el="rollbtn" disabled>Roll dice</button></div>
       <div class="yz-touch">
         <div class="yz-touchrow" data-el="holdrow"></div>
         <div class="yz-touchrow">
@@ -361,7 +399,6 @@ export function mount(root, context = {}) {
           <button class="yz-btn" type="button" data-act="best" data-el="bestbtn" disabled>Bank best</button>
         </div>
       </div>
-      <div class="yz-keys">Space/R roll &middot; 1&ndash;5 hold &middot; H hold all &middot; C clear &middot; B bank best &middot; &uarr;&darr; pick box &middot; Enter score &middot; T help &middot; X cheats</div>
       <div class="yz-prog">
         <div class="yz-prow" data-el="prow0"><span data-el="pname0">You</span><div class="yz-track"><div class="yz-fill" data-el="pfill0" style="width:0%"></div></div><b data-el="pval0">0/63</b></div>
         <div class="yz-prow" data-el="prow1"><span data-el="pname1">Rival</span><div class="yz-track"><div class="yz-fill" data-el="pfill1" style="width:0%"></div></div><b data-el="pval1">0/63</b></div>
@@ -376,10 +413,12 @@ export function mount(root, context = {}) {
 
   <div class="yz-ov" data-ov="intro" hidden>
     <div class="yz-ovcard">
-      <h3>Yahtzee</h3>
-      <p>Classic dice scorecard duel. Fill all 13 categories; highest total wins. A coin toss decides who starts.</p>
-      <p>Best total: <b data-el="introbest">&mdash;</b> &middot; Challenge level unlocked: <b data-el="introlvl">1</b></p>
-      <div class="yz-ovbtns">
+      <div class="yz-head"><h3>Yahtzee</h3></div>
+      <div class="yz-body">
+        <p>Classic dice scorecard duel. Fill all 13 categories; highest total wins. A coin toss decides who starts.</p>
+        <p>Best total: <b data-el="introbest">&mdash;</b> &middot; Challenge level unlocked: <b data-el="introlvl">1</b></p>
+      </div>
+      <div class="yz-foot yz-ovbtns">
         <button class="yz-btn primary big" type="button" data-act="start-ai">Play vs Rival</button>
         <button class="yz-btn big" type="button" data-act="start-challenge" data-el="introchal">Challenge Lv.1</button>
         <button class="yz-btn big" type="button" data-act="help">How to play</button>
@@ -387,23 +426,33 @@ export function mount(root, context = {}) {
     </div>
   </div>
   <div class="yz-ov" data-ov="wait" hidden>
-    <div class="yz-ovcard"><h3>Online room</h3><p>Connecting&hellip; waiting for the host to publish the game state. Seats and the first turn are drawn randomly.</p></div>
+    <div class="yz-ovcard"><div class="yz-head"><h3>Online room</h3></div><div class="yz-body"><p>Connecting&hellip; waiting for the host to publish the game state. Seats and the first turn are drawn randomly.</p></div></div>
   </div>
   <div class="yz-ov" data-ov="help" hidden>
-    <div class="yz-ovcard" data-el="helpbody"></div>
+    <div class="yz-ovcard">
+      <div class="yz-head"><h3>How to play</h3><button class="yz-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+      <div class="yz-body" data-el="helpbody"></div>
+      <div class="yz-foot"><span class="yz-hint">Press H to reopen this guide</span><button class="yz-btn primary" type="button" data-help-close>Got it</button></div>
+    </div>
   </div>
   <div class="yz-ov" data-ov="cheat" hidden>
     <div class="yz-ovcard">
-      <h3>Cheats</h3>
-      <div data-el="cheatbody"></div>
-      <div class="yz-ovbtns"><button class="yz-btn" type="button" data-act="cheat">Close</button></div>
+      <div class="yz-head"><h3>Cheats</h3><button class="yz-btn" type="button" data-act="cheat" aria-label="Close cheats">Close</button></div>
+      <div class="yz-body" data-el="cheatbody"></div>
+      <div class="yz-foot"><span class="yz-hint">Offline only &mdash; cheats disable best scores &amp; progress</span></div>
+    </div>
+  </div>
+  <div class="yz-ov" data-ov="pause" hidden>
+    <div class="yz-ovcard">
+      <div class="yz-head"><h3>Paused</h3></div>
+      <div class="yz-body"><p>Dice, animations and the rival are frozen. Take your time.</p></div>
+      <div class="yz-foot"><span class="yz-hint">Press P or Esc to resume</span><button class="yz-btn primary" type="button" data-act="pause">Resume</button></div>
     </div>
   </div>
   <div class="yz-ov" data-ov="over" hidden>
     <div class="yz-ovcard" data-el="overbody"></div>
   </div>
 </section>
-<div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------------- refs ---------------- */
@@ -418,6 +467,7 @@ export function mount(root, context = {}) {
     const cheatBtn = $('[data-el="cheatbtn"]');
     const cheatBadge = $('[data-el="cheatbadge"]');
     const restartBtn = $('[data-el="restartbtn"]');
+    const pauseBtn = $('[data-el="pausebtn"]');
     const holdAllBtn = $('[data-el="holdallbtn"]');
     const clearBtn = $('[data-el="clearbtn"]');
     const bestBtn = $('[data-el="bestbtn"]');
@@ -425,6 +475,7 @@ export function mount(root, context = {}) {
     const ovWait = $('[data-ov="wait"]');
     const ovHelp = $('[data-ov="help"]');
     const ovCheat = $('[data-ov="cheat"]');
+    const ovPause = $('[data-ov="pause"]');
     const ovOver = $('[data-ov="over"]');
     const overBody = $('[data-el="overbody"]');
     const cheatBody = $('[data-el="cheatbody"]');
@@ -437,6 +488,39 @@ export function mount(root, context = {}) {
         fill: $('[data-el="pfill' + i + '"]'), val: $('[data-el="pval' + i + '"]'),
     }));
     const show = (el, on) => { if (on) el.removeAttribute("hidden"); else el.setAttribute("hidden", ""); };
+
+    /* modal: help > cheats > pause. Semua membekukan timer AI & animasi dadu.
+       Game ini tidak memakai Date.now()/performance.now(), jadi tidak ada
+       penanda waktu yang perlu digeser saat resume — cukup jadwalkan ulang AI. */
+    function freezeAsync() {
+        if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+        if (anim.flick || anim.timer) {
+            clearInterval(anim.flick); clearTimeout(anim.timer);
+            anim.flick = null; anim.timer = null; anim.active = false;
+            for (const el of dieEls) el.classList.remove("rolling");
+            if (state) for (let i = 0; i < 5; i++) setFace(dieEls[i], state.dice[i] || 0);
+        }
+    }
+    function resumeAsync() {
+        if (!paused && !helpOpen && !cheatOpen) scheduleAI();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatOpen = false; freezeAsync(); } else resumeAsync();
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) { helpOpen = false; freezeAsync(); } else resumeAsync();
+        render();
+    }
+    function setPaused(on) {
+        if (online) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) freezeAsync(); else resumeAsync();
+        render();
+    }
 
     /* dadu */
     const dieEls = [];
@@ -496,15 +580,13 @@ export function mount(root, context = {}) {
     /* konten help (statis) */
     const rulesRows = CATS.map((c) => "<tr><td>" + c.label + "</td><td>" + c.rule + "</td><td>" + c.pts + "</td></tr>").join("");
     $('[data-el="helpbody"]').innerHTML =
-        "<h3>How to play</h3>" +
         "<p>Each round both players take one turn. After 13 rounds all 13 boxes are filled and the highest total wins.</p>" +
         "<h4>Your turn</h4><p>1) Roll all five dice. 2) Tap dice to hold them (tap again to release) and roll the rest &mdash; up to 3 rolls. 3) Tap a highlighted box to bank its points. You may score after any roll, but you must fill exactly one box per turn, even if it scores 0.</p>" +
         "<h4>Scoring</h4><table class=\"yz-rules\">" + rulesRows + "</table>" +
         "<h4>Bonuses (real Yahtzee)</h4><p><b>Upper bonus:</b> 63+ points in Ones&ndash;Sixes earns <b>+35</b> (that is 3 of each face).<br><b>Yahtzee bonus:</b> roll another Yahtzee when your Yahtzee box already shows 50 and you get <b>+100</b>. The dice then act as a <b>Joker</b>: you must fill the matching upper box first; if it is taken, fill any open lower box (Full House still 25, Straights still 30/40); if all lower boxes are taken, put 0 in any open upper box. If your Yahtzee box shows 0 there is no +100, but Joker rules still apply.</p>" +
         "<h4>Modes</h4><p><b>Vs Rival:</b> a coin toss decides who starts. <b>Challenge:</b> a random target score is generated from real simulated games, so it is always beatable &mdash; reach it in 13 rounds to unlock the next level. <b>Online:</b> player seats and the first turn are drawn randomly each game.</p>" +
-        "<h4>Controls</h4><p><b>Desktop:</b> Space/R roll &middot; 1&ndash;5 hold dice &middot; H hold all &middot; C clear holds &middot; B bank best box &middot; &uarr;/&darr; choose a box &middot; Enter score it &middot; T help &middot; X cheats &middot; Esc close. Mouse: click dice to hold, click a green number to score.<br><b>Mobile:</b> tap dice, use the big Roll button and the on-screen hold/action buttons.</p>" +
-        "<h4>Cheats</h4><p>Offline only. Loaded dice, unlimited rolls, dice editor, instant Yahtzee, weak rival. Using cheats disables best-score saving and level progress.</p>" +
-        '<div class="yz-ovbtns"><button class="yz-btn primary" type="button" data-act="help">Got it</button></div>';
+        "<h4>Controls</h4><p><b>Desktop:</b> Space roll &middot; 1&ndash;5 hold dice &middot; B bank best box &middot; &uarr;/&darr; choose a box &middot; Enter score it &middot; H help &middot; C cheats &middot; P pause &middot; R restart &middot; Esc close overlays. Mouse: click dice to hold, click a green number to score. Use the on-screen Hold all / Clear buttons for the rest.<br><b>Mobile:</b> tap dice, use the Roll button in the HUD and the on-screen hold/action buttons.</p>" +
+        "<h4>Cheats</h4><p>Offline only. Loaded dice, unlimited rolls, dice editor, instant Yahtzee, weak rival. Using cheats disables best-score saving and level progress.</p>";
 
     /* ---------------- helper state ---------------- */
     function nameIn(s, seat) {
@@ -515,10 +597,12 @@ export function mount(root, context = {}) {
     const mySeat = () => (online ? (state ? state.seatOf[participantIndex] : participantIndex) : 0);
     const isCheated = () => cheatUsed || cheats.loaded > 0 || cheats.infinite || cheats.dumb;
     function legalNow() {
+        if (paused || helpOpen || cheatOpen) return [];
         if (!state || state.status !== "playing" || state.turn !== mySeat() || state.rolls < 1) return [];
         return legalCats(state.scores[mySeat()], state.dice);
     }
     function canRoll() {
+        if (paused || helpOpen || cheatOpen) return false;
         if (!state || state.status !== "playing" || anim.active || state.turn !== mySeat()) return false;
         const unlimited = !online && cheats.infinite;
         if (state.rolls >= 3 && !unlimited) return false;
@@ -553,6 +637,7 @@ export function mount(root, context = {}) {
         for (const el of dieEls) el.classList.remove("rolling");
     }
     function maybeAnimate() {
+        if (paused || helpOpen || cheatOpen) return;
         const lr = state && state.lastRoll;
         if (!lr) { if (anim.active) stopAnim(); anim.id = 0; return; }
         if (lr.id === anim.id) return;
@@ -569,12 +654,15 @@ export function mount(root, context = {}) {
     /* ---------------- render ---------------- */
     function render() {
         if (destroyed) return;
-        show(ovIntro, !online && !state);
-        show(ovWait, online && !state);
-        show(ovOver, !!state && state.status === "over");
+        const modal = helpOpen || cheatOpen || paused;
+        show(ovIntro, !online && !state && !modal);
+        show(ovWait, online && !state && !modal);
+        show(ovOver, !!state && state.status === "over" && !modal);
+        show(ovPause, paused && !helpOpen && !cheatOpen);
+        show(ovCheat, cheatOpen && !online && !helpOpen);
         show(ovHelp, helpOpen);
-        show(ovCheat, cheatOpen && !online);
         cheatBtn.hidden = online;
+        pauseBtn.disabled = online || !state || state.status !== "playing";
         if (!state) { renderEmpty(); return; }
 
         maybeAnimate();
@@ -707,9 +795,12 @@ export function mount(root, context = {}) {
         const myTurn = !!s && s.status === "playing" && s.turn === mySeat();
         const canHold = myTurn && s.rolls >= 1 && !anim.active;
         rollBtn.disabled = !canRoll();
-        rollBtn.textContent = !s || s.rolls === 0 ? "Roll dice" :
-            !online && cheats.infinite && myTurn ? "Roll again (" + (s.rolls + 1) + ")" :
-                "Roll again (" + Math.min(s.rolls + 1, 3) + " of 3)";
+        const rollText = !s || s.rolls === 0 ? "Roll" :
+            !online && cheats.infinite && myTurn ? "Roll \u221E" :
+                "Roll " + Math.min(s.rolls + 1, 3);
+        const rollLabel = rollBtn.querySelector(".yz-btn-label");
+        if (rollLabel) rollLabel.textContent = rollText;
+        rollBtn.setAttribute("aria-label", rollText + " dice");
         holdBtns.forEach((b, i) => {
             b.disabled = !canHold;
             b.classList.toggle("on", !!(s && s.held[i] && s.rolls >= 1));
@@ -718,6 +809,13 @@ export function mount(root, context = {}) {
         clearBtn.disabled = !canHold;
         bestBtn.disabled = !(canHold && legalNow().length > 0);
         restartBtn.disabled = !s;
+        const pauseLabel = pauseBtn.querySelector(".yz-btn-label");
+        if (pauseLabel) pauseLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        const cheatLabel = cheatBtn.querySelector(".yz-btn-label");
+        const cheatActive = !online && isCheated();
+        if (cheatLabel) cheatLabel.textContent = cheatActive ? "Cheats •" : "Cheats";
+        cheatBtn.classList.toggle("on", cheatActive);
     }
 
     function renderCheat() {
@@ -774,7 +872,7 @@ export function mount(root, context = {}) {
         else if (solo && r.success) btns = '<button class="yz-btn primary big" type="button" data-act="next-level">Next level</button><button class="yz-btn big" type="button" data-act="restart">Replay level</button><button class="yz-btn big" type="button" data-act="menu">Menu</button>';
         else if (solo) btns = '<button class="yz-btn primary big" type="button" data-act="restart">Retry level</button><button class="yz-btn big" type="button" data-act="menu">Menu</button>';
         else btns = '<button class="yz-btn primary big" type="button" data-act="restart">Play again</button><button class="yz-btn big" type="button" data-act="menu">Menu</button>';
-        overBody.innerHTML = '<h3 class="' + cls + '">' + title + "</h3><p>" + sub + "</p>" + breakHtml + note + '<div class="yz-ovbtns">' + btns + "</div>";
+        overBody.innerHTML = '<div class="yz-body"><h3 class="' + cls + '">' + title + "</h3><p>" + sub + "</p>" + breakHtml + note + '</div><div class="yz-foot yz-ovbtns">' + btns + "</div>";
     }
 
     /* ---------------- alur giliran ---------------- */
@@ -793,6 +891,7 @@ export function mount(root, context = {}) {
 
     function finishGame() {
         const s = state;
+        paused = false;
         s.status = "over";
         const a = grand(s.scores[0], s.bonuses[0]);
         const b = grand(s.scores[1], s.bonuses[1]);
@@ -834,7 +933,7 @@ export function mount(root, context = {}) {
                 state = newGame(gmode, { level, playerName });
                 cheatUsed = false;
             }
-            lastNewBest = false; cursor = 0; kbMode = false;
+            lastNewBest = false; cursor = 0; kbMode = false; paused = false;
             stopAnim(); anim.id = 0;
             publish();
             return;
@@ -945,10 +1044,12 @@ export function mount(root, context = {}) {
     /* ---------------- AI (hanya mode lokal vs Rival) ---------------- */
     function scheduleAI() {
         if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+        if (paused || helpOpen || cheatOpen) return;
         if (online || !state || state.mode !== "ai" || state.status !== "playing" || state.turn !== 1) return;
         aiTimer = setTimeout(() => { aiTimer = null; aiStep(); }, state.rolls === 0 ? 900 : 1050);
     }
     function aiStep() {
+        if (paused || helpOpen || cheatOpen) return;
         if (!state || state.status !== "playing" || state.turn !== 1 || state.mode !== "ai") return;
         const sc = state.scores[1];
         if (state.rolls === 0) { applyAction({ type: "roll" }, 1); return; }
@@ -969,11 +1070,13 @@ export function mount(root, context = {}) {
     /* ---------------- input pemain ---------------- */
     function doRoll() { if (canRoll()) submitAction({ type: "roll" }); }
     function toggleHold(i) {
+        if (paused || helpOpen || cheatOpen) return;
         if (!state || state.status !== "playing" || anim.active) return;
         if (state.turn !== mySeat() || state.rolls < 1) return;
         submitAction({ type: "hold", i });
     }
     function setHolds(all) {
+        if (paused || helpOpen || cheatOpen) return;
         if (!state || state.status !== "playing" || anim.active) return;
         if (state.turn !== mySeat() || state.rolls < 1) return;
         submitAction({ type: "holdSet", mask: [all, all, all, all, all] });
@@ -1019,8 +1122,9 @@ export function mount(root, context = {}) {
         else if (a === "holdall") setHolds(true);
         else if (a === "clear") setHolds(false);
         else if (a === "best") scoreBest();
-        else if (a === "help") { helpOpen = !helpOpen; cheatOpen = false; render(); }
-        else if (a === "cheat") { if (!online) { cheatOpen = !cheatOpen; helpOpen = false; render(); } }
+        else if (a === "help") toggleHelp();
+        else if (a === "cheat") toggleCheats();
+        else if (a === "pause") setPaused();
         else if (a === "start-ai") submitAction({ type: "restart", mode: "ai" });
         else if (a === "start-challenge") submitAction({ type: "restart", mode: "challenge" });
         else if (a === "next-level") {
@@ -1032,7 +1136,7 @@ export function mount(root, context = {}) {
         }
         else if (a === "menu") {
             if (online) return;
-            state = null; helpOpen = false;
+            state = null; helpOpen = false; cheatOpen = false; paused = false;
             if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
             stopAnim(); anim.id = 0;
             render();
@@ -1041,7 +1145,12 @@ export function mount(root, context = {}) {
 
     function handleClick(event) {
         const t = event.target;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { setPaused(); return; }
+        if (t.closest("[data-restart]")) { act("restart"); return; }
         const ch = t.closest("[data-cheat]");
         if (ch) { if (!ch.disabled) handleCheat(ch); return; }
         const die = t.closest(".yz-die");
@@ -1059,25 +1168,41 @@ export function mount(root, context = {}) {
         if (destroyed || e.ctrlKey || e.metaKey || e.altKey) return;
         const tag = e.target && e.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA") return;
-        if (e.key === "Escape") { if (helpOpen || cheatOpen) { helpOpen = false; cheatOpen = false; render(); } return; }
-        if (e.key === "?" || e.key === "t" || e.key === "T") { e.preventDefault(); helpOpen = !helpOpen; cheatOpen = false; render(); return; }
-        if ((e.key === "x" || e.key === "X") && !online) { cheatOpen = !cheatOpen; helpOpen = false; render(); return; }
-        if (helpOpen || cheatOpen) return;
-        if (e.repeat && e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        const c = e.code;
+        /* prioritas: help → cheats → pause/Escape → restart → aksi game */
+        if (c === "KeyH" || c === "KeyT" || e.key === "?") { e.preventDefault(); toggleHelp(); return; }
+        if (c === "KeyC" || c === "KeyX") { e.preventDefault(); if (!helpOpen) toggleCheats(); return; }
+        if (c === "KeyP" || e.key === "Escape") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (!online) {
+                if (paused) setPaused(false);
+                else if (state && state.status === "playing") setPaused(true);
+            }
+            return;
+        }
+        if (c === "KeyR") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (state) act("restart");
+            return;
+        }
+        if (helpOpen || cheatOpen || paused) return;
+        if (e.repeat && c !== "ArrowUp" && c !== "ArrowDown") return;
         if (!state || state.status !== "playing") return;
         const ae = document.activeElement;
-        if ((e.code === "Space" || e.key === "Enter") && ae && ae.tagName === "BUTTON" && root.contains(ae)) return; // biarkan native
-        if (e.code === "Space" || e.key === "r" || e.key === "R") { e.preventDefault(); doRoll(); return; }
+        if ((c === "Space" || e.key === "Enter") && ae && ae.tagName === "BUTTON" && root.contains(ae)) return; // biarkan native
+        if (c === "Space") { e.preventDefault(); doRoll(); return; }
         if (e.key >= "1" && e.key <= "5") { toggleHold(+e.key - 1); return; }
-        if (e.key === "h" || e.key === "H") { setHolds(true); return; }
-        if (e.key === "c" || e.key === "C") { setHolds(false); return; }
-        if (e.key === "b" || e.key === "B") { scoreBest(); return; }
-        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (c === "KeyB") { scoreBest(); return; }
+        if (c === "ArrowDown" || c === "ArrowUp") {
             const legal = legalNow();
             if (!legal.length) return;
             e.preventDefault();
             kbMode = true;
-            cursor = (cursor + (e.key === "ArrowDown" ? 1 : -1) + legal.length) % legal.length;
+            cursor = (cursor + (c === "ArrowDown" ? 1 : -1) + legal.length) % legal.length;
             render();
             return;
         }

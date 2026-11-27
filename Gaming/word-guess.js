@@ -21,6 +21,8 @@
   - Hint kata terbuka otomatis setelah 2 tebakan salah.
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "word-guess", // harus sama dengan nama file (tanpa .js)
     name: "Word Guess",
@@ -314,32 +316,75 @@ export function mount(root, context = {}) {
     /* ---------- util lokal ---------- */
     const offs = [];
     let timers = [];
+    let timerTick = null;
     let botTimer = null;
+    let frozenAt = 0;
     let nagAt = 0;
     let helloSent = false;
     let bestSavedSeed = -1;
     let prev = { seed: -1, phase: "", round: -1, wrongs: 0 };
     let slotSig = "";
     let prevGuessed = [];
+    let helpOpen = false, cheatsOpen = false, paused = false, peekOpen = false;
     const track = (off) => {
         if (typeof off === "function") offs.push(off);
     };
+    /* Virtual timers: freeze while help/cheats/pause are open, then shift every
+       due time by the frozen span so toasts, rounds and the bot never jump. */
+    const virtualNow = () => frozenAt || Date.now();
+    const frozen = () => !online && (paused || helpOpen || cheatsOpen);
+    function ensureTimer() {
+        if (timerTick || frozen() || !timers.length) return;
+        const next = Math.min.apply(null, timers.map((t) => t.due));
+        timerTick = setTimeout(() => {
+            timerTick = null;
+            if (frozen()) return;
+            const now = Date.now();
+            const due = timers.filter((t) => t.due <= now);
+            timers = timers.filter((t) => t.due > now);
+            due.forEach((t) => t.fn());
+            ensureTimer();
+        }, Math.max(0, next - Date.now()));
+    }
     const later = (fn, ms) => {
-        const t = setTimeout(() => {
-            timers = timers.filter((x) => x !== t);
-            fn();
-        }, ms);
+        const t = { fn, due: virtualNow() + ms };
         timers.push(t);
+        ensureTimer();
         return t;
     };
-    const clearTimers = () => {
-        timers.forEach(clearTimeout);
-        timers = [];
-        if (botTimer) {
-            clearTimeout(botTimer);
-            botTimer = null;
+    const cancelLater = (t) => {
+        if (!t) return;
+        timers = timers.filter((x) => x !== t);
+        if (!timers.length && timerTick) {
+            clearTimeout(timerTick);
+            timerTick = null;
         }
     };
+    const clearTimers = () => {
+        if (timerTick) {
+            clearTimeout(timerTick);
+            timerTick = null;
+        }
+        timers = [];
+        botTimer = null;
+    };
+    function freezeTimers() {
+        if (frozenAt) return;
+        frozenAt = Date.now();
+        if (timerTick) {
+            clearTimeout(timerTick);
+            timerTick = null;
+        }
+    }
+    function thawTimers() {
+        if (!frozenAt) return;
+        const shift = Date.now() - frozenAt;
+        frozenAt = 0;
+        timers.forEach((t) => { t.due += shift; });
+        nagAt += shift;
+        ensureTimer();
+    }
+    const syncFreeze = () => { if (frozen()) freezeTimers(); else thawTimers(); };
     const cleanName = (n) =>
         String(n || "")
             .replace(/[<>&"']/g, "")
@@ -374,28 +419,45 @@ export function mount(root, context = {}) {
     /* ---------- markup + gaya (minimalis, scoped .wg) ---------- */
     root.innerHTML = `
 <style>
-.wg{--wg-ink:#0f172a;--wg-mut:#64748b;--wg-line:#e2e8f0;--wg-bg:#f8fafc;--wg-acc:#4f46e5;--wg-hit:#059669;--wg-miss:#dc2626;color:var(--wg-ink)}
+.wg{--wg-ink:#0f172a;--wg-mut:#64748b;--wg-line:#e2e8f0;--wg-bg:#f8fafc;--wg-acc:#4f46e5;--wg-hit:#059669;--wg-miss:#dc2626;color:var(--wg-ink);
+  width:100%;max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:10px;
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wg *{box-sizing:border-box}
 .wg [hidden]{display:none!important}
-.wg .wg-panel{position:relative;background:var(--wg-bg);border:1px solid var(--wg-line);border-radius:16px;padding:18px;min-height:440px;overflow:hidden}
-.wg .wg-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:16px}
-.wg .wg-chips{display:flex;gap:8px;flex-wrap:wrap}
-.wg .wg-chip{font-size:12px;color:var(--wg-mut);border:1px solid var(--wg-line);background:#fff;border-radius:999px;padding:4px 11px}
-.wg .wg-chip b{color:var(--wg-ink)}
-.wg .wg-scores{display:flex;gap:8px;flex-wrap:wrap}
-.wg .wg-seat{display:flex;align-items:center;gap:8px;border:1px solid var(--wg-line);background:#fff;border-radius:12px;padding:6px 12px;font-size:13px;transition:border-color .2s,box-shadow .2s}
-.wg .wg-seat .wg-dot{width:7px;height:7px;border-radius:50%;background:var(--wg-line)}
-.wg .wg-seat .wg-score{font-weight:800;font-size:16px}
-.wg .wg-seat.wg-turn{border-color:var(--wg-acc);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
-.wg .wg-seat.wg-turn .wg-dot{background:var(--wg-acc)}
-.wg .wg-main{display:flex;gap:24px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
-.wg .wg-left{display:flex;flex-direction:column;align-items:center;gap:12px;width:200px}
-.wg svg.wg-fig{width:168px;height:auto;max-height:44vh}
+.wg button:focus-visible{outline:2px solid var(--wg-acc);outline-offset:2px}
+
+/* --- single HUD bar: info left, icon buttons right --- */
+.wg .wg-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.wg .wg-hud-info,.wg .wg-hud-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.wg .wg-hud-actions{margin-left:auto}
+.wg .wg-spacer{flex:1 1 auto}
+.wg .wg-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--wg-line);background:var(--wg-bg);border-radius:999px;color:var(--wg-mut);white-space:nowrap}
+.wg .wg-chip b{color:var(--wg-ink);font-variant-numeric:tabular-nums}
+.wg .wg-dot{width:7px;height:7px;border-radius:50%;background:var(--wg-line);flex:none}
+.wg .wg-chip.wg-seat-chip{border-radius:8px;transition:border-color .2s,box-shadow .2s}
+.wg .wg-chip.wg-seat-chip.wg-turn{border-color:var(--wg-acc);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.wg .wg-chip.wg-seat-chip.wg-turn .wg-dot{background:var(--wg-acc)}
+.wg .wg-seat-chip b{font-size:13px}
+.wg .wg-btn{appearance:none;border:1px solid var(--wg-acc);border-radius:8px;background:var(--wg-acc);color:#fff;font:700 12px/1.2 inherit;padding:8px 12px;min-height:34px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.wg .wg-btn:hover:not(:disabled){filter:brightness(1.08)}
+.wg .wg-btn:disabled{opacity:.45;cursor:default}
+.wg .wg-btn.ghost{background:var(--wg-bg);color:var(--wg-ink);border-color:var(--wg-line)}
+.wg .wg-btn.wg-on{border-color:var(--wg-acc);color:var(--wg-acc);background:#eef2ff}
+.wg .wg-icon-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;font-size:11px}
+.wg .wg-icon-btn svg{flex:none;display:block}
+
+/* --- board fills remaining height; play area stays proportional --- */
+.wg .wg-board{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:0;padding:14px;background:var(--wg-bg);border:1px solid var(--wg-line);border-radius:12px;overflow:hidden}
+.wg .wg-play{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;width:100%;max-width:840px;max-height:100%;margin:auto;overflow:auto;padding:2px}
+.wg .wg-main{display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap;width:100%}
+.wg .wg-left{display:flex;flex-direction:column;align-items:center;gap:12px;width:190px;flex:none}
+.wg svg.wg-fig{width:150px;height:auto;max-height:min(34vh,250px)}
 .wg .wg-part{opacity:0;transition:opacity .3s}
 .wg .wg-part.wg-on{opacity:1}
-.wg .wg-hintbox{width:100%;background:#fff;border:1px solid var(--wg-line);border-radius:12px;padding:10px 12px;font-size:12.5px;color:var(--wg-mut);line-height:1.55}
+.wg .wg-hintbox{width:100%;background:var(--wg-bg);border:1px solid var(--wg-line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--wg-mut);line-height:1.55}
 .wg .wg-hintbox b{color:var(--wg-ink)}
 .wg .wg-hintbox .wg-unlocked{color:var(--wg-acc)}
-.wg .wg-right{flex:1;min-width:280px;max-width:560px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.wg .wg-right{flex:1 1 320px;min-width:0;max-width:560px;display:flex;flex-direction:column;align-items:center;gap:12px}
 .wg .wg-slots{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;min-height:52px}
 .wg .wg-slot{width:34px;height:48px;border-bottom:2px solid #cbd5e1;display:grid;place-items:center;font-size:24px;font-weight:800}
 .wg .wg-slot span{opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s}
@@ -405,8 +467,8 @@ export function mount(root, context = {}) {
 .wg .wg-slot.wg-reveal span{opacity:1;transform:none;color:var(--wg-miss)}
 @keyframes wg-pop{0%{transform:scale(.4)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
 .wg .wg-last{font-size:12.5px;color:var(--wg-mut);min-height:18px;text-align:center}
-.wg .wg-keys{display:grid;grid-template-columns:repeat(9,1fr);gap:6px;width:100%;max-width:430px}
-.wg .wg-key{height:42px;border:1px solid var(--wg-line);border-radius:10px;background:#fff;color:var(--wg-ink);font-weight:700;font-size:15px;cursor:pointer;transition:background .15s,border-color .15s,color .15s,transform .05s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.wg .wg-keys{display:grid;grid-template-columns:repeat(9,1fr);gap:8px;width:100%;max-width:430px}
+.wg .wg-key{height:44px;border:1px solid var(--wg-line);border-radius:8px;background:var(--wg-bg);color:var(--wg-ink);font:700 15px/1 inherit;cursor:pointer;transition:background .15s,border-color .15s,color .15s,transform .05s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .wg .wg-key:hover:not(:disabled){border-color:var(--wg-acc);color:var(--wg-acc)}
 .wg .wg-key:active:not(:disabled){transform:scale(.94)}
 .wg .wg-key:focus-visible{outline:2px solid var(--wg-acc);outline-offset:2px}
@@ -414,170 +476,219 @@ export function mount(root, context = {}) {
 .wg .wg-key.wg-off{opacity:.45}
 .wg .wg-key.wg-hit{background:#ecfdf5;border-color:#a7f3d0;color:var(--wg-hit);opacity:1}
 .wg .wg-key.wg-miss{background:#fef2f2;border-color:#fecaca;color:#f87171;text-decoration:line-through;opacity:.75}
-@media (pointer:coarse){.wg .wg-key{height:46px;font-size:16px}}
-.wg .wg-banner{margin-top:16px;background:#fff;border:1px solid var(--wg-line);border-radius:12px;padding:10px 14px;text-align:center;font-size:13px;color:var(--wg-mut)}
+.wg .wg-banner{background:var(--wg-bg);border:1px solid var(--wg-line);border-radius:10px;padding:10px 12px;text-align:center;font-size:13px;color:var(--wg-mut)}
 .wg .wg-banner b{color:var(--wg-ink)}
-.wg .wg-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#0f172a;color:#f8fafc;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:600;opacity:0;transition:opacity .25s;z-index:7;pointer-events:none;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+.wg .wg-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#0f172a;color:#f8fafc;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;opacity:0;transition:opacity .2s;z-index:7;pointer-events:none;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
 .wg .wg-toast.wg-on{opacity:1}
-.wg .wg-ov{position:absolute;inset:0;background:rgba(248,250,252,.93);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:5;padding:16px}
-.wg .wg-card{background:#fff;border:1px solid var(--wg-line);border-radius:16px;padding:22px;max-width:430px;width:100%;box-shadow:0 10px 30px rgba(15,23,42,.08);text-align:center;max-height:100%;overflow:auto}
-.wg .wg-card h3{margin:0 0 8px;font-size:20px}
-.wg .wg-card p{margin:0 0 12px;font-size:13.5px;color:var(--wg-mut);line-height:1.6}
-.wg .wg-btn{display:block;width:100%;margin-top:8px;border:0;border-radius:10px;background:var(--wg-acc);color:#fff;font-weight:700;font-size:14px;padding:11px 14px;cursor:pointer;touch-action:manipulation}
-.wg .wg-btn:hover{filter:brightness(1.08)}
-.wg .wg-btn.ghost{background:#fff;color:var(--wg-ink);border:1px solid var(--wg-line)}
+
+/* --- overlay modal: fixed head/foot, scrollable body --- */
+.wg .wg-ov{position:absolute;inset:0;background:rgba(248,250,252,.93);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:5;padding:12px;overflow:auto}
+.wg .wg-ov[data-ov="help"]{z-index:50}
+.wg .wg-card{display:flex;flex-direction:column;width:min(440px,100%);max-height:100%;padding:16px 20px;background:var(--wg-bg);border:1px solid var(--wg-line);border-radius:12px;box-shadow:0 4px 16px rgba(15,23,42,.06);overflow:hidden;text-align:center}
+.wg .wg-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;text-align:left}
+.wg .wg-head h3{margin:0;font-size:20px}
+.wg .wg-head .wg-btn{padding:5px 9px;min-height:30px}
+.wg .wg-body{flex:1 1 auto;min-height:0;overflow:auto}
+.wg .wg-body p{margin:0 0 12px;font-size:13.5px;color:var(--wg-mut);line-height:1.6}
+.wg .wg-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.wg .wg-foot .wg-btn{margin-top:0;width:auto}
+.wg .wg-note{font-size:11px;color:var(--wg-mut)}
+.wg .wg-card > .wg-btn{display:block;width:100%;margin-top:8px}
 .wg .wg-mode{font-size:12.5px;color:var(--wg-acc);font-weight:600}
 .wg .wg-wait{font-style:italic}
-.wg ol.wg-help{text-align:left;font-size:13px;color:var(--wg-mut);line-height:1.65;padding-left:18px;margin:0 0 12px}
-.wg ol.wg-help b{color:var(--wg-ink)}
+.wg ol.wg-help{text-align:left;font-size:13px;color:var(--wg-mut);line-height:1.65;padding-left:18px;margin:0}
+.wg ol.wg-help li{margin-bottom:7px}
+.wg ol.wg-help b,.wg .wg-body b{color:var(--wg-ink)}
 .wg .wg-final{font-size:15px;color:var(--wg-ink);font-weight:700}
-.wg .wg-badge{display:inline-block;font-size:11.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:3px 10px;margin:0 0 10px}
-.wg .wg-cheats{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.wg .wg-cheat-btn{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--wg-line);background:#fff;border-radius:10px;padding:10px 12px;font-size:13px;font-weight:600;color:var(--wg-ink);cursor:pointer;text-align:left;touch-action:manipulation}
+.wg .wg-badge{display:inline-block;font-size:11.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:4px 10px;margin:0 0 12px}
+.wg .wg-cheats{display:flex;flex-direction:column;gap:8px}
+.wg .wg-cheat-btn{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--wg-line);background:var(--wg-bg);border-radius:8px;padding:10px 12px;min-height:44px;font:600 13px/1.3 inherit;color:var(--wg-ink);cursor:pointer;text-align:left;touch-action:manipulation}
 .wg .wg-cheat-btn:hover{border-color:var(--wg-acc)}
 .wg .wg-cheat-btn small{color:var(--wg-mut);font-weight:400}
-.wg .wg-peek-word{font-size:30px;font-weight:800;letter-spacing:6px;margin:10px 0;color:var(--wg-acc)}
-.wg .wg-actions{display:flex;gap:8px;flex-wrap:wrap}
+.wg .wg-peek-word{font-size:30px;font-weight:800;letter-spacing:6px;margin:12px 0;color:var(--wg-acc)}
+@media (pointer:coarse){.wg .wg-key{height:46px;font-size:16px}}
+@media (prefers-reduced-motion:reduce){.wg *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (PALING AKHIR) --- */
+.wg .wg-icon-btn svg{flex:none;display:block}
+.wg .wg-head,.wg .wg-foot{flex:none}
+.wg .wg-body{flex:1 1 auto;min-height:0;overflow:auto}
+.wg.game-fill > .wg-board:not(:has(.wg-ov:not([hidden]))){flex:1 1 auto;min-height:0}
+.wg.game-fill > .wg-board:has(.wg-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
 @media (max-width:640px){
-  .wg .wg-panel{padding:14px;min-height:0}
+  .wg .wg-board{padding:10px}
+  .wg .wg-play{gap:10px}
   .wg .wg-main{flex-direction:column;align-items:center}
   .wg .wg-left{width:100%;max-width:300px}
-  .wg svg.wg-fig{width:130px}
+  .wg svg.wg-fig{width:130px;max-height:26vh}
   .wg .wg-keys{grid-template-columns:repeat(7,1fr)}
-  .wg .wg-top{justify-content:center}
+  .wg .wg-hud{gap:5px;margin-bottom:0}
+  .wg .wg-hud .wg-hud-info,.wg .wg-hud .wg-hud-actions{gap:5px}
+  .wg .wg-hud .wg-hud-actions{margin-left:auto}
+  .wg .wg-hud .wg-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .wg .wg-hud .wg-chip[data-chip-seat]{display:none}
+  .wg .wg-hud .wg-btn{min-height:32px;padding:5px 8px;font-size:9px}
+  .wg .wg-hud .wg-btn-label,.wg .wg-hud .wg-spacer{display:none}
+  .wg .wg-ov{padding:8px}
+  .wg .wg-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .wg .wg-body{scrollbar-width:none}
+  .wg .wg-body::-webkit-scrollbar{display:none}
+  .wg .wg-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--wg-line)}
+  .wg .wg-note{display:none}
 }
 </style>
-<div class="game-app wg">
-  <div class="game-intro">
-    <div>
-      <h2>Word Guess</h2>
-      <p>A minimalist hangman duel - five hidden words, shared misses, highest score wins.</p>
+<div class="game-app wg game-fill" data-wg>
+  <div class="wg-hud">
+    <div class="wg-hud-info">
+      <span class="wg-chip" data-hud="statuschip"><i class="wg-dot" data-dot></i><b data-hud="status">Ready</b></span>
+      <span class="wg-chip">Round <b data-hud="round">-</b></span>
+      <span class="wg-chip">Misses <b data-hud="miss">-</b></span>
+      <span class="wg-chip" data-chip-seat hidden>You are <b data-seatno>P1</b></span>
+      <span class="wg-chip wg-seat-chip" data-pchip="0"><i class="wg-dot"></i><span data-name>Player 1</span> <b data-score>0</b></span>
+      <span class="wg-chip wg-seat-chip" data-pchip="1"><i class="wg-dot"></i><span data-name>Player 2</span> <b data-score>0</b></span>
     </div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+    <span class="wg-spacer"></span>
+    <div class="wg-hud-actions">
+      <button class="wg-btn wg-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="wg-btn-label">Help</span></button>
+      <button class="wg-btn wg-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="wg-btn-label">Cheats</span></button>
+      <button class="wg-btn wg-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P / Esc)">${iconSVG("pause", { size: 14 })}<span class="wg-btn-label">Pause</span></button>
+      <button class="wg-btn wg-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="wg-btn-label">Restart</span></button>
+      <button class="wg-btn wg-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="wg-btn-label">Exit game</span></button>
+    </div>
   </div>
 
-  <section class="game-panel wg-panel" data-board>
-    <div class="wg-top">
-      <div class="wg-chips">
-        <span class="wg-chip">Round <b data-chip-round>-</b></span>
-        <span class="wg-chip">Misses <b data-chip-miss>-</b></span>
-        <span class="wg-chip" data-chip-seat hidden>You are <b data-seatno>-</b></span>
+  <section class="game-panel wg-board" data-board>
+    <div class="wg-play">
+      <div class="wg-main">
+        <div class="wg-left">
+          <svg class="wg-fig" viewBox="0 0 220 250" role="img" aria-label="Miss figure">
+            <g stroke="#cbd5e1" stroke-width="6" stroke-linecap="round" fill="none">
+              <line x1="20" y1="238" x2="130" y2="238"/>
+              <line x1="50" y1="238" x2="50" y2="18"/>
+              <line x1="50" y1="18" x2="152" y2="18"/>
+              <line x1="50" y1="62" x2="92" y2="18"/>
+              <line x1="152" y1="18" x2="152" y2="44" stroke-width="4"/>
+            </g>
+            <g stroke="#0f172a" stroke-width="4" stroke-linecap="round" fill="none">
+              <circle class="wg-part" cx="152" cy="62" r="18"/>
+              <line class="wg-part" x1="152" y1="80" x2="152" y2="140"/>
+              <line class="wg-part" x1="152" y1="96" x2="122" y2="122"/>
+              <line class="wg-part" x1="152" y1="96" x2="182" y2="122"/>
+              <line class="wg-part" x1="152" y1="140" x2="128" y2="186"/>
+              <line class="wg-part" x1="152" y1="140" x2="176" y2="186"/>
+            </g>
+          </svg>
+          <div class="wg-hintbox" data-hintbox></div>
+        </div>
+        <div class="wg-right">
+          <div class="wg-slots" data-slots></div>
+          <div class="wg-last" data-last></div>
+          <div class="wg-keys" data-keys></div>
+        </div>
       </div>
-      <div class="wg-scores">
-        <div class="wg-seat" data-seat="0"><i class="wg-dot"></i><span data-name>Player 1</span><b class="wg-score" data-score>0</b></div>
-        <div class="wg-seat" data-seat="1"><i class="wg-dot"></i><span data-name>Player 2</span><b class="wg-score" data-score>0</b></div>
-      </div>
+      <div class="wg-banner" data-banner hidden></div>
     </div>
 
-    <div class="wg-main">
-      <div class="wg-left">
-        <svg class="wg-fig" viewBox="0 0 220 250" role="img" aria-label="Miss figure">
-          <g stroke="#cbd5e1" stroke-width="6" stroke-linecap="round" fill="none">
-            <line x1="20" y1="238" x2="130" y2="238"/>
-            <line x1="50" y1="238" x2="50" y2="18"/>
-            <line x1="50" y1="18" x2="152" y2="18"/>
-            <line x1="50" y1="62" x2="92" y2="18"/>
-            <line x1="152" y1="18" x2="152" y2="44" stroke-width="4"/>
-          </g>
-          <g stroke="#0f172a" stroke-width="4" stroke-linecap="round" fill="none">
-            <circle class="wg-part" cx="152" cy="62" r="18"/>
-            <line class="wg-part" x1="152" y1="80" x2="152" y2="140"/>
-            <line class="wg-part" x1="152" y1="96" x2="122" y2="122"/>
-            <line class="wg-part" x1="152" y1="96" x2="182" y2="122"/>
-            <line class="wg-part" x1="152" y1="140" x2="128" y2="186"/>
-            <line class="wg-part" x1="152" y1="140" x2="176" y2="186"/>
-          </g>
-        </svg>
-        <div class="wg-hintbox" data-hintbox></div>
-      </div>
-      <div class="wg-right">
-        <div class="wg-slots" data-slots></div>
-        <div class="wg-last" data-last></div>
-        <div class="wg-keys" data-keys></div>
-      </div>
-    </div>
-
-    <div class="wg-banner" data-banner hidden></div>
     <div class="wg-toast" data-toast></div>
 
-    <div class="wg-ov" data-ov-start>
-      <div class="wg-card">
-        <h3>Word Guess</h3>
-        <p>Take turns guessing the hidden word. A correct letter scores points and keeps your turn; a miss draws the figure and passes the turn. Six shared misses end the round. The category is always shown, and the hint unlocks after two misses.</p>
-        <p class="wg-mode" data-start-mode></p>
-        <button class="wg-btn" type="button" data-act="start">Start game</button>
-        <p class="wg-wait" data-start-wait hidden>Waiting for the host to start...</p>
-        <button class="wg-btn ghost" type="button" data-act="help">How to play</button>
-      </div>
-    </div>
-
-    <div class="wg-ov" data-ov-over hidden>
-      <div class="wg-card">
-        <h3 data-over-title>Game over</h3>
-        <p data-over-reason></p>
-        <p class="wg-final" data-over-scores></p>
-        <span class="wg-badge" data-over-badge hidden>Assisted run - cheats were used</span>
-        <button class="wg-btn" type="button" data-act="again">Play again</button>
-        <p class="wg-wait" data-over-wait hidden>Waiting for the host to restart...</p>
-      </div>
-    </div>
-
-    <div class="wg-ov" data-ov-help hidden>
-      <div class="wg-card">
-        <h3>How to play</h3>
-        <ol class="wg-help">
-          <li><b>Five rounds.</b> Each round hides one real word, randomly generated and verified to be solvable within six misses.</li>
-          <li><b>Turns.</b> A coin toss decides who starts. A correct letter keeps your turn; a miss passes it. The starting player alternates each round.</li>
-          <li><b>Scoring.</b> +1 point per revealed letter, +2 bonus for completing the word. Highest total after five rounds wins.</li>
-          <li><b>Misses.</b> Six shared misses end the round and reveal the word. Nobody gets the bonus.</li>
-          <li><b>Hints.</b> The category is shown from the start; the hint unlocks automatically after two wrong guesses.</li>
-          <li><b>Cheats.</b> Offline only. Open the Cheats panel for assists; using them tags the result as assisted.</li>
-        </ol>
-        <p>Controls: tap or click the letter pad, or type A-Z on a physical keyboard. Enter starts a game, Esc closes panels.</p>
-        <button class="wg-btn" type="button" data-act="close-help">Got it</button>
-      </div>
-    </div>
-
-    <div class="wg-ov" data-ov-cheat hidden>
-      <div class="wg-card">
-        <h3>Cheats</h3>
-        <p>Assists for offline play. Using any of them tags the final result as assisted and blocks the best score.</p>
-        <div class="wg-cheats">
-          <button class="wg-cheat-btn" type="button" data-cheat="reveal"><span>Reveal a letter</span><small>free correct letter, no points</small></button>
-          <button class="wg-cheat-btn" type="button" data-cheat="peek"><span>Peek at the word</span><small>shown for 2.5 seconds</small></button>
-          <button class="wg-cheat-btn" type="button" data-cheat="erase"><span>Erase a miss</span><small>remove one wrong guess</small></button>
-          <button class="wg-cheat-btn" type="button" data-cheat="skip"><span>New word</span><small>redeal this round</small></button>
-          <button class="wg-cheat-btn" type="button" data-cheat="stun"><span>Stun the bot</span><small>bot misses its next 2 guesses</small></button>
+    <div class="wg-ov" data-ov="start">
+      <div class="wg-card" role="dialog" aria-label="Start game">
+        <div class="wg-head"><h3>Word Guess</h3><span class="wg-note">5 rounds · 6 shared misses</span></div>
+        <div class="wg-body">
+          <p>Take turns guessing the hidden word. A correct letter scores points and keeps your turn; a miss draws the figure and passes the turn. Six shared misses end the round. The category is always shown, and the hint unlocks after two misses.</p>
+          <p class="wg-mode" data-start-mode></p>
+          <p class="wg-wait" data-start-wait hidden>Waiting for the host to start...</p>
         </div>
-        <button class="wg-btn ghost" type="button" data-act="close-cheat">Close</button>
+        <div class="wg-foot">
+          <span class="wg-note">Press H for the guide</span>
+          <button class="wg-btn" type="button" data-act="start">Start game</button>
+          <button class="wg-btn ghost" type="button" data-act="help">How to play</button>
+        </div>
       </div>
     </div>
 
-    <div class="wg-ov" data-ov-peek hidden>
-      <div class="wg-card">
-        <h3>Peek</h3>
-        <div class="wg-peek-word" data-peek-word></div>
-        <p>Memorize it - this panel closes automatically.</p>
-        <button class="wg-btn ghost" type="button" data-act="close-peek">Close now</button>
+    <div class="wg-ov" data-ov="over" hidden>
+      <div class="wg-card" role="dialog" aria-label="Game results">
+        <div class="wg-head"><h3 data-over-title>Game over</h3></div>
+        <div class="wg-body">
+          <p data-over-reason></p>
+          <p class="wg-final" data-over-scores></p>
+          <span class="wg-badge" data-over-badge hidden>Assisted run - cheats were used</span>
+          <p class="wg-wait" data-over-wait hidden>Waiting for the host to restart...</p>
+        </div>
+        <div class="wg-foot">
+          <span class="wg-note">Best is kept on this device</span>
+          <button class="wg-btn" type="button" data-act="again">Play again</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="wg-ov" data-ov="pause" hidden>
+      <div class="wg-card" role="dialog" aria-label="Paused">
+        <div class="wg-head"><h3>Paused</h3></div>
+        <div class="wg-body"><p>The bot, the round timer and pending toasts are frozen. Online rounds never pause.</p></div>
+        <div class="wg-foot"><span class="wg-note">Press P or Esc to resume</span><button class="wg-btn" type="button" data-act="resume">Resume</button></div>
+      </div>
+    </div>
+
+    <div class="wg-ov" data-ov="help" hidden>
+      <div class="wg-card" role="dialog" aria-label="How to play">
+        <div class="wg-head"><h3>How to play</h3><button class="wg-btn" type="button" data-act="close-help" aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wg-body">
+          <ol class="wg-help">
+            <li><b>Five rounds.</b> Each round hides one real word, randomly generated and verified to be solvable within six misses.</li>
+            <li><b>Turns.</b> A coin toss decides who starts. A correct letter keeps your turn; a miss passes it. The starting player alternates each round.</li>
+            <li><b>Scoring.</b> +1 point per revealed letter, +2 bonus for completing the word. Highest total after five rounds wins.</li>
+            <li><b>Misses.</b> Six shared misses end the round and reveal the word. Nobody gets the bonus.</li>
+            <li><b>Hints.</b> The category is shown from the start; the hint unlocks automatically after two wrong guesses.</li>
+            <li><b>Cheats.</b> Offline only. Open the Cheats panel for assists; using them tags the result as assisted.</li>
+          </ol>
+          <p>Tap the letter pad or type A-Z. Enter starts a game, Esc closes panels. Hold <b>Shift</b> for <b>H</b> help, <b>C</b> cheats, <b>P</b> pause and <b>R</b> restart while it is your turn (plain letters are guesses). Press <b>?</b> for this guide at any time.</p>
+        </div>
+        <div class="wg-foot"><span class="wg-note">Press H to reopen this guide</span><button class="wg-btn" type="button" data-act="close-help">Got it</button></div>
+      </div>
+    </div>
+
+    <div class="wg-ov" data-ov="cheats" hidden>
+      <div class="wg-card" role="dialog" aria-label="Cheats">
+        <div class="wg-head"><h3>Cheats</h3><button class="wg-btn" type="button" data-act="close-cheat" aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wg-body">
+          <p>Assists for offline play. Using any of them tags the final result as assisted and blocks the best score. The game is frozen while this panel is open.</p>
+          <div class="wg-cheats">
+            <button class="wg-cheat-btn" type="button" data-cheat="reveal"><span>Reveal a letter</span><small>free correct letter, no points</small></button>
+            <button class="wg-cheat-btn" type="button" data-cheat="peek"><span>Peek at the word</span><small>shown for 2.5 seconds</small></button>
+            <button class="wg-cheat-btn" type="button" data-cheat="erase"><span>Erase a miss</span><small>remove one wrong guess</small></button>
+            <button class="wg-cheat-btn" type="button" data-cheat="skip"><span>New word</span><small>redeal this round</small></button>
+            <button class="wg-cheat-btn" type="button" data-cheat="stun"><span>Stun the bot</span><small>bot misses its next 2 guesses</small></button>
+          </div>
+        </div>
+        <div class="wg-foot"><span class="wg-note">Solo only</span><button class="wg-btn ghost" type="button" data-act="close-cheat">Close</button></div>
+      </div>
+    </div>
+
+    <div class="wg-ov" data-ov="peek" hidden>
+      <div class="wg-card" role="dialog" aria-label="Peek">
+        <div class="wg-head"><h3>Peek</h3><button class="wg-btn" type="button" data-act="close-peek" aria-label="Close peek">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wg-body">
+          <div class="wg-peek-word" data-peek-word></div>
+          <p>Memorize it - this panel closes automatically.</p>
+        </div>
+        <div class="wg-foot"><span class="wg-note">Assisted run</span><button class="wg-btn ghost" type="button" data-act="close-peek">Close now</button></div>
       </div>
     </div>
   </section>
-
-  <div class="game-actions wg-actions">
-    <button class="game-action-button" type="button" data-act="help">How to play</button>
-    <button class="game-action-button" type="button" data-act="cheat">Cheats</button>
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------- refs ---------- */
     const $ = (s, r) => (r || root).querySelector(s);
-    const statusEl = $("[data-status]");
-    const chipRound = $("[data-chip-round]");
-    const chipMiss = $("[data-chip-miss]");
-    const chipSeat = $("[data-chip-seat]");
-    const seatNo = $("[data-seatno]");
+    const hud = {
+        status: $("[data-hud=\"status\"]"), dot: $("[data-dot]"),
+        round: $("[data-hud=\"round\"]"), miss: $("[data-hud=\"miss\"]"),
+        seat: $("[data-chip-seat]"), seatNo: $("[data-seatno]"),
+        chip: [0, 1].map((i) => $('[data-pchip="' + i + '"]')),
+        name: [0, 1].map((i) => $('[data-pchip="' + i + '"] [data-name]')),
+        score: [0, 1].map((i) => $('[data-pchip="' + i + '"] [data-score]')),
+    };
     const slotsEl = $("[data-slots]");
     const keysEl = $("[data-keys]");
     const hintEl = $("[data-hintbox]");
@@ -585,15 +696,12 @@ export function mount(root, context = {}) {
     const bannerEl = $("[data-banner]");
     const toastEl = $("[data-toast]");
     const figParts = Array.from(root.querySelectorAll(".wg-part"));
-    const seatEls = [0, 1].map((i) => {
-        const el = $('[data-seat="' + i + '"]');
-        return { el, name: $("[data-name]", el), score: $("[data-score]", el) };
-    });
-    const ovStart = $("[data-ov-start]");
-    const ovOver = $("[data-ov-over]");
-    const ovHelp = $("[data-ov-help]");
-    const ovCheat = $("[data-ov-cheat]");
-    const ovPeek = $("[data-ov-peek]");
+    const ovStart = $('[data-ov="start"]');
+    const ovOver = $('[data-ov="over"]');
+    const ovPause = $('[data-ov="pause"]');
+    const ovHelp = $('[data-ov="help"]');
+    const ovCheat = $('[data-ov="cheats"]');
+    const ovPeek = $('[data-ov="peek"]');
     const startBtn = $('[data-act="start"]', ovStart);
     const startWait = $("[data-start-wait]");
     const startMode = $("[data-start-mode]");
@@ -604,8 +712,18 @@ export function mount(root, context = {}) {
     const againBtn = $('[data-act="again"]');
     const overWait = $("[data-over-wait]");
     const peekWord = $("[data-peek-word]");
-    const cheatBtn = $('[data-act="cheat"]');
-    const restartBtn = $('[data-act="restart"]');
+    const btnHelp = $("[data-help]");
+    const btnCheats = $("[data-cheats]");
+    const btnPause = $("[data-pause]");
+    const btnRestart = $("[data-restart]");
+
+    /* ---------- internal How to play (first run only) ---------- */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("wordGuessHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("wordGuessHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     /* ---------- virtual letter pad (mobile + mouse) ---------- */
     const keyBtns = {};
@@ -638,12 +756,35 @@ export function mount(root, context = {}) {
         later(() => toastEl.classList.remove("wg-on"), 1500);
     }
     function localOverlayOpen() {
-        return !ovHelp.hidden || !ovCheat.hidden || !ovPeek.hidden;
+        return helpOpen || cheatsOpen || peekOpen || paused;
     }
     function closeLocalOverlays() {
-        ovHelp.hidden = true;
-        ovCheat.hidden = true;
-        ovPeek.hidden = true;
+        helpOpen = false;
+        cheatsOpen = false;
+        peekOpen = false;
+        paused = false;
+        syncFreeze();
+        render();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatsOpen = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function setPaused(on) {
+        if (online) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { helpOpen = false; cheatsOpen = false; }
+        syncFreeze();
+        render();
     }
     function announceStart(s) {
         const who = s.turn === mySeat() ? "You start" : nameFor(s.turn) + " starts";
@@ -662,27 +803,36 @@ export function mount(root, context = {}) {
         const myTurn = playing && me !== null && s.turn === me;
         const revealAll = Boolean(s && (s.phase === "between" || s.phase === "over"));
 
-        /* status */
-        let st = "Ready";
+        /* status + info (HUD) */
+        let st = "Ready", dotColor = "#9ca3af";
         if (!s) st = "Connecting...";
-        else if (s.phase === "lobby")
+        else if (s.phase === "lobby") {
             st = canStart() ? "Ready - press start" : "Waiting for host...";
-        else if (s.phase === "between")
+        } else if (s.phase === "between") {
             st = s.between && s.between.type === "solved" ? "Word solved" : "Round failed";
-        else if (s.phase === "over") st = "Game over";
-        else if (myTurn) st = "Your turn - pick a letter";
-        else st = online ? "Opponent is thinking..." : s.botStun > 0 ? "Bot is stunned..." : "Bot is thinking...";
-        statusEl.textContent = st;
+            dotColor = s.between && s.between.type === "solved" ? "#059669" : "#dc2626";
+        } else if (s.phase === "over") {
+            st = "Game over";
+            dotColor = s.winner === me ? "#059669" : "#dc2626";
+        } else if (myTurn) {
+            st = "Your turn - pick a letter";
+            dotColor = "#4f46e5";
+        } else {
+            st = online ? "Opponent is thinking..." : s.botStun > 0 ? "Bot is stunned..." : "Bot is thinking...";
+            dotColor = "#f59e0b";
+        }
+        hud.status.textContent = st;
+        hud.dot.style.background = dotColor;
 
         /* chips + skor */
-        chipRound.textContent = s && s.phase !== "lobby" ? Math.min(s.round + 1, ROUNDS) + "/" + ROUNDS : "-";
-        chipMiss.textContent = s && s.phase !== "lobby" ? s.wrongs.length + "/" + LIVES : "-";
-        chipSeat.hidden = !online || !s;
-        if (online && me !== null) seatNo.textContent = "P" + (me + 1);
+        hud.round.textContent = s && s.phase !== "lobby" ? Math.min(s.round + 1, ROUNDS) + "/" + ROUNDS : "-";
+        hud.miss.textContent = s && s.phase !== "lobby" ? s.wrongs.length + "/" + LIVES : "-";
+        hud.seat.hidden = !online || !s;
+        if (online && me !== null) hud.seatNo.textContent = "P" + (me + 1);
         for (let i = 0; i < 2; i++) {
-            seatEls[i].name.textContent = nameFor(i);
-            seatEls[i].score.textContent = s ? s.scores[i] : 0;
-            seatEls[i].el.classList.toggle("wg-turn", playing && s.turn === i);
+            hud.name[i].textContent = nameFor(i);
+            hud.score[i].textContent = s ? s.scores[i] : 0;
+            hud.chip[i].classList.toggle("wg-turn", playing && s.turn === i);
         }
 
         /* figure */
@@ -757,9 +907,10 @@ export function mount(root, context = {}) {
                     : "Six misses - the word was <b>" + b.word + "</b> - next round starting...";
         } else bannerEl.hidden = true;
 
-        /* overlay start / over */
-        ovStart.hidden = Boolean(s && s.phase !== "lobby");
-        if (!ovStart.hidden) {
+        /* overlays: help > cheats > pause > peek > start/over */
+        const covered = helpOpen || cheatsOpen || paused;
+        ovStart.hidden = Boolean(s && s.phase !== "lobby") || covered;
+        if (s && s.phase === "lobby") {
             startMode.textContent = online
                 ? "Online duel - seats and first turn are randomized each game."
                 : "You vs Bot - a coin toss decides who starts.";
@@ -767,7 +918,7 @@ export function mount(root, context = {}) {
             startWait.hidden = canStart() && Boolean(s);
             startWait.textContent = s ? "Waiting for the host to start..." : "Connecting to the room...";
         }
-        ovOver.hidden = !(s && s.phase === "over");
+        ovOver.hidden = !(s && s.phase === "over") || covered;
         if (s && s.phase === "over") {
             overTitle.textContent =
                 s.winner === -1 || s.winner === null ? "Draw" : s.winner === me ? "You win" : nameFor(s.winner) + " wins";
@@ -787,11 +938,23 @@ export function mount(root, context = {}) {
                 }
             }
         }
+        ovPause.hidden = !paused || helpOpen || cheatsOpen;
+        ovCheat.hidden = !cheatsOpen || helpOpen || paused;
+        ovPeek.hidden = !peekOpen || helpOpen || cheatsOpen || paused;
+        ovHelp.hidden = !helpOpen;
 
-        /* tombol aksi */
-        cheatBtn.disabled = online;
-        cheatBtn.title = online ? "Cheats are disabled in online rooms" : "Open cheat panel";
-        restartBtn.disabled = !canStart();
+        /* tombol HUD */
+        btnHelp.classList.toggle("wg-on", helpOpen);
+        btnCheats.disabled = online;
+        btnCheats.title = online ? "Cheats are disabled in online rooms" : "Open cheat panel (C)";
+        btnCheats.classList.toggle("wg-on", cheatsOpen);
+        btnPause.disabled = online;
+        btnPause.classList.toggle("wg-on", paused);
+        const pLabel = btnPause.querySelector(".wg-btn-label");
+        if (pLabel) pLabel.textContent = paused ? "Resume" : "Pause";
+        btnPause.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        btnPause.setAttribute("title", paused ? "Resume (P / Esc)" : "Pause (P / Esc)");
+        btnRestart.disabled = !canStart();
 
         /* pengumuman transisi (berlaku untuk host, guest, dan lokal) */
         if (s) {
@@ -941,11 +1104,15 @@ export function mount(root, context = {}) {
         }
         state.cheatsUsed = true;
         publish();
-        ovCheat.hidden = true;
+        cheatsOpen = false;
         peekWord.textContent = state.words[state.round].w;
-        ovPeek.hidden = false;
+        peekOpen = true;
+        syncFreeze();
+        render();
         later(() => {
-            ovPeek.hidden = true;
+            peekOpen = false;
+            syncFreeze();
+            render();
         }, 2500);
     }
 
@@ -1023,13 +1190,14 @@ export function mount(root, context = {}) {
     /* ---------- bot (hanya mode ai, dijalankan sisi lokal) ---------- */
     function syncBot() {
         if (botTimer) {
-            clearTimeout(botTimer);
+            cancelLater(botTimer);
             botTimer = null;
         }
         if (online || !state || state.phase !== "playing" || state.turn !== 1) return;
-        botTimer = setTimeout(() => {
+        botTimer = later(() => {
             botTimer = null;
             if (!state || state.phase !== "playing" || state.turn !== 1) return;
+            if (frozen()) { syncBot(); return; }
             const rec = state.words[state.round];
             const letter = botPickLetter(rec.w, state.guessed, state.wrongs, state.botStun > 0);
             if (letter) applyAction({ type: "guess", letter }, 1);
@@ -1038,54 +1206,79 @@ export function mount(root, context = {}) {
 
     /* ---------- input: mouse / sentuh (delegasi) ---------- */
     function handleClick(event) {
-        const el = event.target.closest("[data-act],[data-letter],[data-cheat],[data-exit]");
-        if (!el) return;
-        if (el.hasAttribute("data-exit")) {
-            onExit();
-            return;
-        }
+        const el = event.target.closest("[data-exit],[data-help],[data-cheats],[data-pause],[data-restart],[data-act],[data-letter],[data-cheat]");
+        if (!el || !root.contains(el)) return;
+        if (el.hasAttribute("data-exit")) { onExit(); return; }
         if (el.disabled) return;
+        if (el.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (el.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (el.hasAttribute("data-pause")) { setPaused(); return; }
+        if (el.hasAttribute("data-restart")) { if (canStart()) submitAction({ type: "start" }); return; }
         const letter = el.getAttribute("data-letter");
         if (letter) {
-            tryGuess(letter);
+            if (!localOverlayOpen()) tryGuess(letter);
             return;
         }
         const cheat = el.getAttribute("data-cheat");
         if (cheat) {
-            if (online) return;
+            if (online || localOverlayOpen() && cheat !== "peek") return;
             if (cheat === "peek") doPeek();
             else submitAction({ type: "cheat", kind: cheat });
             return;
         }
         const act = el.getAttribute("data-act");
         if (act === "start" || act === "restart" || act === "again") submitAction({ type: "start" });
-        else if (act === "help") ovHelp.hidden = false;
-        else if (act === "cheat") {
-            if (!online) ovCheat.hidden = false;
-        } else if (act === "close-help") ovHelp.hidden = true;
-        else if (act === "close-cheat") ovCheat.hidden = true;
-        else if (act === "close-peek") ovPeek.hidden = true;
+        else if (act === "resume") setPaused(false);
+        else if (act === "help") toggleHelp();
+        else if (act === "close-help") toggleHelp(false);
+        else if (act === "close-cheat") toggleCheats(false);
+        else if (act === "close-peek") { peekOpen = false; syncFreeze(); render(); }
     }
 
     /* ---------- input: keyboard fisik (desktop) ---------- */
     function handleKey(event) {
+        if (!root.isConnected) return;
         if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-        const k = event.key;
+        const t = event.target;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if ((event.key === "Enter" || event.key === " ") && t && t.closest && t.closest("button")) return;
+        const k = event.key, c = event.code;
+        const typing = Boolean(state && state.phase === "playing" && mySeat() === state.turn && !localOverlayOpen());
+        const shortcut = () => event.shiftKey || !typing;
+        /* priority: help → cheats → pause/Esc → restart → game actions */
+        if (k === "?" || (c === "KeyH" && shortcut())) { toggleHelp(); event.preventDefault(); return; }
+        if (c === "KeyC" && shortcut()) { toggleCheats(); event.preventDefault(); return; }
+        if (c === "KeyP" && shortcut()) {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (peekOpen) { peekOpen = false; syncFreeze(); render(); }
+            else setPaused();
+            event.preventDefault(); return;
+        }
         if (k === "Escape") {
-            closeLocalOverlays();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            else if (peekOpen) { peekOpen = false; syncFreeze(); render(); }
+            event.preventDefault(); return;
+        }
+        if (c === "KeyR" && shortcut()) { if (canStart()) submitAction({ type: "start" }); event.preventDefault(); return; }
+        if (localOverlayOpen()) {
+            if (k === "Enter") {
+                if (helpOpen) toggleHelp(false);
+                else if (cheatsOpen) toggleCheats(false);
+                else if (paused) setPaused(false);
+                else if (peekOpen) { peekOpen = false; syncFreeze(); render(); }
+                event.preventDefault();
+            }
             return;
         }
-        if (k === "Enter") {
-            if (event.target && event.target.closest && event.target.closest("button")) return;
-            if (localOverlayOpen()) return;
-            if (state && (state.phase === "lobby" || state.phase === "over") && canStart())
-                submitAction({ type: "start" });
+        if (!state) return;
+        if ((state.phase === "lobby" || state.phase === "over") && canStart()) {
+            if (k === "Enter") { submitAction({ type: "start" }); event.preventDefault(); }
             return;
         }
-        if (/^[a-zA-Z]$/.test(k)) {
-            if (localOverlayOpen()) return;
-            tryGuess(k.toUpperCase());
-        }
+        if (/^[a-zA-Z]$/.test(k)) { tryGuess(k.toUpperCase()); event.preventDefault(); }
     }
 
     root.addEventListener("click", handleClick);
@@ -1116,6 +1309,7 @@ export function mount(root, context = {}) {
         state = lobbyState();
         render();
     }
+    syncFreeze();
 
     return {
         destroy() {

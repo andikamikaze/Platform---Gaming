@@ -6,6 +6,8 @@
   - Setelah mengubah META, jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "pong", // harus sama dengan nama file (tanpa .js)
     name: "Pong",
@@ -104,6 +106,12 @@ export function mount(root, context = {}) {
 
     /* -------- UI lokal (tidak masuk state kanonik) -------- */
     const ui = { help: false, cheats: false, autoResume: false };
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("pongHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        ui.help = true;
+        try { localStorage.setItem("pongHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     const cheats = { autopilot: false, slowmo: false, giant: false, tiny: false, freeze: false };
     const keys = { up: false, down: false };
     const input = { dir: 0, y: null };        // input milik client ini
@@ -131,29 +139,38 @@ export function mount(root, context = {}) {
 
     /* -------- shell (mengikuti template game-app, desain minimalis) -------- */
     root.innerHTML = `
-<div class="game-app pong-app">
 <style>
 .pong-app{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--soft:#f8fafc;--accent:#4f46e5;
   font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);
-  display:flex;flex-direction:column;gap:12px}
+  display:flex;flex-direction:column;gap:10px;min-height:0}
+.pong-app *{box-sizing:border-box}
 .pong-app [hidden]{display:none!important}
-.pong-app .game-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-.pong-app .game-intro h2{margin:0;font-size:20px;letter-spacing:-.02em}
-.pong-app .game-intro p{margin:2px 0 0;color:var(--muted);font-size:13px;max-width:56ch}
-.pong-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);
-  border:1px solid var(--line);padding:5px 11px;border-radius:999px;background:#fff;white-space:nowrap}
-.pong-app .game-status-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;display:inline-block}
-.pong-app .game-status-dot.ok{background:#10b981}
-.pong-app .game-status-dot.warn{background:#f59e0b}
-.pg-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pg-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
 .pg-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;
-  border-radius:999px;padding:5px 11px;font-size:12px;color:var(--muted)}
-.pg-chip b{color:var(--ink);font-size:14px}
+  border-radius:999px;padding:5px 11px;font-size:12px;color:var(--muted);white-space:nowrap;min-height:0}
+.pg-chip b{color:var(--ink);font-size:14px;font-variant-numeric:tabular-nums}
 .pg-chip.me b{color:var(--accent)}
 .pg-fx{font-size:11px;color:var(--muted)}
-.pg-panel{position:relative;border:1px solid var(--line);border-radius:16px;background:#fff;overflow:hidden;
+.pong-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);
+  border:1px solid var(--line);padding:5px 11px;border-radius:999px;background:#fff;white-space:nowrap}
+.pong-app .game-status-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;display:inline-block;flex:none}
+.pong-app .game-status-dot.ok{background:#10b981}
+.pong-app .game-status-dot.warn{background:#f59e0b}
+.pg-spacer{flex:1 1 auto}
+.pg-btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:10px;
+  padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.pg-btn:hover{opacity:.92}
+.pg-btn.accent{background:var(--accent);border-color:var(--accent)}
+.pg-btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+.pg-btn.ghost:hover{border-color:#cbd5e1}
+.pg-btn:disabled{opacity:.4;cursor:default}
+.pg-hud .pg-btn{min-height:32px;padding:6px 10px;font-size:11px}
+.pg-hud .pg-btn.on{border-color:var(--accent);color:var(--accent);background:#eef0ff}
+.pg-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.pg-icon-btn svg{flex:none;display:block}
+.pg-panel{position:relative;border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden;padding:0;
   box-shadow:0 1px 2px rgba(15,23,42,.04)}
-.pg-board{display:block;width:100%;height:auto;aspect-ratio:640/420;touch-action:none;cursor:crosshair}
+.pg-board{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .pg-court{fill:#fcfcfd;stroke:var(--line);stroke-width:2}
 .pg-mid{stroke:#eef1f5;stroke-width:3;stroke-dasharray:8 12}
 .pg-big{fill:#f1f5f9;font-weight:800}
@@ -172,27 +189,20 @@ export function mount(root, context = {}) {
 @keyframes pg-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 .pg-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   background:rgba(255,255,255,.88);backdrop-filter:blur(6px);padding:16px;z-index:5}
-.pg-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px 22px;max-width:440px;
-  width:100%;max-height:100%;overflow:auto;box-shadow:0 12px 32px rgba(15,23,42,.08)}
-.pg-card h3{margin:0 0 6px;font-size:18px;letter-spacing:-.01em}
-.pg-card .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.pg-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;max-width:440px;
+  width:100%;max-height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,.08)}
+.pg-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pg-head h3{margin:0;font-size:18px;letter-spacing:-.01em}
+.pg-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+.pg-foot{flex:none;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.pg-card .sub{color:var(--muted);font-size:13px;margin:0 0 12px;line-height:1.5}
+.pg-card>.pg-note{flex:none;margin:10px 0 0}
 .pg-tut{display:grid;gap:7px;font-size:12.5px;color:#334155;margin:0 0 12px;padding:0;list-style:none}
 .pg-tut b{color:var(--ink)}
 .pg-tut .k{display:inline-block;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;
   padding:0 5px;font-size:11px;background:var(--soft);font-family:ui-monospace,monospace}
-.pg-legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:12px;color:#334155;margin:0 0 14px}
-.pg-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.pg-btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:10px;
-  padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer}
-.pg-btn:hover{opacity:.92}
-.pg-btn.accent{background:var(--accent);border-color:var(--accent)}
-.pg-btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
-.pg-btn.ghost:hover{border-color:#cbd5e1}
-.pong-app .game-actions{display:flex;gap:8px;flex-wrap:wrap}
-.pong-app .game-action-button{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);
-  border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer}
-.pong-app .game-action-button:hover{border-color:#cbd5e1}
-.pg-touch{display:none;gap:12px;justify-content:center}
+.pg-legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:12px;color:#334155;margin:0}
+.pg-touch{display:none;gap:12px;justify-content:center;flex:none}
 @media (pointer:coarse){.pg-touch{display:flex}}
 .pg-vbtn{width:72px;height:50px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:18px;
   color:var(--ink);touch-action:none;user-select:none;-webkit-user-select:none}
@@ -205,107 +215,134 @@ export function mount(root, context = {}) {
   border-bottom:1px dashed var(--line);font-size:13px}
 .pg-cheat input{accent-color:var(--accent);width:16px;height:16px}
 .pg-note{font-size:11px;color:var(--muted);margin:10px 0 0}
+
+/* --- Batch 02 design polish --- */
+.pong-app :focus-visible,.pong-app button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pg-chip{padding:6px 12px}
+.pg-btn{min-height:44px;padding:10px 16px}
+.pg-card{box-shadow:none}
+.pg-vbtn{min-height:44px}
+@media (pointer:coarse){.pong-app button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.pong-app *{animation:none!important;transition:none!important}}
+
+/* --- layout redesign overrides (keep last) --- */
+.pong-app.game-fill > .pg-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.pong-app.game-fill > .pg-panel:not(:has(.pg-overlay:not([hidden]))){aspect-ratio:640/420;flex:0 0 auto}
+.pong-app.game-fill > .pg-panel:has(.pg-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.pong-app .pg-hud{gap:5px;margin-bottom:0}
+.pong-app .pg-hud .pg-chip{padding:4px 6px;font-size:9px}
+.pong-app .pg-hud .pg-chip.game-status,
+.pong-app .pg-hud .pg-fx,
+.pong-app .pg-hud .pg-chip[data-hud="serve"],
+.pong-app .pg-hud .pg-chip[data-hud="cheat"]{display:none}
+.pong-app .pg-hud .pg-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.pong-app .pg-hud .pg-btn-label,.pong-app .pg-hud .pg-spacer{display:none}
+.pong-app .pg-overlay{padding:8px}
+.pong-app .pg-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.pong-app .pg-scroll{scrollbar-width:none}
+.pong-app .pg-scroll::-webkit-scrollbar{display:none}
+.pong-app .pg-foot{position:static;margin:10px 0 0;padding:0}
+.pong-app .pg-note{display:none}
+}
 </style>
 
-<div class="game-intro">
-  <div><h2>Pong</h2><p>Minimalist duel \u2014 angle your shots, grab abilities, clear random levels. First to ${WIN_SCORE}.</p></div>
-  <span class="game-status"><i class="game-status-dot" data-el="dot"></i><span data-status>Ready</span></span>
-</div>
-
-<div class="pg-hud">
-  <span class="pg-chip" data-hud="level">Lv 1</span>
-  <span class="pg-chip me"><span data-hud="meName">You</span><b data-hud="me">0</b><span class="pg-fx" data-hud="meFx"></span></span>
-  <span class="pg-chip foe"><span data-hud="foeName">AI</span><b data-hud="foe">0</b><span class="pg-fx" data-hud="foeFx"></span></span>
-  <span class="pg-chip" data-hud="serve" hidden></span>
-  <span class="pg-chip" data-hud="cheat" hidden>cheats on</span>
-</div>
-
-<section class="game-panel pg-panel" data-board>
-  <svg class="pg-board" viewBox="0 0 640 420" preserveAspectRatio="xMidYMid meet" aria-label="Pong board">
-    <rect class="pg-court" x="1" y="1" width="638" height="418" rx="14"></rect>
-    <line class="pg-mid" x1="320" y1="14" x2="320" y2="406"></line>
-    <text class="pg-big" data-el="bigL" x="165" y="150" font-size="76" font-family="inherit" text-anchor="middle">0</text>
-    <text class="pg-big" data-el="bigR" x="475" y="150" font-size="76" font-family="inherit" text-anchor="middle">0</text>
-    <g data-el="obs"></g>
-    <line class="pg-shield" data-el="shL" x1="8" y1="18" x2="8" y2="402" style="opacity:0"></line>
-    <line class="pg-shield" data-el="shR" x1="632" y1="18" x2="632" y2="402" style="opacity:0"></line>
-    <g data-el="picks"></g>
-    <rect class="pg-pad me" data-el="padL" x="24" y="173" width="12" height="74" rx="6"></rect>
-    <rect class="pg-pad foe" data-el="padR" x="604" y="173" width="12" height="74" rx="6"></rect>
-    <circle class="pg-ball" data-el="ball" cx="320" cy="210" r="7"></circle>
-  </svg>
-  <div class="pg-toast" data-el="toast" aria-live="polite"></div>
-
-  <div class="pg-overlay" data-ov="start">
-    <div class="pg-card">
-      <h3>Pong \u2014 how to play</h3>
-      <p class="sub" data-el="startInfo"></p>
-      ${TUT}
-      <div class="pg-row">
-        <button class="pg-btn accent" type="button" data-act="start">Start match</button>
-        <button class="pg-btn ghost" type="button" data-act="shuffle" data-role="ctrl">Shuffle level</button>
-      </div>
-      <p class="pg-note" data-el="guestNote" hidden>You are the guest \u2014 the host starts the match.</p>
-    </div>
+<div class="game-app pong-app game-fill" data-pong>
+  <div class="pg-hud">
+    <span class="pg-chip" data-hud="level">Lv 1</span>
+    <span class="pg-chip me"><span data-hud="meName">You</span> <b data-hud="me">0</b><span class="pg-fx" data-hud="meFx"></span></span>
+    <span class="pg-chip foe"><span data-hud="foeName">AI</span> <b data-hud="foe">0</b><span class="pg-fx" data-hud="foeFx"></span></span>
+    <span class="pg-chip game-status"><i class="game-status-dot" data-el="dot"></i><span data-status>Ready</span></span>
+    <span class="pg-chip" data-hud="serve" hidden></span>
+    <span class="pg-chip" data-hud="cheat" hidden>cheats on</span>
+    <span class="pg-spacer"></span>
+    <button class="pg-btn" type="button" data-act="shuffle" data-role="ctrl" aria-label="Shuffle level" title="Shuffle level (new random layout)">New layout</button>
+    <button class="pg-btn pg-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pg-btn-label">Help</span></button>
+    <button class="pg-btn pg-icon-btn" type="button" data-cheats data-role="local" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="pg-btn-label">Cheats</span></button>
+    <button class="pg-btn pg-icon-btn" type="button" data-pause data-role="ctrl" aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="pg-btn-label">Pause</span></button>
+    <button class="pg-btn pg-icon-btn" type="button" data-restart data-role="ctrl" aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="pg-btn-label">Restart</span></button>
+    <button class="pg-btn pg-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pg-btn-label">Exit game</span></button>
   </div>
 
-  <div class="pg-overlay" data-ov="help" hidden>
-    <div class="pg-card">
-      <h3>How to play</h3>
-      ${TUT}
-      <div class="pg-row"><button class="pg-btn" type="button" data-act="closeHelp">Back to match</button></div>
-    </div>
-  </div>
+  <section class="game-panel pg-panel" data-board>
+    <svg class="pg-board" viewBox="0 0 640 420" preserveAspectRatio="xMidYMid meet" aria-label="Pong board">
+      <rect class="pg-court" x="1" y="1" width="638" height="418" rx="14"></rect>
+      <line class="pg-mid" x1="320" y1="14" x2="320" y2="406"></line>
+      <text class="pg-big" data-el="bigL" x="165" y="150" font-size="76" font-family="inherit" text-anchor="middle">0</text>
+      <text class="pg-big" data-el="bigR" x="475" y="150" font-size="76" font-family="inherit" text-anchor="middle">0</text>
+      <g data-el="obs"></g>
+      <line class="pg-shield" data-el="shL" x1="8" y1="18" x2="8" y2="402" style="opacity:0"></line>
+      <line class="pg-shield" data-el="shR" x1="632" y1="18" x2="632" y2="402" style="opacity:0"></line>
+      <g data-el="picks"></g>
+      <rect class="pg-pad me" data-el="padL" x="24" y="173" width="12" height="74" rx="6"></rect>
+      <rect class="pg-pad foe" data-el="padR" x="604" y="173" width="12" height="74" rx="6"></rect>
+      <circle class="pg-ball" data-el="ball" cx="320" cy="210" r="7"></circle>
+    </svg>
+    <div class="pg-toast" data-el="toast" aria-live="polite"></div>
 
-  <div class="pg-overlay" data-ov="pause" hidden>
-    <div class="pg-card">
-      <h3>Paused</h3>
-      <p class="sub" data-el="pauseSub">Press Space or resume.</p>
-      <div class="pg-row"><button class="pg-btn" type="button" data-act="resume" data-role="ctrl">Resume</button></div>
-    </div>
-  </div>
-
-  <div class="pg-overlay" data-ov="over" hidden>
-    <div class="pg-card">
-      <h3 data-el="ovTitle">Game over</h3>
-      <p class="sub" data-el="ovSub"></p>
-      <div class="pg-row">
-        <button class="pg-btn accent" type="button" data-act="again">Play again \u00B7 next level</button>
-      </div>
-      <p class="pg-note">Next level = fresh random layout, slightly faster ball &amp; smarter AI.</p>
-    </div>
-  </div>
-
-  <div class="pg-overlay" data-ov="cheats" hidden>
-    <div class="pg-card">
-      <h3>Cheats</h3>
-      <p class="sub">Offline practice only \u2014 using any cheat tags the match.</p>
-      <label class="pg-cheat"><span>Auto-play (perfect paddle)</span><input type="checkbox" data-cheat="autopilot"></label>
-      <label class="pg-cheat"><span>Slow motion ball</span><input type="checkbox" data-cheat="slowmo"></label>
-      <label class="pg-cheat"><span>Giant paddle</span><input type="checkbox" data-cheat="giant"></label>
-      <label class="pg-cheat"><span>Tiny enemy paddle</span><input type="checkbox" data-cheat="tiny"></label>
-      <label class="pg-cheat"><span>Freeze enemy</span><input type="checkbox" data-cheat="freeze"></label>
-      <div class="pg-row" style="margin-top:12px">
-        <button class="pg-btn ghost" type="button" data-act="cheatPoint">+1 point</button>
-        <button class="pg-btn ghost" type="button" data-act="cheatWin">Win now</button>
-        <button class="pg-btn" type="button" data-act="closeCheats">Close</button>
+    <div class="pg-overlay" data-ov="start">
+      <div class="pg-card">
+        <div class="pg-head"><h3>Pong \u2014 how to play</h3></div>
+        <div class="pg-scroll">
+          <p class="sub" data-el="startInfo"></p>
+          ${TUT}
+        </div>
+        <div class="pg-foot">
+          <button class="pg-btn accent" type="button" data-act="start">Start match</button>
+          <button class="pg-btn ghost" type="button" data-act="shuffle" data-role="ctrl">Shuffle level</button>
+        </div>
+        <p class="pg-note" data-el="guestNote" hidden>You are the guest \u2014 the host starts the match.</p>
       </div>
     </div>
+
+    <div class="pg-overlay" data-ov="help" hidden>
+      <div class="pg-card">
+        <div class="pg-head"><h3>How to play</h3><button class="pg-btn ghost" type="button" data-help-close>Close</button></div>
+        <div class="pg-scroll">${TUT}</div>
+        <div class="pg-foot"><span class="pg-note">Press H to reopen this guide</span><button class="pg-btn" type="button" data-help-close>Got it</button></div>
+      </div>
+    </div>
+
+    <div class="pg-overlay" data-ov="pause" hidden>
+      <div class="pg-card">
+        <div class="pg-head"><h3>Paused</h3></div>
+        <div class="pg-scroll"><p class="sub" data-el="pauseSub">Press P or Space to resume.</p></div>
+        <div class="pg-foot"><button class="pg-btn" type="button" data-act="resume" data-role="ctrl">Resume</button></div>
+      </div>
+    </div>
+
+    <div class="pg-overlay" data-ov="over" hidden>
+      <div class="pg-card">
+        <div class="pg-head"><h3 data-el="ovTitle">Game over</h3></div>
+        <div class="pg-scroll"><p class="sub" data-el="ovSub"></p></div>
+        <div class="pg-foot"><button class="pg-btn accent" type="button" data-act="again">Play again \u00B7 next level</button></div>
+        <p class="pg-note">Next level = fresh random layout, slightly faster ball &amp; smarter AI.</p>
+      </div>
+    </div>
+
+    <div class="pg-overlay" data-ov="cheats" hidden>
+      <div class="pg-card">
+        <div class="pg-head"><h3>Cheats</h3><button class="pg-btn ghost" type="button" data-close-cheats>Close</button></div>
+        <div class="pg-scroll">
+          <p class="sub">Offline practice only \u2014 using any cheat tags the match.</p>
+          <label class="pg-cheat"><span>Auto-play (perfect paddle)</span><input type="checkbox" data-cheat="autopilot"></label>
+          <label class="pg-cheat"><span>Slow motion ball</span><input type="checkbox" data-cheat="slowmo"></label>
+          <label class="pg-cheat"><span>Giant paddle</span><input type="checkbox" data-cheat="giant"></label>
+          <label class="pg-cheat"><span>Tiny enemy paddle</span><input type="checkbox" data-cheat="tiny"></label>
+          <label class="pg-cheat"><span>Freeze enemy</span><input type="checkbox" data-cheat="freeze"></label>
+        </div>
+        <div class="pg-foot">
+          <button class="pg-btn ghost" type="button" data-act="cheatPoint">+1 point</button>
+          <button class="pg-btn ghost" type="button" data-act="cheatWin">Win now</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="pg-touch">
+    <button class="pg-vbtn" type="button" data-hold="up" aria-label="Move paddle up">\u25B2</button>
+    <button class="pg-vbtn" type="button" data-hold="down" aria-label="Move paddle down">\u25BC</button>
   </div>
-</section>
-
-<div class="pg-touch">
-  <button class="pg-vbtn" type="button" data-hold="up" aria-label="Move paddle up">\u25B2</button>
-  <button class="pg-vbtn" type="button" data-hold="down" aria-label="Move paddle down">\u25BC</button>
-</div>
-
-<div class="game-actions">
-  <button class="game-action-button" type="button" data-act="pause" data-role="ctrl">Pause</button>
-  <button class="game-action-button" type="button" data-act="restart" data-role="ctrl">Restart</button>
-  <button class="game-action-button" type="button" data-act="help">How to play</button>
-  <button class="game-action-button" type="button" data-act="cheats" data-role="local">Cheats</button>
-  <button class="game-action-button" type="button" data-exit>Exit game</button>
-</div>
 </div>`;
 
     /* -------- refs -------- */
@@ -657,6 +694,18 @@ export function mount(root, context = {}) {
         statusEl.textContent = text;
         dotEl.className = "game-status-dot" + (tone ? " " + tone : "");
     }
+    function syncHudButtons() {
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".pg-btn-label");
+            if (label) label.textContent = state.paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", state.paused ? "Resume" : "Pause");
+            pbtn.setAttribute("title", state.paused ? "Resume (P)" : "Pause (P)");
+            pbtn.disabled = online && !room.isHost;
+        }
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) cbtn.classList.toggle("on", Object.values(cheats).some(Boolean));
+    }
     function render(dt) {
         if (!state) return;
         const guest = online && !room.isHost;
@@ -711,12 +760,13 @@ export function mount(root, context = {}) {
                 (state.cheated ? " \u00B7 cheats used" : "") +
                 (win ? ". Great angles!" : ". Try clipping returns with the paddle edge.");
         }
-        pauseSub.textContent = guest ? "The host paused the match." : "Press Space or resume.";
-        if (state.phase === "idle" && !ui.help) show(ovStart); else hide(ovStart);
+        pauseSub.textContent = guest ? "The host paused the match." : "Press P or Space to resume.";
+        if (state.phase === "idle" && !ui.help && !ui.cheats) show(ovStart); else hide(ovStart);
         if (ui.help) show(ovHelp); else hide(ovHelp);
         if (state.paused && (state.phase === "serve" || state.phase === "play") && !ui.help && !ui.cheats) show(ovPause); else hide(ovPause);
-        if (state.phase === "over" && !ui.help) show(ovOver); else hide(ovOver);
-        if (ui.cheats) show(ovCheats); else hide(ovCheats);
+        if (state.phase === "over" && !ui.help && !ui.cheats) show(ovOver); else hide(ovOver);
+        if (ui.cheats && !ui.help && !online) show(ovCheats); else hide(ovCheats);
+        syncHudButtons();
     }
 
     /* -------- loop -------- */
@@ -737,15 +787,38 @@ export function mount(root, context = {}) {
     function setPaused(v) {
         if (!isHost() || !state || state.phase === "idle" || state.phase === "over") return;
         state.paused = v;
+        if (!v) {
+            // Panel dibuka saat pertandingan berjalan: tick tetap dt-based,
+            // tapi geser penanda waktu agar throttle publish/input tidak loncat.
+            const now = performance.now();
+            lastPub = now;
+            lastSent = now;
+            lastStateT = now;
+        }
         publish(true);
     }
     function openPanel(name) {
         if (playable() && isHost()) { setPaused(true); ui.autoResume = true; }
         ui[name] = true;
+        if (name === "help") ui.cheats = false;
+        if (name === "cheats") ui.help = false;
     }
     function closePanel(name) {
         ui[name] = false;
         if (!ui.help && !ui.cheats && ui.autoResume) { ui.autoResume = false; setPaused(false); }
+    }
+    function toggleHelp(on) {
+        const next = typeof on === "boolean" ? on : !ui.help;
+        if (next) { if (ui.cheats) closePanel("cheats"); openPanel("help"); }
+        else closePanel("help");
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !ui.cheats;
+        if (next) { if (ui.help) closePanel("help"); openPanel("cheats"); }
+        else closePanel("cheats");
+        render();
     }
 
     /* -------- input: keyboard (desktop) -------- */
@@ -761,13 +834,25 @@ export function mount(root, context = {}) {
         if (!mounted || !state || e.metaKey || e.ctrlKey || e.altKey) return;
         const c = e.code;
         if ((c === "ArrowUp" || c === "ArrowDown" || c === "Space") && state.phase !== "idle") e.preventDefault();
+        // Prioritas: help → cheats → pause/Escape → aksi game.
+        if (c === "KeyH" || e.key === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!online && !ui.help) toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheats) toggleCheats(false);
+            else if (isHost() && (state.phase === "serve" || state.phase === "play")) setPaused(!state.paused);
+            e.preventDefault();
+            return;
+        }
         if (c === "ArrowUp" || c === "KeyW") { keys.up = true; syncDir(); maybeResume(); }
         else if (c === "ArrowDown" || c === "KeyS") { keys.down = true; syncDir(); maybeResume(); }
         else if (c === "Space") { if (isHost() && (state.phase === "serve" || state.phase === "play") && !ui.help && !ui.cheats) setPaused(!state.paused); }
-        else if (c === "Enter") { if (!ui.help && !ui.cheats) { if (state.phase === "idle") submitAction({ type: "requestStart" }); else if (state.phase === "over") submitAction({ type: "requestStart" }); } }
+        else if (c === "Enter") {
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheats) toggleCheats(false);
+            else if (state.phase === "idle" || state.phase === "over") submitAction({ type: "requestStart" });
+        }
         else if (c === "KeyR") { if (isHost() && !ui.help && !ui.cheats) startMatch(false); }
-        else if (c === "KeyH") { ui.help ? closePanel("help") : openPanel("help"); }
-        else if (c === "KeyC") { if (!online) ui.cheats ? closePanel("cheats") : openPanel("cheats"); }
     }
     function onKeyUp(e) {
         if (!mounted) return;
@@ -829,19 +914,30 @@ export function mount(root, context = {}) {
 
     /* -------- input: klik tombol & overlay (delegasi, sesuai template) -------- */
     function handleClick(event) {
-        const btn = event.target.closest("[data-act],[data-exit]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-close-cheats]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) {
+            if (state && isHost() && (state.phase === "serve" || state.phase === "play")) setPaused(!state.paused);
+            return;
+        }
+        if (t.closest("[data-restart]")) { if (state && isHost()) startMatch(false); return; }
+        const btn = t.closest("[data-act]");
         if (!btn || !state) return;
-        if (btn.hasAttribute("data-exit")) { onExit(); return; }
         const act = btn.dataset.act;
         if (act === "start" || act === "again") submitAction({ type: "requestStart" });
         else if (act === "restart") { if (isHost()) startMatch(false); }
         else if (act === "shuffle") { if (isHost() && state.phase === "idle") { state.level = genLevel(state.level.idx); obsSig = ""; publish(true); } }
         else if (act === "pause") { if (isHost() && (state.phase === "serve" || state.phase === "play")) setPaused(!state.paused); }
         else if (act === "resume") setPaused(false);
-        else if (act === "help") openPanel("help");
-        else if (act === "closeHelp") closePanel("help");
-        else if (act === "cheats") { if (!online) openPanel("cheats"); }
-        else if (act === "closeCheats") closePanel("cheats");
+        else if (act === "help") toggleHelp();
+        else if (act === "closeHelp") toggleHelp(false);
+        else if (act === "cheats") toggleCheats();
+        else if (act === "closeCheats") toggleCheats(false);
         else if (act === "cheatPoint") {
             if (online) return;
             if (state.phase === "serve" || state.phase === "play") { state.cheated = true; point(myPi); }

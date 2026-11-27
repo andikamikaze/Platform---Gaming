@@ -5,6 +5,8 @@
   - Setelah mengubah META, jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "true-or-false",
     name: "True or False",
@@ -202,199 +204,271 @@ export function mount(root, context = {}) {
     let state = null;
     let dead = false;
 
-    const ui = { help: false, cheat: false };
+    let helpOpen = false, cheatsOpen = false, paused = false;
     const cheats = { reveal: false, freeze: false, lives: false, auto: false };
     let cheatUsed = false, frozenLeft = null, engineKey = "";
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (_) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("trueOrFalseHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("trueOrFalseHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
-    const timers = new Set();
+    /* Pause-aware scheduling: wall-clock anchors slide forward on resume so
+       the question timer never jumps, and pending bot/transition timers only
+       replay the time they had left. */
+    const timers = new Map();
+    let deferred = [], timerSeq = 0;
+    let frozen = false, freezeStart = 0, clockOffset = 0;
+    const nowMs = () => Date.now() - clockOffset;
+    const blocked = () => helpOpen || cheatsOpen || paused;
+
     const unsubs = [];
     const READY_SUB = "Pisahkan fakta dari mitos! " + TOTAL + " soal bergiliran, " + LIVES +
         " nyawa per pemain, waktu makin singkat tiap level. Posisi pemain & giliran pertama diundi.";
 
     root.innerHTML = `
-<div class="game-app tf-app">
+<div class="game-app tf-app game-fill" data-tf>
 <style>
-.tf-app{--tf-bg:#0b1120;--tf-panel:#0f172a;--tf-line:#ffffff14;--tf-ink:#e7ecf5;--tf-mut:#8fa0b8;--tf-ok:#34d399;--tf-no:#fb7185;--tf-warn:#fbbf24;--tf-acc:#5eead4;color:var(--tf-ink)}
+.tf-app{--tf-bg:#0b1120;--tf-panel:#0f172a;--tf-line:#ffffff14;--tf-ink:#e7ecf5;--tf-mut:#8fa0b8;--tf-ok:#34d399;--tf-no:#fb7185;--tf-warn:#fbbf24;--tf-acc:#5eead4;color:var(--tf-ink);gap:8px;min-height:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.tf-app *{box-sizing:border-box}
 .tf-app [hidden]{display:none!important}
-.tf-app .tf-panel{position:relative;display:flex;flex-direction:column;gap:14px;background:var(--tf-panel);border:1px solid var(--tf-line);border-radius:20px;padding:20px;min-height:480px;overflow:hidden}
-.tf-app .tf-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tf-app .tf-chip{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--tf-mut);border:1px solid var(--tf-line);border-radius:999px;padding:4px 10px;white-space:nowrap}
-.tf-app .tf-chip b{color:var(--tf-ink)}
-.tf-app .tf-grow{flex:1}
-.tf-app .tf-ghost{border:1px solid var(--tf-line);background:transparent;color:var(--tf-mut);font-size:11.5px;font-weight:700;border-radius:999px;padding:5px 12px;cursor:pointer;transition:color .15s,border-color .15s}
-.tf-app .tf-ghost:hover:not(:disabled){color:var(--tf-ink);border-color:#ffffff3a}
-.tf-app .tf-ghost:disabled{opacity:.4;cursor:not-allowed}
-.tf-app .tf-players{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.tf-app .tf-pc{border:1px solid var(--tf-line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;transition:border-color .2s,box-shadow .2s;min-width:0}
-.tf-app .tf-pc.on{border-color:var(--tf-acc);box-shadow:0 0 0 1px var(--tf-acc) inset}
-.tf-app .tf-plabel{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--tf-mut)}
-.tf-app .tf-pname{font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tf-app .tf-pstats{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;color:var(--tf-mut)}
+.tf-app :is(button,input):focus-visible{outline:2px solid var(--tf-acc);outline-offset:2px}
+/* --- single HUD bar: info left, icon controls right --- */
+.tf-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.tf-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid var(--tf-line);border-radius:999px;background:#ffffff07;color:var(--tf-mut);white-space:nowrap;letter-spacing:.04em}
+.tf-chip b{color:var(--tf-ink);font-variant-numeric:tabular-nums}
+.tf-chip.tf-status{color:var(--tf-acc)}
+.tf-chip.tf-status i{width:6px;height:6px;border-radius:50%;background:var(--tf-acc);flex:none}
+.tf-spacer{flex:1 1 auto;min-width:4px}
+.tf-ibtn{min-height:32px;padding:6px 10px;border:1px solid var(--tf-line);border-radius:9px;background:#ffffff07;color:var(--tf-mut);font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em;cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.tf-ibtn:hover:not(:disabled){color:var(--tf-ink);border-color:#ffffff3a}
+.tf-ibtn:disabled{opacity:.4;cursor:not-allowed}
+.tf-ibtn.on{border-color:var(--tf-acc);color:var(--tf-acc);background:#5eead414}
+.tf-ibtn.tf-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.tf-ibtn svg{flex:none;display:block}
+.tf-ibtn-label{white-space:nowrap}
+/* --- board: main content only --- */
+.tf-app.game-fill > .tf-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;flex-direction:column;gap:10px;padding:14px;overflow:hidden;background:var(--tf-panel);border:1px solid var(--tf-line);border-radius:12px}
+.tf-arena{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:9px}
+.tf-players{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tf-pc{border:1px solid var(--tf-line);border-radius:10px;padding:7px 10px;display:flex;flex-direction:column;gap:3px;transition:border-color .2s;min-width:0}
+.tf-pc.on{border-color:var(--tf-acc)}
+.tf-plabel{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--tf-mut)}
+.tf-pname{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tf-pstats{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;color:var(--tf-mut)}
 .tf-app .hp{color:var(--tf-no);letter-spacing:2px}
 .tf-app .hp.off{color:#ffffff22}
-.tf-app .tf-notice{font-size:11.5px;color:var(--tf-mut);text-align:center}
-.tf-app .tf-timer{height:6px;border-radius:999px;background:#ffffff10;overflow:hidden}
-.tf-app .tf-fill{height:100%;width:100%;border-radius:999px;background:var(--tf-ok);transition:width .15s linear,background .3s,opacity .3s}
-.tf-app .tf-fill.warn{background:var(--tf-warn)}
-.tf-app .tf-fill.danger{background:var(--tf-no)}
-.tf-app .tf-fill.idle{opacity:.35}
-.tf-app .tf-meta{display:flex;align-items:center;gap:8px}
-.tf-app .tf-dots{font-size:10px;color:var(--tf-acc);letter-spacing:2px}
-.tf-app .tf-secs{margin-left:auto;font-variant-numeric:tabular-nums;font-size:12px;font-weight:800;color:var(--tf-mut)}
-.tf-app .tf-st{min-height:96px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:clamp(18px,3.3vw,24px);font-weight:700;line-height:1.5;letter-spacing:-.01em;padding:2px 6px}
-.tf-app .tf-btns{display:flex;gap:12px;justify-content:center}
-.tf-app .tf-btn{flex:1;max-width:230px;display:flex;align-items:center;justify-content:center;gap:10px;padding:15px 16px;border-radius:14px;border:1px solid var(--tf-line);background:#ffffff07;color:var(--tf-ink);font-size:16px;font-weight:800;cursor:pointer;transition:border-color .15s,background .15s,transform .1s,color .15s}
-.tf-app .tf-btn svg{width:20px;height:20px;flex:none}
-.tf-app .tf-btn:hover:not(:disabled){transform:translateY(-1px)}
-.tf-app .tf-btn.true:hover:not(:disabled){border-color:var(--tf-ok);color:var(--tf-ok)}
-.tf-app .tf-btn.false:hover:not(:disabled){border-color:var(--tf-no);color:var(--tf-no)}
-.tf-app .tf-btn.good{background:#34d39922;border-color:var(--tf-ok);color:var(--tf-ok)}
-.tf-app .tf-btn.bad{background:#fb718522;border-color:var(--tf-no);color:var(--tf-no)}
-.tf-app .tf-btn.hint{border-style:dashed;border-color:var(--tf-acc)}
-.tf-app .tf-btn:disabled{cursor:default;opacity:.75}
-.tf-app .tf-btn.good:disabled,.tf-app .tf-btn.bad:disabled{opacity:1}
-.tf-app .tf-kbd{border:1px solid var(--tf-line);border-bottom-width:2px;border-radius:6px;padding:0 6px;font-size:10.5px;color:var(--tf-mut);font-family:ui-monospace,SFMono-Regular,monospace}
-.tf-app .tf-fb{min-height:20px;text-align:center;font-size:13.5px;font-weight:700;color:var(--tf-mut)}
-.tf-app .tf-fb.good{color:var(--tf-ok)}
-.tf-app .tf-fb.bad{color:var(--tf-no)}
-.tf-app .tf-why{border:1px solid var(--tf-line);border-left:3px solid var(--tf-acc);border-radius:12px;background:#ffffff06;padding:11px 13px;font-size:13px;line-height:1.65;color:#c7d2e2}
-.tf-app .tf-why b{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--tf-acc);margin-bottom:3px}
-.tf-app .tf-next{align-self:center;border:1px solid var(--tf-acc);background:transparent;color:var(--tf-acc);font-weight:800;font-size:13px;border-radius:999px;padding:8px 18px;cursor:pointer}
-.tf-app .tf-next:hover{background:#5eead41a}
-.tf-app .tf-touch{display:none;gap:10px;position:sticky;bottom:0;z-index:4;padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,transparent,var(--tf-bg) 40%)}
-.tf-app .tf-tbtn{flex:1;min-height:64px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:18px;font-weight:800;border-radius:16px;border:1px solid var(--tf-line);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform .08s,opacity .15s}
-.tf-app .tf-tbtn:active:not(:disabled){transform:scale(.97)}
-.tf-app .tf-tbtn.true{background:#34d3991c;color:var(--tf-ok);border-color:#34d39955}
-.tf-app .tf-tbtn.false{background:#fb71851c;color:var(--tf-no);border-color:#fb718555}
-.tf-app .tf-tbtn.good{background:#34d39944}
-.tf-app .tf-tbtn.bad{background:#fb718544}
-.tf-app .tf-tbtn.hint{border-style:dashed;border-color:var(--tf-acc)}
-.tf-app .tf-tbtn:disabled{opacity:.45;cursor:default}
-.tf-app .tf-tbtn.good:disabled,.tf-app .tf-tbtn.bad:disabled{opacity:1}
-.tf-app .tf-tbtn svg{width:22px;height:22px}
-.tf-app .tf-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:16px;background:#0b1120d9;backdrop-filter:blur(5px)}
-.tf-app .tf-card{width:100%;max-width:440px;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px;background:#111b31;border:1px solid var(--tf-line);border-radius:18px;padding:22px;text-align:center}
-.tf-app .tf-card h3{margin:0;font-size:20px;font-weight:800;letter-spacing:-.01em}
-.tf-app .tf-card .sub{margin:0;font-size:13px;line-height:1.65;color:var(--tf-mut)}
-.tf-app .tf-main{border:0;border-radius:12px;background:var(--tf-acc);color:#062a22;font-size:14.5px;font-weight:800;padding:12px 16px;cursor:pointer;transition:filter .15s}
-.tf-app .tf-main:hover:not(:disabled){filter:brightness(1.08)}
-.tf-app .tf-main:disabled{opacity:.5;cursor:default}
-.tf-app .tf-sec{border:1px solid var(--tf-line);border-radius:12px;background:transparent;color:var(--tf-ink);font-size:13px;font-weight:700;padding:10px 16px;cursor:pointer}
-.tf-app .tf-sec:hover:not(:disabled){border-color:#ffffff3a}
-.tf-app .tf-sec:disabled{opacity:.45;cursor:default}
-.tf-app .tf-help{text-align:left;display:flex;flex-direction:column;gap:10px;font-size:12.5px;line-height:1.7;color:#c7d2e2}
-.tf-app .tf-help h4{margin:0;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tf-acc)}
-.tf-app .tf-help ul{margin:0;padding-left:18px}
-.tf-app .tf-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;border:1px solid var(--tf-line);border-radius:12px;padding:10px 12px}
-.tf-app .tf-cheatrow .t{font-size:13px;font-weight:700}
-.tf-app .tf-cheatrow .d{font-size:11px;color:var(--tf-mut);line-height:1.5}
-.tf-app .tf-cheatrow input{width:18px;height:18px;accent-color:var(--tf-acc);flex:none;cursor:pointer}
-.tf-app .tf-note{font-size:11px;color:var(--tf-warn);margin:0}
-.tf-app .tf-score-line{font-size:14px;font-weight:800}
-.tf-app :is(button,input):focus-visible{outline:2px solid var(--tf-acc);outline-offset:2px}
-@media (pointer:coarse),(max-width:640px){
+.tf-notice{font-size:11.5px;line-height:1.5;color:var(--tf-mut);text-align:center}
+.tf-timer{height:6px;border-radius:999px;background:#ffffff10;overflow:hidden}
+.tf-fill{height:100%;width:100%;border-radius:999px;background:var(--tf-ok);transition:width .15s linear,background .2s,opacity .2s}
+.tf-fill.warn{background:var(--tf-warn)}
+.tf-fill.danger{background:var(--tf-no)}
+.tf-fill.idle{opacity:.35}
+.tf-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tf-dots{font-size:10px;color:var(--tf-acc);letter-spacing:2px}
+.tf-secs{margin-left:auto;font-variant-numeric:tabular-nums;font-size:12px;font-weight:800;color:var(--tf-mut)}
+.tf-st{flex:1 1 auto;min-height:72px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:clamp(18px,3.3vw,24px);font-weight:700;line-height:1.5;padding:8px}
+.tf-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;flex:none}
+.tf-btn{flex:1 1 0;max-width:230px;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:12px;border:1px solid var(--tf-line);background:#ffffff07;color:var(--tf-ink);font-size:16px;font-weight:800;cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+.tf-btn svg{width:20px;height:20px;flex:none}
+.tf-btn.true:hover:not(:disabled){border-color:var(--tf-ok);color:var(--tf-ok)}
+.tf-btn.false:hover:not(:disabled){border-color:var(--tf-no);color:var(--tf-no)}
+.tf-btn.good{background:#34d39922;border-color:var(--tf-ok);color:var(--tf-ok)}
+.tf-btn.bad{background:#fb718522;border-color:var(--tf-no);color:var(--tf-no)}
+.tf-btn.hint{border-style:dashed;border-color:var(--tf-acc)}
+.tf-btn:disabled{cursor:default;opacity:.75}
+.tf-btn.good:disabled,.tf-btn.bad:disabled{opacity:1}
+.tf-kbd{border:1px solid var(--tf-line);border-bottom-width:2px;border-radius:5px;padding:0 6px;font-size:10.5px;color:var(--tf-mut);font-family:ui-monospace,SFMono-Regular,monospace}
+.tf-fb{min-height:20px;line-height:1.5;text-align:center;font-size:13.5px;font-weight:700;color:var(--tf-mut)}
+.tf-fb.good{color:var(--tf-ok)}
+.tf-fb.bad{color:var(--tf-no)}
+.tf-why{border:1px solid var(--tf-line);border-left:3px solid var(--tf-acc);border-radius:10px;background:#ffffff06;padding:12px;font-size:13px;line-height:1.65;color:#c7d2e2}
+.tf-why b{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--tf-acc);margin-bottom:4px}
+.tf-next{align-self:center;flex:none;min-height:40px;border:1px solid var(--tf-acc);background:transparent;color:var(--tf-acc);font-weight:800;font-size:13px;border-radius:999px;padding:8px 18px;cursor:pointer}
+.tf-next:hover{background:#5eead41a}
+/* --- touch answers are a sibling AFTER the board --- */
+.tf-touch{display:none;gap:8px;flex:none;z-index:4;padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,transparent,var(--tf-bg) 40%)}
+.tf-tbtn{flex:1;min-height:56px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:16px;font-weight:800;border-radius:12px;border:1px solid var(--tf-line);background:#ffffff07;color:var(--tf-ink);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform .08s,opacity .15s}
+.tf-tbtn:active:not(:disabled){transform:scale(.97)}
+.tf-tbtn.true{background:#34d3991c;color:var(--tf-ok);border-color:#34d39955}
+.tf-tbtn.false{background:#fb71851c;color:var(--tf-no);border-color:#fb718555}
+.tf-tbtn.good{background:#34d39944}
+.tf-tbtn.bad{background:#fb718544}
+.tf-tbtn.hint{border-style:dashed;border-color:var(--tf-acc)}
+.tf-tbtn:disabled{opacity:.45;cursor:default}
+.tf-tbtn.good:disabled,.tf-tbtn.bad:disabled{opacity:1}
+.tf-tbtn svg{width:20px;height:20px}
+/* --- overlays: fixed head/foot, scrollable body --- */
+.tf-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto;background:#0b1120d9}
+.tf-card{width:min(460px,100%);max-height:100%;overflow:hidden;display:flex;flex-direction:column;gap:12px;background:#111b31;border:1px solid var(--tf-line);border-radius:12px;padding:18px;text-align:center}
+.tf-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+.tf-head h3{margin:0;font-size:19px;font-weight:800}
+.tf-tag{font:700 9px/1 ui-monospace,SFMono-Regular,monospace;letter-spacing:.1em;color:var(--tf-mut);border:1px solid var(--tf-line);border-radius:999px;padding:5px 8px;white-space:nowrap}
+.tf-body{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;text-align:left}
+.tf-body p{margin:0;font-size:13px;line-height:1.6;color:var(--tf-mut)}
+.tf-foot{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.tf-main{min-height:44px;border:1px solid var(--tf-acc);border-radius:10px;background:var(--tf-acc);color:#062a22;font-size:14.5px;font-weight:800;padding:10px 16px;cursor:pointer;transition:filter .15s}
+.tf-main:hover:not(:disabled){filter:brightness(1.08)}
+.tf-main:disabled{opacity:.5;cursor:default}
+.tf-sec{min-height:44px;border:1px solid var(--tf-line);border-radius:10px;background:transparent;color:var(--tf-ink);font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer}
+.tf-sec:hover:not(:disabled){border-color:#ffffff3a}
+.tf-sec:disabled{opacity:.45;cursor:default}
+.tf-help{display:flex;flex-direction:column;gap:10px;font-size:12.5px;line-height:1.65;color:#c7d2e2}
+.tf-help h4{margin:0;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--tf-acc)}
+.tf-help ul{margin:0;padding-left:18px}
+.tf-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;border:1px solid var(--tf-line);border-radius:10px;padding:10px 12px}
+.tf-cheatrow .t{font-size:13px;font-weight:700}
+.tf-cheatrow .d{font-size:11px;color:var(--tf-mut);line-height:1.5}
+.tf-cheatrow input{width:18px;height:18px;accent-color:var(--tf-acc);flex:none;cursor:pointer}
+.tf-note{font-size:11px;line-height:1.5;color:var(--tf-warn);margin:0}
+.tf-score-line{font-size:14px;font-weight:800}
+@media (prefers-reduced-motion:reduce){.tf-app *{animation:none!important;transition:none!important}}
+/* --- layout overrides LAST: beat @media(pointer:coarse) 44px defaults --- */
+@media (max-width:640px){
+.tf-app{gap:6px}
+.tf-app.game-fill > .tf-board{padding:10px}
+.tf-app.game-fill > .tf-board:has(.tf-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+.tf-app .tf-hud{gap:5px}
+.tf-app .tf-hud .tf-chip{padding:4px 6px;font-size:9px}
+.tf-app .tf-hud .tf-chip[data-hud="best"],
+.tf-app .tf-hud .tf-chip[data-hud="status"]{display:none}
+.tf-app .tf-hud .tf-ibtn{min-height:32px;padding:5px 9px;font-size:9px}
+.tf-app .tf-hud .tf-ibtn-label,.tf-app .tf-hud .tf-spacer{display:none}
+.tf-app .tf-arena{gap:7px}
+.tf-app .tf-st{min-height:56px;font-size:clamp(16px,4.4vw,22px)}
 .tf-app .tf-btns{display:none}
 .tf-app .tf-touch{display:flex}
 .tf-app .tf-kbd{display:none}
-.tf-app .tf-panel{padding:14px;min-height:440px}
+.tf-app .tf-players{gap:6px}
+.tf-app .tf-ov{padding:8px}
+.tf-app .tf-card{width:100%;height:100%;max-height:100%;padding:12px}
+.tf-app .tf-body{scrollbar-width:none}
+.tf-app .tf-body::-webkit-scrollbar{display:none}
+.tf-app .tf-foot{padding-top:8px;border-top:1px solid var(--tf-line)}
+.tf-app .tf-note{display:none}
 }
-@media (prefers-reduced-motion:reduce){.tf-app *{transition:none!important}}
+@media (pointer:coarse){
+.tf-app .tf-hud .tf-ibtn{min-height:32px;padding:5px 9px;font-size:9px}
+.tf-app .tf-card .tf-main,.tf-app .tf-card .tf-sec{min-height:44px}
+}
 </style>
-<div class="game-intro">
-  <div><h2>True or False</h2><p>Fakta atau mitos? Jawab bergiliran melawan bot atau teman — cepat, tepat, dan tahu alasannya.</p></div>
-  <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+<div class="tf-hud">
+  <span class="tf-chip">LV <b data-hud="lv">1</b></span>
+  <span class="tf-chip">SOAL <b data-hud="q">–</b>/${TOTAL}</span>
+  <span class="tf-chip">P1 <b data-hud="score0">0</b></span>
+  <span class="tf-chip">P2 <b data-hud="score1">0</b></span>
+  <span class="tf-chip" data-hud="best" data-best>REKOR —</span>
+  <span class="tf-chip tf-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+  <span class="tf-spacer"></span>
+  <button class="tf-ibtn tf-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="tf-ibtn-label">Help</span></button>
+  <button class="tf-ibtn tf-icon-btn" type="button" data-cheats data-cheatbtn aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="tf-ibtn-label">Cheats</span></button>
+  <button class="tf-ibtn tf-icon-btn" type="button" data-pause data-pausebtn aria-label="Pause" title="Pause (P)"><span data-icon-slot>${iconSVG("pause", { size: 14 })}</span><span class="tf-ibtn-label">Pause</span></button>
+  <button class="tf-ibtn tf-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="tf-ibtn-label">Restart</span></button>
+  <button class="tf-ibtn tf-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="tf-ibtn-label">Exit game</span></button>
 </div>
-<section class="game-panel tf-panel" data-board>
-  <div class="tf-tools">
-    <span class="tf-chip">Level <b data-hud="lv">1</b></span>
-    <span class="tf-chip">Soal <b data-hud="q">–</b>/${TOTAL}</span>
-    <span class="tf-chip" data-best>Rekor: —</span>
-    <span class="tf-grow"></span>
-    <button class="tf-ghost" type="button" data-act="help" title="Cara bermain (H)">? Bantuan</button>
-    <button class="tf-ghost" type="button" data-act="cheat" data-cheatbtn title="Cheat (C) — offline">Cheat</button>
-    <button class="tf-ghost" type="button" data-act="restart" title="Ulangi level (R)">&#8635; Ulang</button>
+<section class="game-panel tf-board" data-board>
+  <div class="tf-arena">
+    <div class="tf-players">
+      <div class="tf-pc" data-pc="0"><span class="tf-plabel" data-plabel>Pemain 1</span><span class="tf-pname" data-pname>—</span><span class="tf-pstats"><span data-phearts></span><span data-pscore>0 benar</span></span></div>
+      <div class="tf-pc" data-pc="1"><span class="tf-plabel" data-plabel>Pemain 2</span><span class="tf-pname" data-pname>—</span><span class="tf-pstats"><span data-phearts></span><span data-pscore>0 benar</span></span></div>
+    </div>
+    <div class="tf-notice" data-notice></div>
+    <div class="tf-timer"><div class="tf-fill" data-timer></div></div>
+    <div class="tf-meta"><span class="tf-chip" data-cat>Trivia</span><span class="tf-dots" data-diff></span><span class="tf-secs" data-secs>—</span></div>
+    <div class="tf-st" data-st aria-live="polite">Siap?</div>
+    <div class="tf-btns">
+      <button class="tf-btn true" type="button" data-act="ans" data-v="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>BENAR <span class="tf-kbd">T</span></button>
+      <button class="tf-btn false" type="button" data-act="ans" data-v="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>SALAH <span class="tf-kbd">F</span></button>
+    </div>
+    <div class="tf-fb" data-fb aria-live="polite"></div>
+    <div class="tf-why" data-why hidden><b>&#128161; Kenapa begitu?</b><span data-whytext></span></div>
+    <button class="tf-next" type="button" data-act="next" data-nextbtn hidden>Lanjut &#9656; <span class="tf-kbd">Spasi</span></button>
   </div>
-  <div class="tf-players">
-    <div class="tf-pc" data-pc="0"><span class="tf-plabel" data-plabel>Pemain 1</span><span class="tf-pname" data-pname>—</span><span class="tf-pstats"><span data-phearts></span><span data-pscore>0 benar</span></span></div>
-    <div class="tf-pc" data-pc="1"><span class="tf-plabel" data-plabel>Pemain 2</span><span class="tf-pname" data-pname>—</span><span class="tf-pstats"><span data-phearts></span><span data-pscore>0 benar</span></span></div>
-  </div>
-  <div class="tf-notice" data-notice></div>
-  <div class="tf-timer"><div class="tf-fill" data-timer></div></div>
-  <div class="tf-meta"><span class="tf-chip" data-cat>Trivia</span><span class="tf-dots" data-diff></span><span class="tf-secs" data-secs>—</span></div>
-  <div class="tf-st" data-st aria-live="polite">Siap?</div>
-  <div class="tf-btns">
-    <button class="tf-btn true" type="button" data-act="ans" data-v="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>BENAR <span class="tf-kbd">T</span></button>
-    <button class="tf-btn false" type="button" data-act="ans" data-v="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>SALAH <span class="tf-kbd">F</span></button>
-  </div>
-  <div class="tf-fb" data-fb aria-live="polite"></div>
-  <div class="tf-why" data-why hidden><b>&#128161; Kenapa begitu?</b><span data-whytext></span></div>
-  <button class="tf-next" type="button" data-act="next" data-nextbtn hidden>Lanjut &#9656; <span class="tf-kbd">Spasi</span></button>
 
   <div class="tf-ov" data-ov="ready">
     <div class="tf-card">
-      <h3>True or False</h3>
-      <p class="sub" data-readysub>${READY_SUB}</p>
-      <button class="tf-main" type="button" data-act="start">Mulai pertandingan</button>
-      <button class="tf-sec" type="button" data-act="help">Cara bermain</button>
+      <div class="tf-head"><h3>True or False</h3><span class="tf-tag">${TOTAL} SOAL</span></div>
+      <div class="tf-body"><p data-readysub>${READY_SUB}</p></div>
+      <div class="tf-foot">
+        <button class="tf-main" type="button" data-act="start">Mulai pertandingan</button>
+        <button class="tf-sec" type="button" data-help>Cara bermain</button>
+      </div>
     </div>
   </div>
   <div class="tf-ov" data-ov="over" hidden>
     <div class="tf-card">
-      <h3 data-ovt>Selesai</h3>
-      <p class="sub" data-ovr></p>
-      <div class="tf-score-line" data-ovs></div>
-      <p class="tf-note" data-ovn hidden>&#9873; Cheat dipakai — level ini tidak dicatat sebagai rekor.</p>
-      <button class="tf-main" type="button" data-act="start" data-startlabel>Main lagi</button>
-      <button class="tf-sec" type="button" data-act="restart">Ulangi level ini</button>
+      <div class="tf-head"><h3 data-ovt>Selesai</h3></div>
+      <div class="tf-body">
+        <p data-ovr></p>
+        <div class="tf-score-line" data-ovs></div>
+        <p class="tf-note" data-ovn hidden>&#9873; Cheat dipakai — level ini tidak dicatat sebagai rekor.</p>
+      </div>
+      <div class="tf-foot">
+        <button class="tf-main" type="button" data-act="start" data-startlabel>Main lagi</button>
+        <button class="tf-sec" type="button" data-restart>Ulangi level ini</button>
+      </div>
+    </div>
+  </div>
+  <div class="tf-ov" data-ov="pause" hidden>
+    <div class="tf-card">
+      <div class="tf-head"><h3>Dijeda</h3></div>
+      <div class="tf-body"><p>Waktu, bot, dan transisi soal berhenti. Saat dilanjutkan, timer tidak akan meloncat.</p></div>
+      <div class="tf-foot"><button class="tf-main" type="button" data-resume>Lanjutkan</button></div>
     </div>
   </div>
   <div class="tf-ov" data-ov="help" hidden>
     <div class="tf-card">
-      <h3>Cara bermain</h3>
-      <div class="tf-help">
-        <div><h4>Tujuan</h4><ul>
-          <li>Jawab <b>BENAR</b> (fakta) atau <b>SALAH</b> (mitos) untuk tiap pernyataan.</li>
-          <li>${TOTAL} soal per pertandingan — masing-masing pemain mendapat 5 soal, bergiliran.</li>
-        </ul></div>
-        <div><h4>Aturan</h4><ul>
-          <li>Waktu per soal: 10 detik di level awal, turun sampai 6 detik di level tinggi.</li>
-          <li>Jawaban benar +1 poin. Salah / kehabisan waktu = kehilangan 1 dari ${LIVES} nyawa.</li>
-          <li>Kehabisan nyawa = langsung kalah. Jika semua soal selesai, poin tertinggi menang (bisa seri).</li>
-          <li>Setiap jawaban dilengkapi penjelasan singkat — menang sambil belajar.</li>
-        </ul></div>
-        <div><h4>Level acak yang adil</h4><ul>
-          <li>Tiap level disusun acak dari ${BANK.length} soal: dijamin 5 fakta + 5 mitos, tanpa topik kembar.</li>
-          <li>Komposisi soal kedua pemain seimbang — selalu bisa dimenangkan dengan jawaban sempurna.</li>
-          <li>Menang membuka level berikutnya: soal lebih sulit, waktu lebih singkat, bot lebih pintar.</li>
-        </ul></div>
-        <div><h4>Giliran &amp; posisi acak</h4><ul>
-          <li>Siapa yang jalan duluan diundi setiap pertandingan — termasuk saat melawan bot.</li>
-          <li>Di multiplayer, posisi Pemain 1 / Pemain 2 juga diacak untuk kedua sisi.</li>
-        </ul></div>
-        <div><h4>Kontrol</h4><ul>
-          <li>Desktop: klik tombol, atau <span class="tf-kbd">T</span>/<span class="tf-kbd">&#8592;</span> = benar, <span class="tf-kbd">F</span>/<span class="tf-kbd">&#8594;</span> = salah, <span class="tf-kbd">Spasi</span> = mulai/lanjut, <span class="tf-kbd">R</span> = ulang, <span class="tf-kbd">H</span> = bantuan, <span class="tf-kbd">C</span> = cheat, <span class="tf-kbd">Esc</span> = tutup panel.</li>
-          <li>Mobile: gunakan tombol virtual besar di bagian bawah layar.</li>
-        </ul></div>
-        <div><h4>Cheat</h4><ul>
-          <li>Hanya tersedia di mode offline (lawan bot). Saat cheat dipakai, level tidak dicatat sebagai rekor.</li>
-          <li>Waktu tetap berjalan saat panel bantuan dibuka — buka sebelum mulai, ya.</li>
-        </ul></div>
+      <div class="tf-head"><h3>Cara bermain</h3><button class="tf-sec" type="button" data-help-close aria-label="Close">Tutup</button></div>
+      <div class="tf-body">
+        <div class="tf-help">
+          <div><h4>Tujuan</h4><ul>
+            <li>Jawab <b>BENAR</b> (fakta) atau <b>SALAH</b> (mitos) untuk tiap pernyataan.</li>
+            <li>${TOTAL} soal per pertandingan — masing-masing pemain mendapat 5 soal, bergiliran.</li>
+          </ul></div>
+          <div><h4>Aturan</h4><ul>
+            <li>Waktu per soal: 10 detik di level awal, turun sampai 6 detik di level tinggi.</li>
+            <li>Jawaban benar +1 poin. Salah / kehabisan waktu = kehilangan 1 dari ${LIVES} nyawa.</li>
+            <li>Kehabisan nyawa = langsung kalah. Jika semua soal selesai, poin tertinggi menang (bisa seri).</li>
+            <li>Setiap jawaban dilengkapi penjelasan singkat — menang sambil belajar.</li>
+          </ul></div>
+          <div><h4>Level acak yang adil</h4><ul>
+            <li>Tiap level disusun acak dari ${BANK.length} soal: dijamin 5 fakta + 5 mitos, tanpa topik kembar.</li>
+            <li>Komposisi soal kedua pemain seimbang — selalu bisa dimenangkan dengan jawaban sempurna.</li>
+            <li>Menang membuka level berikutnya: soal lebih sulit, waktu lebih singkat, bot lebih pintar.</li>
+          </ul></div>
+          <div><h4>Giliran &amp; posisi acak</h4><ul>
+            <li>Siapa yang jalan duluan diundi setiap pertandingan — termasuk saat melawan bot.</li>
+            <li>Di multiplayer, posisi Pemain 1 / Pemain 2 juga diacak untuk kedua sisi.</li>
+          </ul></div>
+          <div><h4>Kontrol</h4><ul>
+            <li>Desktop: klik tombol, atau <span class="tf-kbd">T</span>/<span class="tf-kbd">&#8592;</span> = benar, <span class="tf-kbd">F</span>/<span class="tf-kbd">&#8594;</span> = salah, <span class="tf-kbd">Spasi</span> = mulai/lanjut.</li>
+            <li><span class="tf-kbd">H</span> bantuan · <span class="tf-kbd">C</span> cheat · <span class="tf-kbd">P</span> jeda · <span class="tf-kbd">R</span> ulang · <span class="tf-kbd">Esc</span> tutup panel.</li>
+            <li>Mobile: gunakan tombol virtual besar di bawah papan; tombol HUD untuk Help/Cheats/Pause/Restart/Exit.</li>
+          </ul></div>
+          <div><h4>Cheat</h4><ul>
+            <li>Hanya tersedia di mode offline (lawan bot). Saat cheat dipakai, level tidak dicatat sebagai rekor.</li>
+            <li>Waktu ikut berhenti saat panel mana pun dibuka — aman membaca bantuan di tengah soal.</li>
+          </ul></div>
+        </div>
       </div>
-      <button class="tf-main" type="button" data-act="close">Paham, tutup</button>
+      <div class="tf-foot"><button class="tf-main" type="button" data-help-close>Paham, tutup</button></div>
     </div>
   </div>
   <div class="tf-ov" data-ov="cheat" hidden>
     <div class="tf-card">
-      <h3>Panel cheat</h3>
-      <p class="sub">Hanya mode offline. Rekor level tidak dicatat selama cheat dipakai.</p>
-      <label class="tf-cheatrow"><span><span class="t">Bocorkan jawaban</span><br><span class="d">Tombol berjawaban benar diberi garis putus-putus.</span></span><input type="checkbox" data-cheat="reveal"></label>
-      <label class="tf-cheatrow"><span><span class="t">Bekukan waktu</span><br><span class="d">Timer berhenti menghitung sampai dimatikan.</span></span><input type="checkbox" data-cheat="freeze"></label>
-      <label class="tf-cheatrow"><span><span class="t">Nyawa tak terbatas</span><br><span class="d">Jawaban salahmu tidak mengurangi nyawa.</span></span><input type="checkbox" data-cheat="lives"></label>
-      <label class="tf-cheatrow"><span><span class="t">Auto-jawab benar</span><br><span class="d">Giliranmu dijawab otomatis dengan benar.</span></span><input type="checkbox" data-cheat="auto"></label>
-      <button class="tf-sec" type="button" data-act="skip" data-skip>Lewati soal ini (tanpa poin)</button>
-      <button class="tf-main" type="button" data-act="close">Tutup</button>
+      <div class="tf-head"><h3>Panel cheat</h3><button class="tf-sec" type="button" data-cheat-close aria-label="Close">Tutup</button></div>
+      <div class="tf-body">
+        <p>Hanya mode offline. Rekor level tidak dicatat selama cheat dipakai.</p>
+        <label class="tf-cheatrow"><span><span class="t">Bocorkan jawaban</span><br><span class="d">Tombol berjawaban benar diberi garis putus-putus.</span></span><input type="checkbox" data-cheat="reveal"></label>
+        <label class="tf-cheatrow"><span><span class="t">Bekukan waktu</span><br><span class="d">Timer berhenti menghitung sampai dimatikan.</span></span><input type="checkbox" data-cheat="freeze"></label>
+        <label class="tf-cheatrow"><span><span class="t">Nyawa tak terbatas</span><br><span class="d">Jawaban salahmu tidak mengurangi nyawa.</span></span><input type="checkbox" data-cheat="lives"></label>
+        <label class="tf-cheatrow"><span><span class="t">Auto-jawab benar</span><br><span class="d">Giliranmu dijawab otomatis dengan benar.</span></span><input type="checkbox" data-cheat="auto"></label>
+        <button class="tf-sec" type="button" data-act="skip" data-skip>Lewati soal ini (tanpa poin)</button>
+      </div>
+      <div class="tf-foot"><button class="tf-main" type="button" data-cheat-close>Tutup</button></div>
     </div>
   </div>
 </section>
@@ -402,7 +476,6 @@ export function mount(root, context = {}) {
   <button class="tf-tbtn false" type="button" data-act="ans" data-v="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>SALAH</button>
   <button class="tf-tbtn true" type="button" data-act="ans" data-v="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>BENAR</button>
 </div>
-<div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------------- refs ---------------- */
@@ -412,12 +485,13 @@ export function mount(root, context = {}) {
         whyEl = $("[data-why]"), whyText = $("[data-whytext]"), nextBtn = $("[data-nextbtn]"),
         noticeEl = $("[data-notice]"), timerFill = $("[data-timer]"), secsEl = $("[data-secs]"),
         catEl = $("[data-cat]"), diffEl = $("[data-diff]"),
-        hudLv = $('[data-hud="lv"]'), hudQ = $('[data-hud="q"]'), bestEl = $("[data-best]"),
+        hudLv = $('[data-hud="lv"]'), hudQ = $('[data-hud="q"]'),
+        hudScore = [$('[data-hud="score0"]'), $('[data-hud="score1"]')], bestEl = $("[data-best]"),
         ovReady = $('[data-ov="ready"]'), readySub = $("[data-readysub]"),
         ovOver = $('[data-ov="over"]'), ovTitle = $("[data-ovt]"), ovReason = $("[data-ovr]"),
         ovScore = $("[data-ovs]"), ovNote = $("[data-ovn]"), startLabel = $("[data-startlabel]"),
-        ovHelp = $('[data-ov="help"]'), ovCheat = $('[data-ov="cheat"]'),
-        cheatBtn = $("[data-cheatbtn]"), skipBtn = $("[data-skip]");
+        ovPause = $('[data-ov="pause"]'), ovHelp = $('[data-ov="help"]'), ovCheat = $('[data-ov="cheat"]'),
+        cheatBtn = $("[data-cheatbtn]"), pauseBtn = $("[data-pausebtn]"), skipBtn = $("[data-skip]");
     const startBtns = $$('[data-act="start"]');
     const ansBtns = $$('[data-act="ans"]').map((b) => ({ b, v: b.dataset.v === "true" }));
     const pcEls = [$('[data-pc="0"]'), $('[data-pc="1"]')];
@@ -425,8 +499,55 @@ export function mount(root, context = {}) {
 
     /* ---------------- helpers ---------------- */
     function later(ms, fn) {
-        const id = setTimeout(() => { timers.delete(id); if (!dead) fn(); }, ms);
-        timers.add(id);
+        const key = ++timerSeq;
+        if (frozen) { deferred.push({ key, fn, wait: Math.max(0, ms), ek: engineKey }); return key; }
+        const id = setTimeout(() => {
+            timers.delete(key);
+            if (!dead && !frozen && !blocked()) fn();
+        }, ms);
+        timers.set(key, { id, due: nowMs() + ms, fn, ek: engineKey });
+        return key;
+    }
+    function clearTimers() {
+        for (const rec of timers.values()) clearTimeout(rec.id);
+        timers.clear();
+        deferred = [];
+    }
+    function freezeTimers() {
+        if (frozen) return;
+        frozen = true;
+        freezeStart = Date.now();
+        const now = nowMs();
+        for (const [key, rec] of timers) {
+            clearTimeout(rec.id);
+            deferred.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now), ek: rec.ek });
+        }
+        timers.clear();
+    }
+    function thawTimers() {
+        if (!frozen) return;
+        clockOffset += Date.now() - freezeStart;
+        freezeStart = 0;
+        frozen = false;
+        const queue = deferred;
+        deferred = [];
+        for (const t of queue) if (t.ek === engineKey) later(t.wait, t.fn);
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        if (online || dead) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        render();
     }
     function turnActor() { return state ? state.seatMap[state.turn] : 0; }
     function myTurn() { return !!state && turnActor() === myActor; }
@@ -457,9 +578,9 @@ export function mount(root, context = {}) {
             deck: g.deck, timeLimit: g.timeLimit, q: 0,
             correct: [0, 0], lives: [LIVES, LIVES],
             picked: null, lastGood: null, po: null,
-            winner: null, reason: "", deadline: Date.now() + g.timeLimit * 1000,
+            winner: null, reason: "", deadline: nowMs() + g.timeLimit * 1000,
         };
-        cheatUsed = false; frozenLeft = null; engineKey = ""; ui.help = false;
+        cheatUsed = false; frozenLeft = null; engineKey = ""; helpOpen = false; cheatsOpen = false;
     }
     function resolve(v) {
         const it = state.deck[state.q], actor = turnActor();
@@ -479,7 +600,7 @@ export function mount(root, context = {}) {
         }
         state.q++; state.turn = 1 - state.turn;
         state.picked = null; state.lastGood = null;
-        state.phase = "ask"; state.deadline = Date.now() + state.timeLimit * 1000;
+        state.phase = "ask"; state.deadline = nowMs() + state.timeLimit * 1000;
     }
     function finish(winner, reason) {
         state.winner = winner; state.reason = reason; state.phase = "over"; state.deadline = 0;
@@ -516,6 +637,7 @@ export function mount(root, context = {}) {
     }
 
     function submitAction(action) {
+        if (dead || blocked()) return;
         if (online && !room.isHost) { room.sendAction(action).catch(console.warn); return; }
         applyAction(action, myActor);
     }
@@ -532,8 +654,7 @@ export function mount(root, context = {}) {
         const key = state.m + ":" + state.phase + ":" + state.q;
         if (key === engineKey) return;
         engineKey = key;
-        for (const id of timers) clearTimeout(id);
-        timers.clear();
+        clearTimers();
         if (state.phase === "ask") {
             frozenLeft = (!online && cheats.freeze) ? state.timeLimit * 1000 : null;
             if (!online && turnActor() === 1) { // giliran bot
@@ -569,9 +690,9 @@ export function mount(root, context = {}) {
     }
 
     function heartbeat() {
-        if (dead || !state) return;
+        if (dead || !state || blocked()) return;
         if (state.phase === "ask") {
-            const now = Date.now();
+            const now = nowMs();
             if (!online && cheats.freeze) { // cheat: bekukan waktu (hanya offline)
                 if (frozenLeft == null) frozenLeft = Math.max(0, state.deadline - now);
                 state.deadline = now + frozenLeft;
@@ -588,13 +709,32 @@ export function mount(root, context = {}) {
     /* ---------------- render ---------------- */
     function render() {
         if (dead) return;
-        ovHelp.hidden = !ui.help;
-        ovCheat.hidden = !ui.cheat || online;
+        const freeze = blocked();
+        if (freeze && !frozen) freezeTimers();
+        else if (!freeze && frozen) thawTimers();
+
+        ovHelp.hidden = !helpOpen;
+        ovCheat.hidden = !cheatsOpen || online;
+        ovPause.hidden = !paused || helpOpen || cheatsOpen;
         cheatBtn.disabled = online;
+        cheatBtn.classList.toggle("on", !online && Object.values(cheats).some(Boolean));
         cheatBtn.title = online ? "Cheat hanya tersedia di mode offline" : "Cheat (C) — offline";
         for (const inp of cheatInputs) { inp.checked = cheats[inp.dataset.cheat]; inp.disabled = online; }
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".tf-ibtn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.setAttribute("title", online ? "Jeda hanya tersedia di mode offline" : (paused ? "Resume (P)" : "Pause (P)"));
+            pauseBtn.disabled = online;
+            const slot = pauseBtn.querySelector("[data-icon-slot]");
+            const iconName = paused ? "play" : "pause";
+            if (slot && slot.dataset.icon !== iconName) {
+                slot.dataset.icon = iconName;
+                slot.innerHTML = iconSVG(iconName, { size: 14 });
+            }
+        }
         bestEl.hidden = online;
-        bestEl.textContent = "Rekor: " + (best > 0 ? "Level " + best : "—");
+        bestEl.textContent = "REKOR " + (best > 0 ? "LV " + best : "—");
         if (!state) { // tamu online menunggu state pertama dari host
             statusEl.textContent = "Menunggu host…";
             ovReady.hidden = false;
@@ -611,6 +751,7 @@ export function mount(root, context = {}) {
         hudQ.textContent = ph === "ready" ? "–" : String(Math.min(state.q + 1, TOTAL));
         for (let s = 0; s < 2; s++) {
             const a = state.seatMap[s], el = pcEls[s];
+            hudScore[s].textContent = String(state.correct[a]);
             el.classList.toggle("on", (ph === "ask" || ph === "reveal") && state.turn === s);
             el.querySelector("[data-plabel]").textContent =
                 "Pemain " + (s + 1) + (a === myActor ? " · Kamu" : "") +
@@ -629,7 +770,7 @@ export function mount(root, context = {}) {
             ph === "ready" ? "Siap memisahkan fakta dari mitos?" :
                 ph === "over" ? "Pertandingan selesai." :
                     "\u201C" + (it ? it.q : "") + "\u201D";
-        const canAns = ph === "ask" && mine && !ui.help && !ui.cheat;
+        const canAns = ph === "ask" && mine && !freeze;
         for (const { b, v } of ansBtns) {
             b.disabled = !canAns;
             b.classList.remove("good", "bad", "hint");
@@ -653,11 +794,11 @@ export function mount(root, context = {}) {
             fbEl.textContent = "";
         }
         whyEl.hidden = ph !== "reveal";
-        nextBtn.hidden = !(ph === "reveal" && mine);
-        skipBtn.disabled = !(ph === "ask" && mine && !online);
-        ovReady.hidden = ph !== "ready";
+        nextBtn.hidden = !(ph === "reveal" && mine && !freeze);
+        skipBtn.disabled = !(ph === "ask" && mine && !online && !freeze);
+        ovReady.hidden = ph !== "ready" || freeze;
         if (ph === "ready") readySub.textContent = READY_SUB;
-        ovOver.hidden = ph !== "over";
+        ovOver.hidden = ph !== "over" || freeze;
         if (ph === "over") {
             const win = state.winner;
             ovTitle.textContent =
@@ -679,27 +820,35 @@ export function mount(root, context = {}) {
                 ph === "ask" ? (mine ? "Giliranmu — jawab!" : (online ? "Giliran lawan…" : "Bot berpikir…")) :
                     ph === "reveal" ? (state.lastGood ? "Benar!" : "Meleset!") :
                         (state.winner === "draw" ? "Seri" : state.winner === myActor ? "Kamu menang 🎉" : "Kamu kalah");
-        if (!online && cheats.freeze && ph === "ask") statusEl.textContent += " · ⏸ waktu beku";
+        if (freeze) statusEl.textContent = paused ? "Dijeda ⏸" : helpOpen ? "Bantuan" : "Cheat";
+        else if (!online && cheats.freeze && ph === "ask") statusEl.textContent += " · ⏸ waktu beku";
     }
 
     /* ---------------- events: mouse / touch ---------------- */
     function handleClick(event) {
         const t = event.target;
-        if (t instanceof Element && t.classList.contains("tf-ov")) { // klik backdrop panel
-            ui.help = false; ui.cheat = false; render(); return;
+        if (!(t instanceof Element)) return;
+        if (t.classList.contains("tf-ov")) { // klik backdrop panel
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            return;
         }
-        const btn = t instanceof Element ? t.closest("[data-act],[data-exit]") : null;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { submitAction({ type: "restart" }); return; }
+        const btn = t.closest("[data-act]");
         if (!btn) return;
-        if (btn.hasAttribute("data-exit")) { onExit(); return; }
         const a = btn.dataset.act;
         if (a === "start") submitAction({ type: "start" });
-        else if (a === "restart") submitAction({ type: "restart" });
         else if (a === "ans") submitAction({ type: "answer", value: btn.dataset.v === "true" });
         else if (a === "next") submitAction({ type: "next" });
         else if (a === "skip") submitAction({ type: "skip" });
-        else if (a === "help") { ui.help = !ui.help; ui.cheat = false; render(); }
-        else if (a === "cheat") { if (!online) { ui.cheat = !ui.cheat; ui.help = false; render(); } }
-        else if (a === "close") { ui.help = false; ui.cheat = false; render(); }
     }
     function handleChange(event) {
         const el = event.target;
@@ -709,21 +858,25 @@ export function mount(root, context = {}) {
         if (el.dataset.cheat === "freeze") frozenLeft = null;
         if (el.dataset.cheat === "auto") engineKey = "";
         render();
-        syncEngine();
+        if (!blocked()) syncEngine();
     }
     /* ---------------- events: keyboard (desktop) ---------------- */
     function onKey(e) {
         if (dead || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-        if (e.key === "Escape") {
-            if (ui.help || ui.cheat) { ui.help = false; ui.cheat = false; render(); }
+        if (e.key === "Escape") { // priority: help → cheats → pause
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            e.preventDefault();
             return;
         }
         const tag = (e.target && e.target.tagName) || "";
         if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
-        const k = e.key.toLowerCase();
-        if (k === "h" || k === "?") { ui.help = !ui.help; ui.cheat = false; render(); return; }
-        if (k === "c" && !online) { ui.cheat = !ui.cheat; ui.help = false; render(); return; }
-        if (ui.help || ui.cheat || !state) return;
+        const code = e.code || "", k = e.key.toLowerCase();
+        if (code === "KeyH" || k === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC" && !online && !helpOpen) { toggleCheats(); e.preventDefault(); return; }
+        if (code === "KeyP" && !online && !helpOpen && !cheatsOpen) { togglePause(); e.preventDefault(); return; }
+        if (blocked() || !state) return;
         if (k === "t" || e.key === "ArrowLeft") {
             if (state.phase === "ask" && myTurn()) { e.preventDefault(); submitAction({ type: "answer", value: true }); }
             return;
@@ -769,8 +922,9 @@ export function mount(root, context = {}) {
         destroy() {
             dead = true;
             clearInterval(beat);
-            for (const id of timers) clearTimeout(id);
+            for (const rec of timers.values()) clearTimeout(rec.id);
             timers.clear();
+            deferred = [];
             root.removeEventListener("click", handleClick);
             root.removeEventListener("change", handleChange);
             document.removeEventListener("keydown", onKey);

@@ -9,6 +9,8 @@
  * kontrol keyboard + mouse + tombol layar untuk mobile.
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "cats-wars",
     name: "Cats Wars",
@@ -45,38 +47,77 @@ const mkRng = (s) => () => {
 const rndSeed = () => (Math.random() * 1e9) | 0;
 
 const CSS = `
-.cw{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#0f172a;max-width:980px;margin:0 auto}
+.cw{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#0f172a;width:100%;max-width:none;height:100%;min-height:0;display:flex;flex-direction:column;gap:8px}
 .cw *{box-sizing:border-box}
-.cw-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
-.cw-top h2{margin:0;font-size:18px;letter-spacing:-.01em}
-.cw-top p{margin:0;font-size:12px;color:#64748b}
-.cw-tools{display:flex;gap:6px;flex-wrap:wrap}
-.cw-btn{border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:6px 10px;font-size:13px;cursor:pointer;color:#0f172a;font-family:inherit}
+.cw [hidden]{display:none!important}
+.cw-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.cw-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:999px;background:#fff;color:#64748b;white-space:nowrap}
+.cw-chip b{color:#0f172a;font-weight:700;font-variant-numeric:tabular-nums}
+.cw-chip.turn{border-color:#0f172a;background:#0f172a;color:#fff}
+.cw-chip.turn b{color:#fff}
+.cw-team i.dot{width:7px;height:7px;border-radius:50%;display:block;flex:none}
+.cw-bar{display:inline-block;width:46px;height:5px;border-radius:3px;background:#e2e8f0;overflow:hidden;vertical-align:middle}
+.cw-bar i{display:block;height:100%;width:100%;transition:width .12s linear}
+.cw-spacer{flex:1 1 auto}
+.cw-btn{border:1px solid #e2e8f0;background:#fff;border-radius:9px;padding:6px 9px;min-height:32px;font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer;color:#0f172a;font-family:inherit;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .cw-btn:hover{background:#f1f5f9}
 .cw-btn.on{background:#0f172a;color:#fff;border-color:#0f172a}
-.cw-btn.pri{background:#f97316;border-color:#f97316;color:#fff;font-weight:600}
+.cw-btn.pri{background:#f97316;border-color:#f97316;color:#fff;font-weight:700}
 .cw-btn:focus-visible{outline:2px solid #0d9488;outline-offset:2px}
 .cw-btn[disabled]{opacity:.4;cursor:not-allowed}
-.cw-stage{position:relative;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;background:#f8fafc;touch-action:none}
-.cw-stage canvas{display:block;width:100%;height:auto;aspect-ratio:16/9;cursor:crosshair}
+.cw-icon-btn svg{flex:none;display:block}
+.cw-board{position:relative;width:100%;aspect-ratio:16/9;border:0;padding:0;border-radius:12px;overflow:hidden;background:#f8fafc;touch-action:none}
+.cw-board canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .cw-ov{position:absolute;inset:0;background:rgba(248,250,252,.93);display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto;z-index:2}
 .cw-ov[hidden]{display:none}
-.cw-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;max-width:480px;width:100%;font-size:13px;line-height:1.55}
-.cw-card h3{margin:0 0 6px;font-size:16px}
+.cw-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px;max-width:520px;width:100%;max-height:100%;font-size:13px;line-height:1.55;display:flex;flex-direction:column;overflow:hidden}
+.cw-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;margin-bottom:8px}
+.cw-head h3{margin:0;font-size:16px}
+.cw-rows,.cw-cheats,.cw-help{flex:1 1 auto;min-height:0;overflow:auto}
+.cw-foot{flex:none;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0}
+.cw-foot .note{margin-right:auto;color:#64748b;font-size:11px}
 .cw-card p{margin:4px 0}
 .cw-card ul{margin:4px 0 4px 16px;padding:0}
 .cw-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
-.cw-row>b{width:92px;font-weight:600;color:#64748b;font-size:12px}
-.cw-wb{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px}
+.cw-row>b{width:92px;font-weight:600;color:#64748b;font-size:12px;flex:none}
+.cw-cheats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;align-content:start}
+.cw-cheats .cw-btn{width:100%;justify-content:flex-start}
+.cw-wb{display:flex;gap:6px;overflow-x:auto;padding:2px 0;flex:none;scrollbar-width:thin}
 .cw-wb .cw-btn{flex:0 0 auto;white-space:nowrap}
-.cw-pad{display:none;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;user-select:none;-webkit-user-select:none;touch-action:none}
-.cw-pad.on{display:flex}
+.cw-pad{display:none;justify-content:space-between;align-items:center;gap:10px;flex:none;margin-top:2px;user-select:none;-webkit-user-select:none;touch-action:none}
+.cw-pad.on,.cw.touch .cw-pad{display:flex}
 @media (pointer:coarse){.cw-pad{display:flex}}
 .cw-g{display:flex;gap:6px}
 .cw-pad button{width:52px;height:52px;border-radius:14px;border:1px solid #cbd5e1;background:#fff;font-size:18px;color:#0f172a;touch-action:none}
 .cw-pad button:active{background:#e2e8f0}
 .cw-pad .cw-fire{width:96px;background:#f97316;border-color:#f97316;color:#fff;font-weight:700;font-size:14px}
-.cw-act{display:flex;justify-content:flex-end;margin-top:8px}
+
+/* --- Batch 02 design polish --- */
+.cw :focus-visible,.cw button:focus-visible{outline:2px solid #0d9488;outline-offset:2px}
+.cw-btn{min-height:44px;padding:8px 12px}
+.cw-pad button{min-height:44px}
+@media (pointer:coarse){.cw button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.cw *,.cw *::before,.cw *::after{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements --- */
+.cw.game-fill > .cw-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.cw.game-fill > .cw-board:not(:has(.cw-ov:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
+.cw.game-fill > .cw-board:has(.cw-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.cw .cw-hud{gap:5px}
+.cw .cw-hud .cw-chip{padding:4px 6px;font-size:9px}
+.cw .cw-hud .cw-chip[data-hud="wins"],.cw .cw-hud .cw-chip[data-hud="banner"]{display:none}
+.cw .cw-hud .cw-bar{width:30px}
+.cw .cw-hud .cw-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.cw .cw-hud .cw-btn-label,.cw .cw-hud .cw-spacer{display:none}
+.cw .cw-ov{padding:8px}
+.cw .cw-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.cw .cw-rows,.cw .cw-cheats,.cw .cw-help{scrollbar-width:none}
+.cw .cw-rows::-webkit-scrollbar,.cw .cw-cheats::-webkit-scrollbar,.cw .cw-help::-webkit-scrollbar{display:none}
+.cw .cw-foot{position:static;margin:0;padding:8px 0 0}
+.cw .cw-foot .note{display:none}
+.cw .cw-row>b{width:auto}
+}
 `;
 
 export function mount(root, context = {}) {
@@ -88,72 +129,101 @@ export function mount(root, context = {}) {
     let roomData = room?.room || null;
     let state = null;
 
-    const ui = { setup: isHost, help: false, cheat: false, pad: false, muted: false };
+    const ui = { setup: isHost, help: false, cheat: false, pause: false, pad: false, muted: false };
     const setup = { mode: online ? "room" : mode === "local" ? "local" : "ai", diff: "medium", cats: 3, time: 30, seed: rndSeed() };
     const cheats = { god: -1, inf: false, freeze: false, noWind: false, max: false, big: false, tp: false };
+    const markHelpSeen = () => { try { localStorage.setItem("catsWarsHelp", "1"); } catch (_) { /* storage blocked */ } };
     let seenHelp = false;
     try { seenHelp = localStorage.getItem("catsWarsHelp") === "1"; } catch (_) { }
-    if (!seenHelp) ui.help = true;
+    if (!seenHelp) { ui.help = true; markHelpSeen(); }
 
     root.innerHTML = `
   <style>${CSS}</style>
-  <div class="game-app cw">
-    <div class="cw-top">
-      <div><h2>Cats Wars</h2><p><span data-status>Siap</span></p></div>
-      <div class="cw-tools">
-        <button class="cw-btn" data-help type="button">? Cara main</button>
-        ${online ? "" : '<button class="cw-btn" data-cheat type="button">Cheat</button>'}
-        <button class="cw-btn" data-padtoggle type="button">Tombol layar</button>
-        <button class="cw-btn" data-mute type="button">Suara</button>
-      </div>
+  <div class="game-app cw game-fill" data-cw>
+    <div class="cw-hud">
+      <span class="cw-chip" data-status>Siap</span>
+      <span class="cw-chip cw-team" data-team="0"><i class="dot" style="background:#f97316"></i>Oranye <b data-hud="alive0">0</b> <span class="cw-bar"><i data-hud="hp0" style="background:#f97316"></i></span></span>
+      <span class="cw-chip cw-team" data-team="1"><i class="dot" style="background:#0d9488"></i>Teal <b data-hud="alive1">0</b> <span class="cw-bar"><i data-hud="hp1" style="background:#0d9488"></i></span></span>
+      <span class="cw-chip">WAKTU <b data-hud="time">30</b>d</span>
+      <span class="cw-chip">ANGIN <b data-hud="wind">—</b></span>
+      <span class="cw-chip">SENJATA <b data-hud="weapon">—</b></span>
+      <span class="cw-chip" data-hud="powerrow" hidden>DAYA <span class="cw-bar"><i data-hud="power" style="background:#f97316"></i></span></span>
+      <span class="cw-chip" data-hud="banner" hidden></span>
+      <span class="cw-chip" data-hud="wins">MENANG <b data-hud="winsn">0</b></span>
+      <span class="cw-spacer"></span>
+      <button class="cw-btn cw-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="cw-btn-label">Help</span></button>
+      <button class="cw-btn cw-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="cw-btn-label">Cheats</span></button>
+      <button class="cw-btn cw-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="cw-btn-label">Pause</span></button>
+      <button class="cw-btn cw-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="cw-btn-label">Restart</span></button>
+      <button class="cw-btn cw-icon-btn" type="button" data-padtoggle aria-label="On-screen buttons" title="On-screen buttons">${iconSVG("gamepad2", { size: 14 })}<span class="cw-btn-label">Pad</span></button>
+      <button class="cw-btn cw-icon-btn" type="button" data-mute aria-label="Mute sound" title="Mute sound">${iconSVG("volume1", { size: 14 })}<span class="cw-btn-label">Suara</span></button>
+      <button class="cw-btn cw-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cw-btn-label">Exit</span></button>
     </div>
-    <section class="cw-stage game-panel" data-board>
+    <section class="game-panel cw-board" data-board>
       <canvas width="${W}" height="${H}" data-cv></canvas>
 
       <div class="cw-ov" data-ov="setup" hidden><div class="cw-card">
-        <h3>Cats Wars</h3>
-        <p style="color:#64748b">Hancurkan semua kucing lawan. Peta dibuat acak dan selalu bisa dilalui.</p>
-        <div class="cw-row" data-local><b>Mode</b>
-          <button class="cw-btn" data-set="mode:ai" type="button">Vs Bot</button>
-          <button class="cw-btn" data-set="mode:local" type="button">2 Pemain lokal</button></div>
-        <div class="cw-row" data-local data-aionly><b>Level bot</b>
-          <button class="cw-btn" data-set="diff:easy" type="button">Mudah</button>
-          <button class="cw-btn" data-set="diff:medium" type="button">Sedang</button>
-          <button class="cw-btn" data-set="diff:hard" type="button">Sulit</button></div>
-        <div class="cw-row"><b>Kucing / tim</b>
-          ${[1, 2, 3, 4, 5].map((n) => `<button class="cw-btn" data-set="cats:${n}" type="button">${n}</button>`).join("")}</div>
-        <div class="cw-row"><b>Waktu giliran</b>
-          ${[20, 30, 45, 60].map((n) => `<button class="cw-btn" data-set="time:${n}" type="button">${n}d</button>`).join("")}</div>
-        <div class="cw-row"><b>Peta</b><button class="cw-btn" data-newmap type="button">🎲 Acak peta</button><span data-seed style="color:#64748b;font-size:12px"></span></div>
-        <div class="cw-row"><button class="cw-btn pri" data-start type="button">Mulai</button><button class="cw-btn" data-exit type="button">Keluar</button></div>
-        <p data-wins style="color:#64748b;font-size:12px"></p>
+        <div class="cw-head"><h3>Cats Wars</h3></div>
+        <div class="cw-rows">
+          <p style="color:#64748b">Hancurkan semua kucing lawan. Peta dibuat acak dan selalu bisa dilalui.</p>
+          <div class="cw-row" data-local><b>Mode</b>
+            <button class="cw-btn" data-set="mode:ai" type="button">Vs Bot</button>
+            <button class="cw-btn" data-set="mode:local" type="button">2 Pemain lokal</button></div>
+          <div class="cw-row" data-local data-aionly><b>Level bot</b>
+            <button class="cw-btn" data-set="diff:easy" type="button">Mudah</button>
+            <button class="cw-btn" data-set="diff:medium" type="button">Sedang</button>
+            <button class="cw-btn" data-set="diff:hard" type="button">Sulit</button></div>
+          <div class="cw-row"><b>Kucing / tim</b>
+            ${[1, 2, 3, 4, 5].map((n) => `<button class="cw-btn" data-set="cats:${n}" type="button">${n}</button>`).join("")}</div>
+          <div class="cw-row"><b>Waktu giliran</b>
+            ${[20, 30, 45, 60].map((n) => `<button class="cw-btn" data-set="time:${n}" type="button">${n}d</button>`).join("")}</div>
+          <div class="cw-row"><b>Peta</b><button class="cw-btn" data-newmap type="button">🎲 Acak peta</button><span data-seed style="color:#64748b;font-size:12px"></span></div>
+          <p data-wins style="color:#64748b;font-size:12px"></p>
+        </div>
+        <div class="cw-foot"><button class="cw-btn pri" data-start type="button">Mulai</button><button class="cw-btn" data-exit type="button">Keluar</button></div>
       </div></div>
 
-      <div class="cw-ov" data-ov="wait" hidden><div class="cw-card"><h3>Menunggu host…</h3><p>Host sedang menyiapkan permainan. Posisi tim kamu akan diacak otomatis.</p>
-        <div class="cw-row"><button class="cw-btn" data-exit type="button">Keluar</button></div></div></div>
+      <div class="cw-ov" data-ov="wait" hidden><div class="cw-card">
+        <div class="cw-head"><h3>Menunggu host…</h3></div>
+        <div class="cw-rows"><p>Host sedang menyiapkan permainan. Posisi tim kamu akan diacak otomatis.</p></div>
+        <div class="cw-foot"><button class="cw-btn" data-exit type="button">Keluar</button></div>
+      </div></div>
 
-      <div class="cw-ov" data-ov="over" hidden><div class="cw-card"><h3 data-overtitle>Selesai</h3><p data-oversub></p>
-        <div class="cw-row"><button class="cw-btn pri" data-again type="button">Main lagi</button><button class="cw-btn" data-exit type="button">Keluar</button></div></div></div>
+      <div class="cw-ov" data-ov="over" hidden><div class="cw-card">
+        <div class="cw-head"><h3 data-overtitle>Selesai</h3></div>
+        <div class="cw-rows"><p data-oversub></p></div>
+        <div class="cw-foot"><button class="cw-btn pri" data-again type="button">Main lagi</button><button class="cw-btn" data-exit type="button">Keluar</button></div>
+      </div></div>
+
+      <div class="cw-ov" data-ov="pause" hidden><div class="cw-card">
+        <div class="cw-head"><h3>Dijeda</h3></div>
+        <div class="cw-rows"><p>Waktu giliran dan bot dibekukan. Tekan P atau Escape untuk melanjutkan.</p></div>
+        <div class="cw-foot"><button class="cw-btn" data-exit type="button">Keluar</button><button class="cw-btn pri" data-resume type="button">Lanjut</button></div>
+      </div></div>
 
       <div class="cw-ov" data-ov="help" hidden><div class="cw-card">
-        <h3>Cara bermain</h3>
-        <p><b>Tujuan:</b> habiskan semua kucing lawan. Kucing mati jika HP habis atau jatuh ke air. Tiap giliran memakai satu kucing, ada batas waktu.</p>
-        <p><b>Keyboard:</b></p>
-        <ul><li>← → / A D: jalan (di mode Air Strike: geser target)</li><li>↑ ↓ / W S: atur sudut bidik</li><li>Enter: lompat</li><li>Spasi: tahan untuk isi power, lepas untuk menembak</li><li>1–6 atau Q / E: ganti senjata</li></ul>
-        <p><b>Mouse:</b> gerakkan untuk membidik, tahan klik lalu lepas untuk menembak, scroll untuk ganti senjata. Air Strike: klik titik target, lalu Spasi.</p>
-        <p><b>Mobile:</b> pakai tombol layar (◀ ▶ ⤒ ▲ ▼ dan TEMBAK, tahan lalu lepas).</p>
-        <p><b>Senjata:</b> Bazoka (terpengaruh angin), Granat (memantul, meledak 3 detik), Shotgun (3 peluru), Dinamit (taruh lalu lari), Air Strike (5 rudal), Pukulan (jarak dekat).</p>
-        <p><b>Tips:</b> perhatikan panah angin, ambil peti 🟩 (HP) dan 🟫 (amunisi), gali tanah di bawah lawan agar jatuh.</p>
-        <div class="cw-row"><button class="cw-btn pri" data-help type="button">Mengerti</button></div>
+        <div class="cw-head"><h3>Cara bermain</h3><button class="cw-btn" type="button" data-help-close aria-label="Close help">Tutup</button></div>
+        <div class="cw-help">
+          <p><b>Tujuan:</b> habiskan semua kucing lawan. Kucing mati jika HP habis atau jatuh ke air. Tiap giliran memakai satu kucing, ada batas waktu.</p>
+          <p><b>Keyboard:</b></p>
+          <ul><li>← → / A D: jalan (di mode Air Strike: geser target)</li><li>↑ ↓ / W S: atur sudut bidik</li><li>Enter: lompat</li><li>Spasi: tahan untuk isi power, lepas untuk menembak</li><li>1–6 atau Q / E: ganti senjata</li><li>H help · C cheat · P/Escape jeda · R mulai ulang</li></ul>
+          <p><b>Mouse:</b> gerakkan untuk membidik, tahan klik lalu lepas untuk menembak, scroll untuk ganti senjata. Air Strike: klik titik target, lalu Spasi.</p>
+          <p><b>Mobile:</b> pakai tombol layar (◀ ▶ ⤒ ▲ ▼ dan TEMBAK, tahan lalu lepas).</p>
+          <p><b>Senjata:</b> Bazoka (terpengaruh angin), Granat (memantul, meledak 3 detik), Shotgun (3 peluru), Dinamit (taruh lalu lari), Air Strike (5 rudal), Pukulan (jarak dekat).</p>
+          <p><b>Tips:</b> perhatikan panah angin, ambil peti 🟩 (HP) dan 🟫 (amunisi), gali tanah di bawah lawan agar jatuh.</p>
+        </div>
+        <div class="cw-foot"><span class="note">Tekan H untuk membuka lagi</span><button class="cw-btn pri" type="button" data-help-close>Mengerti</button></div>
       </div></div>
 
       <div class="cw-ov" data-ov="cheat" hidden><div class="cw-card">
-        <h3>Cheat</h3>
-        <div class="cw-row"><button class="cw-btn" data-ch="god" type="button">Kebal</button><button class="cw-btn" data-ch="inf" type="button">Amunisi tak terbatas</button><button class="cw-btn" data-ch="freeze" type="button">Bekukan waktu</button></div>
-        <div class="cw-row"><button class="cw-btn" data-ch="noWind" type="button">Tanpa angin</button><button class="cw-btn" data-ch="max" type="button">Power penuh instan</button><button class="cw-btn" data-ch="big" type="button">Ledakan besar</button></div>
-        <div class="cw-row"><button class="cw-btn" data-ch="heal" type="button">Pulihkan HP</button><button class="cw-btn" data-ch="ammo" type="button">Isi amunisi</button><button class="cw-btn" data-ch="crates" type="button">Jatuhkan peti</button></div>
-        <div class="cw-row"><button class="cw-btn" data-ch="tp" type="button">Teleport (klik peta)</button><button class="cw-btn" data-ch="skip" type="button">Lewati giliran</button><button class="cw-btn" data-ch="kill" type="button">Habisi lawan</button></div>
-        <div class="cw-row"><button class="cw-btn pri" data-cheat type="button">Tutup</button></div>
+        <div class="cw-head"><h3>Cheat</h3><button class="cw-btn" type="button" data-cheat-close aria-label="Close cheats">Tutup</button></div>
+        <div class="cw-cheats">
+          <button class="cw-btn" data-ch="god" type="button">Kebal</button><button class="cw-btn" data-ch="inf" type="button">Amunisi tak terbatas</button><button class="cw-btn" data-ch="freeze" type="button">Bekukan waktu</button>
+          <button class="cw-btn" data-ch="noWind" type="button">Tanpa angin</button><button class="cw-btn" data-ch="max" type="button">Power penuh instan</button><button class="cw-btn" data-ch="big" type="button">Ledakan besar</button>
+          <button class="cw-btn" data-ch="heal" type="button">Pulihkan HP</button><button class="cw-btn" data-ch="ammo" type="button">Isi amunisi</button><button class="cw-btn" data-ch="crates" type="button">Jatuhkan peti</button>
+          <button class="cw-btn" data-ch="tp" type="button">Teleport (klik peta)</button><button class="cw-btn" data-ch="skip" type="button">Lewati giliran</button><button class="cw-btn" data-ch="kill" type="button">Habisi lawan</button>
+        </div>
+        <div class="cw-foot"><button class="cw-btn pri" type="button" data-cheat-close>Tutup</button></div>
       </div></div>
     </section>
 
@@ -164,14 +234,37 @@ export function mount(root, context = {}) {
       <div class="cw-g"><button data-hold="u" type="button" aria-label="Bidik naik">▲</button><button data-hold="d" type="button" aria-label="Bidik turun">▼</button></div>
       <button class="cw-fire" data-fire type="button">TEMBAK</button>
     </div>
-    <div class="game-actions cw-act"><button class="game-action-button cw-btn" type="button" data-exit>Exit game</button></div>
   </div>`;
 
     const $ = (s) => root.querySelector(s);
     const $$ = (s) => [...root.querySelectorAll(s)];
+    const app = $("[data-cw]");
+    const board = $("[data-board]");
     const cv = $("[data-cv]");
     const ctx = cv.getContext("2d");
     const statusEl = $("[data-status]");
+    const hud = {
+        alive: [$('[data-hud="alive0"]'), $('[data-hud="alive1"]')],
+        hp: [$('[data-hud="hp0"]'), $('[data-hud="hp1"]')],
+        team: [$('[data-team="0"]'), $('[data-team="1"]')],
+        time: $('[data-hud="time"]'),
+        wind: $('[data-hud="wind"]'),
+        weapon: $('[data-hud="weapon"]'),
+        powerRow: $('[data-hud="powerrow"]'),
+        power: $('[data-hud="power"]'),
+        banner: $('[data-hud="banner"]'),
+        wins: $('[data-hud="winsn"]'),
+    };
+
+    function fitCanvas() {
+        const rect = board.getBoundingClientRect();
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const cw = Math.max(320, rect.width || 640);
+        const ch = cw * (H / W);
+        cv.width = Math.round(cw * dpr);
+        cv.height = Math.round(ch * dpr);
+        ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+    }
 
     // ---------------------------------------------------------------- terrain
     const tc = document.createElement("canvas");
@@ -320,7 +413,7 @@ export function mount(root, context = {}) {
         };
         applied = 0; lastEv = 0; parts = []; rings = []; traces = [];
         Object.assign(cheats, { god: -1, inf: false, freeze: false, noWind: false, max: false, big: false, tp: false });
-        ui.setup = false;
+        ui.setup = false; ui.cheat = false; ui.pause = false;
         startTurn(state.turnTeam);
         publish(true); render();
     }
@@ -557,6 +650,7 @@ export function mount(root, context = {}) {
     function canAct() {
         const s = state;
         if (!s || ui.setup && isHost && false) return false;
+        if (ui.help || ui.cheat || ui.pause) return false;
         if (s.phase !== "aim" && s.phase !== "resolve") return false;
         return online ? s.turnTeam === myTeam() : s.mode === "local" || s.turnTeam === 0;
     }
@@ -792,46 +886,63 @@ export function mount(root, context = {}) {
         rings = rings.filter((r) => r.l > 0);
         for (const p of parts) { g.globalAlpha = Math.max(0, p.l); g.fillStyle = p.c; g.fillRect(p.x, p.y, p.z, p.z); p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.l -= 0.025; }
         g.globalAlpha = 1; parts = parts.filter((p) => p.l > 0);
-        // HUD
-        g.font = "600 12px system-ui,sans-serif";
-        for (const t of [0, 1]) {
-            const hp = s.cats.filter((k) => k.team === t).reduce((a, k) => a + k.hp, 0), max = s.cfg.cats * 100, x = t === 0 ? 14 : W - 174;
-            g.textAlign = "left"; g.fillStyle = "#475569";
-            const me = s.mode === "room" ? (t === myTeam() ? " (kamu)" : "") : s.mode === "ai" ? (t === 0 ? " (kamu)" : " (bot)") : "";
-            g.fillText(`${TEAMS[t].n}${me} · ${alive(t).length}`, x, 20);
-            g.fillStyle = "#e2e8f0"; g.fillRect(x, 26, 160, 7); g.fillStyle = TEAMS[t].c; g.fillRect(x, 26, (160 * hp) / max, 7);
-            if (t === s.turnTeam && s.phase !== "over") { g.fillStyle = "#0f172a"; g.fillRect(x, 36, 160, 2); }
-        }
-        g.textAlign = "center"; g.fillStyle = "#0f172a"; g.font = "700 26px system-ui,sans-serif";
-        g.fillText(s.phase === "aim" ? Math.ceil(s.timer) : "·", W / 2, 34);
-        g.font = "600 11px system-ui,sans-serif"; g.fillStyle = "#64748b"; g.fillText("angin", W / 2, 52);
-        g.strokeStyle = "#0f172a"; g.lineWidth = 2; g.beginPath(); g.moveTo(W / 2, 60); g.lineTo(W / 2 + s.wind * 6, 60); g.stroke();
-        if (s.wind) { const d = Math.sign(s.wind); g.fillStyle = "#0f172a"; g.beginPath(); g.moveTo(W / 2 + s.wind * 6, 60); g.lineTo(W / 2 + s.wind * 6 - d * 6, 56); g.lineTo(W / 2 + s.wind * 6 - d * 6, 64); g.fill(); }
-        if (s.charging) { g.fillStyle = "#e2e8f0"; g.fillRect(W / 2 - 60, 70, 120, 6); g.fillStyle = "#f97316"; g.fillRect(W / 2 - 60, 70, 1.2 * s.power, 6); }
-        if (s.bannerT > 0) { g.globalAlpha = Math.min(1, s.bannerT); g.font = "700 20px system-ui,sans-serif"; g.fillStyle = "#0f172a"; g.fillText(s.banner, W / 2, 120); g.globalAlpha = 1; }
+        // Info (skor/status/waktu/angin) ditampilkan di bar HUD; board hanya arena.
     }
 
     // ---------------------------------------------------------------- DOM render
     let wbSig = "";
     function render() {
         const s = state;
+        const modal = ui.help || ui.cheat || ui.pause;
         const show = (n, v) => { const el = $(`[data-ov="${n}"]`); if (el) el.hidden = !v; };
-        show("setup", ui.setup && isHost && !ui.help);
-        show("wait", !isHost && !s && !ui.help);
-        show("over", !!s && s.phase === "over" && !ui.help);
+        show("setup", ui.setup && isHost && !modal);
+        show("wait", !isHost && !s && !modal);
+        show("over", !!s && s.phase === "over" && !modal);
+        show("pause", ui.pause && !ui.help && !ui.cheat);
+        show("cheat", ui.cheat && !ui.help && !online);
         show("help", ui.help);
-        show("cheat", ui.cheat && !online);
         $$("[data-set]").forEach((b) => { const [k, v] = b.dataset.set.split(":"); b.classList.toggle("on", String(setup[k]) === v); });
         $$("[data-local]").forEach((el) => (el.hidden = online));
         $$("[data-aionly]").forEach((el) => (el.hidden = online || setup.mode !== "ai"));
         const seedEl = $("[data-seed]"); if (seedEl) seedEl.textContent = `#${setup.seed}`;
+        let winsN = 0;
+        try { winsN = +localStorage.getItem(META.bestKey) || 0; } catch (_) { }
         const wins = $("[data-wins]");
-        if (wins) { let n = 0; try { n = +localStorage.getItem(META.bestKey) || 0; } catch (_) { } wins.textContent = n ? `Kemenangan vs Bot: ${n}` : ""; }
+        if (wins) wins.textContent = winsN ? `Kemenangan vs Bot: ${winsN}` : "";
+        if (hud.wins) hud.wins.textContent = String(winsN);
         $$("[data-ch]").forEach((b) => { const k = b.dataset.ch; if (k in cheats) b.classList.toggle("on", k === "god" ? cheats.god >= 0 : !!cheats[k]); });
-        $("[data-padtoggle]").classList.toggle("on", ui.pad);
+        const cbtn = $("[data-cheats]");
+        if (cbtn) {
+            const active = Object.keys(cheats).filter((k) => (typeof cheats[k] === "boolean" ? cheats[k] : k === "god" && cheats[k] >= 0)).length;
+            cbtn.classList.toggle("on", active > 0 || ui.cheat);
+            cbtn.disabled = online;
+            const label = cbtn.querySelector(".cw-btn-label");
+            if (label) label.textContent = active ? `Cheats ${active}` : "Cheats";
+        }
+        const pbtn = $("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".cw-btn-label");
+            if (label) label.textContent = ui.pause ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", ui.pause ? "Resume" : "Pause");
+            pbtn.title = ui.pause ? "Resume (P)" : "Pause (P)";
+            pbtn.classList.toggle("on", ui.pause);
+            pbtn.disabled = online && !isHost;
+        }
+        const rbtn = $("[data-restart]"); if (rbtn) rbtn.disabled = !isHost;
+        const padBtn = $("[data-padtoggle]");
+        if (padBtn) {
+            padBtn.classList.toggle("on", ui.pad);
+            const label = padBtn.querySelector(".cw-btn-label");
+            if (label) label.textContent = ui.pad ? "Pad on" : "Pad";
+        }
         $("[data-pad]").classList.toggle("on", ui.pad);
-        $("[data-mute]").classList.toggle("on", ui.muted);
-        const ct = $("[data-cheat]"); if (ct) ct.classList.toggle("on", ui.cheat);
+        const muteBtn = $("[data-mute]");
+        if (muteBtn) {
+            muteBtn.classList.toggle("on", ui.muted);
+            const label = muteBtn.querySelector(".cw-btn-label");
+            if (label) label.textContent = ui.muted ? "Bisukan" : "Suara";
+            muteBtn.setAttribute("aria-label", ui.muted ? "Unmute sound" : "Mute sound");
+        }
         if (s && s.phase === "over") {
             const w = s.winner;
             let title = "Seri", sub = "Semua kucing tumbang.";
@@ -850,6 +961,24 @@ export function mount(root, context = {}) {
             st = `Tim ${TEAMS[s.turnTeam].n} · ${c ? c.name : ""}${mine ? " (giliranmu)" : ""}${online ? ` · kamu Tim ${TEAMS[myTeam()].n}` : ""}`;
         }
         statusEl.textContent = st;
+        if (hud.banner) {
+            hud.banner.hidden = !s || s.bannerT <= 0;
+            if (s && s.bannerT > 0) hud.banner.textContent = s.banner;
+        }
+        // team bars + turn / time / wind / weapon / power
+        for (const t of [0, 1]) {
+            const cats = s ? s.cats.filter((c) => c.team === t) : [];
+            const hp = cats.reduce((a, c) => a + Math.max(0, c.hp), 0);
+            const max = (s ? s.cfg.cats : setup.cats) * 100;
+            if (hud.alive[t]) hud.alive[t].textContent = String(cats.filter((c) => c.alive).length);
+            if (hud.hp[t]) hud.hp[t].style.width = `${clamp(hp / max, 0, 1) * 100}%`;
+            if (hud.team[t]) hud.team[t].classList.toggle("turn", !!s && s.turnTeam === t && s.phase !== "over");
+        }
+        if (hud.time) hud.time.textContent = s && s.phase === "aim" ? String(Math.ceil(s.timer)) : s ? "·" : String(setup.time);
+        if (hud.wind) hud.wind.textContent = s ? (s.wind > 0 ? `→ ${s.wind}` : s.wind < 0 ? `← ${-s.wind}` : "0") : "—";
+        if (hud.weapon) hud.weapon.textContent = s ? `${WEAPONS[s.weapon].i} ${WEAPONS[s.weapon].n}` : "—";
+        if (hud.powerRow) hud.powerRow.hidden = !s || !s.charging;
+        if (hud.power) hud.power.style.width = `${s ? s.power : 0}%`;
         // weapon bar
         const t = s ? s.turnTeam : 0, can = canAct();
         const sig = s ? `${t}|${s.weapon}|${s.ammo[t].join(",")}|${can}|${cheats.inf}` : "";
@@ -888,8 +1017,70 @@ export function mount(root, context = {}) {
         act({ type: "weapon", w });
     };
 
+    function clearHeld() {
+        kd.l = kd.r = kd.u = kd.d = 0;
+        mouseCharging = false;
+        if (state && state.charging) { state.charging = false; state.power = 0; }
+        syncKeys();
+    }
+    function toggleHelp(on) {
+        const next = typeof on === "boolean" ? on : !ui.help;
+        if (next === ui.help) { render(); return; }
+        ui.help = next;
+        if (ui.help) { ui.cheat = false; clearHeld(); }
+        else markHelpSeen();
+        render();
+    }
+    function toggleCheat(on) {
+        if (online) return;
+        ui.cheat = typeof on === "boolean" ? on : !ui.cheat;
+        if (ui.cheat) { ui.help = false; clearHeld(); }
+        render();
+    }
+    function togglePause(on) {
+        if (online && !isHost) return;
+        ui.pause = typeof on === "boolean" ? on : !ui.pause;
+        if (ui.pause) { ui.cheat = false; clearHeld(); }
+        else { last = performance.now(); acc = 0; lastPub = performance.now(); }
+        render();
+    }
+    function restartGame() {
+        if (!isHost) return;
+        if (ui.help) toggleHelp(false);
+        ui.cheat = false;
+        if (ui.pause) togglePause(false);
+        setup.seed = rndSeed();
+        startGame();
+    }
+
     function onKey(e, down) {
         if (e.target && e.target.closest && e.target.closest("input,textarea")) return;
+        const code = e.code || (e.key && e.key.length === 1 && /[a-z]/i.test(e.key) ? `Key${e.key.toUpperCase()}` : e.key || "");
+        if (down && !e.repeat) {
+            // Prioritas: help → cheats → pause/Escape → Enter → aksi game.
+            if (code === "KeyH") { toggleHelp(); e.preventDefault(); syncKeys(); return; }
+            if (code === "KeyC") { toggleCheat(); e.preventDefault(); syncKeys(); return; }
+            if (code === "KeyP" || code === "Escape") {
+                if (ui.help) toggleHelp(false);
+                else if (ui.cheat) toggleCheat(false);
+                else togglePause();
+                e.preventDefault(); syncKeys(); return;
+            }
+            if (code === "KeyR") {
+                if (ui.help) toggleHelp(false);
+                else if (ui.cheat) toggleCheat(false);
+                else if (ui.pause) togglePause(false);
+                else restartGame();
+                e.preventDefault(); syncKeys(); return;
+            }
+            if (code === "Enter" && (ui.help || ui.cheat || ui.pause)) {
+                if (ui.help) toggleHelp(false);
+                else if (ui.cheat) toggleCheat(false);
+                else togglePause(false);
+                e.preventDefault(); syncKeys(); return;
+            }
+        }
+        if (ui.help || ui.cheat || ui.pause) { e.preventDefault(); syncKeys(); return; }
         const k = e.key; let used = true;
         switch (k) {
             case "ArrowLeft": case "a": case "A": kd.l = down ? 1 : 0; break;
@@ -901,10 +1092,9 @@ export function mount(root, context = {}) {
             case "1": case "2": case "3": case "4": case "5": case "6": if (down) act({ type: "weapon", w: +k - 1 }); break;
             case "q": case "Q": if (down) cycle(-1); break;
             case "e": case "E": if (down) cycle(1); break;
-            case "h": case "H": if (down) { ui.help = !ui.help; render(); } break;
             default: used = false;
         }
-        if (used && state && !ui.help) e.preventDefault();
+        if (used && state) e.preventDefault();
         syncKeys();
     }
     const kdown = (e) => onKey(e, true), kup = (e) => onKey(e, false);
@@ -971,8 +1161,13 @@ export function mount(root, context = {}) {
         if (b.matches("[data-newmap]")) { setup.seed = rndSeed(); buildTerrain(setup.seed); render(); return; }
         if (b.matches("[data-start]")) { startGame(); return; }
         if (b.matches("[data-again]")) { if (isHost) { setup.seed = rndSeed(); startGame(); } return; }
-        if (b.matches("[data-help]")) { ui.help = !ui.help; if (!ui.help) { try { localStorage.setItem("catsWarsHelp", "1"); } catch (_) { } } render(); return; }
-        if (b.matches("[data-cheat]")) { ui.cheat = !ui.cheat; render(); return; }
+        if (b.matches("[data-help]")) { toggleHelp(); return; }
+        if (b.matches("[data-help-close]")) { toggleHelp(false); return; }
+        if (b.matches("[data-cheats]")) { toggleCheat(); return; }
+        if (b.matches("[data-cheat-close]")) { toggleCheat(false); return; }
+        if (b.matches("[data-pause]")) { togglePause(); return; }
+        if (b.matches("[data-resume]")) { togglePause(false); return; }
+        if (b.matches("[data-restart]")) { restartGame(); return; }
         if (b.matches("[data-padtoggle]")) { ui.pad = !ui.pad; render(); return; }
         if (b.matches("[data-mute]")) { ui.muted = !ui.muted; render(); return; }
         if (b.dataset.ch) { cheatAction(b.dataset.ch); return; }
@@ -984,6 +1179,12 @@ export function mount(root, context = {}) {
     let raf = 0, last = performance.now(), acc = 0, frame = 0, lastTurnSeen = -1;
     function loop(now) {
         raf = requestAnimationFrame(loop);
+        if (ui.pause) {
+            // Jeda: hentikan step/bot/timer dan geser penanda waktu saat lanjut.
+            last = now; acc = 0;
+            if (online && isHost) lastPub = performance.now();
+            return;
+        }
         acc += Math.min(0.1, (now - last) / 1000); last = now;
         while (acc >= DT) { step(); acc -= DT; }
         if (state && !sim && state.turnTeam !== lastTurnSeen) { lastTurnSeen = state.turnTeam; syncKeys.last = ""; syncKeys(); }
@@ -1006,6 +1207,12 @@ export function mount(root, context = {}) {
         }
     }
     if (isHost) buildTerrain(setup.seed);
+    fitCanvas();
+    const onResize = () => { fitCanvas(); render(); };
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(onResize); ro.observe(board); }
+    else window.addEventListener("resize", onResize);
+    if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) app.classList.add("touch");
     render();
     raf = requestAnimationFrame(loop);
 
@@ -1017,6 +1224,8 @@ export function mount(root, context = {}) {
             document.removeEventListener("keyup", kup);
             window.removeEventListener("blur", blur);
             window.removeEventListener("pointerup", winUp);
+            window.removeEventListener("resize", onResize);
+            if (ro) ro.disconnect();
             try { ac && ac.close(); } catch (_) { }
         },
     };

@@ -2,6 +2,8 @@
 /* Sword Master — deckbuilding roguelike terinspirasi Slay the Spire.
  * Template: export META + mount(root, context). Jalankan: node tools/build-games-manifest.mjs
  */
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "sword-master", name: "Sword Master", category: "rpg", catLabel: "RPG",
     desc: "A minimalist deckbuilding roguelike: build a lean deck, climb three acts, slay the bosses.",
@@ -185,36 +187,68 @@ export function mount(root, context = {}) {
     const isHost = !online || room.isHost;
     const hostSeat = online ? (Math.random() < 0.5 ? 0 : 1) : 0;
     let roomData = room?.room || null;
-    const unsubs = [], timers = new Set();
-    const later = (ms, fn) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; };
+    const unsubs = [], timers = new Set(), scheduled = [];
+    function arm(item, ms) {
+        item.start = Date.now(); item.remain = ms;
+        item.id = setTimeout(() => {
+            timers.delete(item.id);
+            const i = scheduled.indexOf(item); if (i >= 0) scheduled.splice(i, 1);
+            if (!paused) item.fn();
+        }, ms);
+        timers.add(item.id);
+        if (!scheduled.includes(item)) scheduled.push(item);
+        return item.id;
+    }
+    const later = (ms, fn) => arm({ fn }, ms);
+    function freezeTimers() {
+        const t = Date.now();
+        for (const item of scheduled) {
+            clearTimeout(item.id); timers.delete(item.id);
+            item.remain = Math.max(0, item.remain - (t - item.start));
+        }
+    }
+    function resumeTimers() { for (const item of scheduled.slice()) arm(item, item.remain); }
     const mySeat = () => online ? (isHost ? S.hostSeat : 1 - S.hostSeat) : 0;
     const viewSeat = () => online ? (isHost ? (S?.hostSeat ?? 0) : 1 - (S?.hostSeat ?? 0)) : 0;
 
     let S = null;                 // session
     const cheats = { god: false, energy: false, gold: false };
     let cheated = false;
+    let paused = false, cheatsOpen = false, helpOpen = false;
+    let pauseStart = 0, pauseOffset = 0;
+    const now = () => Date.now() - pauseOffset;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("swordMasterHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("swordMasterHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
     function loadBest() { try { return JSON.parse(localStorage.getItem(META.bestKey) || "null"); } catch (_) { return null; } }
     function saveBest(v) { try { localStorage.setItem(META.bestKey, JSON.stringify(v)); } catch (_) { } }
 
     /* ---------- markup ---------- */
     root.innerHTML = `
-<div class="game-app sm-root">
+<div class="game-app sm-root game-fill" data-sm>
 <style>
-.sm-root{--ink:#1c1917;--mut:#78716c;--line:#e7e5e4;--paper:#fafaf9;--red:#dc2626;--grn:#059669;--amb:#d97706;--blu:#2563eb}
+.sm-root{--ink:#1c1917;--mut:#78716c;--line:#e7e5e4;--paper:#fafaf9;--red:#dc2626;--grn:#059669;--amb:#d97706;--blu:#2563eb;color:#e5e7eb;display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;flex:1 1 auto;overflow-x:clip}
+.sm-root *{box-sizing:border-box}
 .sm-root [hidden]{display:none!important}
-.sm-root .sm-panel{padding:14px;background:var(--paper);border:1px solid var(--line);border-radius:18px;max-width:760px;width:100%;margin:0 auto;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-.sm-root .sm-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--mut);margin-bottom:10px}
+.sm-root .sm-panel{padding:16px;background:var(--paper);border:1px solid var(--line);border-radius:14px;max-width:760px;width:100%;margin:0 auto;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;position:relative;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.sm-root .sm-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mut)}
+.sm-root .sm-hud .sm-bar{display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--mut)}
 .sm-root .sm-bar b{color:var(--ink)}
-.sm-root .sm-chip{border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:#fff}
-.sm-root .sm-screen{min-height:340px}
-.sm-root .sm-center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:340px;text-align:center}
-.sm-root h3{margin:0;font-size:24px;font-weight:800;letter-spacing:.5px}
+.sm-root .sm-chip{border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:#fff}
+.sm-root .sm-spacer{flex:1 1 auto}
+.sm-root .sm-screen{flex:1 1 auto;min-height:0;overflow:auto}
+.sm-root .sm-center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:300px;text-align:center}
+.sm-root h3{margin:0;font-size:24px;line-height:1.25;font-weight:800;letter-spacing:.5px}
 .sm-root .sm-sub{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mut);margin:0}
 .sm-root button{font:600 13px/1.2 ui-sans-serif,system-ui,sans-serif;cursor:pointer}
-.sm-root .sm-btn{padding:11px 18px;border-radius:11px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);font-weight:700;letter-spacing:.5px}
-.sm-root .sm-ghost{padding:9px 14px;border-radius:11px;border:1px solid #d6d3d1;background:#fff;color:#44403c}
+.sm-root button:focus-visible{outline:2px solid var(--blu);outline-offset:2px}
+.sm-root .sm-btn{padding:12px 20px;min-height:44px;border-radius:10px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);font-weight:700;letter-spacing:.5px}
+.sm-root .sm-ghost{padding:10px 16px;min-height:44px;border-radius:10px;border:1px solid #d6d3d1;background:#fff;color:#44403c}
 .sm-root button:disabled{opacity:.4;cursor:default}
-.sm-root .sm-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
+.sm-root .sm-row{display:flex;gap:8px 12px;flex-wrap:wrap;justify-content:center;align-items:center}
 /* map */
 .sm-root .sm-map{width:100%;height:auto;display:block}
 .sm-root .sm-node{cursor:pointer}
@@ -225,8 +259,8 @@ export function mount(root, context = {}) {
 .sm-root .sm-node text{font-size:13px;font-weight:800;fill:var(--ink);text-anchor:middle;pointer-events:none}
 .sm-root .sm-edge{stroke:#d6d3d1;stroke-width:2;fill:none}
 /* combat */
-.sm-root .sm-foes{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px}
-.sm-root .sm-foe{border:1px solid var(--line);border-radius:14px;padding:10px 14px;min-width:130px;text-align:center;background:#fff;cursor:pointer}
+.sm-root .sm-foes{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:8px 0 16px}
+.sm-root .sm-foe{border:1px solid var(--line);border-radius:12px;padding:12px 16px;min-width:130px;text-align:center;background:#fff;cursor:pointer}
 .sm-root .sm-foe.target{border-color:var(--red);box-shadow:0 0 0 2px #dc262622}
 .sm-root .sm-foe.dead{opacity:.3}
 .sm-root .sm-foe .nm{font-weight:800;font-size:13px}
@@ -234,9 +268,9 @@ export function mount(root, context = {}) {
 .sm-root .sm-hpbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:4px 0}
 .sm-root .sm-hpbar i{display:block;height:100%;background:var(--red)}
 .sm-root .sm-stat{font-size:10px;font-weight:700;color:var(--mut);letter-spacing:.5px}
-.sm-root .sm-you{display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
+.sm-root .sm-you{display:flex;gap:12px 16px;align-items:center;justify-content:center;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px;margin-top:8px}
 .sm-root .sm-hand{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:12px 0}
-.sm-root .sm-card{width:118px;min-height:120px;border:1px solid #d6d3d1;border-radius:12px;background:#fff;padding:8px;text-align:left;display:flex;flex-direction:column;gap:4px;position:relative}
+.sm-root .sm-card{width:118px;min-height:120px;border:1px solid #d6d3d1;border-radius:10px;background:#fff;padding:8px;text-align:left;display:flex;flex-direction:column;gap:4px;position:relative}
 .sm-root .sm-card.attack{border-top:3px solid var(--red)}
 .sm-root .sm-card.skill{border-top:3px solid var(--blu)}
 .sm-root .sm-card.power{border-top:3px solid var(--amb)}
@@ -246,52 +280,131 @@ export function mount(root, context = {}) {
 .sm-root .sm-card .cx{font-size:10px;line-height:1.3;color:#44403c}
 .sm-root .sm-card.off{opacity:.45}
 .sm-root .sm-card.up .cn{color:var(--grn)}
-.sm-root .sm-piles{display:flex;gap:14px;justify-content:center;font-size:11px;font-weight:700;color:var(--mut)}
-.sm-root .sm-potions{display:flex;gap:6px}
+.sm-root .sm-piles{display:flex;gap:12px 16px;flex-wrap:wrap;justify-content:center;font-size:11px;font-weight:700;color:var(--mut)}
+.sm-root .sm-potions{display:flex;gap:8px}
 .sm-root .sm-pot{width:34px;height:34px;border-radius:50%;border:1px solid #d6d3d1;background:#fff;font-size:10px;font-weight:800;color:var(--grn)}
 .sm-root .sm-pot.empty{opacity:.3}
-.sm-root .sm-log{text-align:center;font-size:12px;font-weight:700;color:var(--mut);min-height:18px;margin-top:6px}
-.sm-root .sm-relics{display:flex;gap:6px;flex-wrap:wrap}
-.sm-root .sm-relic{font-size:10px;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:2px 8px;background:#fff;color:#57534e}
-.sm-root .sm-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto;width:100%;max-width:420px}
-.sm-root .sm-list button{text-align:left;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:#fff}
-.sm-root .sm-ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.9);backdrop-filter:blur(2px);z-index:50}
-.sm-root .sm-ovcard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:12px;align-items:center;max-width:340px}
-.sm-root .sm-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.sm-root .sm-cheats button{padding:9px;border-radius:9px;border:1px solid #d6d3d1;background:#fff}
+.sm-root .sm-log{text-align:center;font-size:12px;font-weight:700;color:var(--mut);min-height:20px;line-height:1.45;margin-top:8px}
+.sm-root .sm-relics{display:flex;gap:8px;flex-wrap:wrap}
+.sm-root .sm-relic{font-size:10px;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:4px 8px;background:#fff;color:#57534e}
+.sm-root .sm-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow:auto;width:100%;max-width:420px}
+.sm-root .sm-list button{text-align:left;padding:12px;border-radius:9px;border:1px solid var(--line);background:#fff}
+.sm-root .sm-hud .sm-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;min-height:32px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:10px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+.sm-root .sm-hud .sm-btn:hover:not(:disabled){border-color:var(--ink)}
+.sm-root .sm-hud .sm-btn.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.sm-root .sm-hud .sm-btn svg{flex:none;display:block}
+.sm-root .sm-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(250,250,249,.9);backdrop-filter:blur(2px)}
+.sm-root .sm-ovcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:12px;max-width:min(420px,100%);max-height:100%;overflow:hidden;text-align:center}
+.sm-root .sm-ovcard h3{font-size:20px}
+.sm-root .sm-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+.sm-root .sm-body{flex:1 1 auto;min-height:0;overflow:auto;font-size:13px;line-height:1.6;color:#57534e;text-align:left}
+.sm-root .sm-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1 1 auto;min-height:0;overflow:auto;width:100%}
+.sm-root .sm-cheats button{padding:12px;min-height:44px;border-radius:9px;border:1px solid #d6d3d1;background:#fff}
 .sm-root .sm-cheats button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
-.sm-root .sm-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.sm-root .sm-foot{flex:none;display:flex;gap:10px;align-items:center;justify-content:space-between;width:100%;margin-top:4px}
+.sm-root .sm-note{font-size:10px;font-weight:600;color:var(--mut);text-align:left}
+.sm-root .sm-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;flex:1 1 auto;min-height:0;overflow:auto;width:100%;text-align:left}
+.sm-root .sm-help b{display:block;margin:0 0 5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.sm-root .sm-help ul{margin:0 0 12px;padding-left:16px;font:600 11px/1.7 ui-monospace,monospace;color:#57534e}
 .sm-root .sm-kbd{font:700 10px/1 ui-monospace,monospace;border:1px solid #d6d3d1;border-radius:5px;padding:2px 5px;color:var(--mut);background:#f5f5f4}
-@media (pointer:coarse){.sm-root .sm-kbd{display:none}.sm-root .sm-card{width:104px}}
+@media (max-width:560px){
+.sm-root .sm-panel{padding:12px}
+.sm-root h3{font-size:20px}
+.sm-root .sm-card{width:96px;min-height:112px}
+.sm-root .sm-foe{min-width:112px;padding:10px}
+.sm-root .sm-center{gap:12px;min-height:300px}
+}
+@media (pointer:coarse){.sm-root .sm-kbd{display:none}.sm-root .sm-card{width:104px}.sm-root .sm-pot{width:44px;height:44px}.sm-root button{min-height:44px}}
+@media (prefers-reduced-motion:reduce){.sm-root *{animation:none!important;transition:none!important}}
+/* --- fill height + mobile refinements (last, beat pointer:coarse 44px) --- */
+.sm-root.game-fill>.sm-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.sm-root.game-fill>.sm-panel[data-board]{flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sm-root .sm-hud{gap:5px}
+.sm-root .sm-hud .sm-chip{padding:4px 6px;font-size:9px}
+.sm-root .sm-hud .sm-chip[data-hud="asc"],.sm-root .sm-hud .sm-chip[data-hud="deck"]{display:none}
+.sm-root .sm-hud .sm-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+.sm-root .sm-hud .sm-btn-label,.sm-root .sm-hud .sm-spacer{display:none}
+.sm-root .sm-ov{padding:8px}
+.sm-root .sm-ovcard{width:100%;max-width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sm-root .sm-cheats,.sm-root .sm-body,.sm-root .sm-help{scrollbar-width:none}
+.sm-root .sm-cheats::-webkit-scrollbar,.sm-root .sm-body::-webkit-scrollbar,.sm-root .sm-help::-webkit-scrollbar{display:none}
+.sm-root .sm-help{grid-template-columns:1fr;gap:8px}
+.sm-root .sm-foot{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.sm-root .sm-note{display:none}
+}
+@media (pointer:coarse){
+.sm-root .sm-hud .sm-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+}
 </style>
-<div class="game-intro"><div><h2>Sword Master</h2></div>
-  <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span></div>
-<section class="game-panel sm-panel" data-board>
-  <div class="sm-bar" data-bar></div>
-  <div class="sm-screen" data-screen></div>
-</section>
-<div class="game-actions sm-actions">
-  <button class="sm-ghost" type="button" data-act="cheat" data-cheatbtn>Cheats<span data-cheatdot hidden> •</span></button>
-  <button class="sm-ghost" type="button" data-exit>Exit game</button>
+<div class="sm-hud">
+  <span class="sm-chip" data-hud="status">READY</span>
+  <span class="sm-bar" data-bar></span>
+  <span class="sm-spacer"></span>
+  <button class="sm-btn sm-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sm-btn-label">Help</span></button>
+  <button class="sm-btn sm-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sm-btn-label">Cheats</span></button>
+  <button class="sm-btn sm-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span class="sm-picon">${iconSVG("pause", { size: 14 })}</span><span class="sm-btn-label">Pause</span></button>
+  <button class="sm-btn sm-icon-btn" type="button" data-end aria-label="End turn" title="End turn (E)">${iconSVG("arrowRight", { size: 14 })}<span class="sm-btn-label">End turn</span></button>
+  <button class="sm-btn sm-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sm-btn-label">Restart</span></button>
+  <button class="sm-btn sm-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sm-btn-label">Exit game</span></button>
 </div>
-<div class="sm-ov" data-ov="cheats" hidden><div class="sm-ovcard">
-  <h3>Cheats</h3>
-  <div class="sm-cheats">
-    <button type="button" data-act="toggle" data-cheat="god">Invincible</button>
-    <button type="button" data-act="toggle" data-cheat="energy">∞ Energy</button>
-    <button type="button" data-act="toggle" data-cheat="gold">∞ Gold</button>
-    <button type="button" data-act="cheat-heal">Full heal</button>
-    <button type="button" data-act="cheat-gold">+999 gold</button>
-    <button type="button" data-act="cheat-relic">+ Relic</button>
-    <button type="button" data-act="cheat-win">Win fight</button>
-  </div>
-  <button class="sm-ghost" type="button" data-act="close-cheats">Close</button>
-</div></div>
+<section class="game-panel sm-panel" data-board>
+  <div class="sm-screen" data-screen></div>
+  <div class="sm-ov" data-ov="cheats" hidden><div class="sm-ovcard">
+    <div class="sm-head"><h3>Cheats</h3><button class="sm-btn" type="button" data-cheat-close aria-label="Close cheats">Close</button></div>
+    <div class="sm-cheats">
+      <button type="button" data-act="toggle" data-cheat="god">Invincible</button>
+      <button type="button" data-act="toggle" data-cheat="energy">∞ Energy</button>
+      <button type="button" data-act="toggle" data-cheat="gold">∞ Gold</button>
+      <button type="button" data-act="cheat-heal">Full heal</button>
+      <button type="button" data-act="cheat-gold">+999 gold</button>
+      <button type="button" data-act="cheat-relic">+ Relic</button>
+      <button type="button" data-act="cheat-win">Win fight</button>
+    </div>
+    <div class="sm-foot"><span class="sm-note">Host only · C or Esc to close</span></div>
+  </div></div>
+  <div class="sm-ov" data-ov="pause" hidden><div class="sm-ovcard">
+    <div class="sm-head"><h3>Paused</h3></div>
+    <div class="sm-body"><p>The run and the enemy timer are frozen. Press P or Esc to resume.</p></div>
+    <div class="sm-foot"><span class="sm-note">P or Esc resumes</span><button class="sm-btn primary" type="button" data-resume>Resume</button></div>
+  </div></div>
+  <div class="sm-ov" data-ov="help" hidden><div class="sm-ovcard">
+    <div class="sm-head"><h3>How to play</h3><button class="sm-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+    <div class="sm-help">
+      <div>
+        <b>Desktop</b>
+        <ul>
+          <li>Click a card to play it; click a foe to target it.</li>
+          <li><span class="sm-kbd">1</span>–<span class="sm-kbd">9</span> play hand cards · <span class="sm-kbd">Z</span>/<span class="sm-kbd">X</span>/<span class="sm-kbd">V</span> use potions.</li>
+          <li><span class="sm-kbd">E</span> or <span class="sm-kbd">Enter</span> ends your turn.</li>
+          <li><span class="sm-kbd">H</span> help · <span class="sm-kbd">C</span> cheats · <span class="sm-kbd">P</span> pause · <span class="sm-kbd">R</span> restart.</li>
+        </ul>
+        <b>Mobile</b>
+        <ul>
+          <li>Tap cards, foes and potions directly.</li>
+          <li>Use the End turn button in the top bar.</li>
+        </ul>
+      </div>
+      <div>
+        <b>Rules</b>
+        <ul>
+          <li>Climb three acts: pick a connected path on the map, then fight, shop, rest or take an event.</li>
+          <li>Spend Energy to play cards. Block absorbs damage; Strength, Vulnerable and Poison change the math.</li>
+          <li>Win a fight to earn gold and pick one of three cards. Bosses also drop relics.</li>
+          <li>Reach the third boss to win. Best progress is saved locally.</li>
+          <li>Cheats are host-only and mark the run as cheated.</li>
+        </ul>
+        <div class="sm-foot"><span class="sm-note">Press H to reopen this guide</span><button class="sm-btn primary" type="button" data-help-close>Got it</button></div>
+      </div>
+    </div>
+  </div></div>
+</section>
 </div>`;
     const $ = s => root.querySelector(s);
-    const barEl = $('[data-bar]'), screenEl = $('[data-screen]'), statusEl = $('[data-status]');
-    const cheatBtn = $('[data-cheatbtn]'), cheatDot = $('[data-cheatdot]'), ovCheats = $('[data-ov="cheats"]');
-    if (online) cheatBtn.setAttribute('hidden', '');
+    const barEl = $('[data-bar]'), screenEl = $('[data-screen]'), statusEl = $('[data-hud="status"]');
+    const cheatBtn = $('[data-cheats]'), pauseBtn = $('[data-pause]'), endBtn = $('[data-end]'), restartBtn = $('[data-restart]');
+    const ov = { cheats: $('[data-ov="cheats"]'), pause: $('[data-ov="pause"]'), help: $('[data-ov="help"]') };
+    if (online) { cheatBtn.hidden = true; restartBtn.disabled = true; }
 
     /* ================= AI RUN ================= */
     function newRun(asc) {
@@ -341,7 +454,7 @@ export function mount(root, context = {}) {
     function startCombat(kind) {
         const r = S.run;
         const byId = {}; r.deck.forEach(c => { c.ramp = 0; byId[c.uid] = c; });
-        const rnd = mulberry32((r.seed ^ r.deck.length ^ Date.now()) >>> 0);
+        const rnd = mulberry32((r.seed ^ r.deck.length ^ now()) >>> 0);
         const draw = shuffle(r.deck.map(c => c.uid), rnd);
         const c = {
             kind, byId, rnd, draw, hand: [], discard: [], exhaust: [], energy: ENERGY, maxEnergy: ENERGY, turn: 0, target: 0,
@@ -600,15 +713,16 @@ export function mount(root, context = {}) {
       <span class="ct">${c.type}</span><span class="cx">${esc(cardText(inst))}</span></button>`;
     }
     function paint() {
+        syncUI();
         if (!S) { renderStart(); return; }
         if (S.mode === 'pvp') { if (!S.sides) { renderStart(); return; } renderPvp(); return; }
         const r = S.run;
         statusEl.textContent = r.screen === 'combat' ? 'In combat' : r.screen === 'map' ? `Act ${r.act}` : r.screen === 'win' ? 'Victory' : r.screen === 'over' ? 'Defeated' : 'Ready';
-        barEl.innerHTML = `<span class="sm-chip">ACT <b>${r.act}/${ACTS}</b></span>
-      <span class="sm-chip">HP <b>${Math.max(0, r.hp)}/${r.maxHp}</b></span>
-      <span class="sm-chip">GOLD <b>${cheats.gold ? '∞' : r.gold}</b></span>
-      <span class="sm-chip">ASC <b>${r.asc}</b></span>
-      <span class="sm-chip">DECK <b>${r.deck.length}</b></span>
+        barEl.innerHTML = `<span class="sm-chip" data-hud="act">ACT <b>${r.act}/${ACTS}</b></span>
+      <span class="sm-chip" data-hud="hp">HP <b>${Math.max(0, r.hp)}/${r.maxHp}</b></span>
+      <span class="sm-chip" data-hud="gold">GOLD <b>${cheats.gold ? '∞' : r.gold}</b></span>
+      <span class="sm-chip" data-hud="asc">ASC <b>${r.asc}</b></span>
+      <span class="sm-chip" data-hud="deck">DECK <b>${r.deck.length}</b></span>
       <span class="sm-relics">${r.relics.map(id => `<span class="sm-relic" title="${esc(RELICS[id].text)}">${esc(RELICS[id].name)}</span>`).join('')}</span>`;
         if (r.removeMode) { renderRemove(); return; }
         switch (r.screen) {
@@ -760,21 +874,62 @@ export function mount(root, context = {}) {
     }
     function submit(a) { if (online && !isHost) { room.sendAction(a).catch(console.warn); return; } applyAction(a, mySeat()); }
 
+    /* ---- shell state: help / cheats / pause ---- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === 'boolean' ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        syncUI();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === 'boolean' ? on : !cheatsOpen;
+        syncUI();
+        refreshCheats();
+    }
+    function togglePause(on) {
+        on = typeof on === 'boolean' ? on : !paused;
+        if (paused === on) return;
+        paused = on;
+        if (on) { pauseStart = Date.now(); freezeTimers(); }
+        else { pauseOffset += Date.now() - pauseStart; resumeTimers(); }
+        syncUI();
+    }
+    function restart() { if (online) return; startRun(S?.mode === 'ai' ? S.run.asc : 0); }
+    function syncUI() {
+        ov.help.hidden = !helpOpen;
+        ov.cheats.hidden = !cheatsOpen || helpOpen;
+        ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+        const label = pauseBtn.querySelector('.sm-btn-label');
+        if (label) label.textContent = paused ? 'Resume' : 'Pause';
+        pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+        pauseBtn.setAttribute('title', (paused ? 'Resume' : 'Pause') + ' (P)');
+        const picon = pauseBtn.querySelector('.sm-picon');
+        if (picon) picon.innerHTML = iconSVG(paused ? 'play' : 'pause', { size: 14 });
+        const canEnd = Boolean(S && S.mode === 'ai' && S.run.combat && S.run.combat.phase === 'player');
+        endBtn.disabled = paused || helpOpen || cheatsOpen || !canEnd;
+        restartBtn.disabled = online || !S;
+    }
+
     function handleClick(e) {
         const t = e.target.closest ? e.target : null; if (!t) return;
-        const ex = t.closest('[data-exit]'); if (ex) { onExit(); return; }
+        if (t.closest('[data-exit]')) { onExit(); return; }
+        if (t.closest('[data-help]')) { toggleHelp(); return; }
+        if (t.closest('[data-help-close]')) { toggleHelp(false); return; }
+        if (t.closest('[data-cheats]')) { toggleCheats(); return; }
+        if (t.closest('[data-cheat-close]')) { toggleCheats(false); return; }
+        if (t.closest('[data-pause]') || t.closest('[data-resume]')) { togglePause(); return; }
+        if (t.closest('[data-restart]')) { restart(); return; }
+        if (helpOpen || (paused && !cheatsOpen)) return;
         const act = t.closest('[data-act]');
         if (act) {
             const a = act.dataset.act;
-            if (a === 'cheat') { ovCheats.toggleAttribute('hidden'); refreshCheats(); return; }
-            if (a === 'close-cheats') { ovCheats.setAttribute('hidden', ''); return; }
             if (a === 'toggle') { cheats[act.dataset.cheat] = !cheats[act.dataset.cheat]; cheated = true; refreshCheats(); paint(); return; }
             if (a === 'cheat-heal') { cheated = true; if (S?.run) { S.run.hp = S.run.maxHp; if (S.run.combat) S.run.combat.p.hp = S.run.combat.p.maxHp; } paint(); return; }
             if (a === 'cheat-gold') { cheated = true; if (S?.run) S.run.gold += 999; paint(); return; }
             if (a === 'cheat-relic') { cheated = true; if (S?.run) gainRelic(S.run); paint(); return; }
             if (a === 'cheat-win') { cheated = true; if (S?.run?.combat) winCombat(); return; }
             if (a === 'start') { if (online) submit({ type: 'start' }); else startRun(Number(root.querySelector('[data-asc]')?.value || 0)); return; }
-            if (a === 'restart') { startRun(S.run.asc); return; }
+            if (a === 'restart') { restart(); return; }
             if (a === 'end') { endTurn(); return; }
             if (a === 'skip') { chooseReward(-1); return; }
             if (a === 'leaveshop') { S.run.shop = null; S.run.screen = 'map'; paint(); return; }
@@ -803,12 +958,26 @@ export function mount(root, context = {}) {
         const ch = t.closest('[data-choice]'); if (ch) { eventChoice(Number(ch.dataset.choice)); return; }
         const rm = t.closest('[data-remove]'); if (rm) { removeCard(Number(rm.dataset.remove)); return; }
     }
-    function refreshCheats() { root.querySelectorAll('[data-act="toggle"]').forEach(b => b.classList.toggle('on', cheats[b.dataset.cheat])); cheatDot.toggleAttribute('hidden', !Object.values(cheats).some(Boolean)); }
+    function refreshCheats() {
+        root.querySelectorAll('[data-act="toggle"]').forEach(b => b.classList.toggle('on', Boolean(cheats[b.dataset.cheat])));
+        cheatBtn.classList.toggle('on', Object.values(cheats).some(Boolean));
+    }
     function onKey(e) {
         if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-        const k = e.key;
-        if (k === 'Escape') { ovCheats.setAttribute('hidden', ''); return; }
-        if ((k === 'c' || k === 'C') && !online) { ovCheats.toggleAttribute('hidden'); refreshCheats(); return; }
+        const k = e.key, code = e.code || '', lower = typeof k === 'string' ? k.toLowerCase() : '';
+        const hit = letter => code === 'Key' + letter || lower === letter.toLowerCase();
+        /* priority: help -> cheats -> pause -> Escape -> game actions */
+        if (hit('H')) { toggleHelp(); e.preventDefault(); return; }
+        if (hit('C')) { if (!helpOpen && !online) toggleCheats(); e.preventDefault(); return; }
+        if (hit('P')) { if (!helpOpen) togglePause(); e.preventDefault(); return; }
+        if (k === 'Escape') {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            return;
+        }
+        if (hit('R')) { if (!helpOpen && !cheatsOpen && !paused) restart(); e.preventDefault(); return; }
+        if (helpOpen || (paused && !cheatsOpen)) return;
         if (!S) return;
         if (S.mode === 'pvp') {
             if (k === 'Enter') { submit({ type: 'end' }); return; }

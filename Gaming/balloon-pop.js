@@ -5,6 +5,8 @@
    - Levels are FIXED waves (no random generator), guaranteed solvable.
    - Rockets are decoys: clicking one explodes and costs a life. */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
   id: "balloon-pop",
   name: "Balloon Pop",
@@ -108,87 +110,153 @@ export function mount(root, context = {}) {
     };
     const els = new Map(); /* balloon id -> <g> */
 
+    let helpOpen = false, paused = false, pausedAt = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("balloonPopHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("balloonPopHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) view.cheatsOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        const now = Date.now();
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) {
+            pausedAt = now;
+            view.cheatsOpen = false;
+        } else if (pausedAt) {
+            const d = now - pausedAt;
+            if (state) {
+                state.turnEndsAt += d;
+                state.balloons.forEach((b) => { b.bornAt += d; if (b.poppedAt) b.poppedAt += d; });
+            }
+            view.nextBotAt += d;
+            view.lastAuto += d;
+            view.toastUntil += d;
+            view.flashUntil += d;
+            view.shakeUntil += d;
+            view.fx.forEach((f) => { f.born += d; });
+            view.texts.forEach((t) => { t.born += d; });
+            pausedAt = 0;
+        }
+        render();
+    }
+
     /* ---------------- markup (minimalist, no tutorial text) ---------------- */
     root.innerHTML = `
-<div class="game-app bp-wrap">
+<div class="game-app bp-wrap game-fill">
 <style>
-.bp-wrap{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--p1:#0ea5e9;--p2:#f43f5e;
-  max-width:520px;margin:0 auto;color:var(--ink);
+.bp-wrap{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--paper:#ffffff;--p1:#0ea5e9;--p2:#f43f5e;--bad:#ef4444;
+  width:100%;min-width:0;color:var(--ink);
   font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.bp-wrap *{box-sizing:border-box}
 .bp-wrap [hidden]{display:none!important}
-.bp-wrap h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.01em}
-.bp-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
-.bp-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
-  background:#fff;border-radius:999px;padding:4px 10px;font-size:12px;color:var(--muted)}
+.bp-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.bp-spacer{flex:1 1 auto}
+.bp-hbtn{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;min-height:30px;border:1px solid var(--line);
+  border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation}
+.bp-hbtn svg{flex:none;display:block}
+.bp-hbtn.on{border-color:var(--p1);color:var(--p1)}
+.bp-hbtn:disabled{opacity:.4;cursor:default}
+.bp-hlbl{white-space:nowrap}
+.bp-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;text-align:left}
+.bp-help b{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.bp-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;color:var(--muted)}
+.bp-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--line);
+  background:#fff;border-radius:999px;padding:5px 10px;min-height:32px;font-size:12px;color:var(--muted)}
 .bp-chip b{color:var(--ink);font-weight:700}
-.bp-dot{width:10px;height:10px;border-radius:999px;background:#e2e8f0}
-.bp-timechip.bp-low{color:#ef4444;border-color:#fecaca}
-.bp-timechip.bp-low b{color:#ef4444}
-.bp-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.bp-dot{width:10px;height:10px;border-radius:999px;background:var(--line);flex:none}
+.bp-timechip.bp-low{color:var(--bad);border-color:#fecaca}
+.bp-timechip.bp-low b{color:var(--bad)}
+.bp-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:8px}
 .bp-card{--acc:var(--p1);border:1px solid var(--line);border-radius:12px;background:#fff;
-  padding:8px 10px;transition:border-color .2s,box-shadow .2s}
+  padding:8px 12px;min-width:0;transition:border-color .16s,box-shadow .16s}
 .bp-card.s1{--acc:var(--p2)}
 .bp-card.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
-.bp-name{display:flex;justify-content:space-between;align-items:center;gap:6px;
+.bp-name{display:flex;justify-content:space-between;align-items:center;gap:6px;min-width:0;
   font-size:11.5px;font-weight:600;color:var(--muted)}
-.bp-lives{color:#ef4444;font-size:11px;letter-spacing:2px}
-.bp-score{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.bp-name>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bp-lives{color:var(--bad);font-size:11px;letter-spacing:2px;flex:none}
+.bp-score{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px}
 .bp-score small{font-size:11px;font-weight:500;color:var(--muted);margin-left:2px}
-.bp-shieldtag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-  color:#0ea5e9;border:1px solid #bae6fd;border-radius:999px;padding:1px 6px;margin-left:6px;vertical-align:3px}
-.bp-bar{height:4px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin-top:6px}
-.bp-bar i{display:block;height:100%;width:0;background:var(--acc);border-radius:999px;transition:width .25s}
-.bp-timebar{height:3px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin-bottom:8px}
+.bp-shieldtag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--p1);border:1px solid #bae6fd;border-radius:999px;padding:2px 6px;margin-left:6px;vertical-align:3px}
+.bp-bar{height:4px;background:var(--line);border-radius:999px;overflow:hidden;margin-top:8px}
+.bp-bar i{display:block;height:100%;width:0;background:var(--acc);border-radius:999px;transition:width .16s}
+.bp-timebar{height:3px;background:var(--line);border-radius:999px;overflow:hidden;margin-bottom:8px}
 .bp-timebar i{display:block;height:100%;width:100%;background:#94a3b8;border-radius:999px}
-.bp-stage{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#f8fafc}
-.bp-board{display:block;width:100%;height:auto;touch-action:manipulation;
+.bp-stage{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f8fafc;
+  flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.bp-board{display:block;height:100%;width:auto;max-width:100%;aspect-ratio:480/640;margin:0 auto;touch-action:manipulation;
   user-select:none;-webkit-user-select:none}
 .bp-bal{cursor:pointer}
 .bp-glow{filter:drop-shadow(0 0 6px rgba(14,165,233,.85))}
 .bp-badge circle{fill:#fff;stroke:#cbd5e1;stroke-width:1}
-.bp-badge text{font-size:10px;font-weight:700;fill:#64748b;text-anchor:middle;dominant-baseline:central}
+.bp-badge text{font-size:10px;font-weight:700;fill:var(--muted);text-anchor:middle;dominant-baseline:central}
 .bp-flame{animation:bp-flick .3s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center top}
 @keyframes bp-flick{from{transform:scaleY(.7)}to{transform:scaleY(1.15)}}
 .bp-shake{animation:bp-shake .3s ease-in-out}
 @keyframes bp-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}55%{transform:translateX(7px)}80%{transform:translateX(-3px)}}
 .bp-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:4;
-  background:#0f172a;color:#fff;font-size:12px;font-weight:600;padding:6px 14px;border-radius:999px;
-  opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+  background:var(--ink);color:#fff;font-size:12px;font-weight:600;padding:6px 12px;border-radius:9px;
+  opacity:0;transition:opacity .16s;pointer-events:none;white-space:nowrap;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis}
 .bp-toast.show{opacity:.92}
-.bp-cheats{position:absolute;top:10px;right:10px;z-index:6;width:212px;background:#fff;
-  border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.14);padding:10px 12px}
+.bp-cheats{width:min(300px,100%);max-height:100%;overflow:auto;background:#fff;
+  border:1px solid var(--line);border-radius:10px;padding:12px}
 .bp-cheats-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
   color:var(--muted);margin-bottom:4px}
 .bp-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;
-  padding:6px 0;font-size:12.5px;border-bottom:1px dashed var(--line)}
+  min-height:40px;padding:4px 0;font-size:12.5px;border-bottom:1px dashed var(--line)}
 .bp-cheat-row:last-child{border-bottom:0}
 .bp-mini{border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);
-  font-size:11.5px;font-weight:600;padding:3px 10px;cursor:pointer}
-.bp-mini.on{background:#0f172a;color:#fff;border-color:#0f172a}
-.bp-over{position:absolute;inset:0;z-index:7;display:grid;place-items:center;
-  background:rgba(248,250,252,.88);backdrop-filter:blur(3px)}
-.bp-over-card{text-align:center;padding:20px}
-.bp-over-card h3{margin:0 0 6px;font-size:22px;font-weight:800;letter-spacing:-.02em}
-.bp-over-card p{margin:0 0 14px;font-size:13px;color:var(--muted)}
-.bp-btn{border:0;border-radius:10px;background:#0f172a;color:#fff;font-size:13px;
-  font-weight:600;padding:9px 18px;cursor:pointer}
-.bp-pad{display:none;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
+  font-size:11.5px;font-weight:600;padding:6px 10px;min-height:32px;cursor:pointer;transition:background .16s,color .16s}
+.bp-mini:hover{border-color:#94a3b8}
+.bp-mini:focus-visible{outline:2px solid var(--p1);outline-offset:2px}
+.bp-mini.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.bp-over{position:absolute;inset:0;z-index:7;display:grid;place-items:center;padding:16px;
+  background:rgba(248,250,252,.88);backdrop-filter:blur(3px);border-radius:12px}
+.bp-over-card{text-align:center;padding:16px;width:min(320px,100%)}
+.bp-over-card h3{margin:0 0 8px;font-size:20px;font-weight:800;letter-spacing:-.02em}
+.bp-over-card p{margin:0 0 16px;font-size:13px;color:var(--muted);line-height:1.5}
+.bp-btn{border:1px solid var(--ink);border-radius:9px;background:var(--ink);color:#fff;font-size:13px;
+  font-weight:600;padding:8px 16px;min-height:44px;cursor:pointer;transition:opacity .16s}
+.bp-btn:hover{opacity:.9}
+.bp-pad{display:none;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:12px}
 @media (pointer:coarse),(max-width:640px){.bp-pad{display:grid}}
-.bp-pad button{height:44px;border:1px solid var(--line);border-radius:10px;background:#fff;
-  color:var(--muted);font-size:15px;font-weight:700;cursor:pointer}
-.bp-pad button:active{background:#f1f5f9;transform:scale(.95)}
+.bp-pad button{height:44px;min-width:0;border:1px solid var(--line);border-radius:9px;background:#fff;
+  color:var(--muted);font-size:15px;font-weight:700;cursor:pointer;touch-action:manipulation}
+.bp-pad button:active{background:var(--line);transform:scale(.97)}
+@media (max-width:420px){
+  .bp-hud{gap:4px}
+  .bp-chip{font-size:11px;padding:4px 8px}
+  .bp-cards{gap:4px}
+  .bp-name{font-size:11px}
+}
+@media (pointer:coarse){.bp-mini,.bp-cheat-row{min-height:44px}}
+@media (prefers-reduced-motion:reduce){.bp-wrap *{animation:none!important;transition-duration:.01ms!important}}
+/* --- layout redesign overrides (keep last) --- */
+@media (max-width:640px){
+.bp-hud{gap:5px 8px;margin-bottom:6px}
+.bp-hbtn{min-width:28px;min-height:28px;padding:4px 6px;font-size:10px}
+.bp-hlbl,.bp-spacer{display:none}
+.bp-cards{gap:6px}
+.bp-card{padding:6px 8px}
+.bp-score{font-size:18px}
+.bp-stage{flex:0 0 auto;min-height:min(70dvh,620px)}
+.bp-over-card{padding:12px}
+}
 </style>
-  <div class="game-intro">
-    <div><h2>Balloon Pop</h2></div>
+  <div class="bp-hud">
     <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <section class="game-panel" data-board>
-    <div class="bp-hud">
-      <span class="bp-chip" data-el="seat">P1</span>
-      <span class="bp-chip"><span class="bp-dot" data-el="tdot"></span><b data-el="tword">RED</b></span>
-      <span class="bp-chip" data-el="round">Round 1/${ROUNDS}</span>
-      <span class="bp-chip bp-timechip" data-el="timechip"><b data-el="secs">–</b>s</span>
-    </div>
+    <span class="bp-chip" data-el="seat">P1</span>
+    <span class="bp-chip"><span class="bp-dot" data-el="tdot"></span><b data-el="tword">RED</b></span>
+    <span class="bp-chip" data-el="round">Round 1/${ROUNDS}</span>
+    <span class="bp-chip bp-timechip" data-el="timechip"><b data-el="secs">–</b>s</span>
     <div class="bp-cards">
       <div class="bp-card s0" data-card="0">
         <div class="bp-name"><span data-name>Player 1</span><span class="bp-lives" data-lives></span></div>
@@ -202,10 +270,18 @@ export function mount(root, context = {}) {
       </div>
     </div>
     <div class="bp-timebar"><i data-el="tfill"></i></div>
-    <div class="bp-stage">
-      <svg class="bp-board" data-el="svg" viewBox="0 0 480 640" aria-hidden="true"></svg>
-      <div class="bp-toast" data-el="toast"></div>
-      <div class="bp-cheats" data-el="cheats" hidden>
+    <span class="bp-spacer"></span>
+    <button class="bp-hbtn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="bp-hlbl">Help</span></button>
+    <button class="bp-hbtn" type="button" data-act="cheats" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="bp-hlbl">Cheats</span></button>
+    <button class="bp-hbtn" type="button" data-pause-btn aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="bp-hlbl">Pause</span></button>
+    <button class="bp-hbtn" type="button" data-act="restart" data-restart-btn aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="bp-hlbl">Restart</span></button>
+    <button class="bp-hbtn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="bp-hlbl">Exit</span></button>
+  </div>
+  <section class="game-panel bp-stage" data-board>
+    <svg class="bp-board" data-el="svg" viewBox="0 0 480 640" aria-hidden="true"></svg>
+    <div class="bp-toast" data-el="toast"></div>
+    <div class="bp-over" data-el="cheats" hidden>
+      <div class="bp-cheats">
         <div class="bp-cheats-title">Cheats</div>
         <div class="bp-cheat-row"><span>Auto-pop</span><button type="button" class="bp-mini" data-cheat="auto">off</button></div>
         <div class="bp-cheat-row"><span>Highlight target</span><button type="button" class="bp-mini" data-cheat="reveal">off</button></div>
@@ -214,25 +290,51 @@ export function mount(root, context = {}) {
         <div class="bp-cheat-row"><span>+1 life</span><button type="button" class="bp-mini" data-cheat="life">add</button></div>
         <div class="bp-cheat-row"><span>+10s turn time</span><button type="button" class="bp-mini" data-cheat="time">add</button></div>
       </div>
-      <div class="bp-over" data-el="over" hidden>
-        <div class="bp-over-card">
-          <h3 data-el="ovtitle"></h3>
-          <p data-el="ovreason"></p>
-          <button type="button" class="bp-btn" data-act="restart">Rematch</button>
+    </div>
+    <div class="bp-over" data-el="over" hidden>
+      <div class="bp-over-card">
+        <h3 data-el="ovtitle"></h3>
+        <p data-el="ovreason"></p>
+        <button type="button" class="bp-btn" data-act="restart">Rematch</button>
+      </div>
+    </div>
+    <div class="bp-over" data-ov="help" hidden>
+      <div class="bp-over-card">
+        <h3>How to play</h3>
+        <div class="bp-help">
+          <div>
+            <b>Goal</b>
+            <ul>
+              <li>Pop balloons matching the target color to reach 20 points.</li>
+              <li>Wrong colors cost a point; rockets cost a life unless shielded.</li>
+              <li>Three lives per player; the highest score after 4 rounds wins.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Controls</b>
+            <ul>
+              <li>Click or tap a balloon to pop it.</li>
+              <li>Keys 1–7 pop the highest balloon in that lane.</li>
+              <li>C cheats · P pause · R restart · H help.</li>
+            </ul>
+            <button type="button" class="bp-btn" data-help-close>Got it</button>
+          </div>
         </div>
       </div>
     </div>
-    <div class="bp-pad">
-      <button type="button" data-lane="1">1</button><button type="button" data-lane="2">2</button>
-      <button type="button" data-lane="3">3</button><button type="button" data-lane="4">4</button>
-      <button type="button" data-lane="5">5</button><button type="button" data-lane="6">6</button>
-      <button type="button" data-lane="7">7</button>
+    <div class="bp-over" data-ov="pause" hidden>
+      <div class="bp-over-card">
+        <h3>Paused</h3>
+        <p>The turn timer and the bot are stopped.</p>
+        <button type="button" class="bp-btn" data-resume>Resume <kbd>P</kbd></button>
+      </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="cheats">Cheats</button>
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="bp-pad">
+    <button type="button" data-lane="1">1</button><button type="button" data-lane="2">2</button>
+    <button type="button" data-lane="3">3</button><button type="button" data-lane="4">4</button>
+    <button type="button" data-lane="5">5</button><button type="button" data-lane="6">6</button>
+    <button type="button" data-lane="7">7</button>
   </div>
 </div>`;
 
@@ -244,6 +346,8 @@ export function mount(root, context = {}) {
     const secsEl = $('[data-el="secs"]'), tfill = $('[data-el="tfill"]');
     const svgEl = $('[data-el="svg"]'), toastEl = $('[data-el="toast"]');
     const cheatsEl = $('[data-el="cheats"]'), overEl = $('[data-el="over"]');
+    const ovHelp = $('[data-ov="help"]'), ovPause = $('[data-ov="pause"]');
+    const pauseBtn = $("[data-pause-btn]");
     const ovTitle = $('[data-el="ovtitle"]'), ovReason = $('[data-el="ovreason"]');
     const cards = [0, 1].map((i) => {
         const c = $(`[data-card="${i}"]`);
@@ -511,6 +615,19 @@ export function mount(root, context = {}) {
 
     /* ---------------- render (state -> DOM) ---------------- */
     function render() {
+        ovHelp.hidden = !helpOpen;
+        ovPause.hidden = !paused || helpOpen;
+        if (helpOpen || paused) view.cheatsOpen = false;
+        if (pauseBtn) {
+            const want = paused ? "play" : "pause";
+            if (pauseBtn.dataset.iconState !== want) {
+                pauseBtn.dataset.iconState = want;
+                const ico = pauseBtn.querySelector("svg");
+                if (ico) ico.outerHTML = iconSVG(want, { size: 14 });
+                const label = pauseBtn.querySelector(".bp-hlbl");
+                if (label) label.textContent = paused ? "Resume" : "Pause";
+            }
+        }
         if (!state) {
             statusEl.textContent = online ? "Waiting for host\u2026" : "Ready";
             return;
@@ -538,14 +655,14 @@ export function mount(root, context = {}) {
                 : state.turn === me ? "Your turn" + (view.auto ? " \u00b7 auto" : "")
                     : `${nameOf(state.turn)}'s turn`;
 
-        overEl.hidden = state.phase !== "over";
+        overEl.hidden = state.phase !== "over" || helpOpen || paused;
         if (state.phase === "over") {
             ovTitle.textContent =
                 state.winner === -1 ? "Draw" : state.winner === me ? "You win" : `${nameOf(state.winner)} wins`;
             ovReason.textContent = state.reason;
         }
 
-        cheatsEl.hidden = !view.cheatsOpen;
+        cheatsEl.hidden = !view.cheatsOpen || helpOpen || paused;
         const setToggle = (key, on) => {
             const b = cheatsEl.querySelector(`[data-cheat="${key}"]`);
             b.textContent = on ? "on" : "off";
@@ -584,6 +701,7 @@ export function mount(root, context = {}) {
             clearBoard();
             view.waveKey = -1;
             view.lastWave = -1;
+            helpOpen = false; paused = false; pausedAt = 0; view.cheatsOpen = false;
             publish();
             return;
         }
@@ -666,7 +784,7 @@ export function mount(root, context = {}) {
     function tick() {
         if (disposed) return;
         const now = Date.now();
-        if (state) {
+        if (state && !paused && !helpOpen) {
             if (authority() && state.phase === "play") {
                 const allDone = state.balloons.length > 0 &&
                     state.balloons.every((b) => b.popped || now > b.bornAt + lifeMs(b));
@@ -683,7 +801,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- input: mouse / touch / keyboard / virtual pad ---------------- */
     function lanePop(n) {
-        if (!state || state.phase !== "play" || state.turn !== seat()) return;
+        if (!state || state.phase !== "play" || state.turn !== seat() || paused || helpOpen) return;
         const pick = activeBalloons(Date.now())
             .filter((o) => o.b.lane === n - 1)
             .sort((a, b) => a.y - b.y)[0]; /* highest balloon in that lane */
@@ -691,7 +809,7 @@ export function mount(root, context = {}) {
     }
 
     function onPointer(e) {
-        if (!state || state.phase !== "play" || state.turn !== seat()) return;
+        if (!state || state.phase !== "play" || state.turn !== seat() || paused || helpOpen) return;
         const g = e.target && e.target.closest ? e.target.closest("[data-bal]") : null;
         if (!g) return;
         e.preventDefault();
@@ -701,8 +819,18 @@ export function mount(root, context = {}) {
     function onKey(e) {
         if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
         const k = e.key;
+        if (helpOpen) {
+            if (k === "Escape" || k === "h" || k === "H" || k === "Enter") toggleHelp(false);
+            return;
+        }
+        if (paused) {
+            if (k === "p" || k === "P" || k === "Escape" || k === "Enter") togglePause(false);
+            return;
+        }
         if (k >= "1" && k <= "7") lanePop(Number(k));
         else if (k === "c" || k === "C") { view.cheatsOpen = !view.cheatsOpen; render(); }
+        else if (k === "p" || k === "P") togglePause();
+        else if (k === "h" || k === "H") toggleHelp();
         else if (k === "r" || k === "R") submitAction({ type: "restart" });
         else if (k === "Enter" && state && state.phase === "over") submitAction({ type: "restart" });
         else if (k === "Escape" && view.cheatsOpen) { view.cheatsOpen = false; render(); }
@@ -711,6 +839,10 @@ export function mount(root, context = {}) {
     function handleClick(event) {
         const t = event.target;
         if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-pause-btn]")) { togglePause(); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
         const act = t.closest("[data-act]");
         if (act) {

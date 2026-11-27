@@ -3,6 +3,8 @@
    Format template: export META + mount(root, context).
    Setelah mengubah META, jalankan: node tools/build-games-manifest.mjs */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "parking-jam", // harus sama dengan nama file: parking-jam.js
     name: "Parking Jam",
@@ -193,27 +195,44 @@ export function mount(root, context = {}) {
     let selected = -1;
     let hint = null;
     let drag = null;
-    let introOpen = true;
+    let helpOpen = false;
     let cheatsOpen = false;
+    let paused = false;
     let dismissedDeal = 0;
     let padOn =
         (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches) ||
         (typeof innerWidth === "number" && innerWidth < 620);
     let botTimer = 0;
+    let botDue = 0;
     let toastTimer = 0;
+    let toastDue = 0;
+    /* Pause shifts time anchors so a resumed bot/toast never jumps forward.
+       All wall-clock reads in the shell go through nowMs(). */
+    let clockShift = 0;
+    let pauseStartedAt = 0;
+    const nowMs = () => Date.now() - clockShift;
     let tossMsg = "";
     let guestName = "Player 2";
     let best = 0;
     try {
         best = Number(localStorage.getItem(META.bestKey)) || 0;
     } catch (e) { }
+    /* First-run internal help; the global help dialog never opens for this id. */
+    let seenHelp = true;
+    try {
+        seenHelp = localStorage.getItem("parkingJamHelpSeen") === "1";
+    } catch (e) { }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("parkingJamHelpSeen", "1"); } catch (e) { /* blocked */ }
+    }
 
     root.innerHTML = `
 <style>
 .pj-root{--pj-ink:#292524;--pj-mut:#78716c;--pj-line:#e7e5e4;--pj-paper:#fafaf9;--pj-card:#fff;--pj-amber:#f59e0b;--pj-soft:#f5f5f4;color:var(--pj-ink)}
 .pj-root [hidden]{display:none!important}
-.pj-root .pj-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0}
-.pj-root .pj-flex{flex:1}
+.pj-root .pj-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.pj-root .pj-flex{flex:1 1 auto}
 .pj-root .pj-seg{display:inline-flex;border:1px solid var(--pj-line);border-radius:999px;background:var(--pj-card);overflow:hidden}
 .pj-root .pj-seg button{appearance:none;border:0;background:transparent;padding:5px 11px;font:inherit;font-size:12px;color:var(--pj-mut);cursor:pointer}
 .pj-root .pj-seg button.on{background:var(--pj-ink);color:#fff}
@@ -222,11 +241,12 @@ export function mount(root, context = {}) {
 .pj-root .pj-btn{appearance:none;border:1px solid var(--pj-line);background:var(--pj-card);color:var(--pj-ink);border-radius:999px;padding:5px 11px;font:inherit;font-size:12px;cursor:pointer}
 .pj-root .pj-btn:hover{background:var(--pj-soft)}
 .pj-root .pj-btn:disabled{opacity:.4;cursor:default}
-.pj-root .pj-icon{appearance:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--pj-line);background:var(--pj-card);border-radius:999px;font-size:13px;cursor:pointer;padding:0}
-.pj-root .pj-icon:hover{background:var(--pj-soft)}
-.pj-root .pj-panel{padding:14px}
-.pj-root .pj-stage{position:relative;display:flex;flex-direction:column;align-items:center;gap:12px;outline:none;user-select:none;-webkit-user-select:none}
-.pj-root .pj-svg{width:min(100%,440px);height:auto;display:block;background:var(--pj-paper);border:1px solid var(--pj-line);border-radius:18px;touch-action:none}
+.pj-root .pj-iconbtn{display:inline-flex;align-items:center;gap:6px;min-height:30px}
+.pj-root .pj-iconbtn svg{flex:none;display:block}
+.pj-root .pj-btn-label{white-space:nowrap}
+.pj-root .pj-panel{padding:0}
+.pj-root .pj-board{position:relative;display:flex;align-items:center;justify-content:center;width:100%;flex:1 1 auto;min-height:0;padding:0;border:0;border-radius:12px;overflow:hidden;outline:none;user-select:none;-webkit-user-select:none}
+.pj-root .pj-svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;background:var(--pj-paper);touch-action:none;cursor:grab}
 .pj-root .pj-grid line{stroke:#eae7e2;stroke-width:1}
 .pj-root .pj-wall{fill:none;stroke:#d6d3d1;stroke-width:3;stroke-linecap:round}
 .pj-root .pj-car{cursor:grab}
@@ -241,39 +261,97 @@ export function mount(root, context = {}) {
 .pj-root .pj-turn i{width:7px;height:7px;border-radius:50%;background:#a8a29e;display:inline-block}
 .pj-root .pj-turn.me i{background:#10b981}
 .pj-root .pj-turn.them i{background:var(--pj-amber)}
-.pj-root .pj-pad{display:grid;grid-template-columns:repeat(3,58px);grid-auto-rows:46px;gap:6px;justify-content:center}
+.pj-root .pj-pad{display:grid;grid-template-columns:repeat(3,58px);grid-auto-rows:46px;gap:6px;justify-content:center;margin-top:10px}
 .pj-root .pj-pad button{appearance:none;border:1px solid var(--pj-line);background:var(--pj-card);border-radius:12px;font-size:16px;color:var(--pj-ink);cursor:pointer;touch-action:manipulation}
 .pj-root .pj-pad button:active{transform:scale(.95);background:var(--pj-soft)}
 .pj-root .pj-pad button:disabled{opacity:.35}
 .pj-root .pj-pad .wide{grid-column:1/-1;font-size:12.5px;font-weight:600}
-.pj-root .pj-overlay{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.92);backdrop-filter:blur(3px);border-radius:18px;padding:12px;overflow:auto}
-.pj-root .pj-card{background:var(--pj-card);border:1px solid var(--pj-line);border-radius:16px;box-shadow:0 14px 36px rgba(28,25,23,.10);padding:18px;max-width:370px;width:100%}
-.pj-root .pj-card h3{margin:0 0 6px;font-size:17px;letter-spacing:-.01em}
-.pj-root .pj-card p{margin:0 0 10px;font-size:12.5px;line-height:1.55;color:var(--pj-mut)}
-.pj-root .pj-how{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:7px;font-size:12px;line-height:1.5;color:var(--pj-ink)}
+.pj-root .pj-overlay{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.92);backdrop-filter:blur(3px);border-radius:12px;padding:12px;overflow:auto}
+.pj-root .pj-card{display:flex;flex-direction:column;overflow:hidden;max-height:100%;background:var(--pj-card);border:1px solid var(--pj-line);border-radius:16px;box-shadow:0 4px 12px rgba(28,25,23,.10);padding:16px;max-width:390px;width:100%}
+.pj-root .pj-card h3{margin:0;font-size:17px;letter-spacing:-.01em}
+.pj-root .pj-card p{margin:0 0 8px;font-size:12.5px;line-height:1.55;color:var(--pj-mut)}
+.pj-root .pj-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.pj-root .pj-foot{flex:none;display:grid;gap:8px;margin-top:10px}
+.pj-root .pj-help,.pj-root .pj-how,.pj-root .pj-cheats,.pj-root .pj-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.pj-root .pj-how{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:7px;font-size:12px;line-height:1.5;color:var(--pj-ink)}
 .pj-root kbd{border:1px solid var(--pj-line);border-bottom-width:2px;border-radius:5px;padding:0 4px;font-size:10.5px;background:var(--pj-soft);font-family:inherit}
 .pj-root .pj-primary{appearance:none;width:100%;border:0;border-radius:10px;background:var(--pj-ink);color:#fff;padding:9px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 .pj-root .pj-primary:hover{background:#44403c}
 .pj-root .pj-ghostbtn{appearance:none;width:100%;border:1px solid var(--pj-line);border-radius:10px;background:var(--pj-card);color:var(--pj-ink);padding:9px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 .pj-root .pj-row{display:flex;gap:8px;margin-top:4px}
-.pj-root .pj-link{appearance:none;border:0;background:none;color:var(--pj-mut);font:inherit;font-size:11.5px;cursor:pointer;margin-top:8px;padding:0;text-decoration:underline}
+.pj-root .pj-link{appearance:none;border:0;background:none;color:var(--pj-mut);font:inherit;font-size:11.5px;cursor:pointer;padding:0;text-decoration:underline}
 .pj-root .pj-stats{font-size:12px;color:var(--pj-ink)}
 .pj-root .pj-res-title.win{color:#b45309}
 .pj-root .pj-res-title.lose{color:#b91c1c}
-.pj-root .pj-cheats{position:absolute;top:10px;right:10px;z-index:6;width:232px;background:var(--pj-card);border:1px solid var(--pj-line);border-radius:14px;box-shadow:0 14px 36px rgba(28,25,23,.12);padding:10px;display:grid;gap:6px}
-.pj-root .pj-cheats-head{display:flex;align-items:center;justify-content:space-between;font-size:13px}
+.pj-root .pj-cheats{display:grid;gap:6px;align-content:start}
 .pj-root .pj-cheats button[data-cheat]{appearance:none;display:grid;gap:1px;text-align:left;border:1px solid var(--pj-line);background:var(--pj-card);border-radius:10px;padding:7px 9px;font:inherit;font-size:12px;font-weight:600;color:var(--pj-ink);cursor:pointer}
 .pj-root .pj-cheats button[data-cheat]:hover{background:var(--pj-soft)}
 .pj-root .pj-cheats small{font-weight:400;color:var(--pj-mut);font-size:10.5px}
 .pj-root .pj-note{margin:2px 0 0;font-size:10.5px;color:var(--pj-mut)}
 .pj-root .pj-toast{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:7;background:var(--pj-ink);color:#fff;font-size:11.5px;padding:6px 12px;border-radius:999px;pointer-events:none;max-width:94%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.pj-root{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.pj-root *,.pj-root *::before,.pj-root *::after{box-sizing:border-box}
+.pj-root :where(svg,canvas,img){max-width:100%;height:auto}
+.pj-root :where(button,[role="button"],select,input){touch-action:manipulation}
+.pj-root :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--pj-amber);outline-offset:2px}
+/* 4px spacing grid: HUD/control rows wrap instead of overflowing on narrow screens. */
+.pj-root :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+/* Thin borders and calm surfaces instead of heavy elevation. */
+.pj-root :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+/* Clear type hierarchy: 12px metadata, compact headings. */
+.pj-root :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.pj-root :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .pj-root :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .pj-root :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .pj-root :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .pj-root :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .pj-root *,.pj-root *::before,.pj-root *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* ==== fill-height + mobile refinements (keep last) ==== */
+@media (max-width:640px){
+  .pj-root.game-fill > .pj-board:not(:has(.pj-overlay:not([hidden]))){aspect-ratio:354/320;flex:0 0 auto}
+  .pj-root.game-fill > .pj-board:has(.pj-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .pj-root .pj-hud{gap:5px;margin-bottom:8px}
+  .pj-root .pj-hud .pj-chip{padding:4px 6px;font-size:9px}
+  .pj-root .pj-hud .pj-chip[data-hud="deal"],
+  .pj-root .pj-hud .pj-chip[data-hud="side"],
+  .pj-root .pj-hud .pj-chip[data-hud="diff"],
+  .pj-root .pj-hud .pj-chip[data-hud="best"],
+  .pj-root .pj-hud .pj-chip[data-hud="status"]{display:none}
+  .pj-root .pj-hud .pj-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+  .pj-root .pj-hud .pj-btn-label,
+  .pj-root .pj-hud .pj-spacer{display:none}
+  .pj-root .pj-hud .pj-seg button{min-height:30px;min-width:0;padding:4px 7px;font-size:9px}
+  .pj-root .pj-overlay{padding:8px}
+  .pj-root .pj-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .pj-root .pj-help,.pj-root .pj-how,.pj-root .pj-cheats,.pj-root .pj-stats{scrollbar-width:none}
+  .pj-root .pj-help::-webkit-scrollbar,.pj-root .pj-how::-webkit-scrollbar,
+  .pj-root .pj-cheats::-webkit-scrollbar,.pj-root .pj-stats::-webkit-scrollbar{display:none}
+  .pj-root .pj-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--pj-line)}
+  .pj-root .pj-note{display:none}
+  .pj-root .pj-pad{grid-template-columns:repeat(3,52px);grid-auto-rows:44px;margin-top:8px}
+}
 </style>
-<div class="game-app pj-root">
-  <div class="game-intro">
-    <div><h2>Parking Jam</h2><p>Slide the cars, free the gold one. Solo for par - or take turns and land the escape slide before your rival does.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <div class="pj-bar">
+<div class="game-app pj-root game-fill" data-pj>
+  <!-- single HUD bar: info + game controls + icon buttons -->
+  <div class="pj-hud">
+    <span class="pj-chip">DEAL <b data-hud="deal">—</b></span>
+    <span class="pj-chip">MODE <b data-hud="side">—</b></span>
+    <span class="pj-chip">DIFF <b data-hud="diff">—</b></span>
+    <span class="pj-chip"><span data-hud="moveslabel">Moves</span>&nbsp;<b data-hud="moves">0</b></span>
+    <span class="pj-chip">PAR&nbsp;<b data-hud="par">-</b></span>
+    <span class="pj-chip pj-turn" data-hud="turnchip"><i></i><b data-hud="turn">...</b></span>
+    <span class="pj-chip">BEST&nbsp;<b data-hud="best">-</b></span>
+    <span class="pj-chip" data-hud="status">Loading...</span>
+    <span class="pj-flex"></span>
     <div class="pj-seg" data-el="modeSeg" ${online ? "hidden" : ""}>
       <button type="button" data-act="solo" data-val="0">vs Bot</button>
       <button type="button" data-act="solo" data-val="1">Solo</button>
@@ -283,48 +361,41 @@ export function mount(root, context = {}) {
       <button type="button" data-act="diff" data-val="classic">Classic</button>
       <button type="button" data-act="diff" data-val="hard">Hard</button>
     </div>
-    <span class="pj-chip"><span data-hud="moveslabel">Moves</span>&nbsp;<b data-hud="moves">0</b></span>
-    <span class="pj-chip">Par&nbsp;<b data-hud="par">-</b></span>
-    <span class="pj-chip pj-turn" data-hud="turnchip"><i></i><b data-hud="turn">...</b></span>
-    <span class="pj-flex"></span>
-    <button type="button" class="pj-btn" data-act="undo" title="Undo (U)">Undo</button>
-    <button type="button" class="pj-btn" data-act="retry" title="Retry this deal (R)">Retry</button>
-    <button type="button" class="pj-btn" data-act="new" title="New random deal (N)">New</button>
-    <button type="button" class="pj-icon" data-act="pad" title="Toggle touch pad (P)" aria-label="Toggle touch pad">&#127918;</button>
-    <button type="button" class="pj-icon" data-act="help" title="How to play (T)" aria-label="How to play">?</button>
-    <button type="button" class="pj-icon" data-act="cheats" title="Cheats (C)" aria-label="Cheats">&#129514;</button>
+    <button type="button" class="pj-btn pj-iconbtn" data-undo title="Undo (U)" aria-label="Undo">${iconSVG("refresh", { size: 14 })}<span class="pj-btn-label">Undo</span></button>
+    <button type="button" class="pj-btn pj-iconbtn" data-restart title="Retry this deal (R)" aria-label="Restart">${iconSVG("refresh", { size: 14 })}<span class="pj-btn-label">Restart</span></button>
+    <button type="button" class="pj-btn pj-iconbtn" data-new title="New random deal (N)" aria-label="New deal">${iconSVG("car", { size: 14 })}<span class="pj-btn-label">New deal</span></button>
+    <button type="button" class="pj-btn pj-iconbtn" data-pad-toggle title="Toggle touch pad (B)" aria-label="Toggle touch pad">${iconSVG("gamepad2", { size: 14 })}<span class="pj-btn-label">Pad</span></button>
+    <button class="pj-btn pj-iconbtn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pj-btn-label">Help</span></button>
+    <button class="pj-btn pj-iconbtn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="pj-btn-label">Cheats</span></button>
+    <button class="pj-btn pj-iconbtn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="pj-btn-label">Pause</span></button>
+    <button class="pj-btn pj-iconbtn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pj-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel pj-panel" data-board>
-    <div class="pj-stage" tabindex="0" data-el="stage">
-      <svg class="pj-svg" viewBox="0 0 354 320" data-el="svg" role="img" aria-label="Parking Jam board"></svg>
-      <div class="pj-pad" data-el="pad" hidden>
-        <span></span><button type="button" data-pad="up" aria-label="Slide up">&#9650;</button><span></span>
-        <button type="button" data-pad="left" aria-label="Slide left">&#9664;</button>
-        <button type="button" data-pad="cycle" aria-label="Next car">&#10227;</button>
-        <button type="button" data-pad="right" aria-label="Slide right">&#9654;</button>
-        <span></span><button type="button" data-pad="down" aria-label="Slide down">&#9660;</button><span></span>
-        <button type="button" class="wide" data-pad="exit">Drive for the exit &#9166;</button>
-      </div>
-      <div class="pj-toast" data-el="toast" hidden></div>
-      <div class="pj-overlay" data-ov="intro">
-        <div class="pj-card">
-          <h3>How to play</h3>
-          <p data-el="introGoal"></p>
+
+  <!-- board = arena + overlays, no .pj-stage wrapper -->
+  <section class="game-panel pj-board" data-board tabindex="0">
+    <svg class="pj-svg" viewBox="0 0 354 320" data-el="svg" role="img" aria-label="Parking Jam board" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="pj-toast" data-el="toast" hidden></div>
+    <div class="pj-overlay" data-ov="help">
+      <div class="pj-card">
+        <div class="pj-head"><h3>How to play</h3><button class="pj-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="pj-help">
+          <p data-el="helpGoal"></p>
           <ul class="pj-how">
-            <li><b>Mouse</b> - click a car, then a glowing slot. Or simply drag it along its lane.</li>
-            <li><b>Keyboard</b> - <kbd>Tab</kbd> pick car &middot; <kbd>&#8592;&#8593;&#8595;&#8594;</kbd>/<kbd>WASD</kbd> slide &middot; <kbd>Enter</kbd> dash for the exit &middot; <kbd>1-9</kbd> pick car &middot; <kbd>H</kbd> hint &middot; <kbd>U</kbd> undo &middot; <kbd>C</kbd> cheats.</li>
+            <li><b>Mouse</b> - click a car, then a glowing slot. Or drag it along its lane.</li>
+            <li><b>Keyboard</b> - <kbd>Tab</kbd> pick car &middot; <kbd>&#8592;&#8593;&#8595;&#8594;</kbd>/<kbd>WASD</kbd> slide &middot; <kbd>Enter</kbd> dash for the exit &middot; <kbd>1-9</kbd> pick car &middot; <kbd>G</kbd> hint &middot; <kbd>U</kbd> undo &middot; <kbd>H</kbd> help &middot; <kbd>C</kbd> cheats &middot; <kbd>P</kbd> pause &middot; <kbd>R</kbd> restart &middot; <kbd>B</kbd> pad.</li>
             <li><b>Touch</b> - tap or drag cars, plus the on-screen pad under the board.</li>
             <li><b>Versus</b> - one slide per turn. Whoever slides the gold car out wins. A coin toss picks the starter, and seats (P1/P2) are shuffled online.</li>
             <li><b>Cheats</b> - hint, auto-slide, tow truck, skip turn, instant escape. Assisted wins are marked.</li>
           </ul>
-          <button type="button" class="pj-primary" data-act="start">Let's play</button>
         </div>
+        <div class="pj-foot"><button type="button" class="pj-primary" data-act="start">Let's play</button></div>
       </div>
-      <div class="pj-overlay" data-ov="result" hidden>
-        <div class="pj-card">
-          <h3 class="pj-res-title" data-el="resTitle">Escaped!</h3>
-          <p data-el="resReason"></p>
-          <p class="pj-stats" data-el="resStats"></p>
+    </div>
+    <div class="pj-overlay" data-ov="result" hidden>
+      <div class="pj-card">
+        <div class="pj-head"><h3 class="pj-res-title" data-el="resTitle">Escaped!</h3></div>
+        <div class="pj-stats"><p data-el="resReason"></p><p data-el="resStats"></p></div>
+        <div class="pj-foot">
           <div class="pj-row">
             <button type="button" class="pj-primary" data-act="new">New deal</button>
             <button type="button" class="pj-ghostbtn" data-act="retry">Rematch</button>
@@ -332,41 +403,69 @@ export function mount(root, context = {}) {
           <button type="button" class="pj-link" data-act="dismiss">View board</button>
         </div>
       </div>
-      <div class="pj-cheats" data-el="cheats" hidden>
-        <div class="pj-cheats-head"><b>Cheats</b><button type="button" class="pj-icon" data-act="cheats" aria-label="Close cheats">&#10005;</button></div>
-        <button type="button" data-cheat="hint">Hint<small>show the best next slide</small></button>
-        <button type="button" data-cheat="auto">Auto-slide<small>play the best slide for me</small></button>
-        <button type="button" data-cheat="tow">Tow truck<small>remove the selected car</small></button>
-        <button type="button" data-cheat="skip">Skip turn<small>pass the move to the rival</small></button>
-        <button type="button" data-cheat="escape">Instant escape<small>win right now</small></button>
-        <button type="button" data-cheat="undo">Undo<small>take back the last slide</small></button>
-        <p class="pj-note">Assisted wins are marked and do not count toward your best score.</p>
+    </div>
+    <div class="pj-overlay" data-ov="pause" hidden>
+      <div class="pj-card">
+        <div class="pj-head"><h3>Paused</h3></div>
+        <div class="pj-help"><p>The board and the bot are frozen. Press Resume or P to continue.</p></div>
+        <div class="pj-foot"><button type="button" class="pj-primary" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="pj-overlay" data-ov="cheat" hidden>
+      <div class="pj-card">
+        <div class="pj-head"><h3>Cheats</h3><button class="pj-btn" type="button" data-cheats-close aria-label="Close cheats">Close</button></div>
+        <div class="pj-cheats">
+          <button type="button" data-cheat="hint">Hint<small>show the best next slide</small></button>
+          <button type="button" data-cheat="auto">Auto-slide<small>play the best slide for me</small></button>
+          <button type="button" data-cheat="tow">Tow truck<small>remove the selected car</small></button>
+          <button type="button" data-cheat="skip">Skip turn<small>pass the move to the rival</small></button>
+          <button type="button" data-cheat="escape">Instant escape<small>win right now</small></button>
+          <button type="button" data-cheat="undo">Undo<small>take back the last slide</small></button>
+          <p class="pj-note">Assisted wins are marked and do not count toward your best score.</p>
+        </div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+
+  <!-- touch pad is a sibling after the board, never inside it -->
+  <div class="pj-pad" data-el="pad" hidden>
+    <span></span><button type="button" data-pad="up" aria-label="Slide up">&#9650;</button><span></span>
+    <button type="button" data-pad="left" aria-label="Slide left">&#9664;</button>
+    <button type="button" data-pad="cycle" aria-label="Next car">&#10227;</button>
+    <button type="button" data-pad="right" aria-label="Slide right">&#9654;</button>
+    <span></span><button type="button" data-pad="down" aria-label="Slide down">&#9660;</button><span></span>
+    <button type="button" class="wide" data-pad="exit">Drive for the exit &#9166;</button>
+  </div>
 </div>`;
 
     /* ---- refs ---- */
     const $ = (s) => root.querySelector(s);
+    const board = $("[data-board]");
     const svg = $('[data-el="svg"]');
-    const stage = $('[data-el="stage"]');
     const padWrap = $('[data-el="pad"]');
     const toastEl = $('[data-el="toast"]');
-    const statusEl = $("[data-status]");
+    const hudDeal = $('[data-hud="deal"]');
+    const hudSide = $('[data-hud="side"]');
+    const hudDiff = $('[data-hud="diff"]');
     const hudMoves = $('[data-hud="moves"]');
     const hudMovesLabel = $('[data-hud="moveslabel"]');
     const hudPar = $('[data-hud="par"]');
     const hudTurn = $('[data-hud="turn"]');
     const turnChip = $('[data-hud="turnchip"]');
-    const ovIntro = $('[data-ov="intro"]');
-    const ovResult = $('[data-ov="result"]');
-    const cheatsEl = $('[data-el="cheats"]');
-    const introGoal = $('[data-el="introGoal"]');
+    const hudBest = $('[data-hud="best"]');
+    const hudStatus = $('[data-hud="status"]');
+    const ov = {
+        help: $('[data-ov="help"]'),
+        result: $('[data-ov="result"]'),
+        pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'),
+    };
+    const helpGoal = $('[data-el="helpGoal"]');
     const resTitle = $('[data-el="resTitle"]');
     const resReason = $('[data-el="resReason"]');
     const resStats = $('[data-el="resStats"]');
-    const undoBtn = $('[data-act="undo"]');
+    const undoBtn = $("[data-undo]");
+    const pauseBtn = $("[data-pause]");
 
     /* ---- layout ---- */
     const CELL = 50, PAD = 10, EXIT_W = 34;
@@ -390,7 +489,11 @@ export function mount(root, context = {}) {
         toastEl.textContent = msg;
         toastEl.removeAttribute("hidden");
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => toastEl.setAttribute("hidden", ""), 2300);
+        toastDue = nowMs() + 2300;
+        toastTimer = setTimeout(() => {
+            toastEl.setAttribute("hidden", "");
+            toastDue = 0;
+        }, 2300);
     }
     function saveBest() {
         if (!state || state.assisted) return;
@@ -451,7 +554,7 @@ export function mount(root, context = {}) {
                 : s.first === 0
                     ? "Coin toss - you start!"
                     : "Coin toss - Bot starts.";
-        if (!introOpen) toast(tossMsg);
+        if (!helpOpen) toast(tossMsg);
     }
 
     /* ---- rendering ---- */
@@ -516,23 +619,35 @@ export function mount(root, context = {}) {
         else { turnTxt = online ? nameOf(s.turn) + " to move" : "Bot thinking..."; cls = "them"; }
         hudTurn.textContent = turnTxt;
         turnChip.className = "pj-chip pj-turn" + (cls ? " " + cls : "");
-        statusEl.textContent = s ? "Deal " + s.dealNo + " - " + (DIFFS[s.difficulty] || DIFFS.classic).label + (s.assisted ? " - assisted" : "") : "Loading...";
+        hudDeal.textContent = s ? String(s.dealNo) : "—";
+        hudSide.textContent = online ? "Online" : s && s.solo ? "Solo" : "vs Bot";
+        hudDiff.textContent = (DIFFS[s && s.difficulty] || DIFFS.classic).label;
+        hudBest.textContent = best ? String(best) : "-";
+        hudStatus.textContent = !s
+            ? "Loading..."
+            : paused ? "Paused" : (DIFFS[s.difficulty] || DIFFS.classic).label + (s.assisted ? " · assisted" : "");
         root.querySelectorAll('[data-act="solo"]').forEach((b) => b.classList.toggle("on", !!s && String(s.solo ? 1 : 0) === b.dataset.val));
         root.querySelectorAll('[data-act="diff"]').forEach((b) => b.classList.toggle("on", !!s && s.difficulty === b.dataset.val));
-        undoBtn.disabled = !s || !s.history.length || s.winner !== null;
+        undoBtn.disabled = !s || paused || !s.history.length || s.winner !== null;
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".pj-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        }
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) cbtn.classList.toggle("on", cheatsOpen);
     }
     function updateOverlays() {
         const s = state;
-        ovIntro.hidden = !introOpen;
-        introGoal.textContent = !s
+        helpGoal.textContent = !s
             ? "Loading deal..."
             : s.solo
                 ? "Solo: free the gold car in as few slides as possible - match or beat par."
                 : "Versus: players alternate one slide each. Whoever slides the gold car out through the gap wins.";
-        cheatsEl.hidden = !cheatsOpen;
-        const skipBtn = cheatsEl.querySelector('[data-cheat="skip"]');
+        const skipBtn = ov.cheat.querySelector('[data-cheat="skip"]');
         if (skipBtn) skipBtn.hidden = !s || s.solo;
-        if (s && s.winner !== null && dismissedDeal !== s.dealNo) {
+        const resultOpen = !!s && s.winner !== null && dismissedDeal !== s.dealNo;
+        if (resultOpen) {
             const w = s.winner;
             let title = "Escaped!", reason = "", cls = "win";
             if (s.solo) {
@@ -553,10 +668,12 @@ export function mount(root, context = {}) {
             resStats.textContent = s.solo
                 ? "Moves " + s.total + " - Par " + (s.par > 0 ? s.par : "-") + " - Best " + (best || "-") + (s.assisted ? " - assisted" : "")
                 : nameOf(0) + " " + s.moves[0] + " : " + s.moves[1] + " " + nameOf(1) + (s.assisted ? " - assisted" : "");
-            ovResult.hidden = false;
-        } else {
-            ovResult.hidden = true;
         }
+        /* overlays suppress each other; help always wins */
+        ov.help.hidden = !helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.result.hidden = !resultOpen || cheatsOpen || helpOpen || paused;
     }
     function updatePad() {
         padWrap.hidden = !padOn;
@@ -569,6 +686,53 @@ export function mount(root, context = {}) {
         updateHud();
         updateOverlays();
         updatePad();
+    }
+
+    /* ---- shell overlays + pause (local UI only) ---- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function setPaused(on) {
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        if (next) {
+            pauseStartedAt = Date.now();
+            paused = true;
+            clearTimeout(botTimer); botTimer = 0;
+            clearTimeout(toastTimer); toastTimer = 0;
+            toastEl.setAttribute("hidden", "");
+            toastDue = 0;
+        } else {
+            /* Shift every wall-clock anchor by the frozen interval so the bot
+               and toast resume with their remaining time, never a jump. */
+            clockShift += Date.now() - pauseStartedAt;
+            pauseStartedAt = 0;
+            paused = false;
+            const t = nowMs();
+            if (toastDue && t < toastDue) {
+                toastTimer = setTimeout(() => {
+                    toastEl.setAttribute("hidden", "");
+                    toastDue = 0;
+                }, toastDue - t);
+            } else {
+                toastDue = 0;
+                toastEl.setAttribute("hidden", "");
+            }
+            if (botDue && t < botDue) {
+                botTimer = setTimeout(botPlay, botDue - t);
+            } else {
+                botDue = 0;
+                scheduleBot();
+            }
+        }
+        render();
     }
 
     /* ---- canonical mutations (host / local only) ---- */
@@ -682,6 +846,7 @@ export function mount(root, context = {}) {
         }
     }
     function submitAction(action) {
+        if (paused || destroyed) return;
         if (online && !room.isHost) {
             room.sendAction(action).catch(console.warn);
             return;
@@ -697,19 +862,23 @@ export function mount(root, context = {}) {
     /* ---- local bot (AI mode) ---- */
     function scheduleBot() {
         clearTimeout(botTimer);
-        if (!online && state && !state.solo && state.winner === null && state.turn === 1) {
-            botTimer = setTimeout(botPlay, 700 + Math.random() * 600);
+        botDue = 0;
+        if (!paused && !online && state && !state.solo && state.winner === null && state.turn === 1) {
+            const delay = 700 + Math.random() * 600;
+            botDue = nowMs() + delay;
+            botTimer = setTimeout(botPlay, delay);
         }
     }
     function botPlay() {
-        if (destroyed || !state || state.solo || state.winner !== null || state.turn !== 1) return;
+        botDue = 0;
+        if (destroyed || paused || !state || state.solo || state.winner !== null || state.turn !== 1) return;
         const mv = botChoose(state.cars, state.reps);
         if (mv) applyAction({ type: "slide", id: mv.id, x: mv.x, y: mv.y }, 1);
     }
 
     /* ---- player intents ---- */
     function submitSlide(id, x, y, assisted = false) {
-        if (!state || state.winner !== null) return;
+        if (paused || !state || state.winner !== null) return;
         if (!canMove()) {
             toast("Wait - " + nameOf(state.turn) + " is moving");
             render();
@@ -729,7 +898,7 @@ export function mount(root, context = {}) {
         render();
     }
     function slideDir(dx, dy) {
-        if (!state || state.winner !== null) return;
+        if (paused || !state || state.winner !== null) return;
         if (selected < 0) {
             const m = state.cars.find((c) => c.main);
             selected = m ? m.id : state.cars.length ? state.cars[0].id : -1;
@@ -744,7 +913,7 @@ export function mount(root, context = {}) {
         submitSlide(c.id, c.x + dx, c.y + dy);
     }
     function escapeAttempt() {
-        if (!state || state.winner !== null) return;
+        if (paused || !state || state.winner !== null) return;
         const m = state.cars.find((c) => c.main);
         if (!m) return;
         selected = m.id;
@@ -757,7 +926,7 @@ export function mount(root, context = {}) {
         submitSlide(m.id, Math.max.apply(null, xs), m.y);
     }
     function cycleSel(dir) {
-        if (!state || !state.cars.length) return;
+        if (paused || !state || !state.cars.length) return;
         const ids = state.cars.map((c) => c.id).sort((a, b) => a - b);
         const i = ids.indexOf(selected);
         selected = i < 0 ? (dir > 0 ? ids[0] : ids[ids.length - 1]) : ids[(i + dir + ids.length) % ids.length];
@@ -765,7 +934,7 @@ export function mount(root, context = {}) {
         render();
     }
     function doCheat(kind) {
-        if (!state) return;
+        if (paused || !state) return;
         if (kind === "hint") {
             const info = solveInfo(state.cars, 12000, 24);
             if (info.move) {
@@ -793,6 +962,7 @@ export function mount(root, context = {}) {
         }
     }
     function padAction(k) {
+        if (paused) return;
         if (k === "cycle") cycleSel(1);
         else if (k === "exit") escapeAttempt();
         else if (k === "left") slideDir(-1, 0);
@@ -801,9 +971,9 @@ export function mount(root, context = {}) {
         else if (k === "down") slideDir(0, 1);
     }
     function startGame() {
-        introOpen = false;
+        helpOpen = false;
         render();
-        if (stage.focus) stage.focus({ preventScroll: true });
+        if (board.focus) board.focus({ preventScroll: true });
         if (tossMsg) toast(tossMsg);
     }
 
@@ -811,7 +981,17 @@ export function mount(root, context = {}) {
     function handleClick(event) {
         const t = event.target;
         if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { setPaused(); return; }
+        if (t.closest("[data-resume]")) { if (paused) setPaused(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-restart]")) { if (paused) setPaused(false); submitAction({ type: "retry" }); return; }
+        if (t.closest("[data-new]")) { if (paused) setPaused(false); submitAction({ type: "new" }); return; }
+        if (t.closest("[data-undo]")) { submitAction({ type: "undo" }); return; }
+        if (t.closest("[data-pad-toggle]")) { padOn = !padOn; render(); return; }
         const padBtn = t.closest("[data-pad]");
         if (padBtn) { padAction(padBtn.dataset.pad); return; }
         const cheatBtn = t.closest("[data-cheat]");
@@ -820,13 +1000,9 @@ export function mount(root, context = {}) {
         if (!btn) return;
         const a = btn.dataset.act;
         if (a === "start") startGame();
-        else if (a === "help") { introOpen = !introOpen; render(); }
-        else if (a === "cheats") { cheatsOpen = !cheatsOpen; render(); }
-        else if (a === "pad") { padOn = !padOn; render(); }
         else if (a === "dismiss") { dismissedDeal = state ? state.dealNo : 0; render(); }
-        else if (a === "undo") submitAction({ type: "undo" });
-        else if (a === "retry") submitAction({ type: "retry" });
-        else if (a === "new") submitAction({ type: "new" });
+        else if (a === "retry") { if (paused) setPaused(false); submitAction({ type: "retry" }); }
+        else if (a === "new") { if (paused) setPaused(false); submitAction({ type: "new" }); }
         else if (a === "solo") submitAction({ type: "solo", value: btn.dataset.val === "1" });
         else if (a === "diff") submitAction({ type: "difficulty", value: btn.dataset.val });
     }
@@ -835,17 +1011,31 @@ export function mount(root, context = {}) {
     function onKey(e) {
         if (destroyed) return;
         const k = e.key;
-        if (k === "Escape") {
-            if (cheatsOpen) cheatsOpen = false;
-            else if (introOpen) introOpen = false;
-            else if (state && state.winner !== null) dismissedDeal = state.dealNo;
-            else { selected = -1; hint = null; }
-            render();
+        const code = e.code || "";
+        /* Priority: help → cheats → pause/Escape → game actions. */
+        if (code === "KeyH" || code === "KeyT" || k === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (helpOpen) {
+            if (k === "Enter" || k === " ") startGame();
+            else if (k === "Escape" || code === "KeyP" || code === "KeyC") toggleHelp(false);
+            else if (code === "KeyR") { toggleHelp(false); submitAction({ type: "retry" }); }
+            else return;
             e.preventDefault();
             return;
         }
-        if (introOpen) {
-            if (k === "Enter" || k === " ") { startGame(); e.preventDefault(); }
+        if (code === "KeyC") { toggleCheats(); e.preventDefault(); return; }
+        if (cheatsOpen) {
+            if (k === "Escape" || k === "Enter" || k === " " || code === "KeyP") toggleCheats(false);
+            else if (code === "KeyR") { toggleCheats(false); submitAction({ type: "retry" }); }
+            else return;
+            e.preventDefault();
+            return;
+        }
+        if (code === "KeyP" || k === "Escape") { setPaused(); e.preventDefault(); return; }
+        if (paused) {
+            if (k === "Enter" || k === " ") setPaused(false);
+            else if (code === "KeyR") { setPaused(false); submitAction({ type: "retry" }); }
+            else return;
+            e.preventDefault();
             return;
         }
         if (e.target && e.target.tagName === "BUTTON" && (k === "Enter" || k === " ")) return;
@@ -858,13 +1048,11 @@ export function mount(root, context = {}) {
             case "ArrowDown": case "s": case "S": slideDir(0, 1); break;
             case "Tab": cycleSel(e.shiftKey ? -1 : 1); break;
             case "Enter": case " ": escapeAttempt(); break;
-            case "h": case "H": doCheat("hint"); break;
+            case "g": case "G": doCheat("hint"); break;
             case "u": case "U": submitAction({ type: "undo" }); break;
-            case "c": case "C": cheatsOpen = !cheatsOpen; render(); break;
             case "r": case "R": submitAction({ type: "retry" }); break;
             case "n": case "N": submitAction({ type: "new" }); break;
-            case "p": case "P": padOn = !padOn; render(); break;
-            case "t": case "T": case "?": introOpen = !introOpen; render(); break;
+            case "b": case "B": padOn = !padOn; render(); break;
             default:
                 if (k.length === 1 && k >= "1" && k <= "9") {
                     const id = Number(k) - 1;
@@ -876,8 +1064,8 @@ export function mount(root, context = {}) {
 
     /* ---- events: pointer (mouse click + drag, touch tap + drag) ---- */
     function onDown(e) {
-        if (!state || destroyed) return;
-        if (stage.focus) stage.focus({ preventScroll: true });
+        if (paused || !state || destroyed) return;
+        if (board.focus) board.focus({ preventScroll: true });
         const t = e.target;
         const mvEl = t.closest ? t.closest("[data-mv]") : null;
         if (mvEl) {
@@ -922,11 +1110,13 @@ export function mount(root, context = {}) {
     function onPtrMove(e) {
         if (!drag || drag.locked) return;
         const rect = svg.getBoundingClientRect();
-        if (!rect.width) return;
-        const scale = W / rect.width;
+        if (!rect.width || !rect.height) return;
+        /* The SVG keeps its viewBox ratio inside the flexible board, so map
+           client pixels through the uniform (letterboxed) scale. */
+        const unit = Math.min(rect.width / W, rect.height / H);
         const dClient = drag.horiz ? e.clientX - drag.x0 : e.clientY - drag.y0;
         if (Math.abs(dClient) > 5) drag.moved = true;
-        let d = dClient * scale;
+        let d = dClient / unit;
         d = Math.max(drag.min * CELL, Math.min(drag.max * CELL, d));
         drag.cells = Math.round(d / CELL);
         const g = svg.querySelector('g[data-car="' + drag.id + '"]');
@@ -975,7 +1165,7 @@ export function mount(root, context = {}) {
         afterDeal();
         publish();
     }
-    if (stage.focus) stage.focus({ preventScroll: true });
+    if (board.focus) board.focus({ preventScroll: true });
 
     return {
         destroy() {

@@ -1,3 +1,5 @@
+import { iconSVG } from "../JS/icons.js";
+
 /*
   Hexa Polis — minimalist hex civilization strategy.
   Inspired by Hexapolis: Civilization Wars.
@@ -504,8 +506,18 @@ export function mount(root, context = {}) {
     let destroyed = false;
     let sel = null;
     let cursorKey = null;
-    let uiHelp = false, uiCheat = false;
-    let botTimer = null;
+    let helpOpen = false, cheatsOpen = false, paused = false;
+    let botTimer = null, botDue = 0, botRemaining = null;
+    let pauseStart = 0, pauseOffset = 0;
+    const clockNow = () => Date.now() - pauseOffset;
+    const perfNow = () => performance.now() - pauseOffset;
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("hexaPolisHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("hexaPolisHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     const factionCards = Object.keys(FACTIONS).map((id) => {
         const f = FACTIONS[id];
@@ -516,174 +528,228 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
+/* Hexa Polis — single HUD bar, fill-height board, overlay sheets. */
 .hx-app{--ink:#111827;--mut:#6b7280;--line:#e5e7eb;--card:#fff;--bg:#f6f7f9;--accent:#3b82f6;
-  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);outline:none}
-.hx-app:focus-visible{outline:2px solid #bfdbfe;outline-offset:2px;border-radius:12px}
+  width:100%;height:100%;min-height:0;max-width:100%;margin:0 auto;padding:2px;display:flex;flex-direction:column;gap:8px;
+  box-sizing:border-box;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);outline:none}
+.hx-app *{box-sizing:border-box}
 .hx-app [hidden]{display:none!important}
-.hx-app .hx-panel{position:relative;display:flex;flex-direction:column;gap:10px;padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:14px}
-.hx-app .hx-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.hx-app .hx-chip{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--mut)}
-.hx-app .hx-chip b{color:var(--ink);font-weight:600}
-.hx-app .hx-chip small{font-size:10.5px;color:var(--mut)}
-.hx-app .hx-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
-.hx-app .hx-spacer{flex:1}
-.hx-app .hx-btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
-.hx-app .hx-btn:hover:not(:disabled){border-color:#d1d5db;background:#fafafa}
-.hx-app .hx-btn:disabled{opacity:.45;cursor:default}
-.hx-app .hx-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.hx-app .hx-btn.primary:hover:not(:disabled){filter:brightness(1.06);background:var(--accent)}
-.hx-app .hx-btn.icon{padding:6px 10px}
-.hx-app .hx-main{display:flex;gap:10px;align-items:stretch}
-.hx-app .hx-mapwrap{position:relative;flex:1 1 420px;min-width:280px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px}
-.hx-app .hx-mapwrap svg{display:block;width:100%;height:auto;max-height:560px;touch-action:manipulation}
-.hx-app .hx-side{flex:0 0 250px;max-width:250px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;font-size:12.5px;line-height:1.5;overflow:auto;max-height:560px}
-@media(max-width:760px){.hx-app .hx-main{flex-direction:column}.hx-app .hx-side{flex:none;max-width:none;max-height:230px}}
-.hx-app .hx-toast{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;max-width:92%;background:#ffffffee;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12px;color:var(--mut);pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hx-app .hx-pad{position:absolute;right:10px;bottom:10px;display:none;grid-template-columns:repeat(3,40px);grid-auto-rows:40px;gap:4px}
-@media(pointer:coarse),(max-width:640px){.hx-app .hx-pad{display:grid}}
-.hx-app .hx-pad button{border:1px solid var(--line);background:#ffffffd9;border-radius:10px;font-size:14px;color:var(--ink);cursor:pointer;padding:0}
-.hx-app .hx-pad button:active{background:#f3f4f6}
-.hx-app .hx-pad .ok{background:var(--accent);color:#fff;border-color:var(--accent);font-size:11px;font-weight:700}
-.hx-app .hx-ov{position:absolute;inset:0;background:#f6f7f9d9;backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px;z-index:5;border-radius:14px}
-.hx-app .hx-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;max-width:460px;width:100%;box-shadow:0 8px 30px #11182714;max-height:100%;overflow:auto}
-.hx-app .hx-card h3{margin:0 0 4px;font-size:17px}
-.hx-app .hx-card p{margin:0 0 12px;color:var(--mut);font-size:12.5px;line-height:1.55}
-.hx-app .hx-factions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.hx-app .hx-faction{display:flex;flex-direction:column;gap:4px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;cursor:pointer;text-align:left;font:inherit}
-.hx-app .hx-faction:hover{border-color:#d1d5db;background:#fafafa}
-.hx-app .hx-faction .nm{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;color:var(--ink)}
-.hx-app .hx-faction small{color:var(--mut);font-size:11px;line-height:1.4}
-.hx-app .hx-list{margin:0 0 12px;padding-left:16px;color:var(--mut);font-size:12.5px;line-height:1.65}
-.hx-app .hx-list b{color:var(--ink)}
-.hx-app .hx-keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px;color:var(--mut);margin-bottom:12px;align-items:center}
-.hx-app .hx-keys b{color:var(--ink);font-weight:600;background:#f3f4f6;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:11px;justify-self:start;white-space:nowrap}
-.hx-app .hx-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.hx-app .hx-row{display:flex;gap:8px;justify-content:flex-end;align-items:center}
-.hx-app .hx-ptitle{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--mut);margin:2px 0 8px}
-.hx-app .hx-bar{height:6px;background:#eef0f3;border-radius:3px;overflow:hidden;margin:6px 0}
-.hx-app .hx-bar i{display:block;height:100%;border-radius:3px}
-.hx-app .hx-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:8px 0}
-.hx-app .hx-stat{display:flex;justify-content:space-between;background:#f6f7f9;border-radius:8px;padding:3px 8px;font-size:12px}
-.hx-app .hx-stat span{color:var(--mut)}
-.hx-app .hx-note{color:var(--mut);font-size:12px;margin:6px 0}
-.hx-app .hx-train{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:6px 0}
-.hx-app .hx-train .hx-btn{padding:6px 4px;font-size:11.5px;display:block}
-.hx-app .hx-train small{display:block;color:var(--mut);font-weight:500;font-size:10px}
-.hx-app .hx-brow{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f6f7f9;border-radius:10px;padding:6px 8px;margin-bottom:6px}
-.hx-app .hx-brow small{display:block;color:var(--mut);font-size:10.5px}
-.hx-app .hx-legend{display:flex;flex-direction:column;gap:4px;margin:6px 0}
-.hx-app .hx-leg{display:flex;gap:7px;align-items:center;font-size:11.5px;color:var(--mut)}
-.hx-app .hx-leg i{width:11px;height:11px;border-radius:3px;border:1px solid #00000014;flex:none}
-.hx-app .hx-done{opacity:.45}
+.hx-app:focus-visible,.hx-app button:focus-visible{outline:2px solid currentColor;outline-offset:2px;border-radius:10px}
+.hx-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.hx-chip{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:11px;color:var(--mut);white-space:nowrap}
+.hx-chip b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.hx-chip small{font-size:10px;color:var(--mut)}
+.hx-chip.hx-sub{max-width:300px;overflow:hidden;text-overflow:ellipsis}
+.hx-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.hx-spacer{flex:1 1 auto;min-width:4px}
+.hx-btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 10px;min-height:32px;font-size:11.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
+.hx-btn:hover:not(:disabled){border-color:#d1d5db;background:#fafafa}
+.hx-btn:disabled{opacity:.45;cursor:default}
+.hx-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.hx-btn.primary:hover:not(:disabled){filter:brightness(1.06);background:var(--accent)}
+.hx-btn.on{border-color:var(--accent);color:var(--accent)}
+.hx-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.hx-icon-btn svg{flex:none;display:block}
+.hx-btn-label{white-space:nowrap}
+.hx-app.game-fill>.hx-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;flex-direction:column;gap:8px;padding:8px;background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.hx-main{display:flex;gap:10px;align-items:stretch;flex:1 1 auto;min-height:0;min-width:0}
+.hx-mapwrap{position:relative;flex:1 1 auto;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px;overflow:hidden}
+.hx-mapwrap svg{display:block;width:100%;height:100%;min-height:0;touch-action:manipulation}
+.hx-side{flex:0 0 250px;max-width:250px;min-width:0;min-height:0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;font-size:12.5px;line-height:1.5;overflow:auto}
+.hx-toast{position:absolute;left:50%;transform:translateX(-50%);bottom:8px;max-width:92%;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:11.5px;color:var(--mut);pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:2}
+.hx-pad{display:none;flex:none;gap:4px;flex-wrap:wrap;justify-content:center;padding:2px}
+@media(pointer:coarse),(max-width:640px){.hx-app .hx-pad{display:flex}}
+.hx-pad button{min-width:38px;min-height:34px;border:1px solid var(--line);background:var(--card);border-radius:8px;font-size:13px;color:var(--ink);cursor:pointer;padding:0 8px}
+.hx-pad button:active{background:#f3f4f6}
+.hx-pad .ok{background:var(--accent);color:#fff;border-color:var(--accent);font-size:11px;font-weight:700}
+.hx-ov{position:absolute;inset:0;background:#f6f7f9d9;display:flex;align-items:center;justify-content:center;padding:12px;z-index:5;border-radius:12px}
+.hx-card{display:flex;flex-direction:column;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;width:min(460px,100%);max-height:100%;overflow:hidden}
+.hx-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.hx-head h3{margin:0;font-size:17px}
+.hx-body{flex:1 1 auto;min-height:0;overflow:auto}
+.hx-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.hx-card p{margin:0 0 10px;color:var(--mut);font-size:12.5px;line-height:1.55}
+.hx-factions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hx-faction{display:flex;flex-direction:column;gap:4px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;background:var(--card);cursor:pointer;text-align:left;font:inherit}
+.hx-faction:hover{border-color:#d1d5db;background:#fafafa}
+.hx-faction .nm{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;color:var(--ink)}
+.hx-faction small{color:var(--mut);font-size:11px;line-height:1.4}
+.hx-help{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.hx-help b{display:block;margin:0 0 5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.hx-list{margin:0 0 10px;padding-left:16px;color:var(--mut);font-size:12px;line-height:1.6}
+.hx-list b{color:var(--ink)}
+.hx-keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11.5px;color:var(--mut);align-items:center}
+.hx-keys b{color:var(--ink);font-weight:600;background:#f3f4f6;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:10.5px;justify-self:start;white-space:nowrap}
+.hx-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hx-row{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.hx-note{color:var(--mut);font-size:11.5px}
+.hx-ptitle{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--mut);margin:2px 0 8px}
+.hx-bar{height:6px;background:#eef0f3;border-radius:3px;overflow:hidden;margin:6px 0}
+.hx-bar i{display:block;height:100%;border-radius:3px}
+.hx-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:8px 0}
+.hx-stat{display:flex;justify-content:space-between;background:#f6f7f9;border-radius:8px;padding:3px 8px;font-size:12px}
+.hx-stat span{color:var(--mut)}
+.hx-train{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:6px 0}
+.hx-train .hx-btn{padding:6px 4px;font-size:11px;display:block}
+.hx-train small{display:block;color:var(--mut);font-weight:500;font-size:10px}
+.hx-brow{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f6f7f9;border-radius:10px;padding:6px 8px;margin-bottom:6px}
+.hx-brow small{display:block;color:var(--mut);font-size:10.5px}
+.hx-legend{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.hx-leg{display:flex;gap:7px;align-items:center;font-size:11.5px;color:var(--mut)}
+.hx-leg i{width:11px;height:11px;border-radius:3px;border:1px solid #00000014;flex:none}
+.hx-done{opacity:.45}
 .hx-app [data-g="marks"],.hx-app [data-g="cursor"]{pointer-events:none}
 .hx-app [data-key]{cursor:pointer}
+@media(max-width:420px){.hx-app .hx-factions,.hx-app .hx-cheats{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.hx-app *{transition-duration:.01ms!important}}
+/* --- layout overrides last (beat pointer:coarse 44px defaults) --- */
+@media(max-width:900px){.hx-app .hx-chip.hx-sub{display:none}}
+@media(max-width:640px){
+  .hx-app.game-fill>.hx-panel:not(:has(.hx-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+  .hx-app.game-fill>.hx-panel:has(.hx-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .hx-app{gap:6px}
+  .hx-app .hx-hud{gap:4px}
+  .hx-app .hx-hud .hx-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .hx-app .hx-hud .hx-chip.hx-units,.hx-app .hx-hud .hx-chip.hx-cities{display:none}
+  .hx-app .hx-hud .hx-btn-label,.hx-app .hx-hud .hx-spacer{display:none}
+  .hx-app .hx-hud .hx-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .hx-app .hx-main{flex-direction:column;gap:6px}
+  .hx-app .hx-side{flex:none;width:100%;max-width:none;max-height:200px}
+  .hx-ov{padding:8px}
+  .hx-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .hx-help{grid-template-columns:1fr;gap:8px}
+  .hx-body{scrollbar-width:none}
+  .hx-body::-webkit-scrollbar{display:none}
+  .hx-foot{padding-top:8px;border-top:1px solid var(--line)}
+  .hx-note{display:none}
+}
+@media(pointer:coarse){
+  .hx-app .hx-hud .hx-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .hx-app .hx-card .hx-btn{min-height:44px}
+}
 </style>
-<div class="game-app hx-app" tabindex="0">
-  <div class="game-intro">
-    <div><h2>Hexa Polis</h2><p data-el="sub">Capture the enemy capital.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-el="statusdot"></i><span data-el="status">Lobby</span></span>
+<div class="game-app hx-app game-fill" tabindex="0">
+  <div class="hx-hud">
+    <span class="hx-chip">Turn <b data-el="turn">–</b></span>
+    <span class="hx-chip">Gold <b data-el="gold">–</b><small data-el="inc"></small></span>
+    <span class="hx-chip hx-units">Units <b data-el="units">–</b></span>
+    <span class="hx-chip hx-cities">Cities <b data-el="cities">–</b></span>
+    <span class="hx-chip"><i class="hx-dot" data-el="facdot"></i><b data-el="facname">–</b></span>
+    <span class="hx-chip"><i class="hx-dot" data-el="statusdot"></i><b data-el="status">Lobby</b></span>
+    <span class="hx-chip hx-sub" data-el="sub">Capture the enemy capital.</span>
+    <span class="hx-spacer"></span>
+    <button class="hx-btn primary" type="button" data-act="end" data-el="end" title="End turn (E)">End Turn</button>
+    <button class="hx-btn hx-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="hx-btn-label">Help</span></button>
+    ${online ? "" : '<button class="hx-btn hx-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">' + iconSVG("wrench", { size: 14 }) + '<span class="hx-btn-label">Cheats</span></button>'}
+    ${online ? "" : '<button class="hx-btn hx-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">' + iconSVG("pause", { size: 14 }) + '<span class="hx-btn-label">Pause</span></button>'}
+    ${online && !room.isHost ? "" : '<button class="hx-btn hx-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">' + iconSVG("refresh", { size: 14 }) + '<span class="hx-btn-label">Restart</span></button>'}
+    <button class="hx-btn hx-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="hx-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel hx-panel" data-board>
-    <div class="hx-hud">
-      <span class="hx-chip">Turn <b data-el="turn">–</b></span>
-      <span class="hx-chip">Gold <b data-el="gold">–</b><small data-el="inc"></small></span>
-      <span class="hx-chip">Units <b data-el="units">–</b></span>
-      <span class="hx-chip">Cities <b data-el="cities">–</b></span>
-      <span class="hx-chip"><i class="hx-dot" data-el="facdot"></i><b data-el="facname">–</b></span>
-      <span class="hx-spacer"></span>
-      <button class="hx-btn icon" type="button" data-act="help" title="How to play (H)">?</button>
-      ${online ? "" : '<button class="hx-btn icon" type="button" data-act="cheats" title="Cheats (C)">⚡</button>'}
-      ${online && !room.isHost ? "" : '<button class="hx-btn icon" type="button" data-act="restart" title="Restart">↺</button>'}
-      <button class="hx-btn primary" type="button" data-act="end" data-el="end" title="End turn (E)">End Turn</button>
-    </div>
     <div class="hx-main">
       <div class="hx-mapwrap">
         <svg data-el="map" role="img" aria-label="Hex realm map">
           <g data-g="hexes"></g><g data-g="cities"></g><g data-g="units"></g><g data-g="marks"></g><g data-g="cursor"></g>
         </svg>
         <div class="hx-toast" data-el="toast"></div>
-        <div class="hx-pad" aria-label="Touch controls">
-          <button type="button" data-act="cycle" title="Next unit">↻</button>
-          <button type="button" data-act="pad" data-dir="up" aria-label="Up">▲</button>
-          <button type="button" data-act="end" title="End turn">⏭</button>
-          <button type="button" data-act="pad" data-dir="left" aria-label="Left">◀</button>
-          <button type="button" class="ok" data-act="ok">OK</button>
-          <button type="button" data-act="pad" data-dir="right" aria-label="Right">▶</button>
-          <span></span>
-          <button type="button" data-act="pad" data-dir="down" aria-label="Down">▼</button>
-          <span></span>
-        </div>
       </div>
       <aside class="hx-side" data-el="side"></aside>
     </div>
 
     <div class="hx-ov" data-ov="faction" hidden>
       <div class="hx-card">
-        <h3>Choose your faction</h3>
-        <p>Capture the enemy capital to win. Spawn sides and the first move are random.</p>
-        <div class="hx-factions">${factionCards}</div>
-        <div class="hx-row"><button class="hx-btn" type="button" data-act="pick" data-f="random">Surprise me</button></div>
+        <div class="hx-head"><h3>Choose your faction</h3></div>
+        <div class="hx-body">
+          <p>Capture the enemy capital to win. Spawn sides and the first move are random.</p>
+          <div class="hx-factions">${factionCards}</div>
+        </div>
+        <div class="hx-foot"><button class="hx-btn" type="button" data-act="pick" data-f="random">Surprise me</button></div>
       </div>
     </div>
     <div class="hx-ov" data-ov="wait" hidden>
       <div class="hx-card">
-        <h3>Waiting for host</h3>
-        <p>The host is choosing a faction. Your spawn side will be assigned randomly.</p>
+        <div class="hx-head"><h3>Waiting for host</h3></div>
+        <div class="hx-body"><p>The host is choosing a faction. Your spawn side will be assigned randomly.</p></div>
       </div>
     </div>
     <div class="hx-ov" data-ov="help" hidden>
       <div class="hx-card">
-        <h3>How to play</h3>
-        <ul class="hx-list">
-          <li><b>Goal:</b> capture the enemy capital. If yours falls, you lose.</li>
-          <li>Each turn your cities earn gold. Spend it on units, farms and walls.</li>
-          <li>Select a unit → tap a dot to move, a red ring to attack. Attacking ends that unit's turn.</li>
-          <li>Move onto an undefended enemy or free city to capture it. Free cities have a guard.</li>
-          <li>Units heal +${HEAL} at the start of your turn while standing on your city.</li>
-          <li>Forest: +25% defense, 2 move. Hills: +40% defense. Water &amp; mountains block.</li>
-          <li>Walls give +50% defense to the unit standing in that city.</li>
-        </ul>
-        <div class="hx-keys">
-          <b>Click / Tap</b><span>select, move, attack</span>
-          <b>WASD / Arrows</b><span>move the cursor</span>
-          <b>Enter / Space</b><span>act on the cursor hex</span>
-          <b>N</b><span>next unit</span>
-          <b>E</b><span>end turn</span>
-          <b>H</b><span>this help</span>
-          <b>C</b><span>cheats (offline)</span>
-          <b>Esc</b><span>close / deselect</span>
+        <div class="hx-head"><h3>How to play</h3><button class="hx-btn" type="button" data-help-close aria-label="Close">Close</button></div>
+        <div class="hx-body hx-help">
+          <div>
+            <b>Desktop</b>
+            <ul class="hx-list">
+              <li>Click a unit or city to inspect it.</li>
+              <li>Click a dot to move, a red ring to attack. Attacking ends that unit's turn.</li>
+              <li><b>WASD / Arrows</b> move the cursor, <b>Enter</b> acts on the cursor hex.</li>
+              <li><b>H</b> help · <b>C</b> cheats · <b>P</b> pause · <b>R</b> restart · <b>E</b> end turn · <b>N</b> next unit</li>
+            </ul>
+            <b>Mobile</b>
+            <ul class="hx-list">
+              <li>Tap a unit, then a highlighted hex or ring.</li>
+              <li>Use the pad below the map to move the cursor and act.</li>
+              <li>HUD buttons: Help, Cheats, Pause, Restart, End Turn, Exit.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul class="hx-list">
+              <li><b>Goal:</b> capture the enemy capital. If yours falls, you lose.</li>
+              <li>Each turn your cities earn gold. Spend it on units, farms and walls.</li>
+              <li>Move onto an undefended enemy or free city to capture it. Free cities have a guard.</li>
+              <li>Units heal +${HEAL} hp on your city at the start of your turn.</li>
+              <li>Forest: +25% defense, 2 move. Hills: +40% defense. Water &amp; mountains block.</li>
+              <li>Walls give +50% defense to the unit standing in that city.</li>
+            </ul>
+          </div>
         </div>
-        <div class="hx-row"><button class="hx-btn" type="button" data-act="close">Close</button></div>
+        <div class="hx-foot"><span class="hx-note">Press H to reopen this guide</span><button class="hx-btn primary" type="button" data-help-close>Got it</button></div>
+      </div>
+    </div>
+    <div class="hx-ov" data-ov="pause" hidden>
+      <div class="hx-card">
+        <div class="hx-head"><h3>Paused</h3></div>
+        <div class="hx-body"><p>The map, bot and timers are frozen. Press P or Esc to resume.</p></div>
+        <div class="hx-foot"><button class="hx-btn primary" type="button" data-resume>Resume</button></div>
       </div>
     </div>
     ${online ? "" : `
     <div class="hx-ov" data-ov="cheat" hidden>
       <div class="hx-card">
-        <h3>Cheats</h3>
-        <p>Offline only. Use anything to make the campaign easier.</p>
-        <div class="hx-cheats">
-          <button class="hx-btn" type="button" data-act="cheat" data-kind="gold">+250 Gold</button>
-          <button class="hx-btn" type="button" data-act="cheat" data-kind="heal">Heal all units</button>
-          <button class="hx-btn" type="button" data-act="cheat" data-kind="reveal">Reveal map</button>
-          <button class="hx-btn" type="button" data-act="cheat" data-kind="weaken">Halve enemy HP</button>
-          <button class="hx-btn" type="button" data-act="cheat" data-kind="god" data-el="godlabel">God mode: OFF</button>
+        <div class="hx-head"><h3>Cheats</h3><button class="hx-btn" type="button" data-cheat-close aria-label="Close">Close</button></div>
+        <div class="hx-body">
+          <p>Offline only. Use anything to make the campaign easier.</p>
+          <div class="hx-cheats">
+            <button class="hx-btn" type="button" data-act="cheat" data-kind="gold">+250 Gold</button>
+            <button class="hx-btn" type="button" data-act="cheat" data-kind="heal">Heal all units</button>
+            <button class="hx-btn" type="button" data-act="cheat" data-kind="reveal">Reveal map</button>
+            <button class="hx-btn" type="button" data-act="cheat" data-kind="weaken">Halve enemy HP</button>
+            <button class="hx-btn" type="button" data-act="cheat" data-kind="god" data-el="godlabel">God mode: OFF</button>
+          </div>
         </div>
-        <div class="hx-row"><button class="hx-btn" type="button" data-act="close">Close</button></div>
+        <div class="hx-foot"><span class="hx-note">Press C to toggle · Esc to close</span></div>
       </div>
     </div>`}
     <div class="hx-ov" data-ov="over" hidden>
       <div class="hx-card">
-        <h3 data-el="overtitle">Victory</h3>
-        <p data-el="overreason"></p>
-        <p data-el="overstats"></p>
-        <div class="hx-row">
+        <div class="hx-head"><h3 data-el="overtitle">Victory</h3></div>
+        <div class="hx-body"><p data-el="overreason"></p><p data-el="overstats"></p></div>
+        <div class="hx-foot">
           <span class="hx-note" data-el="guestnote" hidden>Waiting for the host to restart…</span>
-          <button class="hx-btn primary" type="button" data-act="restart" data-el="again">Play again</button>
+          <button class="hx-btn primary" type="button" data-restart data-el="again">Play again</button>
         </div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="hx-pad" aria-label="Touch controls">
+    <button type="button" data-act="cycle" title="Next unit">↻</button>
+    <button type="button" data-act="pad" data-dir="up" aria-label="Up">▲</button>
+    <button type="button" data-act="pad" data-dir="left" aria-label="Left">◀</button>
+    <button type="button" class="ok" data-act="ok" aria-label="Select">OK</button>
+    <button type="button" data-act="pad" data-dir="right" aria-label="Right">▶</button>
+    <button type="button" data-act="pad" data-dir="down" aria-label="Down">▼</button>
+    <button type="button" data-act="end" title="End turn">⏭</button>
+  </div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -698,8 +764,10 @@ export function mount(root, context = {}) {
         hudUnits = $('[data-el="units"]'), hudCities = $('[data-el="cities"]'),
         facDot = $('[data-el="facdot"]'), facName = $('[data-el="facname"]');
     const endBtn = $('[data-el="end"]');
+    const pauseBtn = $("[data-pause]"), cheatsBtn = $("[data-cheats]");
     const ovFaction = $('[data-ov="faction"]'), ovWait = $('[data-ov="wait"]'),
-        ovHelp = $('[data-ov="help"]'), ovCheat = $('[data-ov="cheat"]'), ovOver = $('[data-ov="over"]');
+        ovHelp = $('[data-ov="help"]'), ovCheat = $('[data-ov="cheat"]'),
+        ovPause = $('[data-ov="pause"]'), ovOver = $('[data-ov="over"]');
     const ovTitle = $('[data-el="overtitle"]'), ovReason = $('[data-el="overreason"]'),
         ovStats = $('[data-el="overstats"]'), againBtn = $('[data-el="again"]'), guestNote = $('[data-el="guestnote"]');
     const godLabel = $('[data-el="godlabel"]');
@@ -728,7 +796,8 @@ export function mount(root, context = {}) {
     function mySlot() { return state && state.connToSlot ? state.connToSlot[playerIndex] : 0; }
     function hasMap() { return Boolean(state && state.hexes); }
     function myTurn() {
-        return hasMap() && state.phase === "play" && state.current === mySlot() && !state.players[state.current].bot;
+        return hasMap() && state.phase === "play" && state.current === mySlot() &&
+            !state.players[state.current].bot && !paused;
     }
     function ownerColor(owner) {
         if (owner === NEUTRAL) return "#94a3b8";
@@ -1025,13 +1094,16 @@ export function mount(root, context = {}) {
         endBtn.disabled = !myTurn();
         sideEl.innerHTML = panelHTML();
 
+        /* Overlays suppress each other: help > cheats > pause > result. */
         const canPick = Boolean(state && state.phase === "lobby" && (!online || room.isHost));
-        ovFaction.hidden = !canPick;
-        ovWait.hidden = !(online && !room.isHost && (!state || state.phase === "lobby"));
-        ovHelp.hidden = !uiHelp;
-        if (ovCheat) ovCheat.hidden = !uiCheat;
+        ovFaction.hidden = !canPick || cheatsOpen || helpOpen || paused;
+        ovWait.hidden = !(online && !room.isHost && (!state || state.phase === "lobby")) ||
+            cheatsOpen || helpOpen || paused;
+        ovHelp.hidden = !helpOpen;
+        if (ovCheat) ovCheat.hidden = !cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || cheatsOpen || helpOpen;
         const over = Boolean(state && state.phase === "over");
-        ovOver.hidden = !over;
+        ovOver.hidden = !over || cheatsOpen || helpOpen || paused;
         if (over) {
             const win = state.winner === me;
             ovTitle.textContent = win ? "Victory" : "Defeat";
@@ -1043,6 +1115,37 @@ export function mount(root, context = {}) {
             guestNote.hidden = !(online && !room.isHost);
         }
         if (godLabel && has) godLabel.textContent = "God mode: " + (state.god[me] ? "ON" : "OFF");
+        if (cheatsBtn) cheatsBtn.classList.toggle("on", cheatsOpen);
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".hx-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
+        }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) {
+            pauseStart = perfNow();
+            clearBotTimer();
+        } else {
+            pauseOffset += perfNow() - pauseStart;
+            pauseStart = 0;
+            const wait = botRemaining;
+            botRemaining = null;
+            if (wait !== null) scheduleBot(wait);
+        }
+        render();
     }
 
     /* ---------- networking / action flow ---------- */
@@ -1050,12 +1153,22 @@ export function mount(root, context = {}) {
         render();
         if (online && room.isHost && state) room.publishState(state).catch(console.warn);
     }
-    function scheduleBot() {
-        if (destroyed || online || botTimer) return;
+    /* Pause-aware bot timer: store the Date.now() due anchor, freeze the
+       remaining delay on pause and replay only that remainder on resume. */
+    function clearBotTimer() {
+        if (!botTimer) return;
+        clearTimeout(botTimer);
+        botTimer = null;
+        botRemaining = Math.max(0, botDue - clockNow());
+        botDue = 0;
+    }
+    function scheduleBot(wait) {
+        if (destroyed || online || paused || botTimer) return;
         if (!state || state.phase !== "play" || !state.players[state.current].bot) return;
+        const ms = typeof wait === "number" ? wait : 750;
         botTimer = setTimeout(() => {
-            botTimer = null;
-            if (destroyed || !state || state.phase !== "play") return;
+            botTimer = null; botDue = 0;
+            if (destroyed || paused || !state || state.phase !== "play") return;
             const s = state.current;
             if (!state.players[s].bot) return;
             state.msg = botTurn(state, s);
@@ -1067,7 +1180,8 @@ export function mount(root, context = {}) {
             }
             publish();
             scheduleBot();
-        }, 750);
+        }, ms);
+        botDue = clockNow() + ms;
     }
     function finish() {
         updateExplored(state);
@@ -1078,20 +1192,23 @@ export function mount(root, context = {}) {
 
     function applyAction(action, actor) {
         if (destroyed || !state || !action) return;
+        if (paused && action.type !== "restart") return;
         const slot = state.connToSlot ? state.connToSlot[actor] : 0;
 
         if (action.type === "start") {
             if (actor !== 0 || state.phase !== "lobby") return;
             state = newGame(action.faction, online);
             state.msg = FACTIONS[state.players[state.firstSlot].faction].name + " moves first.";
-            sel = null; cursorKey = null; uiHelp = false; uiCheat = false;
+            sel = null; cursorKey = null; helpOpen = false; cheatsOpen = false;
             finish();
             return;
         }
         if (action.type === "restart") {
             if (actor !== 0) return;
+            clearBotTimer(); botRemaining = null;
+            paused = false; pauseStart = 0; pauseOffset = 0;
             state = makeLobby();
-            sel = null; cursorKey = null; uiHelp = false; uiCheat = false;
+            sel = null; cursorKey = null; helpOpen = false; cheatsOpen = false;
             publish();
             return;
         }
@@ -1163,6 +1280,7 @@ export function mount(root, context = {}) {
 
     /* ---------- input: pointer ---------- */
     function handleHexClick(key) {
+        if (destroyed || helpOpen || cheatsOpen || paused) return;
         if (!hasMap() || !state.hexes[key]) { sel = null; render(); return; }
         cursorKey = key;
         const hex = state.hexes[key];
@@ -1227,16 +1345,25 @@ export function mount(root, context = {}) {
     function handleClick(event) {
         if (destroyed) return;
         const t = event.target;
-        if (t.closest && t.closest("[data-exit]")) { onExit(); return; }
-        const actEl = t.closest ? t.closest("[data-act]") : null;
+        const closest = (s) => (t.closest ? t.closest(s) : null);
+        if (closest("[data-exit]")) { onExit(); return; }
+        if (closest("[data-help]")) { toggleHelp(); focusWrap(); return; }
+        if (closest("[data-help-close]")) { toggleHelp(false); focusWrap(); return; }
+        if (closest("[data-cheats]")) {
+            if (!online) { cheatsOpen = !cheatsOpen; if (cheatsOpen) helpOpen = false; render(); }
+            focusWrap(); return;
+        }
+        if (closest("[data-cheat-close]")) { cheatsOpen = false; render(); focusWrap(); return; }
+        if (closest("[data-pause]")) { togglePause(); focusWrap(); return; }
+        if (closest("[data-resume]")) { togglePause(false); focusWrap(); return; }
+        if (closest("[data-restart]")) { submitAction({ type: "restart" }); focusWrap(); return; }
+        const actEl = closest("[data-act]");
         if (actEl) {
             const act = actEl.dataset.act;
+            if (helpOpen || paused) return;
+            if (cheatsOpen && act !== "cheat") return;
             if (act === "pick") submitAction({ type: "start", faction: actEl.dataset.f });
-            else if (act === "restart") submitAction({ type: "restart" });
             else if (act === "end") { if (myTurn()) submitAction({ type: "end" }); }
-            else if (act === "help") { uiHelp = !uiHelp; uiCheat = false; render(); }
-            else if (act === "cheats") { if (!online) { uiCheat = !uiCheat; uiHelp = false; render(); } }
-            else if (act === "close") { uiHelp = false; uiCheat = false; render(); }
             else if (act === "cheat") submitAction({ type: "cheat", kind: actEl.dataset.kind });
             else if (act === "train") { if (sel && sel.type === "city") submitAction({ type: "train", key: sel.key, kind: actEl.dataset.k }); }
             else if (act === "build") { if (sel && sel.type === "city") submitAction({ type: "build", key: sel.key, b: actEl.dataset.b }); }
@@ -1245,25 +1372,45 @@ export function mount(root, context = {}) {
             else if (act === "cycle") cycleUnit();
             return;
         }
-        const keyEl = t.closest ? t.closest("[data-key]") : null;
+        if (helpOpen || cheatsOpen || paused) return;
+        const keyEl = closest("[data-key]");
         if (keyEl) handleHexClick(keyEl.getAttribute("data-key"));
     }
 
     /* ---------- input: keyboard ---------- */
     function onKey(e) {
         if (destroyed || e.ctrlKey || e.metaKey || e.altKey) return;
-        const k = e.key;
-        if (k === "Escape") {
-            if (uiHelp || uiCheat) { uiHelp = false; uiCheat = false; }
-            else sel = null;
-            render(); e.preventDefault(); return;
+        const k = e.key, code = e.code || "";
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        /* priority: help -> cheats -> pause -> escape -> restart -> game actions */
+        if (code === "KeyH" || k === "h" || k === "H" || k === "?") {
+            if (!e.repeat) toggleHelp();
+            e.preventDefault(); return;
         }
-        if (k === "h" || k === "H" || k === "?") { uiHelp = !uiHelp; uiCheat = false; render(); e.preventDefault(); return; }
-        if ((k === "c" || k === "C") && !online) { uiCheat = !uiCheat; uiHelp = false; render(); e.preventDefault(); return; }
-        if (uiHelp || uiCheat) return;
+        if (code === "KeyC" || k === "c" || k === "C") {
+            if (!e.repeat && !online && !helpOpen) { cheatsOpen = !cheatsOpen; render(); }
+            e.preventDefault(); return;
+        }
+        if (code === "KeyP" || k === "p" || k === "P") {
+            if (!e.repeat && !helpOpen && !cheatsOpen) togglePause();
+            e.preventDefault(); return;
+        }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (paused) togglePause(false);
+            else { sel = null; render(); }
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR" || k === "r" || k === "R") {
+            if (!e.repeat && !helpOpen && !cheatsOpen && (!online || room.isHost))
+                submitAction({ type: "restart" });
+            e.preventDefault(); return;
+        }
+        if (tag === "BUTTON") return; /* native Enter/Space on HUD buttons */
+        if (helpOpen || cheatsOpen || paused) { e.preventDefault(); return; }
         if (!hasMap() || state.phase !== "play") return;
-        /* let Enter/Space activate a focused button natively (no double fire) */
-        if ((k === "Enter" || k === " ") && e.target.closest && e.target.closest("button")) return;
         const dirs = {
             ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
             w: "up", s: "down", a: "left", d: "right", W: "up", S: "down", A: "left", D: "right",
@@ -1312,7 +1459,8 @@ export function mount(root, context = {}) {
             wrap.removeEventListener("keydown", onKey);
             wrap.removeEventListener("pointerdown", focusWrap);
             svg.removeEventListener("pointermove", onHover);
-            if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+            clearBotTimer();
+            botRemaining = null;
         },
     };
 }

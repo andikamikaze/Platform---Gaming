@@ -1,5 +1,7 @@
 /* ==== GAME: space-shooter.js ==== */
 
+import { iconSVG } from "../JS/icons.js";
+
 /*
     - File ini mengikuti template game (META + mount).
   - id META harus sama dengan nama file tanpa .js  ->  "space-shooter".
@@ -110,6 +112,7 @@ export function mount(root, context = {}) {
     let state = null;      // state kanonik (serializable, dipublish ke Firebase oleh host)
     let inputs = [];       // input per pemain — LOKAL di host, tidak ikut dipublish
     let paused = false, helpOpen = false, cheatOpen = false;
+    let startScreen = !online;
     const cheats = { god: false, rapid: false, triple: false, slow: false };
     let cheated = false;
     let botT = 0, botErr = 0;
@@ -117,6 +120,19 @@ export function mount(root, context = {}) {
     let lastTxSend = 0;
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (err) { best = 0; }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("spaceShooterHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("spaceShooterHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+    /* Pause membekukan sim/timer/bot — geser anchor waktu saat resume agar tidak loncat. */
+    function shiftTimeAnchors() {
+        lastT = 0;            // timestamp RAF di-init ulang pada frame berikutnya
+        pubT = 0;             // timer publish host
+        lastTxSend = 0;       // anchor throttle performance.now() untuk guest
+        lastPubPhase = state ? state.phase : "";
+    }
 
     function nameFor(ctrl) {
         if (ctrl === "human") return playerName || "You";
@@ -167,6 +183,8 @@ export function mount(root, context = {}) {
         botT = 0; botErr = 0; cheated = false;
         resetCheats();
         paused = false; helpOpen = false; cheatOpen = false;
+        startScreen = false;
+        shiftTimeAnchors();
         hideAllOverlays();
         resetView();
         publishNow();
@@ -431,187 +449,229 @@ export function mount(root, context = {}) {
 
     /* ================= UI (minimalis) ================= */
     root.innerHTML = `
-<div class="game-app ss-app">
+<div class="game-app ss-app game-fill" data-ss>
 <style>
-.ss-app{--ss-line:#e2e8f0;--ss-ink:#0f172a;--ss-mut:#64748b;--ss-acc:#6366f1;--ss-board:#0b1020;display:flex;flex-direction:column;gap:14px;color:var(--ss-ink)}
+.ss-app{--ss-line:#e2e8f0;--ss-ink:#0f172a;--ss-mut:#64748b;--ss-acc:#6366f1;--ss-board:#0b1020;display:flex;flex-direction:column;gap:8px;width:100%;min-width:0;max-width:900px;height:100%;min-height:0;margin:0 auto;padding:0 12px calc(12px + env(safe-area-inset-bottom));box-sizing:border-box;color:var(--ss-ink)}
+.ss-app *{box-sizing:border-box}
 .ss-app [hidden]{display:none!important}
-.ss-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
-.ss-chip{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border:1px solid var(--ss-line);border-radius:999px;background:#fff;font-size:12px;color:var(--ss-mut);white-space:nowrap}
+.ss-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ss-chip,.ss-status{display:inline-flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid var(--ss-line);border-radius:999px;background:#fff;font-size:10px;color:var(--ss-mut);white-space:nowrap}
 .ss-chip b{color:var(--ss-ink);font-variant-numeric:tabular-nums;font-weight:600}
+.ss-status .game-status-dot{background:#10b981;flex:none}
 .ss-dot{width:8px;height:8px;border-radius:50%;background:#818cf8;flex:none}
-.ss-hpbar{width:56px;height:5px;border-radius:3px;background:#eef2f7;overflow:hidden;flex:none}
+.ss-hpbar{width:40px;height:6px;border-radius:3px;background:#eef2f7;overflow:hidden;flex:none}
 .ss-hpfill{display:block;height:100%;width:100%;border-radius:3px;background:#10b981;transition:width .15s linear}
 .ss-cheatflag{color:#b45309;border-color:#fcd34d;background:#fffbeb;font-weight:700;letter-spacing:.06em}
-.ss-stage{position:relative;border-radius:14px;overflow:hidden;background:var(--ss-board);user-select:none;-webkit-user-select:none}
-.ss-board{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+.ss-spacer{flex:1 1 auto}
+.ss-btn{appearance:none;border:1px solid var(--ss-line);background:#fff;color:var(--ss-ink);border-radius:9px;padding:6px 7px;min-height:32px;font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em;text-transform:uppercase;cursor:pointer}
+.ss-btn:hover{border-color:var(--ss-acc);color:var(--ss-acc)}
+.ss-btn:disabled{opacity:.45;cursor:default}
+.ss-btn.primary{background:var(--ss-acc);border-color:var(--ss-acc);color:#fff}
+.ss-btn.primary:hover{color:#fff;filter:brightness(1.06)}
+.ss-btn.ghost{background:#fff;color:var(--ss-ink);border-color:var(--ss-line)}
+.ss-btn.on{border-color:var(--ss-acc);color:var(--ss-acc);background:#eef0ff}
+.ss-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ss-icon-btn svg{flex:none;display:block}
+.ss-app.game-fill > .ss-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.ss-board{position:relative;border:0;padding:0;border-radius:14px;overflow:hidden;background:var(--ss-board);user-select:none;-webkit-user-select:none}
+.ss-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .ss-banner{fill:#fff;font-weight:800;letter-spacing:5px}
 .ss-bannersub{fill:#94a3b8;font-weight:500;letter-spacing:1px}
 .ss-shiplabel{fill:#7c8db0;font-size:9px;letter-spacing:1px}
 .ss-lerp [data-ent]{transition:transform .12s linear}
-.ss-overlay{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(7,11,26,.72);backdrop-filter:blur(4px)}
-.ss-card{width:100%;max-width:430px;max-height:100%;overflow:auto;background:#fff;border-radius:14px;padding:20px 22px;box-shadow:0 18px 50px rgba(2,6,23,.45)}
+.ss-overlay{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(7,11,26,.76);backdrop-filter:blur(4px)}
+.ss-card{display:flex;flex-direction:column;width:100%;max-width:460px;max-height:100%;overflow:hidden;background:#fff;border:1px solid var(--ss-line);border-radius:14px;box-shadow:0 6px 18px rgba(2,6,23,.28)}
+.ss-head{flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:20px 22px 0}
+.ss-scroll{flex:1 1 auto;min-height:0;overflow:auto;padding:0 22px}
+.ss-list,.ss-cheats,.ss-scores,.ss-help{flex:1 1 auto;min-height:0;overflow:auto}
+.ss-foot{flex:none;display:flex;flex-wrap:wrap;gap:8px;padding:0 22px 20px}
 .ss-kicker{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ss-acc);margin:0 0 4px}
 .ss-card h3{margin:0 0 6px;font-size:19px;letter-spacing:-.01em}
 .ss-card p{margin:6px 0;font-size:13px;line-height:1.55;color:#334155}
 .ss-list{margin:10px 0;padding-left:16px;display:grid;gap:6px;font-size:13px;line-height:1.5;color:#334155}
-.ss-kbd{display:inline-block;padding:0 6px;border:1px solid var(--ss-line);border-bottom-width:2px;border-radius:5px;background:#f8fafc;font-size:11px;font-family:ui-monospace,monospace}
-.ss-btn{appearance:none;border:1px solid var(--ss-acc);background:var(--ss-acc);color:#fff;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer}
-.ss-btn:hover{filter:brightness(1.06)}
-.ss-btn:disabled{opacity:.5;cursor:default}
-.ss-btn.ghost{background:#fff;color:var(--ss-ink);border-color:var(--ss-line)}
-.ss-btn.ghost:hover{border-color:#cbd5e1;background:#f8fafc}
-.ss-btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.ss-note{font-size:11.5px;color:var(--ss-mut);margin:8px 0 0}
-.ss-touch{display:none;gap:10px;margin-top:10px}
-.ss-pad{flex:1;height:54px;border-radius:12px;border:1px solid var(--ss-line);background:#fff;color:var(--ss-ink);font-size:17px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+.ss-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:10px}
+.ss-help b{display:block;margin-bottom:6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ss-mut)}
+.ss-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;color:#334155}
+.ss-kbd{display:inline-block;padding:1px 6px;border:1px solid var(--ss-line);border-bottom-width:2px;border-radius:5px;background:#f8fafc;font-size:11px;font-family:ui-monospace,monospace}
+.ss-touch{display:none;gap:10px;margin-top:8px}
+@media (pointer:coarse),(max-width:720px){.ss-touch{display:flex}}
+.ss-pad{flex:1;min-height:56px;border-radius:10px;border:1px solid var(--ss-line);background:#fff;color:var(--ss-ink);font-size:17px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
 .ss-pad:active{transform:translateY(1px);background:#f1f5f9}
 .ss-pad.fire{flex:1.5;background:var(--ss-acc);border-color:var(--ss-acc);color:#fff;font-weight:800;letter-spacing:.12em;font-size:13px}
 .ss-pad.fire:active{background:#4f46e5}
-@media (pointer:coarse),(max-width:720px){.ss-touch{display:flex}.ss-deskhint{display:none}}
 .ss-cheat{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 2px;border-bottom:1px dashed var(--ss-line);font-size:13px}
 .ss-cheat small{display:block;color:var(--ss-mut);font-size:11px}
-.ss-cheat input{width:17px;height:17px;accent-color:var(--ss-acc);flex:none}
-.ss-scores{margin:10px 0 0;font-size:13px;display:grid;gap:4px}
+.ss-cheat input{width:20px;height:20px;accent-color:var(--ss-acc);flex:none}
+.ss-scores{font-size:13px;display:grid;gap:4px;margin:10px 0 0}
 .ss-scores div{display:flex;justify-content:space-between;border-bottom:1px dashed var(--ss-line);padding:4px 2px}
+.ss-note{font-size:11.5px;color:var(--ss-mut);margin:8px 0 0}
+.ss-app :focus-visible,.ss-app button:focus-visible{outline:2px solid var(--ss-acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.ss-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+@media (pointer:coarse){.ss-app button:not(:disabled){min-height:44px}}
+/* --- layout redesign overrides (keep last) --- */
+@media (max-width:640px){
+ .ss-app{gap:6px;padding-left:8px;padding-right:8px}
+ .ss-app.game-fill > .ss-board:not(:has(.ss-overlay:not([hidden]))){flex:0 0 auto;aspect-ratio:560/520;min-height:0}
+ .ss-app.game-fill > .ss-board:has(.ss-overlay:not([hidden])){flex:0 0 auto;aspect-ratio:auto;min-height:min(70dvh,620px)}
+ .ss-app .ss-hud{gap:5px}
+ .ss-app .ss-hud .ss-chip,.ss-app .ss-hud .ss-status{padding:4px 6px;font-size:9px}
+ .ss-app .ss-hud .ss-chip[data-low]{display:none}
+ .ss-app .ss-hud .ss-btn{min-height:32px;padding:5px 9px;font-size:9px}
+ .ss-app .ss-hud .ss-btn-label,.ss-app .ss-hud .ss-spacer{display:none}
+ .ss-overlay{padding:8px}
+ .ss-app .ss-card{width:100%;height:100%;max-height:100%;padding:0;border-radius:12px}
+ .ss-app .ss-head{padding:12px 12px 0}
+ .ss-app .ss-scroll,.ss-app .ss-foot{padding-left:12px;padding-right:12px}
+ .ss-app .ss-foot{padding-bottom:12px}
+ .ss-app .ss-list,.ss-app .ss-cheats,.ss-app .ss-scores,.ss-app .ss-help{scrollbar-width:none}
+ .ss-app .ss-list::-webkit-scrollbar,.ss-app .ss-cheats::-webkit-scrollbar,.ss-app .ss-scores::-webkit-scrollbar,.ss-app .ss-help::-webkit-scrollbar{display:none}
+ .ss-app .ss-note{display:none}
+}
 </style>
-  <div class="game-intro">
-    <div><h2>Space Shooter</h2><p>Clear five randomized, always-solvable sectors and destroy the flagship. Play solo, duel a bot, or duel a friend online.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+  <div class="ss-hud">
+    <span class="ss-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+    <span class="ss-chip" data-pchip="0"><i class="ss-dot" data-pdot="0"></i><b data-pname="0">P1</b><span class="ss-hpbar"><span class="ss-hpfill" data-php="0"></span></span><b data-pscore="0">0</b></span>
+    <span class="ss-chip" data-pchip="1" hidden><i class="ss-dot" data-pdot="1"></i><b data-pname="1">P2</b><span class="ss-hpbar"><span class="ss-hpfill" data-php="1"></span></span><b data-pscore="1">0</b></span>
+    <span class="ss-chip">LV <b data-level>1</b>/${TOTAL_LEVELS}</span>
+    <span class="ss-chip" data-seedchip hidden data-low title="Layout seed"><b data-seed>—</b></span>
+    <span class="ss-chip" data-bestchip hidden data-low title="Best score">B <b data-best>0</b></span>
+    <span class="ss-chip ss-cheatflag" data-cheatflag hidden>CHEATS</span>
+    <span class="ss-spacer"></span>
+    <button class="ss-btn ss-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ss-btn-label">Help</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ss-btn-label">Cheats</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="ss-btn-label">Pause</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-restart aria-label="Restart" title="Restart">${iconSVG("refresh", { size: 14 })}<span class="ss-btn-label">Restart</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ss-btn-label">Exit</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="ss-hud">
-      <span class="ss-chip" data-pchip="0"><i class="ss-dot" data-pdot="0"></i><b data-pname="0">P1</b><span class="ss-hpbar"><span class="ss-hpfill" data-php="0"></span></span><b data-pscore="0">0</b></span>
-      <span class="ss-chip" data-pchip="1" hidden><i class="ss-dot" data-pdot="1"></i><b data-pname="1">P2</b><span class="ss-hpbar"><span class="ss-hpfill" data-php="1"></span></span><b data-pscore="1">0</b></span>
-      <span class="ss-chip">Sector <b data-level>1</b>/${TOTAL_LEVELS}</span>
-      <span class="ss-chip" data-seedchip hidden>Layout <b data-seed>—</b></span>
-      <span class="ss-chip" data-bestchip hidden>Best <b data-best>0</b></span>
-      <span class="ss-chip ss-cheatflag" data-cheatflag hidden>CHEATS</span>
-    </div>
-    <div class="ss-stage" data-stage>
-      <svg data-svg class="ss-board" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Space Shooter board">
-        <rect x="0" y="0" width="${W}" height="${H}" fill="#0b1020"></rect>
-        <g data-g="stars"></g>
-        <g data-g="shots"></g>
-        <g data-g="bombs"></g>
-        <g data-g="enemies"></g>
-        <g data-g="boss"></g>
-        <g data-g="ships"></g>
-        <g data-g="fx"></g>
-        <text class="ss-banner" data-banner x="${W / 2}" y="232" font-size="32" text-anchor="middle" hidden></text>
-        <text class="ss-bannersub" data-bannersub x="${W / 2}" y="262" font-size="13" text-anchor="middle" hidden></text>
-      </svg>
+  <section class="game-panel ss-board" data-board>
+    <svg data-svg class="ss-canvas" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Space Shooter board">
+      <rect x="0" y="0" width="${W}" height="${H}" fill="#0b1020"></rect>
+      <g data-g="stars"></g>
+      <g data-g="shots"></g>
+      <g data-g="bombs"></g>
+      <g data-g="enemies"></g>
+      <g data-g="boss"></g>
+      <g data-g="ships"></g>
+      <g data-g="fx"></g>
+      <text class="ss-banner" data-banner x="${W / 2}" y="232" font-size="32" text-anchor="middle" hidden></text>
+      <text class="ss-bannersub" data-bannersub x="${W / 2}" y="262" font-size="13" text-anchor="middle" hidden></text>
+    </svg>
 
-      <div class="ss-overlay" data-ov="start" hidden>
-        <div class="ss-card">
-          <p class="ss-kicker">Space Shooter</p>
-          <h3>Ready to launch?</h3>
+    <div class="ss-overlay" data-ov="start" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><div><p class="ss-kicker">Space Shooter</p><h3>Ready to launch?</h3></div></div>
+        <div class="ss-scroll">
           <ul class="ss-list">
             <li><b>Move</b> — mouse, <span class="ss-kbd">A</span>/<span class="ss-kbd">D</span> or arrow keys, or the on-screen pads.</li>
             <li><b>Fire</b> — hold click / <span class="ss-kbd">Space</span> / the FIRE pad.</li>
             <li><b>Goal</b> — clear 4 random sectors, then destroy the flagship. Every layout is generated to be beatable.</li>
             <li><b>VS Bot</b> — a coin flip decides who moves first (2.2s head start). Highest score wins if both survive.</li>
           </ul>
-          <div class="ss-btnrow">
-            <button class="ss-btn" type="button" data-start="solo">Solo campaign</button>
-            <button class="ss-btn ghost" type="button" data-start="duel">VS Bot</button>
-          </div>
           <p class="ss-note">Collisions cost 25 HP, leaked enemies 10 HP, bombs 18 HP. Each cleared sector repairs +8 HP.</p>
         </div>
+        <div class="ss-foot">
+          <button class="ss-btn primary" type="button" data-start="solo">Solo campaign</button>
+          <button class="ss-btn ghost" type="button" data-start="duel">VS Bot</button>
+        </div>
       </div>
+    </div>
 
-      <div class="ss-overlay" data-ov="lobby" hidden>
-        <div class="ss-card">
-          <p class="ss-kicker">Online duel</p>
-          <h3>Two ships, one sector</h3>
+    <div class="ss-overlay" data-ov="lobby" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><div><p class="ss-kicker">Online duel</p><h3>Two ships, one sector</h3></div></div>
+        <div class="ss-scroll">
           <p data-lobbytext>Waiting for the host to start…</p>
           <ul class="ss-list">
             <li>Player slots (P1 left / P2 right) are <b>randomly assigned</b> every match.</li>
             <li>A coin flip decides who gets the 2.2s first-move head start.</li>
           </ul>
-          <div class="ss-btnrow">
-            <button class="ss-btn" type="button" data-start="duel" data-lobbystart>Start match</button>
-            <button class="ss-btn ghost" type="button" data-ready>I am ready</button>
+        </div>
+        <div class="ss-foot">
+          <button class="ss-btn primary" type="button" data-start="duel" data-lobbystart>Start match</button>
+          <button class="ss-btn ghost" type="button" data-ready>I am ready</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ss-overlay" data-ov="pause" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><div><p class="ss-kicker">Paused</p><h3>Take a breath</h3></div></div>
+        <div class="ss-scroll"><p>Press <span class="ss-kbd">P</span> or any control to resume.</p></div>
+        <div class="ss-foot"><button class="ss-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+
+    <div class="ss-overlay" data-ov="help" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><div><p class="ss-kicker">How to play</p><h3>Field manual</h3></div><button class="ss-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="ss-scroll">
+          <div class="ss-help">
+            <div>
+              <b>Desktop</b>
+              <ul>
+                <li>The ship follows your mouse; hold click to fire.</li>
+                <li><span class="ss-kbd">A</span>/<span class="ss-kbd">D</span> or arrows to move, <span class="ss-kbd">Space</span> to fire.</li>
+                <li><span class="ss-kbd">P</span> pause · <span class="ss-kbd">H</span> help · <span class="ss-kbd">C</span> cheats · <span class="ss-kbd">R</span> rematch.</li>
+              </ul>
+              <b>Mobile</b>
+              <ul><li>Drag on the board, or hold the on-screen pads. FIRE auto-repeats.</li></ul>
+            </div>
+            <div>
+              <b>Rules</b>
+              <ul>
+                <li><b>Enemies</b> — one identical drone, one hit each. A leak costs 10 HP; a collision 25 HP; a bomb 18 HP.</li>
+                <li><b>Flagship</b> — sector ${TOTAL_LEVELS}: it strafes and drops aimed bombs. Dodge and keep firing.</li>
+                <li><b>Scoring</b> — drone 15, flagship hit 5, flagship kill 300. Each cleared sector repairs +8 HP.</li>
+                <li><b>Duel</b> — random slots; coin flip gives a 2.2s head start. If a ship dies the other wins; if the flagship falls, the higher score wins.</li>
+                <li><b>Layouts</b> — every sector is seeded and mathematically checked to be solvable.</li>
+              </ul>
+            </div>
           </div>
         </div>
+        <div class="ss-foot"><span class="ss-note">Press H to reopen this guide</span><button class="ss-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
+    </div>
 
-      <div class="ss-overlay" data-ov="pause" hidden>
-        <div class="ss-card">
-          <p class="ss-kicker">Paused</p>
-          <h3>Take a breath</h3>
-          <p>Press <span class="ss-kbd">P</span> or any control to resume.</p>
-          <div class="ss-btnrow"><button class="ss-btn" type="button" data-resume>Resume</button></div>
-        </div>
-      </div>
-
-      <div class="ss-overlay" data-ov="help" hidden>
-        <div class="ss-card">
-          <p class="ss-kicker">How to play</p>
-          <h3>Field manual</h3>
-          <ul class="ss-list">
-            <li><b>Desktop</b> — the ship follows your mouse; hold click to fire. Keyboard: <span class="ss-kbd">A</span>/<span class="ss-kbd">D</span> or arrows to move, <span class="ss-kbd">Space</span> to fire, <span class="ss-kbd">P</span> pause, <span class="ss-kbd">H</span> help, <span class="ss-kbd">C</span> cheats, <span class="ss-kbd">R</span> rematch.</li>
-            <li><b>Mobile</b> — drag on the board, or hold the on-screen pads. FIRE auto-repeats.</li>
-            <li><b>Enemies</b> — one identical drone type, one hit each, no special abilities. They drift down in a sine wave. A leak costs the nearest ship 10 HP; a collision 25 HP.</li>
-            <li><b>Flagship</b> — sector ${TOTAL_LEVELS}. It strafes and drops aimed bombs (18 HP). Dodge and keep firing.</li>
-            <li><b>Scoring</b> — drone 15, flagship hit 5, flagship kill 300. Each cleared sector repairs +8 HP.</li>
-            <li><b>Duel rules</b> — random slots each match; coin flip gives one ship a 2.2s head start. If a ship dies the other wins; if the flagship falls, the higher score wins.</li>
-            <li><b>Layouts</b> — every sector is randomly generated from a seed and mathematically checked to be solvable (spawn rate stays below your fire rate, everything is dodgeable).</li>
-          </ul>
-          <div class="ss-btnrow"><button class="ss-btn" type="button" data-closehelp>Got it</button></div>
-        </div>
-      </div>
-
-      <div class="ss-overlay" data-ov="cheats" hidden>
-        <div class="ss-card">
-          <p class="ss-kicker">Cheats</p>
-          <h3>Bend the rules</h3>
+    <div class="ss-overlay" data-ov="cheats" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><div><p class="ss-kicker">Cheats</p><h3>Bend the rules</h3></div><button class="ss-btn" type="button" data-closecheats aria-label="Close cheats">Close</button></div>
+        <div class="ss-scroll">
           <p class="ss-note">Local modes only. Using cheats disables best-score saving for the match.</p>
           <label class="ss-cheat"><span>God mode<small>Ignore all damage</small></span><input type="checkbox" data-cheat="god"></label>
           <label class="ss-cheat"><span>Rapid fire<small>Cooldown 0.27s → 0.07s</small></span><input type="checkbox" data-cheat="rapid"></label>
           <label class="ss-cheat"><span>Triple shot<small>Three-way spread</small></span><input type="checkbox" data-cheat="triple"></label>
           <label class="ss-cheat"><span>Slow motion<small>Enemies and bombs at 55% speed</small></span><input type="checkbox" data-cheat="slow"></label>
-          <div class="ss-btnrow">
-            <button class="ss-btn ghost" type="button" data-cheatact="heal">Full heal</button>
-            <button class="ss-btn ghost" type="button" data-cheatact="skip">Skip sector</button>
-            <button class="ss-btn" type="button" data-closecheats>Close</button>
-          </div>
         </div>
-      </div>
-
-      <div class="ss-overlay" data-ov="over" hidden>
-        <div class="ss-card">
-          <p class="ss-kicker">Match result</p>
-          <h3 data-overtitle>Game over</h3>
-          <p data-overreason></p>
-          <div class="ss-scores" data-overscores></div>
-          <div class="ss-btnrow">
-            <button class="ss-btn" type="button" data-again>Play again</button>
-            <button class="ss-btn ghost" type="button" data-menu>Change mode</button>
-          </div>
+        <div class="ss-foot">
+          <button class="ss-btn ghost" type="button" data-cheatact="heal">Full heal</button>
+          <button class="ss-btn ghost" type="button" data-cheatact="skip">Skip sector</button>
         </div>
       </div>
     </div>
 
-    <div class="ss-touch">
-      <button class="ss-pad" type="button" data-hold="left" aria-label="Move left">◀</button>
-      <button class="ss-pad" type="button" data-hold="right" aria-label="Move right">▶</button>
-      <button class="ss-pad fire" type="button" data-hold="fire" aria-label="Fire">FIRE</button>
+    <div class="ss-overlay" data-ov="over" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><div><p class="ss-kicker">Match result</p><h3 data-overtitle>Game over</h3></div></div>
+        <div class="ss-scroll"><p data-overreason></p><div class="ss-scores" data-overscores></div></div>
+        <div class="ss-foot">
+          <button class="ss-btn primary" type="button" data-again>Play again</button>
+          <button class="ss-btn ghost" type="button" data-menu>Change mode</button>
+        </div>
+      </div>
     </div>
-    <p class="ss-note ss-deskhint">Move: mouse or A/D · Fire: hold click or Space · P pause · H help · C cheats</p>
   </section>
-  <div class="game-actions">
-    <button class="ss-btn ghost" type="button" data-help>How to play</button>
-    <button class="ss-btn ghost" type="button" data-cheatsbtn>Cheats</button>
-    <button class="ss-btn ghost" type="button" data-pausebtn>Pause</button>
-    <button class="ss-btn ghost" type="button" data-restartbtn>Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+
+  <div class="ss-touch">
+    <button class="ss-pad" type="button" data-hold="left" aria-label="Move left">◀</button>
+    <button class="ss-pad" type="button" data-hold="right" aria-label="Move right">▶</button>
+    <button class="ss-pad fire" type="button" data-hold="fire" aria-label="Fire">FIRE</button>
   </div>
 </div>`;
 
     /* ================= refs ================= */
     const $ = (sel) => root.querySelector(sel);
+    const board = $("[data-board]");
     const svg = $("[data-svg]");
-    const stage = $("[data-stage]");
     const statusEl = $("[data-status]");
     const banner = $("[data-banner]");
     const bannerSub = $("[data-bannersub]");
@@ -640,9 +700,10 @@ export function mount(root, context = {}) {
     const overScores = $("[data-overscores]");
     const againBtn = $("[data-again]");
     const menuBtn = $("[data-menu]");
-    const pauseBtn = $("[data-pausebtn]");
-    const restartBtn = $("[data-restartbtn]");
-    const cheatsBtn = $("[data-cheatsbtn]");
+    const helpBtn = $("[data-help]");
+    const cheatsBtn = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
+    const restartBtn = $("[data-restart]");
     const G = {
         stars: $('[data-g="stars"]'), shots: $('[data-g="shots"]'), bombs: $('[data-g="bombs"]'),
         enemies: $('[data-g="enemies"]'), boss: $('[data-g="boss"]'), ships: $('[data-g="ships"]'), fx: $('[data-g="fx"]'),
@@ -818,20 +879,44 @@ export function mount(root, context = {}) {
         if (online) hide(menuBtn); else show(menuBtn);
     }
 
+    /* HUD label/icon + overlay visibility: help > cheats > pause > phase. */
+    let pauseIcon = "pause";
+    function syncUI(s) {
+        const blocked = helpOpen || cheatOpen || paused;
+        ovHelp.hidden = !helpOpen;
+        ovCheats.hidden = !cheatOpen || helpOpen;
+        ovPause.hidden = !paused || helpOpen || cheatOpen;
+        ovStart.hidden = !startScreen || Boolean(s) || blocked;
+        ovLobby.hidden = !s || s.phase !== "lobby" || blocked;
+        ovOver.hidden = !s || s.phase !== "over" || blocked;
+        const label = pauseBtn.querySelector(".ss-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        const want = paused ? "play" : "pause";
+        if (want !== pauseIcon) {
+            const ico = pauseBtn.querySelector("svg");
+            if (ico) ico.outerHTML = iconSVG(want, { size: 14 });
+            pauseIcon = want;
+        }
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        pauseBtn.classList.toggle("on", paused);
+        helpBtn.classList.toggle("on", helpOpen);
+        cheatsBtn.classList.toggle("on", cheatOpen && !helpOpen);
+    }
+
     function render(s) {
         statusEl.textContent = statusText(s, myIdx(s));
-        if (!s) { setHudEmpty(); hide(banner); hide(bannerSub); return; }
+        if (!s) { setHudEmpty(); hide(banner); hide(bannerSub); syncUI(s); return; }
         if (s.phase === "lobby") {
             setHudEmpty(); hide(banner); hide(bannerSub);
-            show(ovLobby);
             lobbyText.textContent = isHost
                 ? (s.guestReady ? "Opponent is ready. Launch when you are." : "Waiting for the opponent to join / ready up…")
                 : "Waiting for the host to start…";
             if (isHost) { show(lobbyStart); hide(readyBtn); }
             else { hide(lobbyStart); show(readyBtn); readyBtn.disabled = Boolean(s.guestReady); readyBtn.textContent = s.guestReady ? "Ready ✓" : "I am ready"; }
+            syncUI(s);
             return;
         }
-        hide(ovLobby);
         const mi = myIdx(s);
         if (view.seed !== s.seed) { rebuildShips(s); view.seed = s.seed; }
 
@@ -879,7 +964,8 @@ export function mount(root, context = {}) {
         syncMap(view.enemies, s.enemies, G.enemies, makeEnemy, "#fda4af");
         ensureBoss(s);
 
-        if (s.phase === "over") { fillOver(s, mi); show(ovOver); } else hide(ovOver);
+        if (s.phase === "over") fillOver(s, mi);
+        syncUI(s);
     }
 
     /* ================= jaringan (template room API) ================= */
@@ -972,30 +1058,33 @@ export function mount(root, context = {}) {
         if (mi >= 0 && inputs[mi]) Object.assign(inputs[mi], sanitizePatch(patch));
     }
 
-    function togglePause() {
+    function setPaused(on) {
         if (online || !state || state.phase === "over" || state.phase === "lobby") return;
-        paused = !paused;
-        if (paused) show(ovPause); else hide(ovPause);
+        if (paused === on) return;
+        paused = on;
+        if (!paused) shiftTimeAnchors(); // sim/timer/bot tetap beku selama pause
         render(state);
     }
-    function resumeGame() { paused = false; hide(ovPause); render(state); }
+    function togglePause() { setPaused(!paused); }
+    function resumeGame() { setPaused(false); }
     function toggleHelp(force) {
         helpOpen = typeof force === "boolean" ? force : !helpOpen;
-        if (helpOpen) show(ovHelp); else hide(ovHelp);
+        if (helpOpen) cheatOpen = false;
         render(state);
     }
     function toggleCheats(force) {
         if (online) return;
         cheatOpen = typeof force === "boolean" ? force : !cheatOpen;
-        if (cheatOpen) show(ovCheats); else hide(ovCheats);
+        if (cheatOpen) helpOpen = false;
         render(state);
     }
     function backToMenu() {
         state = null;
         paused = false; helpOpen = false; cheatOpen = false;
+        startScreen = true;
+        shiftTimeAnchors();
         resetView();
         hideAllOverlays();
-        show(ovStart);
         render(null);
     }
     function doCheatAct(act) {
@@ -1031,10 +1120,10 @@ export function mount(root, context = {}) {
         if (t.closest("[data-resume]")) { resumeGame(); return; }
         if (t.closest("[data-help]")) { toggleHelp(); return; }
         if (t.closest("[data-closehelp]")) { toggleHelp(false); return; }
-        if (t.closest("[data-cheatsbtn]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
         if (t.closest("[data-closecheats]")) { toggleCheats(false); return; }
-        if (t.closest("[data-pausebtn]")) { togglePause(); return; }
-        if (t.closest("[data-restartbtn]")) {
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) {
             if (state && state.phase !== "lobby") submitAction({ type: "start", matchMode: state.mode });
             else if (!online) backToMenu();
             return;
@@ -1056,19 +1145,37 @@ export function mount(root, context = {}) {
     function onKeyDown(e) {
         if (destroyed) return;
         const c = e.code;
+        /* prioritas: help → cheats → pause → Escape → aksi game */
         if (c === "KeyH") { e.preventDefault(); toggleHelp(); return; }
-        if (c === "KeyC" && !online) { e.preventDefault(); toggleCheats(); return; }
-        if (c === "KeyP" && !online) { e.preventDefault(); togglePause(); return; }
+        if (c === "KeyC") {
+            if (helpOpen) return;
+            if (!online) { e.preventDefault(); toggleCheats(); }
+            return;
+        }
+        if (c === "KeyP") {
+            if (online) return;
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else togglePause();
+            return;
+        }
         if (c === "Escape") {
             if (helpOpen) toggleHelp(false);
             else if (cheatOpen) toggleCheats(false);
             else if (paused) resumeGame();
             return;
         }
-        if (c === "KeyR" && state && state.phase === "over") { submitAction({ type: "rematch" }); return; }
+        if (c === "KeyR" && state && state.phase === "over") {
+            if (helpOpen) { toggleHelp(false); return; }
+            if (cheatOpen) { toggleCheats(false); return; }
+            submitAction({ type: "rematch" });
+            return;
+        }
         const isCtrl = c === "ArrowLeft" || c === "ArrowRight" || c === "Space" || c === "KeyA" || c === "KeyD";
         if (!isCtrl) return;
         if (state && state.phase !== "lobby") e.preventDefault();
+        if (helpOpen || cheatOpen) return;
         if (paused) resumeGame();
         if (!canControl()) return;
         if (c === "ArrowLeft" || c === "KeyA") pushInput({ left: true, tx: null });
@@ -1086,9 +1193,18 @@ export function mount(root, context = {}) {
         if (document.hidden && !online && state && (state.phase === "play" || state.phase === "intro") && !paused) togglePause();
     }
     function svgX(e) {
-        const r = svg.getBoundingClientRect();
-        if (!(r.width > 0)) return null;
-        return clamp(((e.clientX - r.left) / r.width) * W, 0, W);
+        /* board mengisi tinggi window; SVG mempertahankan rasio via preserveAspectRatio,
+           jadi konversi harus lewat CTM (bukan bounding rect elemen). */
+        const ctm = svg.getScreenCTM();
+        if (!ctm) return null;
+        let px = e.clientX, py = e.clientY;
+        if (typeof DOMPoint === "function") {
+            const p = new DOMPoint(px, py).matrixTransform(ctm.inverse());
+            return clamp(p.x, 0, W);
+        }
+        const pt = svg.createSVGPoint();
+        pt.x = px; pt.y = py;
+        return clamp(pt.matrixTransform(ctm.inverse()).x, 0, W);
     }
     function onSvgMove(e) {
         if (!canControl()) return;
@@ -1125,6 +1241,7 @@ export function mount(root, context = {}) {
         const k = b.getAttribute("data-hold");
         const down = (e) => {
             e.preventDefault();
+            if (helpOpen || cheatOpen) return;
             if (paused) resumeGame();
             try { b.setPointerCapture(e.pointerId); } catch (err) { }
             const patch = {};
@@ -1147,7 +1264,7 @@ export function mount(root, context = {}) {
     if (online) {
         hide(cheatsBtn); hide(pauseBtn);
         if (!isHost) {
-            stage.classList.add("ss-lerp"); // guest: interpolasi halus antar snapshot 10 Hz
+            board.classList.add("ss-lerp"); // guest: interpolasi halus antar snapshot 10 Hz
             hide(restartBtn);
         }
     }
@@ -1182,8 +1299,7 @@ export function mount(root, context = {}) {
             render(null);
         }
     } else {
-        show(ovStart);
-        render(null);
+        render(null); // syncUI menampilkan start screen / help pertama
     }
 
     function tick(t) {
@@ -1197,7 +1313,7 @@ export function mount(root, context = {}) {
         const localBlocked = !online && (paused || helpOpen || cheatOpen);
         if (authoritative && state && !localBlocked) simulate(dt);
         if (state) render(state);
-        updateFx(dt);
+        if (!localBlocked) updateFx(dt);
         if (online && isHost && state) {
             pubT += dt;
             if (pubT >= PUB_INTERVAL || state.phase !== lastPubPhase) publishNow();

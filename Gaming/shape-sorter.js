@@ -8,6 +8,8 @@
   - mode "room" : multiplayer host-authoritative (kursi P1/P2 diacak tiap match).
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "shape-sorter", // harus sama dengan nama file (tanpa .js)
     name: "Shape Sorter",
@@ -27,6 +29,7 @@ export function mount(root, context = {}) {
     const roleIndex = online && !room.isHost ? 1 : 0;
     let roomData = (room && room.room) || null;
     let state = null;
+    let helpOpen = false, cheatsOpen = false, paused = false;
 
     /* ================= aturan murni ================= */
     const SHAPES = ["circle", "square", "triangle", "star"];
@@ -298,7 +301,7 @@ export function mount(root, context = {}) {
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (err) { best = 0; }
     function writeBest() { try { localStorage.setItem(META.bestKey, String(best)); } catch (err) { /* abaikan */ } }
 
-    /* ================= shell (tema minimalis) ================= */
+    /* ================= shell (HUD + board + overlays) ================= */
     const legendRows = [
         ["\u25CF \u25A0", "Shapes", "Tap the bin with the same shape."],
         ["\u25CF\u25CF\u25CF", "Colors", "Tap the bin with the same color."],
@@ -308,207 +311,263 @@ export function mount(root, context = {}) {
         ["\u25CF\u25CF\u25B2\u25CF", "Odd one out", "Three are the same \u2014 tap the different one."],
     ].map((r) => '<div class="ss-leg"><span class="ss-leg-ic">' + r[0] + '</span><span><b>' + r[1] + "</b> \u2014 " + r[2] + "</span></div>").join("");
 
+    /* first-run internal help (sekali per game) */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("shapeSorterHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("shapeSorterHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
     root.innerHTML = `
 <style>
-.ss-app{--bg:#f6f7fb;--card:#ffffff;--line:#e2e8f0;--ink:#1e293b;--mut:#64748b;--acc:#6366f1;--good:#10b981;--bad:#ef4444;
-  max-width:680px;margin:0 auto;color:var(--ink);font-family:inherit}
-.ss-app [hidden]{display:none!important}
-.ss-app .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.ss-app .game-intro h2{margin:0;font-size:20px;font-weight:800;letter-spacing:.2px}
-.ss-app .game-intro p{margin:2px 0 0;font-size:12.5px;color:var(--mut)}
-.ss-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--mut);
-  background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px}
-.ss-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#cbd5e1;display:inline-block}
-.ss-app .game-status.ss-live .game-status-dot{background:var(--acc);animation:ssPulse 1.2s ease infinite}
-.ss-panel{position:relative;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:14px;margin-top:12px}
-.ss-hud{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;margin-bottom:10px}
-.ss-pcard{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:9px 12px;min-width:0}
-.ss-pcard.ss-turn{border-color:var(--acc);box-shadow:0 0 0 3px rgba(99,102,241,.12)}
-.ss-pname{font-size:12px;font-weight:700;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ss-pname b{color:var(--ink)}
-.ss-ptag{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.5px;color:var(--acc);background:#eef2ff;border-radius:6px;padding:1px 5px;margin-right:5px;vertical-align:1px}
-.ss-you{display:inline-block;font-size:9.5px;font-weight:800;color:#fff;background:var(--acc);border-radius:6px;padding:1px 5px;margin-left:5px;vertical-align:1px}
-.ss-pscore{font-size:22px;font-weight:800;line-height:1.15}
-.ss-pscore small{font-size:11px;font-weight:600;color:var(--mut)}
-.ss-phearts{display:flex;gap:2px;align-items:center;margin:2px 0 5px}
-.ss-bar{height:5px;border-radius:99px;background:#eef1f6;overflow:hidden}
-.ss-bar i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width .3s ease}
-.ss-chip{align-self:center;text-align:center;font-size:10.5px;font-weight:800;letter-spacing:1px;color:var(--mut);
-  background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 10px;white-space:nowrap}
-.ss-boardwrap{position:relative;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.ss-boardwrap svg{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none;font-family:inherit}
-.ss-boardwrap.ss-shake{animation:ssShake .4s ease}
-.ss-bin{cursor:pointer;touch-action:manipulation}
-.ss-bin .ss-bin-bg{fill:#ffffff;stroke:#e2e8f0;stroke-width:1.5;transition:stroke .15s ease,fill .15s ease}
-.ss-bin:hover .ss-bin-bg{stroke:#6366f1;fill:#fafaff}
-.ss-bin.ss-locked{cursor:default}
-.ss-bin.ss-locked:hover .ss-bin-bg{stroke:#e2e8f0;fill:#ffffff}
-.ss-bin.ss-good .ss-bin-bg{fill:#ecfdf5;stroke:#10b981;animation:ssFlash .55s ease}
-.ss-bin.ss-bad .ss-bin-bg{fill:#fef2f2;stroke:#ef4444;animation:ssFlash .55s ease}
-.ss-item{animation:ssIn .35s ease both}
-.ss-ghost{animation:ssGhost .55s cubic-bezier(.45,.05,.7,.4) both;pointer-events:none}
-.ss-ring{animation:ssRing 1.1s linear infinite}
-.ss-toast{position:absolute;left:50%;top:10px;transform:translateX(-50%) translateY(-6px);opacity:0;pointer-events:none;
-  background:#1e293b;color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:6px 14px;transition:all .25s ease;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
-.ss-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-.ss-hint{margin:10px 2px 0;font-size:12.5px;color:var(--mut);font-weight:600;text-align:center;min-height:18px}
-.ss-hint b{color:var(--acc)}
-.ss-vbar{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
-.ss-vbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:56px;
-  background:var(--card);border:1.5px solid var(--line);border-radius:14px;cursor:pointer;font-family:inherit;
-  touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:border-color .15s ease,transform .05s ease;padding:6px 4px}
-.ss-vbtn:hover{border-color:var(--acc)}
-.ss-vbtn:active{transform:translateY(1px)}
-.ss-vbtn.ss-vlock{opacity:.55}
+.ss{--bg:#f6f7fb;--card:#ffffff;--line:#e2e8f0;--ink:#1e293b;--mut:#64748b;--acc:#6366f1;--good:#10b981;--bad:#ef4444;
+  max-width:980px;width:100%;margin:0 auto;color:var(--ink);font-family:inherit}
+.ss *{box-sizing:border-box}
+.ss [hidden]{display:none!important}
+.ss .ss-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ss .ss-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--mut);white-space:nowrap}
+.ss .ss-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.ss .ss-chip.ss-live{border-color:var(--acc);color:var(--acc)}
+.ss .ss-chip.ss-live b{color:var(--acc)}
+.ss .ss-hearts{display:inline-flex;gap:1px;align-items:center}
+.ss .ss-spacer{flex:1 1 auto}
+.ss .ss-btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:5px 9px;min-height:32px;
+  font-family:inherit;font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;touch-action:manipulation}
+.ss .ss-btn:hover{border-color:var(--acc);color:var(--acc)}
+.ss .ss-btn.on{border-color:var(--acc);color:var(--acc);background:#eef2ff}
+.ss .ss-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.ss .ss-btn.primary:hover{color:#fff;filter:brightness(1.08)}
+.ss .ss-btn.ghost{background:var(--card);color:var(--ink)}
+.ss .ss-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ss .ss-icon-btn svg{flex:none;display:block}
+.ss .ss-btn:focus-visible,.ss .ss-vbtn:focus-visible,.ss .ss-cheat:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.ss .ss-board{position:relative;width:100%;aspect-ratio:14/9;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden}
+.ss.game-fill > .ss-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.ss .ss-svg{display:block;width:100%;height:100%;user-select:none;-webkit-user-select:none;font-family:inherit}
+.ss .ss-bin{cursor:pointer;touch-action:manipulation}
+.ss .ss-bin .ss-bin-bg{fill:#ffffff;stroke:#e2e8f0;stroke-width:1.5;transition:stroke .16s ease,fill .16s ease}
+.ss .ss-bin:hover .ss-bin-bg{stroke:#6366f1;fill:#fafaff}
+.ss .ss-bin.ss-locked{cursor:default}
+.ss .ss-bin.ss-locked:hover .ss-bin-bg{stroke:#e2e8f0;fill:#ffffff}
+.ss .ss-bin.ss-good .ss-bin-bg{fill:#ecfdf5;stroke:#10b981;animation:ssFlash .55s ease}
+.ss .ss-bin.ss-bad .ss-bin-bg{fill:#fef2f2;stroke:#ef4444;animation:ssFlash .55s ease}
+.ss .ss-item{animation:ssIn .35s ease both}
+.ss .ss-ghost{animation:ssGhost .55s cubic-bezier(.45,.05,.7,.4) both;pointer-events:none}
+.ss .ss-ring{animation:ssRing 1.1s linear infinite}
+.ss .ss-toast{position:absolute;left:50%;top:8px;z-index:2;transform:translateX(-50%) translateY(-6px);opacity:0;pointer-events:none;
+  background:var(--ink);color:#fff;font-size:12px;font-weight:700;border-radius:9px;padding:6px 12px;transition:opacity .2s ease,transform .2s ease;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+.ss .ss-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.ss .ss-pad{margin-top:8px}
+.ss .ss-hint{margin:0 2px 6px;font-size:12px;color:var(--mut);font-weight:600;text-align:center;min-height:18px;line-height:1.45}
+.ss .ss-hint b{color:var(--acc)}
+.ss .ss-vbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.ss .ss-vbtn,.ss .ss-pad .ss-vbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:56px;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;cursor:pointer;font-family:inherit;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:border-color .16s ease,transform .05s ease;padding:6px 4px}
+.ss .ss-vbtn:hover{border-color:var(--acc)}
+.ss .ss-vbtn:active{transform:translateY(1px)}
+.ss .ss-vbtn.ss-vlock{opacity:.55}
 .ss-vkey{font-size:9.5px;font-weight:800;color:var(--mut);letter-spacing:.5px}
-.ss-vlabel{font-size:13px;font-weight:800;color:var(--ink);letter-spacing:.5px;display:flex;align-items:center;gap:5px}
-.ss-vdot{width:11px;height:11px;border-radius:50%;display:inline-block}
-.ss-overlay{position:absolute;inset:0;background:rgba(246,247,251,.94);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px;z-index:5;border-radius:20px}
-.ss-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px;max-width:440px;width:100%;
-  box-shadow:0 12px 32px rgba(15,23,42,.08);max-height:100%;overflow:auto}
-.ss-card h3{margin:0 0 6px;font-size:19px;font-weight:800}
-.ss-card p{margin:6px 0;font-size:13px;color:var(--mut);line-height:1.5}
-.ss-card p b{color:var(--ink)}
-.ss-card ul{margin:8px 0;padding-left:18px;font-size:13px;color:var(--mut);line-height:1.65}
-.ss-card ul b{color:var(--ink)}
-.ss-coin{background:#eef2ff;border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;color:var(--acc);margin:10px 0}
-.ss-btnrow{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-.ss-btn{border:none;border-radius:12px;padding:10px 18px;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;
-  background:var(--acc);color:#fff;touch-action:manipulation;transition:filter .15s ease}
-.ss-btn:hover{filter:brightness(1.08)}
-.ss-btn.ghost{background:var(--card);color:var(--ink);border:1.5px solid var(--line)}
-.ss-btn.ghost:hover{border-color:var(--acc);filter:none}
-.ss-x{position:absolute;top:10px;right:12px;border:none;background:none;font-size:18px;color:var(--mut);cursor:pointer;font-family:inherit}
-.ss-cardwrap{position:relative}
-.ss-leg{display:flex;gap:10px;align-items:center;font-size:12.5px;color:var(--mut);padding:5px 0;line-height:1.4}
-.ss-leg b{color:var(--ink)}
-.ss-leg-ic{flex:0 0 74px;text-align:center;font-size:11px;font-weight:800;color:var(--acc);background:#eef2ff;border-radius:8px;padding:5px 2px;letter-spacing:1px}
-.ss-sec{font-size:10.5px;font-weight:800;letter-spacing:1.5px;color:var(--mut);margin:12px 0 4px}
-.ss-cheat{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;
-  background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:9px 12px;margin:6px 0;cursor:pointer;font-family:inherit;touch-action:manipulation}
-.ss-cheat:disabled{opacity:.45;cursor:not-allowed}
-.ss-cheat .ss-cl{font-size:13px;font-weight:700;color:var(--ink)}
-.ss-cheat .ss-cd{font-size:11px;color:var(--mut);margin-top:1px}
-.ss-switch{flex:0 0 34px;height:20px;border-radius:99px;background:#e2e8f0;position:relative;transition:background .15s ease}
-.ss-switch:after{content:"";position:absolute;top:2.5px;left:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:left .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.ss-vlabel{font-size:12.5px;font-weight:800;color:var(--ink);letter-spacing:.5px;display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap}
+.ss-vdot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none}
+.ss .ss-ov{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:14px;background:rgba(246,247,251,.94);backdrop-filter:blur(3px)}
+.ss .ss-card{display:flex;flex-direction:column;width:min(520px,100%);max-height:100%;overflow:hidden;padding:16px 20px;
+  border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 10px 30px rgba(15,23,42,.08)}
+.ss .ss-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.ss .ss-head h3{margin:0;font-size:16px;font-weight:800}
+.ss .ss-tag{flex:none;font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 9px;white-space:nowrap}
+.ss .ss-body{flex:1 1 auto;min-height:0;overflow:auto}
+.ss .ss-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.ss .ss-card p{margin:6px 0;font-size:12.5px;color:var(--mut);line-height:1.5}
+.ss .ss-card p b{color:var(--ink)}
+.ss .ss-card ul{margin:8px 0;padding-left:18px;font-size:12.5px;color:var(--mut);line-height:1.55}
+.ss .ss-card ul b{color:var(--ink)}
+.ss .ss-coin{background:#eef2ff;border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;color:var(--acc);margin:8px 0}
+.ss .ss-btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.ss .ss-leg{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--mut);padding:4px 0;line-height:1.4}
+.ss .ss-leg b{color:var(--ink)}
+.ss .ss-leg-ic{flex:0 0 74px;text-align:center;font-size:11px;font-weight:800;color:var(--acc);background:#eef2ff;border-radius:8px;padding:5px 2px;letter-spacing:1px}
+.ss .ss-sec{font-size:10.5px;font-weight:800;letter-spacing:1.5px;color:var(--mut);margin:8px 0 4px}
+.ss .ss-cheat{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:4px 0;min-height:44px;cursor:pointer;font-family:inherit;touch-action:manipulation}
+.ss .ss-cheat:disabled{opacity:.45;cursor:not-allowed}
+.ss .ss-cheat .ss-cl{font-size:12.5px;font-weight:700;color:var(--ink)}
+.ss .ss-cheat .ss-cd{font-size:11px;color:var(--mut);margin-top:1px;line-height:1.35}
+.ss-switch{flex:0 0 34px;height:20px;border-radius:99px;background:var(--line);position:relative;transition:background .16s ease}
+.ss-switch:after{content:"";position:absolute;top:2.5px;left:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:left .16s ease}
 .ss-cheat.on .ss-switch{background:var(--acc)}
 .ss-cheat.on .ss-switch:after{left:16px}
 .ss-go{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--acc);background:#eef2ff;border-radius:8px;padding:4px 8px}
-.ss-note{font-size:11px;color:var(--mut);margin-top:8px}
-.ss-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
-.ss-stat{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:12px;color:var(--mut)}
-.ss-stat b{display:block;font-size:16px;color:var(--ink)}
-.ss-app .game-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.ss-app .game-action-button{border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;
-  padding:9px 14px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;touch-action:manipulation}
-.ss-app .game-action-button:hover{border-color:var(--acc)}
-.ss-app .game-action-button.ss-cheatbtn{color:var(--acc)}
+.ss-note{font-size:11px;color:var(--mut);line-height:1.45}
+.ss .ss-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0}
+.ss .ss-stat{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;color:var(--mut)}
+.ss .ss-stat b{display:block;font-size:16px;color:var(--ink)}
 @keyframes ssPulse{50%{opacity:.35}}
 @keyframes ssIn{from{transform:translateY(-14px);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes ssGhost{0%{transform:translate(0,0);opacity:1}40%{transform:translate(calc(var(--dx)*.5),-26px);opacity:1}100%{transform:translate(var(--dx),var(--dy));opacity:0}}
 @keyframes ssFlash{0%{stroke-width:1.5}40%{stroke-width:4}100%{stroke-width:1.5}}
 @keyframes ssShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}55%{transform:translateX(6px)}80%{transform:translateX(-3px)}}
 @keyframes ssRing{to{stroke-dashoffset:-26}}
-@media (pointer:coarse){.ss-vbtn{min-height:66px}.ss-vlabel{font-size:14.5px}}
-@media (max-width:560px){.ss-hud{grid-template-columns:1fr 1fr}.ss-chip{grid-column:1/-1;order:-1;justify-self:center}.ss-pscore{font-size:19px}}
-@media (prefers-reduced-motion:reduce){.ss-app *{animation:none!important;transition:none!important}}
+@media (max-width:560px){
+  .ss .ss-hud{font-size:10px}
+  .ss .ss-vbar{gap:4px}
+  .ss .ss-card{padding:12px}
+}
+@media (pointer:coarse){.ss button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.ss *{animation:none!important;transition-duration:.01ms!important}}
+
+/* --- fill height + mobile refinements (paling akhir) --- */
+@media (max-width:640px){
+  .ss.game-fill > .ss-board:not(:has(.ss-ov:not([hidden]))){aspect-ratio:14/9;flex:0 0 auto}
+  .ss.game-fill > .ss-board:has(.ss-ov:not([hidden])){aspect-ratio:auto;flex:0 0 auto;min-height:min(70dvh,620px)}
+  .ss .ss-hud{gap:5px;margin-bottom:8px}
+  .ss .ss-hud .ss-chip{padding:4px 6px;font-size:9px}
+  .ss .ss-hud .ss-chip[data-hud="kind-wrap"],.ss .ss-hud .ss-chip[data-hud="best-wrap"]{display:none}
+  .ss .ss-hud .ss-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .ss .ss-hud .ss-btn-label,.ss .ss-hud .ss-spacer{display:none}
+  .ss .ss-ov{padding:8px}
+  .ss .ss-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .ss .ss-body{scrollbar-width:none}
+  .ss .ss-body::-webkit-scrollbar{display:none}
+  .ss .ss-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+  .ss .ss-note{display:none}
+  .ss .ss-vbar{gap:4px}
+}
 </style>
-<div class="ss-app game-app">
-  <div class="game-intro">
-    <div><h2>Shape Sorter</h2><p>Read the puzzle, tap the matching bin. First to ${TARGET} points wins.</p></div>
-    <span class="game-status" data-statuswrap><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app ss game-fill" data-ss>
+  <div class="ss-hud">
+    <span class="ss-chip">P1 <b data-hud="p1">0</b></span>
+    <span class="ss-chip">P2 <b data-hud="p2">0</b></span>
+    <span class="ss-chip">&#9829; <span class="ss-hearts" data-hud="hearts"></span></span>
+    <span class="ss-chip">LV <b data-hud="level">1</b> &middot; #<b data-hud="qi">1</b></span>
+    <span class="ss-chip" data-chip="turn">TURN <b data-hud="turn">READY</b></span>
+    <span class="ss-chip" data-hud="kind-wrap">TYPE <b data-hud="kind">—</b></span>
+    <span class="ss-chip" data-hud="best-wrap">BEST <b data-hud="best">0</b></span>
+    <span class="ss-spacer"></span>
+    <button class="ss-btn ss-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ss-btn-label">Help</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ss-btn-label">Cheats</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" aria-pressed="false">${iconSVG("pause", { size: 14 })}<span class="ss-btn-label">Pause</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ss-btn-label">Restart</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ss-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel ss-panel" data-board>
-    <div class="ss-hud" data-hud></div>
-    <div class="ss-boardwrap" data-boardwrap>
-      <svg viewBox="0 0 560 360" data-svg aria-hidden="true"></svg>
-      <div class="ss-toast" data-toast></div>
-    </div>
-    <div class="ss-hint" data-hint></div>
-    <div class="ss-vbar" data-vbar></div>
 
-    <div class="ss-overlay" data-ov="start">
+  <section class="game-panel ss-board" data-board>
+    <svg class="ss-svg" viewBox="0 0 560 360" data-svg aria-hidden="true"></svg>
+    <div class="ss-toast" data-toast></div>
+
+    <div class="ss-ov" data-ov="start">
       <div class="ss-card">
-        <h3>Shape Sorter</h3>
-        <p>A puzzle appears at the top. Send it to the right bin before your rival does!</p>
-        <ul>
-          <li>You and your rival <b>take turns</b> solving puzzles.</li>
-          <li>Correct = <b>+1 point</b>. Wrong = <b>\u22121 heart</b> (${HEARTS} hearts each).</li>
-          <li>First to <b>${TARGET} points</b> wins. Lose all hearts and you're out.</li>
-          <li>New puzzle types unlock as the <b>level</b> goes up.</li>
-        </ul>
-        <div class="ss-coin" data-startcoin></div>
-        <div class="ss-btnrow">
-          <button class="ss-btn" type="button" data-act="start">Start game</button>
-          <button class="ss-btn ghost" type="button" data-act="help">How to play</button>
+        <div class="ss-head"><h3>Shape Sorter</h3><span class="ss-tag">FIRST TO ${TARGET}</span></div>
+        <div class="ss-body">
+          <p>A puzzle appears at the top. Send it to the right bin before your rival does!</p>
+          <ul>
+            <li>You and your rival <b>take turns</b> solving puzzles.</li>
+            <li>Correct = <b>+1 point</b>. Wrong = <b>&minus;1 heart</b> (${HEARTS} hearts each).</li>
+            <li>First to <b>${TARGET} points</b> wins. Lose all hearts and you're out.</li>
+            <li>New puzzle types unlock as the <b>level</b> goes up.</li>
+          </ul>
+          <div class="ss-coin" data-startcoin></div>
+        </div>
+        <div class="ss-foot"><span class="ss-note">Keys 1&ndash;4 pick a bin</span>
+          <div class="ss-btnrow">
+            <button class="ss-btn primary" type="button" data-act="start">Start game</button>
+            <button class="ss-btn ghost" type="button" data-act="help">How to play</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="ss-overlay" data-ov="help" hidden>
-      <div class="ss-card ss-cardwrap">
-        <button class="ss-x" type="button" data-act="close-help" aria-label="Close">\u2715</button>
-        <h3>How to play</h3>
-        <div class="ss-sec">GOAL</div>
-        <p>Take turns with your rival. A correct bin gives <b>+1 point</b>; a wrong bin costs <b>1 heart</b>. First to <b>${TARGET} points</b> wins \u2014 run out of hearts and you lose. Every match re-rolls <b>who starts</b> and <b>who is P1 / P2</b>.</p>
-        <div class="ss-sec">PUZZLE TYPES</div>
-        ${legendRows}
-        <div class="ss-sec">CONTROLS</div>
-        <p><b>Mouse:</b> click a bin or the big buttons. <b>Touch:</b> use the big buttons under the board. <b>Keys:</b> <b>1\u20134</b> pick a bin, <b>H</b> help, <b>C</b> cheats, <b>Esc</b> close, <b>Enter</b> start / rematch.</p>
-        <div class="ss-btnrow"><button class="ss-btn" type="button" data-act="close-help">Got it</button></div>
+    <div class="ss-ov" data-ov="help" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><h3>How to play</h3><button class="ss-btn" type="button" data-help-close aria-label="Close">&#10005;</button></div>
+        <div class="ss-body">
+          <div class="ss-sec">GOAL</div>
+          <p>Take turns with your rival. A correct bin gives <b>+1 point</b>; a wrong bin costs <b>1 heart</b>. First to <b>${TARGET} points</b> wins &mdash; run out of hearts and you lose. Every match re-rolls <b>who starts</b> and <b>who is P1 / P2</b>.</p>
+          <div class="ss-sec">PUZZLE TYPES</div>
+          ${legendRows}
+          <div class="ss-sec">CONTROLS</div>
+          <p><b>Mouse:</b> click a bin or a big button. <b>Touch:</b> use the buttons under the board. <b>Keys:</b> <b>1&ndash;4</b> pick a bin, <b>H</b> help, <b>C</b> cheats, <b>P</b> pause, <b>R</b> restart, <b>Esc</b> close, <b>Enter</b> start / rematch.</p>
+        </div>
+        <div class="ss-foot"><span class="ss-note">Press H to reopen this guide</span><button class="ss-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
 
-    <div class="ss-overlay" data-ov="cheats" hidden>
-      <div class="ss-card ss-cardwrap">
-        <button class="ss-x" type="button" data-act="close-cheats" aria-label="Close">\u2715</button>
-        <h3>Cheat menu</h3>
-        <p>Practice helpers. Using any cheat marks this match as <b>assisted</b> (win streak won't count).</p>
-        <div data-cheatrows></div>
-        <p class="ss-note" data-cheatnote></p>
-        <div class="ss-btnrow">
+    <div class="ss-ov" data-ov="cheats" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><h3>Cheat menu</h3><button class="ss-btn" type="button" data-close-cheats aria-label="Close">&#10005;</button></div>
+        <div class="ss-body">
+          <p>Practice helpers. Using any cheat marks this match as <b>assisted</b> (win streak won't count).</p>
+          <div data-cheatrows></div>
+          <p class="ss-note" data-cheatnote></p>
+        </div>
+        <div class="ss-foot">
           <button class="ss-btn ghost" type="button" data-act="cheats-off">Turn all off</button>
-          <button class="ss-btn" type="button" data-act="close-cheats">Done</button>
+          <button class="ss-btn primary" type="button" data-close-cheats>Done</button>
         </div>
       </div>
     </div>
 
-    <div class="ss-overlay" data-ov="over" hidden>
+    <div class="ss-ov" data-ov="over" hidden>
       <div class="ss-card">
-        <h3 data-overtitle>Match complete</h3>
-        <p data-overreason></p>
-        <div class="ss-stats" data-overstats></div>
-        <p class="ss-note" data-overstreak></p>
-        <div class="ss-btnrow">
-          <button class="ss-btn" type="button" data-act="restart">Play again</button>
-          <button class="ss-btn ghost" type="button" data-act="help">How to play</button>
+        <div class="ss-head"><h3 data-overtitle>Match complete</h3><span class="ss-tag">BEST <b data-overbest>0</b></span></div>
+        <div class="ss-body">
+          <p data-overreason></p>
+          <div class="ss-stats" data-overstats></div>
+          <p class="ss-note" data-overstreak></p>
+          <p class="ss-note">&#127922; Seats and first turn are re-rolled every match.</p>
         </div>
-        <p class="ss-note">\u{1F3B2} Seats and first turn are re-rolled every match.</p>
+        <div class="ss-foot"><span class="ss-note">R for a quick rematch</span>
+          <div class="ss-btnrow">
+            <button class="ss-btn primary" type="button" data-act="restart">Play again</button>
+            <button class="ss-btn ghost" type="button" data-act="help">How to play</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ss-ov" data-ov="pause" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><h3>Paused</h3><span class="ss-tag">SHAPE SORTER</span></div>
+        <div class="ss-body"><p>Bot moves and auto-play timers are stopped. Your match is safe.</p></div>
+        <div class="ss-foot"><span class="ss-note">Press P or Esc to resume</span><button class="ss-btn primary" type="button" data-resume>Resume</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="help">? How to play</button>
-    <button class="game-action-button ss-cheatbtn" type="button" data-act="cheats">\u2699 Cheats</button>
-    <button class="game-action-button" type="button" data-act="restart">\u21BB Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+
+  <div class="ss-pad">
+    <p class="ss-hint" data-hint></p>
+    <div class="ss-vbar" data-vbar></div>
   </div>
 </div>`;
 
     /* ================= refs ================= */
     const $ = (s) => root.querySelector(s);
-    const statusEl = $("[data-status]");
-    const statusWrap = $("[data-statuswrap]");
-    const hudEl = $("[data-hud]");
-    const boardWrap = $("[data-boardwrap]");
+    const board = $("[data-board]");
     const svgEl = $("[data-svg]");
     const vbarEl = $("[data-vbar]");
     const hintEl = $("[data-hint]");
     const toastEl = $("[data-toast]");
-    const ovStart = $('[data-ov="start"]');
-    const ovHelp = $('[data-ov="help"]');
-    const ovCheats = $('[data-ov="cheats"]');
-    const ovOver = $('[data-ov="over"]');
+    const hud = {
+        p1: $("[data-hud='p1']"),
+        p2: $("[data-hud='p2']"),
+        hearts: $("[data-hud='hearts']"),
+        level: $("[data-hud='level']"),
+        qi: $("[data-hud='qi']"),
+        turn: $("[data-hud='turn']"),
+        turnChip: $("[data-chip='turn']"),
+        kind: $("[data-hud='kind']"),
+        best: $("[data-hud='best']"),
+    };
+    const pauseBtn = $("[data-pause]");
+    const cheatsBtn = $("[data-cheats]");
+    const ov = {
+        start: $('[data-ov="start"]'),
+        help: $('[data-ov="help"]'),
+        cheats: $('[data-ov="cheats"]'),
+        over: $('[data-ov="over"]'),
+        pause: $('[data-ov="pause"]'),
+    };
 
     /* baris cheat dibuat sekali */
     $("[data-cheatrows]").innerHTML = CHEATS.map((c) =>
@@ -519,7 +578,6 @@ export function mount(root, context = {}) {
     ).join("");
 
     /* ================= UI lokal ================= */
-    let helpOpen = false, cheatsOpen = false;
     let prevResultN = 0, prevPhase = "";
     let botTimer = null, autoTimer = null, toastTimer = null;
     const ghostTimers = [];
@@ -540,20 +598,6 @@ export function mount(root, context = {}) {
     function seatName(seat) {
         /* names[] diindeks berdasarkan role (0 host/lokal, 1 guest/bot) */
         return state.names[state.seats[0] === seat ? 0 : 1];
-    }
-
-    function cardHtml(seat) {
-        const mine = seat === mySeatNow();
-        const turn = state.phase === "playing" && state.turn === seat;
-        const hearts = state.hearts[seat];
-        let hh = "";
-        for (let i = 0; i < Math.max(HEARTS, hearts); i++) hh += heartIcon(i < hearts);
-        const pct = Math.min(100, Math.round((state.scores[seat] / state.target) * 100));
-        return '<div class="ss-pcard' + (turn ? " ss-turn" : "") + '">' +
-            '<div class="ss-pname"><span class="ss-ptag">P' + (seat + 1) + "</span><b>" + esc(seatName(seat)) + "</b>" + (mine ? '<span class="ss-you">YOU</span>' : "") + "</div>" +
-            '<div class="ss-pscore">' + state.scores[seat] + " <small>/ " + state.target + "</small></div>" +
-            '<div class="ss-phearts">' + hh + "</div>" +
-            '<div class="ss-bar"><i style="width:' + pct + '%"></i></div></div>';
     }
 
     function virtualHtml(p, myTurn) {
@@ -582,17 +626,44 @@ export function mount(root, context = {}) {
             : "Offline match: all cheats available. Shield & Clumsy bot affect only this device.";
     }
 
+    function syncOverlays() {
+        const lobby = Boolean(state && state.phase === "lobby");
+        const over = Boolean(state && state.phase === "over");
+        ov.start.hidden = !lobby || helpOpen || cheatsOpen || paused;
+        ov.over.hidden = !over || helpOpen || cheatsOpen || paused;
+        ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+        ov.cheats.hidden = !cheatsOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+    }
+    function syncHudButtons() {
+        const active = Object.keys(cheats).filter((k) => cheats[k]).length;
+        cheatsBtn.classList.toggle("on", active > 0);
+        const cl = cheatsBtn.querySelector(".ss-btn-label");
+        if (cl) cl.textContent = active ? "Cheats " + active : "Cheats";
+        const pl = pauseBtn.querySelector(".ss-btn-label");
+        if (pl) pl.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
+        pauseBtn.setAttribute("aria-pressed", String(paused));
+    }
+
     function render() {
         if (!state) {
-            statusEl.textContent = "Waiting for host\u2026";
-            hudEl.innerHTML = "";
+            hud.p1.textContent = "0";
+            hud.p2.textContent = "0";
+            hud.hearts.innerHTML = "";
+            hud.level.textContent = "—";
+            hud.qi.textContent = "—";
+            hud.turn.textContent = "WAIT";
+            hud.kind.textContent = "—";
+            hud.best.textContent = String(best);
+            hud.turnChip.classList.remove("ss-live");
             svgEl.innerHTML = '<text x="280" y="180" font-size="16" font-weight="700" text-anchor="middle" fill="#94a3b8">Waiting for host\u2026</text>';
             vbarEl.innerHTML = "";
             hintEl.textContent = "";
-            ovStart.setAttribute("hidden", "");
-            ovOver.setAttribute("hidden", "");
-            if (helpOpen) ovHelp.removeAttribute("hidden"); else ovHelp.setAttribute("hidden", "");
-            if (cheatsOpen) ovCheats.removeAttribute("hidden"); else ovCheats.setAttribute("hidden", "");
+            syncOverlays();
+            syncHudButtons();
+            renderCheats();
             return;
         }
         const mySeat = mySeatNow();
@@ -614,18 +685,21 @@ export function mount(root, context = {}) {
         }
         prevPhase = state.phase;
 
-        /* status */
-        let status = "Ready";
-        if (playing) status = myTurn ? "Your turn \u00B7 " + p.prompt.toLowerCase() : (online ? "Waiting for " + seatName(oppSeat) + "\u2026" : seatName(oppSeat) + " is thinking\u2026");
-        else if (over) status = seatName(state.winner) + " wins!";
-        statusEl.textContent = status;
-        statusWrap.classList.toggle("ss-live", myTurn);
-
-        /* HUD */
-        const chip = playing
-            ? "LV " + p.level + " \u00B7 #" + (state.qi + 1) + " \u00B7 " + p.label
-            : over ? "MATCH " + state.matchNo + " DONE" : "FIRST TO " + TARGET + " \u00B7 " + HEARTS + " HEARTS";
-        hudEl.innerHTML = cardHtml(0) + '<div class="ss-chip">' + chip + "</div>" + cardHtml(1);
+        /* HUD — semua info di satu bar atas papan */
+        hud.p1.textContent = state.scores[0] + " / " + state.target;
+        hud.p2.textContent = state.scores[1] + " / " + state.target;
+        let hh = "";
+        const myHearts = state.hearts[mySeat];
+        for (let i = 0; i < Math.max(HEARTS, myHearts); i++) hh += heartIcon(i < myHearts);
+        hud.hearts.innerHTML = hh;
+        hud.level.textContent = p ? p.level : "—";
+        hud.qi.textContent = p ? state.qi + 1 : "—";
+        hud.kind.textContent = p ? p.label : "—";
+        hud.best.textContent = String(best);
+        hud.turn.textContent = playing
+            ? (myTurn ? "YOU" : online ? seatName(oppSeat) : "RIVAL")
+            : over ? "DONE" : "READY";
+        hud.turnChip.classList.toggle("ss-live", myTurn);
 
         /* papan + tombol virtual + hint */
         svgEl.innerHTML = boardSvg(state);
@@ -639,8 +713,7 @@ export function mount(root, context = {}) {
         /* overlay */
         if (state.phase === "lobby") {
             $('[data-startcoin]').textContent = "\u{1F3B2} Coin flip: " + seatName(state.first) + " goes first \u00B7 you are P" + (mySeat + 1) + " this match.";
-            ovStart.removeAttribute("hidden");
-        } else ovStart.setAttribute("hidden", "");
+        }
         if (over) {
             const won = state.winner === mySeat;
             $("[data-overtitle]").textContent = won ? "You win! \u{1F389}" : seatName(state.winner) + " wins";
@@ -653,10 +726,10 @@ export function mount(root, context = {}) {
                     state.scores[seat] + " pts \u00B7 " + acc + " accuracy \u00B7 " + state.hearts[seat] + " \u2665 left</div>";
             }).join("");
             $("[data-overstreak]").textContent = "Win streak: " + streak + " \u00B7 Best: " + best + (cheatUsed ? " (assisted match \u2014 not counted)" : "");
-            ovOver.removeAttribute("hidden");
-        } else ovOver.setAttribute("hidden", "");
-        if (helpOpen) ovHelp.removeAttribute("hidden"); else ovHelp.setAttribute("hidden", "");
-        if (cheatsOpen) ovCheats.removeAttribute("hidden"); else ovCheats.setAttribute("hidden", "");
+            $("[data-overbest]").textContent = String(best);
+        }
+        syncOverlays();
+        syncHudButtons();
         renderCheats();
 
         /* efek hasil langkah terakhir (kosmetik, tidak menahan logika) */
@@ -674,7 +747,7 @@ export function mount(root, context = {}) {
         }
         if (res.skip) { toast("Puzzle skipped"); return; }
         if (!res.ok) {
-            replay(boardWrap, "ss-shake");
+            replay(board, "ss-shake");
             toast(res.shielded ? "Shield saved a heart!" : "Miss! \u22121 \u2665");
             return;
         }
@@ -770,7 +843,7 @@ export function mount(root, context = {}) {
         clearTimeout(botTimer); botTimer = null;
         clearTimeout(autoTimer); autoTimer = null;
         if (!state || state.phase !== "playing") return;
-        const blocked = helpOpen || cheatsOpen; /* jeda bot saat overlay terbuka (offline) */
+        const blocked = helpOpen || cheatsOpen || paused; /* jeda bot & auto saat overlay / pause */
         if (!online && state.turn === state.seats[1] && !blocked) {
             botTimer = setTimeout(botMove, 900 + Math.random() * 900);
         }
@@ -779,7 +852,7 @@ export function mount(root, context = {}) {
         }
     }
     function botMove() {
-        if (!state || state.phase !== "playing" || state.turn !== state.seats[1]) return;
+        if (!state || state.phase !== "playing" || paused || helpOpen || cheatsOpen || state.turn !== state.seats[1]) return;
         const p = puzzleAt(state.seed, state.qi);
         const acc = cheats.dizzy ? BOT_ACC_DIZZY : BOT_ACC;
         let bin = p.answer;
@@ -790,14 +863,14 @@ export function mount(root, context = {}) {
         applyAction({ type: "pick", bin: bin }, 1);
     }
     function autoMove() {
-        if (!state || state.phase !== "playing" || state.turn !== mySeatNow()) return;
+        if (!state || state.phase !== "playing" || paused || helpOpen || cheatsOpen || state.turn !== mySeatNow()) return;
         const p = puzzleAt(state.seed, state.qi);
         submitAction({ type: "pick", bin: p.answer });
     }
 
     /* ================= input ================= */
     function tryPick(i) {
-        if (!state || state.phase !== "playing") return;
+        if (!state || state.phase !== "playing" || paused || helpOpen || cheatsOpen) return;
         if (state.turn !== mySeatNow()) { toast("Wait for your turn"); return; }
         submitAction({ type: "pick", bin: i });
     }
@@ -817,18 +890,46 @@ export function mount(root, context = {}) {
         if (key === "heart") { submitAction({ type: "heart" }); toast("+1 \u2665"); }
         if (key === "skip") submitAction({ type: "skip" });
     }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        /* murni UI: tidak mengubah state permainan / state room.
+           syncTimers() di render() menjadwalkan ulang bot & auto dengan delay segar. */
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) cheatsOpen = false;
+        render();
+    }
+    function restartMatch() {
+        paused = false;
+        helpOpen = false;
+        cheatsOpen = false;
+        submitAction({ type: "restart" });
+    }
     function handleClick(event) {
         const t = event.target;
         if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-close-cheats]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartMatch(); return; }
         const act = t.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
-            if (a === "start" || a === "restart") submitAction({ type: a });
-            else if (a === "help") { helpOpen = true; cheatsOpen = false; render(); }
-            else if (a === "close-help") { helpOpen = false; render(); }
-            else if (a === "cheats") { cheatsOpen = true; helpOpen = false; render(); }
-            else if (a === "close-cheats") { cheatsOpen = false; render(); }
+            if (a === "start") submitAction({ type: "start" });
+            else if (a === "restart") restartMatch();
+            else if (a === "help") toggleHelp(true);
             else if (a === "cheats-off") {
                 cheats.reveal = cheats.auto = cheats.shield = cheats.dizzy = false;
                 toast("All cheats off");
@@ -848,13 +949,33 @@ export function mount(root, context = {}) {
         const tag = (event.target && event.target.tagName) || "";
         if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
         const k = event.key;
-        if (k === "Escape") { if (helpOpen || cheatsOpen) { helpOpen = false; cheatsOpen = false; render(); } return; }
-        if (k === "h" || k === "H") { helpOpen = !helpOpen; cheatsOpen = false; render(); return; }
-        if (k === "c" || k === "C") { cheatsOpen = !cheatsOpen; helpOpen = false; render(); return; }
-        if (helpOpen || cheatsOpen) return;
+        /* prioritas: help → cheats → pause → Escape → aksi game */
+        if (k === "h" || k === "H") { toggleHelp(); event.preventDefault(); return; }
+        if (k === "c" || k === "C") { if (!helpOpen) toggleCheats(); event.preventDefault(); return; }
+        if (k === "p" || k === "P") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else togglePause();
+            event.preventDefault();
+            return;
+        }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            return;
+        }
+        if (k === "r" || k === "R") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else restartMatch();
+            event.preventDefault();
+            return;
+        }
+        if (helpOpen || cheatsOpen || paused) return;
         if (k === "Enter" && state) {
             if (state.phase === "lobby") submitAction({ type: "start" });
-            else if (state.phase === "over") submitAction({ type: "restart" });
+            else if (state.phase === "over") restartMatch();
             return;
         }
         const i = ["1", "2", "3", "4"].indexOf(k);

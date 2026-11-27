@@ -5,6 +5,8 @@
   - Setelah mengubah META, jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "tower-guard",
     name: "Tower Guard",
@@ -255,9 +257,39 @@ export function mount(root, context = {}) {
     let tool = "arrow", cursor = { c: 2, r: 0 }, cursorOn = false;
     let speed = 1, paused = false, rafId = 0, lastT = 0, pubAcc = 0;
     let botTimer = 0, lastMapId = "", overPublished = false, bestWritten = false;
+    let cheatsOpen = false, helpOpen = false;
     const towerEls = new Map(), enemyEls = new Map();
-    const timers = new Set(), unsubs = [];
-    function later(ms, fn) { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; }
+    const timers = new Set(), deferred = [], unsubs = [];
+
+    /* first-run internal help (global modal is disabled for this game id) */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("towerGuardHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("towerGuardHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* Pause-aware timers: nothing fires while paused, deadlines are kept
+       so resuming shifts the anchors instead of jumping the simulation. */
+    const nowMs = () => performance.now();
+    function later(ms, fn) {
+        const wait = Math.max(0, ms), due = nowMs() + wait;
+        const id = setTimeout(() => {
+            timers.delete(id);
+            if (paused) { deferred.push({ due, fn }); return; }
+            fn();
+        }, wait);
+        timers.add(id);
+        return id;
+    }
+    function flushDeferred() {
+        const t = nowMs();
+        deferred.splice(0).forEach(({ due, fn }) => later(due - t, fn));
+    }
+    function cancelTimers() {
+        timers.forEach((id) => clearTimeout(id)); timers.clear();
+        deferred.length = 0; botTimer = 0;
+    }
 
     const mySeat = () => (online && state ? (room.isHost ? state.hostSeat : 1 - state.hostSeat) : 0);
     const seatName = (s) => {
@@ -265,171 +297,263 @@ export function mount(root, context = {}) {
         return s === mySeat() ? (playerName || "You") : "Rival";
     };
 
-    /* ---------------- UI (minimalis) ---------------- */
+    /* ---------------- UI shell: HUD + fill board + overlays ---------------- */
     root.innerHTML = `
-<div class="game-app tg-app${("ontouchstart" in window) ? " tg-touch" : ""}">
+<div class="game-app tg-app game-fill${("ontouchstart" in window) ? " tg-touch" : ""}">
   <style>
-  .tg-app{--line:#ffffff14;--mut:#8fa0b8;--txt:#e7edf6;--panel:#0f172a;--bg:#0b1220;--acc:#6366f1;color:var(--txt);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .tg-app{--line:#ffffff14;--mut:#8fa0b8;--txt:#e7edf6;--panel:#0f172a;--bg:#0b1220;--acc:#6366f1;display:flex;flex-direction:column;flex:1 1 auto;min-width:0;min-height:0;gap:8px;width:100%;max-width:100%;padding:10px;box-sizing:border-box;color:var(--txt);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+  .tg-app *{box-sizing:border-box}
   .tg-app [hidden]{display:none!important}
-  .tg-app .game-intro p{color:var(--mut);font-size:12.5px;margin:2px 0 0}
-  .tg-app .tg-chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
-  .tg-app .tg-chip{border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--mut);white-space:nowrap}
-  .tg-app .tg-chip b{color:var(--txt);font-weight:650}
-  .tg-app .tg-stage{position:relative;border:1px solid var(--line);border-radius:14px;background:var(--bg);padding:10px}
-  .tg-app .tg-board{width:100%;max-width:880px;margin:0 auto}
-  .tg-app .tg-board svg{width:100%;height:auto;display:block}
-  .tg-app .tg-free{cursor:pointer}
-  .tg-app .tg-free:hover{fill:#1c2b4d}
-  .tg-app .tg-tower{cursor:pointer}
-  .tg-app .tg-toast{position:absolute;left:12px;right:12px;bottom:10px;margin:0 auto;max-width:520px;text-align:center;font-size:12.5px;color:var(--txt);background:#0b1220e6;border:1px solid var(--line);border-radius:999px;padding:5px 14px;pointer-events:none}
-  .tg-app .tg-shot{animation:tg-fade .26s linear forwards}
+  .tg-app button{font:inherit;color:var(--txt);background:#111a2e;border:1px solid var(--line);border-radius:8px;padding:6px 9px;min-height:34px;font-size:10px;font-weight:650;cursor:pointer}
+  .tg-app button:hover:not(:disabled){border-color:#ffffff3a}
+  .tg-app button:disabled{opacity:.38;cursor:default}
+  .tg-app button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+
+  /* HUD bar: all match info + controls live here */
+  .tg-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 7px;border:1px solid var(--line);border-radius:11px;background:#0f172a}
+  .tg-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--line);border-radius:999px;color:var(--mut);font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .tg-chip b{color:var(--txt);font-weight:700}
+  .tg-chip i.tg-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--acc)}
+  .tg-spacer{flex:1 1 auto;min-width:4px}
+  .tg-hud-sep{width:1px;align-self:stretch;background:var(--line);margin:0 2px}
+  .tg-btn.on{border-color:var(--acc);color:var(--acc)}
+  .tg-app .tg-btn[data-on="1"],.tg-app .tg-btn.tg-primary{background:var(--acc);border-color:var(--acc);color:#fff}
+  .tg-icon-btn{display:inline-flex;align-items:center;gap:5px}
+  .tg-icon-btn svg{flex:none;display:block}
+  .tg-picon{display:inline-flex}
+  .tg-btn-label{white-space:nowrap}
+  .tg-btn-short{display:none}
+
+  /* Board = arena only; SVG + overlays are direct children */
+  .tg-app.game-fill > .game-panel.tg-board[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+  .tg-board{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden}
+  .tg-board svg{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  .tg-free{cursor:pointer}
+  .tg-free:hover{fill:#1c2b4d}
+  .tg-tower{cursor:pointer}
+  .tg-shot{animation:tg-fade .2s linear forwards}
   @keyframes tg-fade{from{opacity:1}to{opacity:0}}
-  .tg-app .tg-controls{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
-  .tg-app .tg-btn{background:#111a2e;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer}
-  .tg-app .tg-btn:hover:not(:disabled){border-color:#ffffff3a}
-  .tg-app .tg-btn:disabled{opacity:.38;cursor:default}
-  .tg-app .tg-btn[data-on="1"]{background:var(--acc);border-color:var(--acc)}
-  .tg-app .tg-btn.tg-primary{background:var(--acc);border-color:var(--acc)}
-  .tg-app .tg-sep{flex:1}
-  .tg-app .tg-ov{position:absolute;inset:0;display:grid;place-items:center;background:#0b1220d9;backdrop-filter:blur(3px);border-radius:14px;z-index:5;overflow:auto;padding:14px}
-  .tg-app .tg-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;max-width:600px;width:100%;text-align:left}
-  .tg-app .tg-card h2{margin:0 0 6px;font-size:19px}
-  .tg-app .tg-card h3{margin:14px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
-  .tg-app .tg-card p,.tg-app .tg-card li{font-size:13px;color:#c3cede}
-  .tg-app .tg-card ul{margin:4px 0;padding-left:18px}
-  .tg-app .tg-card table{width:100%;border-collapse:collapse;font-size:12.5px}
-  .tg-app .tg-card td,.tg-app .tg-card th{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left}
-  .tg-app .tg-card kbd{background:#1e293b;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11px}
-  .tg-app .tg-cheatrow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
-  .tg-app .tg-pad{display:none;grid-template-columns:repeat(3,52px);grid-auto-rows:52px;gap:6px;justify-content:center;margin-top:12px}
-  .tg-app .tg-pad button{border-radius:12px;border:1px solid var(--line);background:#111a2e;color:var(--txt);font-size:17px;font-weight:700}
-  .tg-app .tg-pad button[data-pad="build"]{background:var(--acc);border-color:var(--acc);font-size:11px}
+  .tg-toast{position:absolute;left:12px;right:12px;bottom:10px;z-index:3;margin:0 auto;max-width:520px;text-align:center;font-size:12px;color:var(--txt);background:#0b1220e6;border:1px solid var(--line);border-radius:999px;padding:5px 12px;pointer-events:none}
+
+  /* Overlays as flex columns */
+  .tg-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:14px;background:#0b1220d9;border-radius:12px}
+  .tg-card{display:flex;flex-direction:column;overflow:hidden;width:min(600px,100%);max-height:100%;padding:16px 18px;background:var(--panel);border:1px solid var(--line);border-radius:14px;text-align:left}
+  .tg-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+  .tg-head h3{margin:0;font-size:16px}
+  .tg-head h3.tg-sub{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+  .tg-help,.tg-cheats,.tg-stats{flex:1 1 auto;min-height:0;overflow:auto}
+  .tg-cheats{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;align-content:start}
+  .tg-cheatrow{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+  .tg-card p,.tg-card li{font-size:12.5px;color:#c3cede}
+  .tg-card p{margin:4px 0}
+  .tg-card ul{margin:4px 0 8px;padding-left:18px}
+  .tg-help > div > b{display:block;margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+  .tg-card table{width:100%;border-collapse:collapse;font-size:12px}
+  .tg-card td,.tg-card th{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left}
+  .tg-card kbd{background:#1e293b;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11px}
+  .tg-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:10px;margin-top:8px;border-top:1px solid var(--line)}
+  .tg-note{font-size:10.5px;color:var(--mut)}
+  .tg-win{color:#34d399}.tg-lose{color:#f87171}
+
+  /* Touch pad is a sibling AFTER the board, never inside it */
+  .tg-pad{display:none;grid-template-columns:repeat(3,48px);grid-auto-rows:48px;gap:6px;justify-content:center;flex:none}
+  .tg-pad button{padding:0;min-height:44px;font-size:17px;font-weight:700}
+  .tg-pad button[data-pad="build"]{background:var(--acc);border-color:var(--acc);color:#fff;font-size:10px}
   .tg-app.tg-touch .tg-pad{display:grid}
-  @media (pointer:coarse){.tg-app .tg-pad{display:grid}}
-  .tg-app .tg-win{color:#34d399}.tg-app .tg-lose{color:#f87171}
+  @media (pointer:coarse){.tg-app .tg-pad{display:grid}.tg-app button:not(:disabled){min-height:44px}}
+  @media (prefers-reduced-motion:reduce){.tg-app .tg-shot{animation:none}.tg-app *{transition-duration:.01ms!important}}
+
+  /* --- fill height + mobile refinements (last, beat pointer:coarse 44px) --- */
+  @media (max-width:640px){
+  .tg-app{gap:6px;padding:6px}
+  .tg-app.game-fill > .game-panel.tg-board[data-board]:not(:has(.tg-ov:not([hidden]))){flex:0 0 auto;aspect-ratio:16/10}
+  .tg-app.game-fill > .game-panel.tg-board[data-board]:has(.tg-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .tg-app .tg-hud{gap:4px;padding:5px 6px}
+  .tg-app .tg-hud .tg-chip{padding:3px 5px;font-size:8px;gap:3px}
+  .tg-app .tg-hud .tg-chip b{display:inline-block;max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+  .tg-app .tg-hud .tg-chip-low,.tg-app .tg-hud .tg-chip-status{display:none}
+  .tg-app .tg-hud .tg-btn{min-height:30px;padding:3px 5px;font-size:9px}
+  .tg-app .tg-icon-btn{gap:3px}
+  .tg-app .tg-hud .tg-btn-short{display:inline}
+  .tg-app .tg-hud .tg-btn-label,.tg-app .tg-hud .tg-spacer,.tg-app .tg-hud .tg-hud-sep{display:none}
+  .tg-app .tg-pad{grid-template-columns:repeat(3,44px);grid-auto-rows:44px}
+  .tg-app .tg-ov{padding:8px}
+  .tg-app .tg-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .tg-app .tg-help,.tg-app .tg-cheats,.tg-app .tg-stats{scrollbar-width:none}
+  .tg-app .tg-help::-webkit-scrollbar,.tg-app .tg-cheats::-webkit-scrollbar,.tg-app .tg-stats::-webkit-scrollbar{display:none}
+  .tg-app .tg-foot{position:static;margin:8px 0 0;padding:8px 0 0}
+  .tg-app .tg-note{display:none}
+  }
+  @media (pointer:coarse){
+  .tg-app .tg-hud .tg-btn{min-height:30px;padding:3px 5px;font-size:9px}
+  .tg-app .tg-card .tg-btn{min-height:44px}
+  }
   </style>
 
-  <div class="game-intro">
-    <div><h2>Tower Guard</h2>
-      <p>Bangun tower di sel gelap, lindungi gerbang dari 8 wave. Giliran bangun ditentukan coin flip. Tekan <b>H</b> / tombol <b>?</b> untuk cara bermain.</p>
-    </div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+  <div class="tg-hud">
+    <span class="tg-chip">GOLD <b data-hud="gold">70</b></span>
+    <span class="tg-chip">LIVES <b data-hud="lives">12</b></span>
+    <span class="tg-chip">WAVE <b data-hud="wave">0/8</b></span>
+    <span class="tg-chip tg-chip-low">MAP <b data-hud="map">—</b></span>
+    <span class="tg-chip">TURN <b data-hud="turn">—</b></span>
+    <span class="tg-chip">SCORE <b data-hud="score">0 · 0</b></span>
+    <span class="tg-chip tg-chip-status"><i class="tg-dot"></i><b data-hud="status">Ready</b></span>
+    <span class="tg-spacer"></span>
+    ${TOWER_KEYS.map((k, i) => `<button class="tg-btn" type="button" data-act="pick" data-t="${k}" aria-label="Build ${TOWERS[k].name}" title="${TOWERS[k].name} — ${TOWERS[k].cost}g (${i + 1})"><span class="tg-btn-label">${i + 1}·${TOWERS[k].name}</span><span class="tg-btn-short">${i + 1}</span></button>`).join("")}
+    <button class="tg-btn" type="button" data-act="sell" aria-label="Sell tool" title="Sell tool (X)"><span class="tg-btn-label">X·Sell</span><span class="tg-btn-short">X</span></button>
+    <button class="tg-btn tg-primary" type="button" data-act="ready" aria-label="Ready" title="Ready (E / Enter)"><span class="tg-btn-label">Ready</span><span class="tg-btn-short">GO</span></button>
+    <button class="tg-btn tg-chip-low" type="button" data-act="shuffle" aria-label="Shuffle map" title="Shuffle map"><span class="tg-btn-label">Shuffle</span><span class="tg-btn-short">↻</span></button>
+    <button class="tg-btn" type="button" data-act="speed" aria-label="Speed" title="Speed (F)"><span class="tg-btn-label">1x</span><span class="tg-btn-short">1x</span></button>
+    <span class="tg-hud-sep"></span>
+    <button class="tg-btn tg-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="tg-btn-label">Help</span></button>
+    <button class="tg-btn tg-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="tg-btn-label">Cheats</span></button>
+    <button class="tg-btn tg-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span class="tg-picon">${iconSVG("pause", { size: 14 })}</span><span class="tg-btn-label">Pause</span></button>
+    <button class="tg-btn tg-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="tg-btn-label">Restart</span></button>
+    <button class="tg-btn tg-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="tg-btn-label">Exit game</span></button>
   </div>
 
-  <div class="tg-chips">
-    <span class="tg-chip">Gold <b data-hud="gold">70</b></span>
-    <span class="tg-chip">Lives <b data-hud="lives">12</b></span>
-    <span class="tg-chip">Wave <b data-hud="wave">0/8</b></span>
-    <span class="tg-chip">Map <b data-hud="map">—</b></span>
-    <span class="tg-chip">Turn <b data-hud="turn">—</b></span>
-    <span class="tg-chip">Score <b data-hud="score">0 · 0</b></span>
-  </div>
+  <section class="game-panel tg-board" data-board>
+    <svg viewBox="0 0 ${VBW} ${VBH}" data-el="svg" aria-hidden="true">
+      <g data-el="grid"></g><g data-el="towers"></g><g data-el="enemies"></g><g data-el="shots"></g><g data-el="ghost"></g>
+    </svg>
+    <div class="tg-toast" data-el="toast">Place towers, then press Ready</div>
 
-  <section class="game-panel" data-board>
-    <div class="tg-stage">
-      <div class="tg-board">
-        <svg viewBox="0 0 ${VBW} ${VBH}" data-el="svg" aria-hidden="true">
-          <g data-el="grid"></g><g data-el="towers"></g><g data-el="enemies"></g><g data-el="shots"></g><g data-el="ghost"></g>
-        </svg>
-      </div>
-      <div class="tg-toast" data-el="toast">Place towers, then press Ready</div>
-
-      <div class="tg-ov" data-ov="help" hidden>
-        <div class="tg-card">
-          <h2>How to play</h2>
-          <p>Musuh berjalan dari <b>START</b> ke <b>EXIT</b>. Setiap musuh yang lolos mengurangi <b>Lives</b> (shared). Habis 12 lives = kalah. Bertahan 8 wave = menang.</p>
-          <h3>Towers</h3>
-          <table><tr><th>Tower</th><th>Cost</th><th>Trait</th></tr>
-            <tr><td>Arrow</td><td>30g</td><td>Murah, tembak cepat, single target.</td></tr>
-            <tr><td>Frost</td><td>40g</td><td>Memperlambat musuh ke 55% selama 1.3 detik.</td></tr>
-            <tr><td>Cannon</td><td>55g</td><td>Splash damage — kuat untuk gerombolan.</td></tr></table>
-          <h3>Duel & giliran</h3>
-          <ul>
-            <li>Fase build: pemain bergiliran membangun <b>1 tower per giliran</b>, atau tekan <b>Ready</b>. Wave mulai saat keduanya Ready.</li>
-            <li>Siapa yang mulai duluan diacak (coin flip); mulai wave berikutnya bergantian.</li>
-            <li>Gold dari kill masuk ke pemilik tower. Wave bonus untuk keduanya. Saat wave berjalan, keduanya boleh membangun bebas.</li>
-            <li>Pemenang duel = perolehan gold kill (<b>Score</b>) tertinggi. Jual tower sendiri: refund 60% (tool Sell / klik kanan).</li>
-          </ul>
-          <h3>Kontrol desktop</h3>
-          <ul>
-            <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> pilih tower · <kbd>X</kbd> sell · <kbd>WASD</kbd>/<kbd>←↑↓→</kbd> geser kursor</li>
-            <li><kbd>Space</kbd> bangun di kursor · <kbd>Enter</kbd>/<kbd>E</kbd> Ready · <kbd>P</kbd> pause · <kbd>F</kbd> speed 1x/2x</li>
-            <li><kbd>C</kbd> cheats · <kbd>H</kbd> bantuan · <kbd>R</kbd> match baru (map & coin flip baru) · <kbd>Esc</kbd> tutup panel</li>
-            <li>Mouse: hover = preview range, klik = bangun, klik kanan tower sendiri = jual.</li>
-          </ul>
-          <h3>Mobile</h3>
-          <p>Tap sel untuk bangun. Gunakan D-pad di bawah papan untuk menggeser kursor dan tombol BUILD.</p>
-          <div class="tg-cheatrow"><button class="tg-btn tg-primary" type="button" data-act="close">Got it</button></div>
+    <div class="tg-ov" data-ov="help" hidden>
+      <div class="tg-card">
+        <div class="tg-head"><h3>How to play</h3><button class="tg-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="tg-help">
+          <div>
+            <b>Rules</b>
+            <p>Musuh berjalan dari <b>START</b> ke <b>EXIT</b>. Setiap musuh yang lolos mengurangi <b>Lives</b> (shared). Habis 12 lives = kalah. Bertahan 8 wave = menang.</p>
+            <b>Towers</b>
+            <table><tr><th>Tower</th><th>Cost</th><th>Trait</th></tr>
+              <tr><td>Arrow</td><td>30g</td><td>Murah, tembak cepat, single target.</td></tr>
+              <tr><td>Frost</td><td>40g</td><td>Memperlambat musuh ke 55% selama 1.3 detik.</td></tr>
+              <tr><td>Cannon</td><td>55g</td><td>Splash damage — kuat untuk gerombolan.</td></tr></table>
+            <b>Duel & giliran</b>
+            <ul>
+              <li>Fase build: bergiliran membangun <b>1 tower per giliran</b>, atau tekan <b>Ready</b>. Wave mulai saat keduanya Ready.</li>
+              <li>Siapa yang mulai duluan diacak (coin flip); mulai wave berikutnya bergantian.</li>
+              <li>Gold dari kill masuk ke pemilik tower, wave bonus untuk keduanya. Saat wave berjalan, keduanya boleh membangun bebas.</li>
+              <li>Pemenang duel = gold kill (<b>Score</b>) tertinggi. Jual tower sendiri: refund 60% (tool Sell / klik kanan).</li>
+            </ul>
+          </div>
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> pilih tower · <kbd>X</kbd> sell · <kbd>WASD</kbd>/<kbd>←↑↓→</kbd> geser kursor</li>
+              <li><kbd>Space</kbd> bangun · <kbd>Enter</kbd>/<kbd>E</kbd> Ready · <kbd>F</kbd> speed 1x/2x</li>
+              <li><kbd>H</kbd> bantuan · <kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>R</kbd> match baru · <kbd>Esc</kbd> tutup panel</li>
+              <li>Mouse: hover = preview range, klik = bangun, klik kanan tower sendiri = jual.</li>
+            </ul>
+            <b>Mobile</b>
+            <p>Tap sel untuk bangun. Gunakan D-pad di bawah papan untuk menggeser kursor dan tombol BUILD.</p>
+          </div>
         </div>
+        <div class="tg-foot"><span class="tg-note">Press H to reopen this guide</span><button class="tg-btn tg-primary" type="button" data-help-close>Got it</button></div>
       </div>
+    </div>
 
-      <div class="tg-ov" data-ov="cheats" hidden>
-        <div class="tg-card">
-          <h2>Cheats</h2>
-          <p>Mode santai — pakai bebas. Match yang memakai cheat ditandai di layar akhir.</p>
-          <h3>Instan</h3>
+    <div class="tg-ov" data-ov="cheats" hidden>
+      <div class="tg-card">
+        <div class="tg-head"><h3>Cheats</h3><button class="tg-btn" type="button" data-cheats-close aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="tg-cheats">
           <div class="tg-cheatrow">
             <button class="tg-btn" type="button" data-cheat="gold">+150 gold (kamu)</button>
             <button class="tg-btn" type="button" data-cheat="lives">Refill lives</button>
             <button class="tg-btn" type="button" data-cheat="clear">Skip / clear wave</button>
           </div>
-          <h3>Toggle</h3>
           <div class="tg-cheatrow">
             <button class="tg-btn" type="button" data-cheat="free">Free build: OFF</button>
             <button class="tg-btn" type="button" data-cheat="rapid">Rapid fire: OFF</button>
             <button class="tg-btn" type="button" data-cheat="power">Double damage: OFF</button>
             <button class="tg-btn" type="button" data-cheat="slow">Slow enemies: OFF</button>
           </div>
-          <div class="tg-cheatrow"><button class="tg-btn tg-primary" type="button" data-act="close">Close</button></div>
         </div>
+        <div class="tg-foot"><span class="tg-note">Cheats mark the result screen</span><button class="tg-btn tg-primary" type="button" data-cheats-close>Close</button></div>
       </div>
+    </div>
 
-      <div class="tg-ov" data-ov="over" hidden>
-        <div class="tg-card">
-          <h2 data-ov="title">—</h2>
+    <div class="tg-ov" data-ov="pause" hidden>
+      <div class="tg-card">
+        <div class="tg-head"><h3>Paused</h3></div>
+        <div class="tg-stats"><p>Simulasi, bot, dan timer dihentikan. Penanda waktu digeser saat resume agar tidak loncat.</p></div>
+        <div class="tg-foot"><span class="tg-note">Press P or Esc</span><button class="tg-btn tg-primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+
+    <div class="tg-ov" data-ov="over" hidden>
+      <div class="tg-card">
+        <div class="tg-head"><h3 data-ov="title">—</h3></div>
+        <div class="tg-stats">
           <p data-ov="reason"></p>
           <p data-ov="duel"></p>
-          <div class="tg-cheatrow"><button class="tg-btn tg-primary" type="button" data-act="restart">Play again (new map)</button></div>
+          <p data-ov="best"></p>
         </div>
+        <div class="tg-foot"><span class="tg-note">New map & coin flip</span><button class="tg-btn tg-primary" type="button" data-restart>Play again</button></div>
       </div>
-    </div>
-
-    <div class="tg-controls">
-      ${TOWER_KEYS.map((k, i) => `<button class="tg-btn" type="button" data-act="pick" data-t="${k}">${i + 1} · ${TOWERS[k].name} (${TOWERS[k].cost}g)</button>`).join("")}
-      <button class="tg-btn" type="button" data-act="sell">X · Sell</button>
-      <button class="tg-btn tg-primary" type="button" data-act="ready">Ready</button>
-      <button class="tg-btn" type="button" data-act="shuffle">Shuffle map</button>
-      <span class="tg-sep"></span>
-      <button class="tg-btn" type="button" data-act="pause">Pause</button>
-      <button class="tg-btn" type="button" data-act="speed">1x</button>
-      <button class="tg-btn" type="button" data-act="help">?</button>
-      <button class="tg-btn" type="button" data-act="cheats">Cheats</button>
-      <button class="tg-btn" type="button" data-act="restart">Restart</button>
-    </div>
-
-    <div class="tg-pad" aria-label="Virtual controls">
-      <span></span><button type="button" data-pad="up">▲</button><span></span>
-      <button type="button" data-pad="left">◀</button><button type="button" data-pad="build">BUILD</button><button type="button" data-pad="right">▶</button>
-      <span></span><button type="button" data-pad="down">▼</button><span></span>
     </div>
   </section>
 
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="tg-pad" aria-label="Virtual controls">
+    <span></span><button type="button" data-pad="up">▲</button><span></span>
+    <button type="button" data-pad="left">◀</button><button type="button" data-pad="build">BUILD</button><button type="button" data-pad="right">▶</button>
+    <span></span><button type="button" data-pad="down">▼</button><span></span>
+  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
     const svg = $('[data-el="svg"]'), gridLayer = $('[data-el="grid"]'), towersLayer = $('[data-el="towers"]');
     const enemiesLayer = $('[data-el="enemies"]'), shotsLayer = $('[data-el="shots"]'), ghostLayer = $('[data-el="ghost"]');
-    const toastEl = $('[data-el="toast"]'), statusEl = $("[data-status]");
-    const hud = { gold: $('[data-hud="gold"]'), lives: $('[data-hud="lives"]'), wave: $('[data-hud="wave"]'), map: $('[data-hud="map"]'), turn: $('[data-hud="turn"]'), score: $('[data-hud="score"]') };
-    const ovHelp = $('[data-ov="help"]'), ovCheats = $('[data-ov="cheats"]'), ovOver = $('[data-ov="over"]');
-    const readyBtn = $('[data-act="ready"]'), pauseBtn = $('[data-act="pause"]'), speedBtn = $('[data-act="speed"]'), shuffleBtn = $('[data-act="shuffle"]');
+    const toastEl = $('[data-el="toast"]');
+    const hud = {
+        gold: $('[data-hud="gold"]'), lives: $('[data-hud="lives"]'), wave: $('[data-hud="wave"]'),
+        map: $('[data-hud="map"]'), turn: $('[data-hud="turn"]'), score: $('[data-hud="score"]'), status: $('[data-hud="status"]'),
+    };
+    const ov = {
+        help: $('[data-ov="help"]'), cheats: $('[data-ov="cheats"]'),
+        pause: $('[data-ov="pause"]'), over: $('[data-ov="over"]'),
+    };
+    const out = { title: $('[data-ov="title"]'), reason: $('[data-ov="reason"]'), duel: $('[data-ov="duel"]'), best: $('[data-ov="best"]') };
+    const readyBtn = $('[data-act="ready"]'), pauseBtn = $('[data-pause]'), speedBtn = $('[data-act="speed"]'), shuffleBtn = $('[data-act="shuffle"]');
     const pickBtns = {}; TOWER_KEYS.forEach((k) => (pickBtns[k] = $(`[data-t="${k}"]`)));
     const sellBtn = $('[data-act="sell"]');
     const cheatBtns = {}; root.querySelectorAll("[data-cheat]").forEach((b) => (cheatBtns[b.dataset.cheat] = b));
 
     function toast(t) { toastEl.textContent = t; }
+    function setLabel(btn, text, short) {
+        if (!btn) return;
+        const label = btn.querySelector(".tg-btn-label");
+        if (label) label.textContent = text; else btn.textContent = text;
+        const sh = btn.querySelector(".tg-btn-short");
+        if (sh && short != null) sh.textContent = short;
+    }
+    function syncOverlays() {
+        const hasState = Boolean(state);
+        ov.help.hidden = !helpOpen;
+        ov.cheats.hidden = !cheatsOpen || helpOpen;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen || !hasState || state.over;
+        ov.over.hidden = !hasState || !state.over || cheatsOpen || helpOpen;
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function setPaused(on) {
+        if (online || (state && state.over)) return;
+        const next = Boolean(on);
+        if (paused === next) return;
+        paused = next;
+        if (!paused) { lastT = nowMs(); flushDeferred(); scheduleBot(); }
+        render();
+    }
 
     /* ---------------- rendering ---------------- */
     function towerSvg(type, owner) {
@@ -521,8 +645,13 @@ export function mount(root, context = {}) {
         if (!ok) s += `<rect x="${c * CELL + 3}" y="${r * CELL + 3}" width="${CELL - 6}" height="${CELL - 6}" rx="5" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="4 4"/>`;
         ghostLayer.innerHTML = s;
     }
+    let lastPauseIcon = "";
     function render() {
-        if (!state) { statusEl.textContent = "Waiting for host…"; return; }
+        if (!state) {
+            hud.status.textContent = "Waiting for host…";
+            syncOverlays();
+            return;
+        }
         if (state.mapId !== lastMapId) {
             lastMapId = state.mapId; resetLayers(); renderGrid();
             const g = geomFor(state);
@@ -538,7 +667,7 @@ export function mount(root, context = {}) {
         hud.map.textContent = state.mapName;
         hud.score.textContent = `${seatName(0)} ${state.earned[0]} · ${seatName(1)} ${state.earned[1]}`;
         hud.turn.textContent = state.over ? "—" : state.phase === "wave" ? "Wave running" : (state.ready[me] ? "Waiting…" : seatName(state.turn) + (state.turn === me ? " (you)" : ""));
-        statusEl.textContent = state.over ? (state.won ? "Victory" : "Defeat")
+        hud.status.textContent = state.over ? (state.won ? "Victory" : "Defeat")
             : paused ? "Paused"
                 : state.phase === "wave" ? "Wave " + state.wave + " incoming"
                     : state.turn === me ? "Your turn to build" : seatName(state.turn) + " is building…";
@@ -549,39 +678,56 @@ export function mount(root, context = {}) {
         });
         sellBtn.dataset.on = tool === "sell" ? "1" : "";
         readyBtn.disabled = state.phase !== "build" || state.ready[me] || state.over;
-        readyBtn.textContent = state.phase === "wave" ? "Wave " + state.wave + "…" : state.ready[me] ? "Ready ✓" : "Ready (E)";
+        setLabel(readyBtn, state.phase === "wave" ? "Wave " + state.wave + "…" : state.ready[me] ? "Ready ✓" : "Ready", "GO");
         shuffleBtn.hidden = !(state.phase === "build" && state.wave === 0 && !state.over);
         pauseBtn.disabled = online || state.over;
-        pauseBtn.textContent = paused ? "Resume" : "Pause";
+        setLabel(pauseBtn, paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
         pauseBtn.dataset.on = paused ? "1" : "";
+        const iconKey = paused ? "play" : "pause";
+        if (lastPauseIcon !== iconKey) {
+            lastPauseIcon = iconKey;
+            const pic = pauseBtn.querySelector(".tg-picon");
+            if (pic) pic.innerHTML = iconSVG(iconKey, { size: 14 });
+        }
         speedBtn.disabled = online || state.over;
-        speedBtn.textContent = speed + "x";
+        setLabel(speedBtn, speed + "x", speed + "x");
         [["free", "Free build"], ["rapid", "Rapid fire"], ["power", "Double damage"], ["slow", "Slow enemies"]].forEach(([k, label]) => {
             cheatBtns[k].textContent = label + ": " + (state.cheats[k] ? "ON" : "OFF");
             cheatBtns[k].dataset.on = state.cheats[k] ? "1" : "";
         });
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) {
+            const active = Object.keys(state.cheats).filter((k) => state.cheats[k]).length;
+            cbtn.classList.toggle("on", active > 0);
+            const label = cbtn.querySelector(".tg-btn-label");
+            if (label) label.textContent = active ? "Cheats " + active : "Cheats";
+        }
 
-        ovOver.hidden = !state.over;
         if (state.over) {
-            const title = $('[data-ov="title"]'), reason = $('[data-ov="reason"]'), duel = $('[data-ov="duel"]');
-            title.textContent = state.won ? "The gate holds!" : "Gate breached";
-            title.className = state.won ? "tg-win" : "tg-lose";
-            reason.textContent = state.won
+            out.title.textContent = state.won ? "The gate holds!" : "Gate breached";
+            out.title.className = state.won ? "tg-win" : "tg-lose";
+            out.reason.textContent = state.won
                 ? `Semua ${WAVES} wave dipatahkan dengan ${state.lives} lives tersisa.`
                 : `Gerbang jebol di wave ${state.wave}. Coba Frost di tikungan dan Cannon di titik gerombolan.`;
             const w = state.winner;
-            duel.textContent = (w === -1 ? "Duel seri." : `Pemenang duel: ${seatName(w)}.`) +
+            out.duel.textContent = (w === -1 ? "Duel seri." : `Pemenang duel: ${seatName(w)}.`) +
                 ` Skor ${seatName(0)} ${state.earned[0]}g · ${seatName(1)} ${state.earned[1]}g.` +
                 (state.cheatsUsed ? " (cheats aktif)" : "");
+            const score = state.wave * 100 + state.lives * 10 + state.earned[me];
             if (!bestWritten) {
                 bestWritten = true;
                 try {
-                    const score = state.wave * 100 + state.lives * 10 + state.earned[me];
                     const prev = Number(localStorage.getItem(META.bestKey) || 0);
                     if (score > prev) localStorage.setItem(META.bestKey, String(score));
                 } catch (_) { }
             }
+            let best = score;
+            try { best = Math.max(best, Number(localStorage.getItem(META.bestKey) || 0) || 0); } catch (_) { }
+            out.best.textContent = "Best " + best;
         }
+        syncOverlays();
         syncTowers(); syncEnemies(); syncShots(); renderGhost();
     }
 
@@ -666,8 +812,10 @@ export function mount(root, context = {}) {
                 break;
             }
             case "restart": {
+                cancelTimers();
                 state = newMatch();
                 paused = false;
+                lastT = nowMs();
                 toast(`New match — coin flip: ${seatName(state.firstSeat)} builds first` + (online ? ` · you are ${seatName(mySeat()) === (playerName || "You") ? "P" + (mySeat() + 1) : "P" + (mySeat() + 1)}` : ""));
                 break;
             }
@@ -733,9 +881,11 @@ export function mount(root, context = {}) {
 
     /* ---------------- input: mouse / klik ---------------- */
     function cellFromEvent(e) {
-        const rect = svg.getBoundingClientRect();
-        const c = Math.floor((e.clientX - rect.left) / rect.width * COLS);
-        const r = Math.floor((e.clientY - rect.top) / rect.height * ROWS);
+        /* viewBox-aware mapping: works even when the board letterboxes the SVG */
+        const m = svg.getScreenCTM();
+        if (!m) return null;
+        const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+        const c = Math.floor(p.x / CELL), r = Math.floor(p.y / CELL);
         return inBounds(c, r) ? { c, r } : null;
     }
     function handleMove(e) {
@@ -745,8 +895,20 @@ export function mount(root, context = {}) {
     }
     function handleLeave() { cursorOn = false; renderGhost(); }
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const pad = event.target.closest("[data-pad]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { setPaused(!paused); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-restart]")) { submitAction({ type: "restart" }); return; }
+
+        const cheat = t.closest("[data-cheat]");
+        if (cheat) { submitAction({ type: "cheat", kind: cheat.dataset.cheat }); return; }
+        const pad = t.closest("[data-pad]");
         if (pad) {
             const d = pad.dataset.pad;
             cursorOn = true;
@@ -758,15 +920,13 @@ export function mount(root, context = {}) {
             }
             return;
         }
-        const cheat = event.target.closest("[data-cheat]");
-        if (cheat) { submitAction({ type: "cheat", kind: cheat.dataset.cheat }); return; }
-        const tw = event.target.closest("[data-tid]");
+        const tw = t.closest("[data-tid]");
         if (tw && state) {
             if (tool === "sell") submitAction({ type: "sell", id: Number(tw.dataset.tid) });
             else toast("Pilih tool Sell (X) atau klik kanan untuk menjual tower ini");
             return;
         }
-        const cellEl = event.target.closest(".tg-free");
+        const cellEl = t.closest(".tg-free");
         if (cellEl && state) {
             const c = Number(cellEl.dataset.c), r = Number(cellEl.dataset.r);
             cursor = { c, r }; cursorOn = true;
@@ -774,19 +934,14 @@ export function mount(root, context = {}) {
             else submitAction({ type: "build", c, r, t: tool });
             return;
         }
-        const btn = event.target.closest("[data-act]");
+        const btn = t.closest("[data-act]");
         if (!btn) return;
         const act = btn.dataset.act;
         if (act === "pick") { tool = btn.dataset.t; render(); }
         else if (act === "sell") { tool = "sell"; render(); }
         else if (act === "ready") submitAction({ type: "ready" });
-        else if (act === "restart") submitAction({ type: "restart" });
         else if (act === "shuffle") submitAction({ type: "shuffle" });
-        else if (act === "help") { ovHelp.hidden = !ovHelp.hidden; ovCheats.hidden = true; }
-        else if (act === "cheats") { ovCheats.hidden = !ovCheats.hidden; ovHelp.hidden = true; }
-        else if (act === "close") { ovHelp.hidden = true; ovCheats.hidden = true; }
-        else if (act === "pause" && !online) { paused = !paused; render(); }
-        else if (act === "speed" && !online) { speed = speed === 1 ? 2 : 1; render(); }
+        else if (act === "speed") { if (!online) { speed = speed === 1 ? 2 : 1; render(); } }
     }
     function handleContext(e) {
         const tw = e.target.closest && e.target.closest("[data-tid]");
@@ -795,25 +950,37 @@ export function mount(root, context = {}) {
         submitAction({ type: "sell", id: Number(tw.dataset.tid) });
     }
 
-    /* ---------------- input: keyboard ---------------- */
+    /* ---------------- input: keyboard (help > cheats > pause > Esc > actions) ---------------- */
     function handleKey(e) {
         if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
-        const k = e.key.toLowerCase();
-        const handled = ["1", "2", "3", "x", "w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "e", "p", "f", "c", "h", "r", "escape"];
-        if (!handled.includes(k)) return;
+        const c = e.code || "";
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else setPaused(!paused);
+            e.preventDefault(); return;
+        }
+        if (helpOpen || cheatsOpen) {
+            if (c === "Enter") {
+                if (helpOpen) toggleHelp(false); else toggleCheats(false);
+                e.preventDefault();
+            }
+            return;
+        }
+        const handled = ["Digit1", "Digit2", "Digit3", "KeyX", "KeyW", "KeyA", "KeyS", "KeyD",
+            "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Enter", "KeyE", "KeyF", "KeyR"];
+        if (!handled.includes(c)) return;
         e.preventDefault();
-        if (k === "escape") { ovHelp.hidden = true; ovCheats.hidden = true; return; }
-        if (k === "h") { ovHelp.hidden = !ovHelp.hidden; ovCheats.hidden = true; return; }
-        if (k === "c") { ovCheats.hidden = !ovCheats.hidden; ovHelp.hidden = true; return; }
         if (!state) return;
-        if (k === "1" || k === "2" || k === "3") { tool = TOWER_KEYS[Number(k) - 1]; render(); return; }
-        if (k === "x") { tool = "sell"; render(); return; }
-        if (k === "r") { submitAction({ type: "restart" }); return; }
-        if (k === "e" || k === "enter") { submitAction({ type: "ready" }); return; }
-        if (k === "p") { if (!online) { paused = !paused; render(); } return; }
-        if (k === "f") { if (!online) { speed = speed === 1 ? 2 : 1; render(); } return; }
-        if (k === " ") { cursorOn = true; if (tool !== "sell") submitAction({ type: "build", c: cursor.c, r: cursor.r, t: tool }); return; }
-        const mv = { w: [0, -1], arrowup: [0, -1], s: [0, 1], arrowdown: [0, 1], a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0] }[k];
+        if (c === "Digit1" || c === "Digit2" || c === "Digit3") { tool = TOWER_KEYS[Number(c.slice(-1)) - 1]; render(); return; }
+        if (c === "KeyX") { tool = "sell"; render(); return; }
+        if (c === "KeyR") { submitAction({ type: "restart" }); return; }
+        if (c === "KeyE" || c === "Enter") { submitAction({ type: "ready" }); return; }
+        if (c === "KeyF") { if (!online) { speed = speed === 1 ? 2 : 1; render(); } return; }
+        if (c === "Space") { cursorOn = true; if (tool !== "sell") submitAction({ type: "build", c: cursor.c, r: cursor.r, t: tool }); return; }
+        const mv = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] }[c];
         if (mv) {
             cursorOn = true;
             cursor.c = clamp(cursor.c + mv[0], 0, COLS - 1);
@@ -859,7 +1026,7 @@ export function mount(root, context = {}) {
     return {
         destroy() {
             cancelAnimationFrame(rafId);
-            timers.forEach((id) => clearTimeout(id)); timers.clear(); botTimer = 0;
+            cancelTimers();
             document.removeEventListener("keydown", handleKey);
             root.removeEventListener("click", handleClick);
             root.removeEventListener("contextmenu", handleContext);

@@ -287,15 +287,67 @@ function vsState(sides) {
 
 /* ====================== UI ====================== */
 const CSS = `
-.sd{--ink:#1f2937;--mut:#6b7280;--line:#e5e7eb;--bg:#fafaf7;--ac:#16a34a;--zc:#7c3aed;position:relative;max-width:900px;margin:0 auto;padding:12px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:14px;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation}
-.sd *{box-sizing:border-box}
-.sd button{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer}
-.sd button:hover:not(:disabled){border-color:#9ca3af}
-.sd button:focus-visible,.sd input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-.sd button.pri{background:var(--ac);border-color:var(--ac);color:#fff}
-.sd button:disabled{opacity:.4;cursor:not-allowed}
-.sd .mut{color:var(--mut)} .sd h1{margin:6px 0 2px;font-size:28px;letter-spacing:-.02em} .sd h3{margin:0 0 8px;font-size:18px}
-.sd-menu{text-align:center;padding:10px 4px} .sd-logo{width:56px;height:56px;margin:0 auto;border-radius:16px;background:#dcfce7;display:grid;place-items:center}
+.sd-app{--ink:#1f2937;--mut:#6b7280;--line:#e5e7eb;--bg:#fafaf7;--ac:#16a34a;--zc:#7c3aed;display:flex;flex-direction:column;gap:8px;flex:1 1 auto;min-width:0;min-height:0;overflow-x:clip;padding:10px;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.sd-app *{box-sizing:border-box}
+.sd-app [hidden]{display:none!important}
+.sd-app button{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer}
+.sd-app button:hover:not(:disabled){border-color:#9ca3af}
+.sd-app button:focus-visible,.sd-app input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.sd-app button.pri,.sd-app button.primary{background:var(--ac);border-color:var(--ac);color:#fff}
+.sd-app button:disabled{opacity:.4;cursor:not-allowed}
+.sd-app .mut{color:var(--mut)}
+.sd-app h1{margin:6px 0 2px;font-size:26px;letter-spacing:-.02em}
+.sd-app h3{margin:0 0 8px;font-size:18px}
+.sd-app.game-fill>.game-panel.sd-board[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+
+/* HUD: info + icon controls */
+.sd-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;border:1px solid var(--line);border-radius:12px;background:#fff;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sd-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#f8fafc;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+.sd-chip b{color:var(--ink);font-weight:700}
+.sd-chip [data-hud="info"]{display:block;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sd-chip i.sd-dot{display:inline-block;width:9px;height:9px;border-radius:50%}
+.sd-spacer{flex:1 1 auto}
+.sd-btn{font-size:10px;font-weight:700;letter-spacing:.02em;padding:6px 8px;min-height:34px}
+.sd-btn.on{background:#dcfce7;border-color:var(--ac)}
+.sd-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sd-icon-btn svg{flex:none;display:block}
+.sd-btn-label{white-space:nowrap}
+.sd-app .sd-hud .sd-btn[data-a="padt"] .sd-btn-label,
+.sd-app .sd-hud .sd-btn[data-a="snd"] .sd-btn-label,
+.sd-app .sd-hud .sd-btn[data-a="go"] .sd-btn-label,
+.sd-app .sd-hud .sd-btn[data-exit] .sd-btn-label{display:none}
+.sd-picon,.sd-sicon{display:inline-flex}
+
+/* board = arena only; canvas + overlays are direct children */
+.sd-board{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:0;border:1px solid var(--line);border-radius:12px;background:#fafaf7;overflow:hidden}
+.sd-cv{display:block;max-width:100%;max-height:100%;border-radius:10px;touch-action:none;cursor:crosshair}
+.sd-bn{position:absolute;left:50%;top:10px;z-index:3;transform:translateX(-50%);max-width:94%;background:#111827e6;color:#fff;padding:6px 12px;border-radius:999px;font-size:13px;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s}
+.sd-bn.on{opacity:1}
+
+/* deck + touch pad are siblings after the board */
+.sd-deck{display:flex;flex-direction:column;gap:6px;flex:none;max-height:150px;overflow:auto;padding:2px}
+.sd-row{display:flex;gap:6px;min-width:0}
+.sd-card{position:relative;overflow:hidden;flex:1 1 0;min-width:0;display:flex!important;flex-direction:column;align-items:flex-start;justify-content:center;padding:6px 8px!important;text-align:left;min-height:46px}
+.sd-card b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.sd-card small{color:var(--mut)}
+.sd-card .sw{position:absolute;right:8px;top:8px;width:10px;height:10px;border-radius:50%}
+.sd-card.sel{border-color:var(--ac)!important;box-shadow:0 0 0 2px #16a34a33}
+.sd-card.zb.sel{border-color:var(--zc)!important;box-shadow:0 0 0 2px #7c3aed33}
+.sd-card.off{opacity:.55}
+.sd-card em{position:absolute;left:0;bottom:0;width:100%;height:0;background:#0000001f;pointer-events:none}
+.sd-pads{display:none;justify-content:space-between;gap:10px;flex:none;padding:2px}
+.sd-app.pad .sd-pads{display:flex}
+.sd-pad{display:flex;gap:10px;align-items:center}
+.sd-dp{display:grid;grid-template:repeat(3,40px)/repeat(3,40px);gap:4px}
+.sd-dp button{padding:0}
+.sd-dp .u{grid-area:1/2}.sd-dp .l{grid-area:2/1}.sd-dp .r{grid-area:2/3}.sd-dp .d{grid-area:3/2}
+.sd-ab{display:flex;flex-direction:column;gap:4px}
+.sd-ab button{padding:7px 12px}
+
+/* menu + modal overlays */
+.sd-menuwrap{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;overflow:auto;padding:14px;background:var(--bg);border-radius:12px}
+.sd-menu{text-align:center;padding:10px 4px;width:100%}
+.sd-logo{width:56px;height:56px;margin:0 auto;border-radius:16px;background:#dcfce7;display:grid;place-items:center}
 .sd-logo svg{width:36px;height:36px}
 .sd-list{display:grid;gap:8px;max-width:360px;margin:18px auto}
 .sd-big{display:flex;flex-direction:column;align-items:flex-start;padding:12px 14px!important;text-align:left}
@@ -303,34 +355,53 @@ const CSS = `
 .sd-lv{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;max-width:420px;margin:16px auto}
 .sd-lv button{padding:14px 0;font-weight:600}
 .sd-row2{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:10px 0}
-.sd input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px;width:120px;text-align:center;user-select:text}
-.sd-hud{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-.sd-res{display:flex;gap:14px;font-weight:600}.sd-res i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
-.sd-mid{flex:1;min-width:110px;text-align:center;color:var(--mut)}
-.sd-tools{display:flex;gap:6px;flex-wrap:wrap}.sd-tools button{padding:5px 10px}
-.sd-bw{position:relative}
-.sd-cv{display:block;width:100%;height:auto;border-radius:10px;border:1px solid var(--line);touch-action:none;cursor:crosshair}
-.sd-bn{position:absolute;left:50%;top:10px;transform:translateX(-50%);max-width:94%;background:#111827e6;color:#fff;padding:6px 12px;border-radius:999px;font-size:13px;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s}
-.sd-bn.on{opacity:1}
-.sd-row{display:flex;gap:6px;margin-top:8px}
-.sd-card{position:relative;overflow:hidden;flex:1;min-width:0;display:flex!important;flex-direction:column;align-items:flex-start;padding:6px 8px!important;text-align:left}
-.sd-card b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.sd-card small{color:var(--mut)} .sd-card .sw{position:absolute;right:8px;top:8px;width:10px;height:10px;border-radius:50%}
-.sd-card.sel{border-color:var(--ac)!important;box-shadow:0 0 0 2px #16a34a33}.sd-card.zb.sel{border-color:var(--zc)!important;box-shadow:0 0 0 2px #7c3aed33}
-.sd-card.off{opacity:.55}.sd-card em{position:absolute;left:0;bottom:0;width:100%;height:0;background:#0000001f;pointer-events:none}
-.sd-pads{display:none;justify-content:space-between;gap:10px;margin-top:10px}.sd.pad .sd-pads{display:flex}
-.sd-pad{display:flex;gap:10px;align-items:center}
-.sd-dp{display:grid;grid-template:repeat(3,42px)/repeat(3,42px);gap:4px}.sd-dp button{padding:0}
-.sd-dp .u{grid-area:1/2}.sd-dp .l{grid-area:2/1}.sd-dp .r{grid-area:2/3}.sd-dp .d{grid-area:3/2}
-.sd-ab{display:flex;flex-direction:column;gap:4px}.sd-ab button{padding:9px 14px}
-.sd-ov{position:absolute;inset:0;background:#fafaf7ee;display:flex;align-items:center;justify-content:center;padding:14px;border-radius:14px;z-index:5}
-.sd-ov:empty{display:none}
-.sd-panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;max-width:520px;width:100%;max-height:100%;overflow:auto}
-.sd-panel ul{margin:4px 0 10px;padding-left:18px}.sd-panel p{margin:8px 0 2px}
-.sd-u{display:grid;grid-template-columns:12px 100px 38px 1fr;gap:8px;align-items:center;padding:3px 0;font-size:13px}.sd-u i{width:10px;height:10px;border-radius:50%}.sd-u small{color:var(--mut)}
-.sd-chs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0}.sd-chs .on{border-color:var(--ac);background:#dcfce7}
-@media (max-width:560px){.sd{padding:8px}.sd-card b{font-size:12px}.sd-u{grid-template-columns:12px 84px 32px 1fr}}
-@media (prefers-reduced-motion:reduce){.sd-bn{transition:none}}
+.sd-app input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px;width:120px;text-align:center;user-select:text}
+.sd-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:#fafaf7ee;border-radius:12px}
+.sd-ovcard{display:flex;flex-direction:column;overflow:hidden;width:min(520px,100%);max-height:100%;padding:16px;background:#fff;border:1px solid var(--line);border-radius:14px}
+.sd-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sd-head h3{margin:0}
+.sd-body,.sd-cheats,.sd-help,.sd-grid{flex:1 1 auto;min-height:0;overflow:auto}
+.sd-body p{margin:8px 0 2px}
+.sd-body ul,.sd-help ul{margin:4px 0 10px;padding-left:18px}
+.sd-cheats{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start;margin:10px 0}
+.sd-cheats .on{border-color:var(--ac);background:#dcfce7}
+.sd-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.sd-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:10px;margin-top:8px;border-top:1px solid var(--line)}
+.sd-note{font-size:11px;color:var(--mut)}
+.sd-u{display:grid;grid-template-columns:12px 100px 38px 1fr;gap:8px;align-items:center;padding:3px 0;font-size:13px}
+.sd-u i{width:10px;height:10px;border-radius:50%}
+.sd-u small{color:var(--mut)}
+.sd-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#f8fafc;font:600 10px/1.4 ui-monospace,monospace}
+
+/* --- Batch 02 design polish --- */
+.sd-app :focus-visible,.sd-app button:focus-visible,.sd-app input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.sd-app .sd-hud .sd-btn,.sd-app .sd-ab button{min-height:44px}
+.sd-app .sd-dp button{min-height:44px;min-width:44px}
+@media (pointer:coarse){.sd-app button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.sd-app *,.sd-app *::before,.sd-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- fill height + mobile refinements (last, beat pointer:coarse 44px) --- */
+@media (max-width:640px){
+  .sd-app.game-fill>.game-panel.sd-board[data-board]{flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .sd-app .sd-hud{gap:5px;padding:5px 6px;margin-bottom:0}
+  .sd-app .sd-hud .sd-chip{padding:4px 6px;font-size:9px}
+  .sd-app .sd-hud .sd-chip[data-hud="level"],.sd-app .sd-hud .sd-chip[data-hud="side"]{display:none}
+  .sd-app .sd-hud .sd-btn-label,.sd-app .sd-hud .sd-spacer{display:none}
+  .sd-app .sd-hud .sd-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+  .sd-app .sd-deck{max-height:108px}
+  .sd-app .sd-card{min-height:44px;padding:4px 6px!important}
+  .sd-app .sd-card b{font-size:11px}
+  .sd-app .sd-ov{padding:8px}
+  .sd-app .sd-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .sd-app .sd-body,.sd-app .sd-cheats,.sd-app .sd-help,.sd-app .sd-grid{scrollbar-width:none}
+  .sd-app .sd-body::-webkit-scrollbar,.sd-app .sd-cheats::-webkit-scrollbar,.sd-app .sd-help::-webkit-scrollbar,.sd-app .sd-grid::-webkit-scrollbar{display:none}
+  .sd-app .sd-foot{position:static;margin:0;padding:8px 0 0}
+  .sd-app .sd-note{display:none}
+}
+@media (pointer:coarse){
+  .sd-app .sd-hud .sd-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+  .sd-app .sd-ovcard .sd-btn{min-height:44px}
+}
 `;
 
 export function mount(root, context = {}) {
@@ -341,32 +412,70 @@ export function mount(root, context = {}) {
     let state = null;
 
     /* ---- penyimpanan & bahasa ---- */
-    const defaults = { cleared: 0, lang: "id", sound: true, seen: false };
+    const defaults = { cleared: 0, lang: "id", sound: true };
     let save = { ...defaults };
     try { save = { ...defaults, ...JSON.parse(localStorage.getItem(META.bestKey) || "{}") }; } catch { /* abaikan */ }
     const persist = () => { try { localStorage.setItem(META.bestKey, JSON.stringify(save)); } catch { /* abaikan */ } };
     const T = (k, ...a) => (I[k] ? I[k][save.lang === "en" ? 1 : 0] : k).replace(/\{(\d)\}/g, (_, i) => a[i]);
 
+    const HELP_KEY = "sproutDefenseHelpSeen";
     const ui = {
-        screen: online ? "lobby" : "menu", overlay: null, paused: false, speed: 1, ctl: [], gm: { kind: online ? "online" : "" },
+        screen: online ? "lobby" : "menu", helpOpen: false, cheatsOpen: false, paused: false, speed: 1, ctl: [], gm: { kind: online ? "online" : "" },
         pad: !!window.matchMedia?.("(pointer:coarse)").matches, seed: 1000 + ((Math.random() * 9000) | 0),
         bn: "", bnUntil: 0, viewSid: null, ended: null, cheated: false,
     };
-    let raf = 0, last = 0, acc = 0, syncT = 0, botT = 1.5, hudT = 0, destroyed = false, cv = null, ctx = null;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem(HELP_KEY) === "1"; } catch { /* abaikan */ }
+    if (!seenHelp) {
+        ui.helpOpen = true;
+        try { localStorage.setItem(HELP_KEY, "1"); } catch { /* abaikan */ }
+    }
+    let raf = 0, last = 0, acc = 0, syncT = 0, botT = 1.5, hudT = 0, destroyed = false, cv = null, ctx = null, pauseAt = 0, ro = null;
 
     root.innerHTML = `
-    <div class="game-app">
-      <div class="game-intro">
-        <div><h2>Sprout Defense</h2><p>${T("tag")}</p></div>
-        <span class="game-status"><i class="game-status-dot"></i><span data-status>${T("sReady")}</span></span>
+    <style>${CSS}</style>
+    <div class="game-app sd-app game-fill" data-sd>
+      <div class="sd-hud">
+        <span class="sd-chip" data-hud="mode">MENU</span>
+        <span class="sd-chip">LV <b data-hud="level">—</b></span>
+        <span class="sd-chip"><i class="sd-dot" style="background:#facc15"></i>SUN <b data-hud="sun">0</b></span>
+        <span class="sd-chip" data-hud="brains" hidden><i class="sd-dot" style="background:#7c3aed"></i>BRAINS <b data-hud="brainsv">0</b></span>
+        <span class="sd-chip"><span data-hud="info">READY</span></span>
+        <span class="sd-chip" data-hud="side" hidden></span>
+        <span class="sd-chip" data-hud="status">${T("sReady")}</span>
+        <span class="sd-spacer"></span>
+        <button class="sd-btn sd-icon-btn" type="button" data-a="help" aria-label="${T("help")}" title="${T("help")} (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sd-btn-label">Help</span></button>
+        <button class="sd-btn sd-icon-btn" type="button" data-a="cheat" data-cheats aria-label="${T("cheat")}" title="${T("cheat")} (C)">${iconSVG("wrench", { size: 14 })}<span class="sd-btn-label">Cheats</span></button>
+        <button class="sd-btn sd-icon-btn" type="button" data-a="pause" data-pause aria-label="${T("pause")}" title="${T("pause")} (P)"><span class="sd-picon">${iconSVG("pause", { size: 14 })}</span><span class="sd-btn-label">Pause</span></button>
+        <button class="sd-btn sd-icon-btn" type="button" data-a="restart" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sd-btn-label">Restart</span></button>
+        <button class="sd-btn sd-icon-btn" type="button" data-a="padt" aria-label="Virtual pad" title="Virtual pad">${iconSVG("gamepad2", { size: 14 })}<span class="sd-btn-label">Pad</span></button>
+        <button class="sd-btn sd-icon-btn" type="button" data-a="snd" aria-label="Sound" title="Sound"><span class="sd-sicon">${iconSVG("volume", { size: 14 })}</span><span class="sd-btn-label">Sound</span></button>
+        <button class="sd-btn sd-icon-btn" type="button" data-a="go" data-v="menu" aria-label="${T("menu")}" title="${T("menu")}">${iconSVG("home", { size: 14 })}<span class="sd-btn-label">Menu</span></button>
+        <button class="sd-btn sd-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sd-btn-label">Exit game</span></button>
       </div>
-      <section class="game-panel" data-board>
-        <div class="sd${ui.pad ? " pad" : ""}" data-sd><style>${CSS}</style><div data-menu></div><div data-game hidden></div><div class="sd-ov" data-ov></div></div>
+      <section class="game-panel sd-board" data-board>
+        <canvas class="sd-cv" data-cv hidden></canvas>
+        <div class="sd-bn" data-bn hidden></div>
+        <div class="sd-menuwrap" data-menu></div>
+        <div class="sd-ov" data-ov hidden></div>
       </section>
-      <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+      <div class="sd-deck" data-deck hidden></div>
+      <div class="sd-pads" data-pads hidden></div>
     </div>`;
     const q = (s) => root.querySelector(s);
-    const setStatus = (k) => { const e = q("[data-status]"); if (e) e.textContent = T(k); };
+    const board = q("[data-board]");
+    const setStatus = (k) => { const e = q('[data-hud="status"]'); if (e) e.textContent = T(k); };
+    function fitCanvas() {
+        if (!cv) return;
+        const w = board.clientWidth, h = board.clientHeight;
+        const fullW = COLS * CS, fullH = (state?.lanes || 5) * CS;
+        if (w < 2 || h < 2) return;
+        const scale = Math.min(w / fullW, h / fullH);
+        cv.style.width = Math.max(1, fullW * scale) + "px";
+        cv.style.height = Math.max(1, fullH * scale) + "px";
+    }
+    ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fitCanvas) : null;
+    if (ro) ro.observe(board); else window.addEventListener("resize", fitCanvas);
 
     /* ---- suara ---- */
     let ac = null;
@@ -399,7 +508,7 @@ export function mount(root, context = {}) {
         openGame(); pushState();
     }
     function openGame() {
-        ui.viewSid = state.sid; ui.ended = null; ui.paused = false; ui.speed = 1; ui.overlay = null; ui.cheated = false; acc = 0; botT = 1.5;
+        ui.viewSid = state.sid; ui.ended = null; ui.paused = false; ui.speed = 1; ui.helpOpen = false; ui.cheatsOpen = false; ui.cheated = false; acc = 0; botT = 1.5; last = performance.now();
         const sides = online ? [state.sides[playerIndex]] : ui.gm.kind === "local" ? ["plants", "zombies"] : [ui.gm.humanSide];
         ui.ctl = sides.map((s, i) => ({ side: s, r: Math.floor(state.lanes / 2), c: 2, sel: 0, kmap: sides.length === 2 ? (i ? "arrows" : "wasd") : "both" }));
         ui.screen = "game";
@@ -408,15 +517,14 @@ export function mount(root, context = {}) {
         let txt = !me ? T("firstSide", T(state.first)) : state.first === me ? T("firstYou") : T("firstOpp", LOCK);
         if (online) txt = T("youAre", T(me)) + ". " + txt;
         setBanner(txt, 4.5);
-        if (!save.seen && !online) { save.seen = true; persist(); ui.overlay = "help"; sync(); }
     }
     function pushState() { room.publishState(JSON.parse(JSON.stringify(state))).catch(console.warn); }
     function setBanner(t, sec) { ui.bn = t; ui.bnUntil = performance.now() + sec * 1000; }
-    function cheatOK() { return !online && ui.gm.kind !== "local" && ui.screen === "game"; }
+    function cheatOK() { return !online && ui.gm.kind !== "local" && ui.screen === "game" && state?.phase === "play"; }
 
     function onEnd() {
         const s = state, me = ui.ctl.length === 1 ? ui.ctl[0].side : null, won = me && s.winner === me;
-        ui.overlay = null; ui.paused = false;
+        ui.helpOpen = false; ui.cheatsOpen = false; ui.paused = false;
         setStatus(!me ? "sWin" : won ? "sWin" : "sLose"); beep(won ? 780 : 120, 0.35, won ? "sine" : "sawtooth");
         if (ui.gm.kind === "campaign" && s.winner === "plants" && !ui.cheated && ui.gm.no + 1 > save.cleared) { save.cleared = ui.gm.no + 1; persist(); }
         sync();
@@ -446,7 +554,7 @@ export function mount(root, context = {}) {
         if (online && room.isHost) pushState();
     }
     function doAct(c) {
-        if (!state || state.phase !== "play" || ui.paused || ui.overlay) return;
+        if (!state || state.phase !== "play" || ui.paused || ui.helpOpen || ui.cheatsOpen) return;
         const k = state.avail[c.side][c.sel];
         submitAction(c.side === "plants" ? { type: "place", k, r: c.r, c: c.c } : { type: "spawn", k, r: c.r }, c.side);
     }
@@ -457,7 +565,35 @@ export function mount(root, context = {}) {
         else cycle(c, d === "l" ? -1 : 1);
     }
     function cycle(c, dv) { const n = state.avail[c.side].length; c.sel = (c.sel + dv + n) % n; }
-    function togglePause() { if (online || ui.screen !== "game" || state?.phase !== "play") return; ui.paused = !ui.paused; setStatus(ui.paused ? "sPause" : "sPlay"); sync(); }
+    function toggleHelp(on) {
+        ui.helpOpen = typeof on === "boolean" ? on : !ui.helpOpen;
+        if (ui.helpOpen) ui.cheatsOpen = false;
+        sync();
+    }
+    function toggleCheats(on) {
+        if (!cheatOK()) return;
+        ui.cheatsOpen = typeof on === "boolean" ? on : !ui.cheatsOpen;
+        if (ui.cheatsOpen) ui.helpOpen = false;
+        sync();
+    }
+    function restartGame() {
+        if (ui.screen !== "game" || !state) return;
+        const g = ui.gm;
+        if (g.kind === "campaign" || g.kind === "random") startPve(g.p, g.kind, g.no);
+        else if (g.kind === "bot" || g.kind === "local") startVs(g.kind, g.humanSide);
+    }
+    function togglePause() {
+        if (online || ui.screen !== "game" || state?.phase !== "play") return;
+        ui.paused = !ui.paused;
+        if (ui.paused) { pauseAt = performance.now(); acc = 0; }
+        else {
+            const held = Math.max(0, performance.now() - pauseAt);
+            ui.bnUntil += held;
+            last = performance.now(); acc = 0; syncT = 0;
+        }
+        setStatus(ui.paused ? "sPause" : "sPlay");
+        sync();
+    }
     function cheat(v) {
         const s = state; if (!s || !cheatOK()) return;
         ui.cheated = true;
@@ -499,56 +635,125 @@ export function mount(root, context = {}) {
     }
 
     function overlayHTML() {
-        if (ui.overlay === "help") return `<div class="sd-panel"><h3>${T("help")}</h3><p><b>${T("hGoal")}</b></p>${li([T("hPve"), T("hPvp"), T("hFirst")])}<p><b>${T("hCtl")}</b></p>${li([T("hKb"), T("hMouse"), T("hTouch")])}<p><b>${T("plants")}</b></p>${unitRows(PLANTS)}<p><b>${T("zombies")}</b></p>${unitRows(ZOMBIES)}<div class="sd-row2"><button class="pri" data-a="closeov">OK</button></div></div>`;
-        if (ui.overlay === "cheat" && state) {
-            const c = state.cheat, b = (v, k, on) => `<button class="${on ? "on" : ""}" data-a="ch" data-v="${v}">${T(k)}</button>`;
-            return `<div class="sd-panel"><h3>${T("cheat")}</h3><p class="mut">${T("cheatNote")}</p><div class="sd-chs">${b("sun", "cSun")}${b("nocd", "cCd", c.nocd)}${b("freeze", "cFreeze", c.freeze)}${b("god", "cGod", c.god)}${b("kill", "cKill")}${b("win", "cWin")}</div><p>${T("cSpeed")}</p><div class="sd-row2">${[1, 2, 3].map((n) => `<button class="${ui.speed === n ? "on" : ""}" data-a="ch" data-v="x${n}">x${n}</button>`).join("")}</div><div class="sd-row2"><button class="pri" data-a="closeov">OK</button></div></div>`;
+        const close = (a, label) => `<button class="sd-btn" type="button" data-a="${a}" aria-label="${label}">${iconSVG("x", { size: 14 })}</button>`;
+        if (ui.helpOpen) {
+            return `<div class="sd-ovcard">
+        <div class="sd-head"><h3>${T("help")}</h3>${close("closehelp", "Close help")}</div>
+        <div class="sd-help">
+          <div><b>${T("hGoal")}</b>${li([T("hPve"), T("hPvp"), T("hFirst")])}<b>${T("hCtl")}</b>${li([T("hKb"), T("hMouse"), T("hTouch")])}</div>
+          <div><b>${T("plants")}</b><div class="sd-grid">${unitRows(PLANTS)}</div><b>${T("zombies")}</b><div class="sd-grid">${unitRows(ZOMBIES)}</div>
+            <div class="sd-foot"><span class="sd-note">H ${T("help")} · C ${T("cheat")} · P ${T("pause")}</span><button class="sd-btn pri" type="button" data-a="closehelp">OK</button></div>
+          </div>
+        </div></div>`;
+        }
+        if (ui.cheatsOpen && state) {
+            const c = state.cheat, b = (v, k, on) => `<button class="sd-btn ${on ? "on" : ""}" data-a="ch" data-v="${v}">${T(k)}</button>`;
+            return `<div class="sd-ovcard">
+        <div class="sd-head"><h3>${T("cheat")}</h3>${close("closech", "Close cheats")}</div>
+        <div class="sd-cheats"><p class="mut">${T("cheatNote")}</p>${b("sun", "cSun")}${b("nocd", "cCd", c.nocd)}${b("freeze", "cFreeze", c.freeze)}${b("god", "cGod", c.god)}${b("kill", "cKill")}${b("win", "cWin")}</div>
+        <div class="sd-foot"><span class="sd-note">${T("cSpeed")}</span><div class="sd-row2">${[1, 2, 3].map((n) => `<button class="sd-btn ${ui.speed === n ? "on" : ""}" data-a="ch" data-v="x${n}">x${n}</button>`).join("")}<button class="sd-btn pri" data-a="closech">OK</button></div></div>
+      </div>`;
+        }
+        if (ui.paused) {
+            return `<div class="sd-ovcard">
+        <div class="sd-head"><h3>${T("pause")}</h3></div>
+        <div class="sd-body"><p>${T("sPause")}</p></div>
+        <div class="sd-foot"><span class="sd-note">P / Esc</span><div class="sd-row2"><button class="sd-btn pri" data-a="resume">${T("resume")}</button><button class="sd-btn" data-a="retry">${T("retry")}</button><button class="sd-btn" data-a="go" data-v="menu">${T("menu")}</button></div></div>
+      </div>`;
         }
         if (state && ui.screen === "game" && state.phase === "over") {
             const me = ui.ctl.length === 1 ? ui.ctl[0].side : null, w = state.winner;
             const title = me ? (w === me ? T("win") : T("lose")) : w === "plants" ? T("pWin") : T("zWin");
             const g = ui.gm; let btns = "";
-            if (online) btns = room.isHost ? `<button class="pri" data-a="start">${T("rematch")}</button>` : `<p class="mut">${T("waitHost")}</p>`;
+            if (online) btns = room.isHost ? `<button class="sd-btn pri" data-a="start">${T("rematch")}</button>` : `<p class="mut">${T("waitHost")}</p>`;
             else {
-                if (g.kind === "campaign" && w === "plants" && g.no < LEVELS.length - 1) btns += `<button class="pri" data-a="lvl" data-v="${g.no + 1}">${T("next")}</button>`;
-                btns += `<button data-a="retry">${g.kind === "bot" || g.kind === "local" ? T("rematch") : T("retry")}</button>`;
-                if (g.kind === "random") btns += `<button data-a="reroll" data-v="go">${T("newRand")}</button>`;
-                btns += `<button data-a="go" data-v="menu">${T("menu")}</button>`;
+                if (g.kind === "campaign" && w === "plants" && g.no < LEVELS.length - 1) btns += `<button class="sd-btn pri" data-a="lvl" data-v="${g.no + 1}">${T("next")}</button>`;
+                btns += `<button class="sd-btn" data-a="retry">${g.kind === "bot" || g.kind === "local" ? T("rematch") : T("retry")}</button>`;
+                if (g.kind === "random") btns += `<button class="sd-btn" data-a="reroll" data-v="go">${T("newRand")}</button>`;
+                btns += `<button class="sd-btn" data-a="go" data-v="menu">${T("menu")}</button>`;
             }
             const sub = state.lv?.kind === "random" ? `${T("seed")} #${state.lv.seed}` : state.lv?.kind === "campaign" ? `${T("level")} ${state.lv.no + 1}` : "";
-            return `<div class="sd-panel" style="text-align:center"><h3>${title}</h3><p class="mut">${sub}</p><div class="sd-row2">${btns}</div></div>`;
+            const prog = g.kind === "campaign" ? `${T("campaign")} ${save.cleared}/${LEVELS.length}` : "";
+            return `<div class="sd-ovcard">
+        <div class="sd-head"><h3>${title}</h3></div>
+        <div class="sd-body"><p class="mut">${sub}${prog ? (sub ? " · " : "") + prog : ""}</p></div>
+        <div class="sd-foot"><span class="sd-note">R ${T("retry")}</span><div class="sd-row2">${btns}</div></div>
+      </div>`;
         }
-        if (ui.paused) return `<div class="sd-panel" style="text-align:center"><h3>${T("pause")}</h3><div class="sd-row2"><button class="pri" data-a="pause">${T("resume")}</button><button data-a="retry">${T("retry")}</button><button data-a="go" data-v="menu">${T("menu")}</button></div></div>`;
         return "";
     }
 
     function buildGame() {
-        const g = q("[data-game]"), L = state.lanes;
-        const tools = `${online ? "" : `<button data-a="pause" aria-label="${T("pause")}">II</button>`}<button data-a="help" aria-label="${T("help")}">?</button>${cheatOK() ? `<button data-a="cheat">${T("cheat")}</button>` : ""}<button data-a="snd">&#9834;</button><button data-a="pad">Pad</button>${online ? "" : `<button data-a="go" data-v="menu">${T("menu")}</button>`}`;
+        const L = state.lanes;
         const cards = ui.ctl.map((c, ci) => `<div class="sd-row">${state.avail[c.side].map((k, i) => { const d = (c.side === "plants" ? PLANTS : ZOMBIES)[k]; return `<button class="sd-card ${c.side === "zombies" ? "zb" : ""}" data-a="card" data-ci="${ci}" data-v="${i}"><i class="sw" style="background:${d.col}"></i><b>${d.n}</b><small>${d.cost}${ui.ctl.length < 2 || c.kmap === "wasd" ? " · " + (i + 1) : ""}</small><em></em></button>`; }).join("")}</div>`).join("");
         const pads = ui.ctl.map((c, ci) => `<div class="sd-pad"><div class="sd-dp">${["u", "l", "r", "d"].map((d) => `<button class="${d}" data-a="pad" data-ci="${ci}" data-v="${d}">${{ u: "&#9650;", d: "&#9660;", l: "&#9664;", r: "&#9654;" }[d]}</button>`).join("")}</div><div class="sd-ab"><button class="pri" data-a="pad" data-ci="${ci}" data-v="act">${c.side === "plants" ? "Plant" : "Send"}</button><button data-a="pad" data-ci="${ci}" data-v="next">&#8250;</button><button data-a="pad" data-ci="${ci}" data-v="prev">&#8249;</button></div></div>`).join("");
-        g.innerHTML = `<div class="sd-hud"><div class="sd-res" data-res></div><div class="sd-mid" data-mid></div><div class="sd-tools">${tools}</div></div>
-      <div class="sd-bw"><canvas class="sd-cv" data-cv></canvas><div class="sd-bn" data-bn></div></div>${cards}<div class="sd-pads">${pads}</div>`;
-        cv = g.querySelector("[data-cv]");
+        q("[data-deck]").innerHTML = cards;
+        q("[data-pads]").innerHTML = pads;
+        cv = q("[data-cv]");
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         cv.width = COLS * CS * dpr; cv.height = L * CS * dpr;
         ctx = cv.getContext("2d");
+        fitCanvas();
     }
 
     function sync() {
         const inGame = ui.screen === "game";
-        q("[data-menu]").hidden = inGame; q("[data-game]").hidden = !inGame;
+        q("[data-menu]").hidden = inGame;
         if (!inGame) q("[data-menu]").innerHTML = menuHTML();
-        q("[data-ov]").innerHTML = overlayHTML();
-        q("[data-sd]").classList.toggle("pad", ui.pad);
-        if (!inGame) setStatus("sReady");
+        q("[data-cv]").hidden = !inGame;
+        q("[data-bn]").hidden = !inGame;
+        q("[data-deck]").hidden = !inGame;
+        q("[data-pads]").hidden = !inGame;
+        q("[data-sd]").classList.toggle("pad", ui.pad && inGame);
+        const ov = q("[data-ov]");
+        ov.innerHTML = overlayHTML();
+        ov.hidden = !ov.innerHTML;
+        const pBtn = q("[data-pause]"), pLabel = pBtn.querySelector(".sd-btn-label"), pIcon = q(".sd-picon");
+        const label = ui.paused ? T("resume") : T("pause");
+        pBtn.disabled = !(inGame && !online && state?.phase === "play");
+        if (pLabel) pLabel.textContent = label;
+        pBtn.setAttribute("aria-label", label);
+        pBtn.setAttribute("title", label + " (P)");
+        if (pIcon) pIcon.innerHTML = iconSVG(ui.paused ? "play" : "pause", { size: 14 });
+        const cBtn = q("[data-cheats]");
+        cBtn.disabled = !cheatOK();
+        cBtn.classList.toggle("on", ui.cheatsOpen);
+        q("[data-restart]").disabled = !inGame;
+        q('[data-a="padt"]').classList.toggle("on", ui.pad);
+        q('[data-a="snd"]').classList.toggle("on", save.sound);
+        const sIcon = q(".sd-sicon");
+        if (sIcon) sIcon.innerHTML = iconSVG(save.sound ? "volume" : "volumeX", { size: 14 });
+        if (!inGame) {
+            setStatus("sReady");
+            q('[data-hud="mode"]').textContent = ui.screen === "lobby" ? "LOBBY" : ui.screen.toUpperCase();
+            q('[data-hud="level"]').textContent = "—";
+            q('[data-hud="sun"]').textContent = "0";
+            q('[data-hud="info"]').textContent = ui.screen === "menu" ? T("tag") : "";
+            q('[data-hud="brains"]').hidden = true;
+            q('[data-hud="side"]').hidden = true;
+        } else if (state) hud();
+        fitCanvas();
     }
 
     function hud() {
         const s = state, t = s.n * DT, e = (x) => q(x);
         const pv = s.mode === "pvp";
-        e("[data-res]").innerHTML = `<span><i style="background:#facc15"></i>${T("sun")} ${Math.floor(s.res.plants)}</span>${pv ? `<span><i style="background:#7c3aed"></i>${T("brains")} ${Math.floor(s.res.zombies)}</span>` : ""}`;
-        e("[data-mid]").textContent = pv ? `${Math.floor(Math.max(0, s.limit - t) / 60)}:${String(Math.floor(Math.max(0, s.limit - t)) % 60).padStart(2, "0")}` : T("wave", Math.min(s.wi, s.waves.length), s.waves.length) + (s.lv?.kind === "random" ? ` · #${s.lv.seed}` : "");
+        e('[data-hud="sun"]').textContent = Math.floor(s.res.plants);
+        const bc = e('[data-hud="brains"]'); bc.hidden = !pv;
+        if (pv) e('[data-hud="brainsv"]').textContent = Math.floor(s.res.zombies);
+        const left = Math.max(0, s.limit - t);
+        e('[data-hud="info"]').textContent = pv
+            ? `${Math.floor(left / 60)}:${String(Math.floor(left) % 60).padStart(2, "0")}`
+            : T("wave", Math.min(s.wi, s.waves.length), s.waves.length) + (s.lv?.kind === "random" ? ` · #${s.lv.seed}` : "");
+        const kinds = { campaign: T("campaign"), random: T("random"), bot: T("vsbot"), local: T("local"), online: "PvP" };
+        e('[data-hud="mode"]').textContent = kinds[ui.gm.kind] || ui.gm.kind || "—";
+        e('[data-hud="level"]').textContent = s.lv ? s.lv.no + 1 : "—";
+        const me = ui.ctl.length === 1 ? ui.ctl[0].side : null, sc = e('[data-hud="side"]');
+        sc.hidden = !me;
+        if (me) {
+            const lock = Math.max(0, s.lock[me] - t);
+            sc.textContent = T(me === "plants" ? "plants" : "zombies") + (lock > 0 ? ` · ${T("locked", Math.ceil(lock))}` : "");
+        }
         let idx = 0;
         ui.ctl.forEach((c) => {
             const D = c.side === "plants" ? PLANTS : ZOMBIES, lockLeft = s.lock[c.side] - t;
@@ -633,7 +838,7 @@ export function mount(root, context = {}) {
         raf = requestAnimationFrame(frame);
         const dt = Math.min(0.25, (ts - last) / 1000 || 0); last = ts;
         const s = state;
-        if (s && ui.screen === "game" && s.phase === "play" && (online || (!ui.paused && !ui.overlay))) {
+        if (s && ui.screen === "game" && s.phase === "play" && !ui.paused && !ui.helpOpen && !ui.cheatsOpen) {
             acc += dt * (online ? 1 : ui.speed);
             while (acc >= DT && s.phase === "play") { acc -= DT; step(s); if (!online) bots(); }
             if (online && room.isHost) { syncT += dt; if (syncT > 0.4) { syncT = 0; pushState(); } }
@@ -653,21 +858,28 @@ export function mount(root, context = {}) {
             case "go":
                 if (v === "local") { startVs("local", "plants"); break; }
                 if (v === "random") ui.seed = ui.seed || 1234;
-                if (v === "menu") { state = online ? state : null; ui.paused = false; ui.overlay = null; ui.cheated = false; }
+                if (v === "menu") { state = online ? state : null; ui.paused = false; ui.helpOpen = false; ui.cheatsOpen = false; ui.cheated = false; }
                 ui.screen = v; sync(); break;
             case "lvl": startPve({ ...LEVELS[+v], seed: LEVELS[+v].seed }, "campaign", +v); break;
             case "rand": { const inp = q("[data-seed]"); ui.seed = Math.abs(parseInt(inp?.value, 10)) || ui.seed; startPve(randParams(ui.seed), "random", 0); break; }
             case "reroll": ui.seed = 1000 + ((Math.random() * 9000) | 0); if (v === "go") startPve(randParams(ui.seed), "random", 0); else sync(); break;
             case "bot": startVs("bot", v); break;
-            case "retry": { const g = ui.gm; if (g.kind === "campaign" || g.kind === "random") startPve(g.p, g.kind, g.no); else startVs(g.kind, g.humanSide); break; }
-            case "help": ui.overlay = ui.overlay === "help" ? null : "help"; sync(); break;
-            case "cheat": ui.overlay = ui.overlay === "cheat" ? null : "cheat"; sync(); break;
-            case "closeov": ui.overlay = null; sync(); break;
+            case "retry": case "restart": restartGame(); break;
+            case "help": toggleHelp(); break;
+            case "closehelp": toggleHelp(false); break;
+            case "cheat": toggleCheats(); break;
+            case "closech": toggleCheats(false); break;
             case "ch": cheat(v); break;
-            case "pause": togglePause(); break;
+            case "pause":
+                if (ui.helpOpen) toggleHelp(false);
+                else if (ui.cheatsOpen) toggleCheats(false);
+                else togglePause();
+                break;
+            case "resume": if (ui.paused) togglePause(); break;
+            case "padt": ui.pad = !ui.pad; sync(); break;
             case "lang": save.lang = save.lang === "id" ? "en" : "id"; persist(); sync(); break;
-            case "snd": save.sound = !save.sound; persist(); if (ui.screen !== "game") sync(); break;
-            case "pad": if (v) { const c = ui.ctl[ci]; if (v === "act") doAct(c); else if (v === "next") cycle(c, 1); else if (v === "prev") cycle(c, -1); else move(c, v); } else { ui.pad = !ui.pad; sync(); } break;
+            case "snd": save.sound = !save.sound; persist(); sync(); break;
+            case "pad": if (v) { const c = ui.ctl[ci]; if (v === "act") doAct(c); else if (v === "next") cycle(c, 1); else if (v === "prev") cycle(c, -1); else move(c, v); } break;
             case "card": { const c = ui.ctl[ci]; c.sel = +v; break; }
             case "start": submitAction({ type: "start" }, null); break;
             default: break;
@@ -685,14 +897,35 @@ export function mount(root, context = {}) {
         if (e.type === "pointerdown") { e.preventDefault(); doAct(k); }
     }
     function onKey(e) {
-        if (destroyed || e.ctrlKey || e.metaKey || e.altKey || e.target?.closest?.("input,textarea")) return;
+        if (destroyed || e.ctrlKey || e.metaKey || e.altKey) return;
+        const focused = e.target;
+        if (focused?.closest?.("[contenteditable=true]") || (focused?.closest?.("input,textarea,select") && root.contains(focused))) return;
         const k = e.key.toLowerCase();
-        if (ui.screen !== "game" || !state) { if (k === "escape" && ui.overlay) { ui.overlay = null; sync(); } return; }
-        if (k === "escape") { if (ui.overlay) { ui.overlay = null; sync(); } else togglePause(); e.preventDefault(); return; }
-        if (k === "p") { togglePause(); return; }
-        if (k === "h") { ui.overlay = ui.overlay === "help" ? null : "help"; sync(); return; }
-        if (k === "c" && cheatOK()) { ui.overlay = ui.overlay === "cheat" ? null : "cheat"; sync(); return; }
-        if (ui.overlay || ui.paused) return;
+        /* priority: help -> cheats -> pause -> escape -> game actions */
+        if (k === "h") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "c") { toggleCheats(); e.preventDefault(); return; }
+        if (k === "r") { restartGame(); e.preventDefault(); return; }
+        if (k === "p") {
+            if (ui.helpOpen) toggleHelp(false);
+            else if (ui.cheatsOpen) toggleCheats(false);
+            else togglePause();
+            e.preventDefault(); return;
+        }
+        if (k === "escape") {
+            if (ui.helpOpen) toggleHelp(false);
+            else if (ui.cheatsOpen) toggleCheats(false);
+            else if (ui.paused) togglePause();
+            else if (ui.screen === "game" && state?.phase === "play") togglePause();
+            e.preventDefault(); return;
+        }
+        if (k === "enter" && (ui.helpOpen || ui.cheatsOpen || ui.paused)) {
+            if (ui.helpOpen) toggleHelp(false);
+            else if (ui.cheatsOpen) toggleCheats(false);
+            else togglePause();
+            e.preventDefault(); return;
+        }
+        if (ui.helpOpen || ui.cheatsOpen || ui.paused) return;
+        if (ui.screen !== "game" || !state) return;
         const W = { w: "u", s: "d", a: "l", d: "r" }, A = { arrowup: "u", arrowdown: "d", arrowleft: "l", arrowright: "r" };
         let used = false;
         for (const c of ui.ctl) {
@@ -721,13 +954,14 @@ export function mount(root, context = {}) {
         } else {
             room.onState((nextState) => { state = nextState; acc = 0; render(); });
         }
-    } else if (!save.seen) { save.seen = true; persist(); ui.overlay = "help"; sync(); }
+    }
     raf = requestAnimationFrame(frame);
 
     return {
         destroy() {
             destroyed = true;
             cancelAnimationFrame(raf);
+            if (ro) ro.disconnect(); else window.removeEventListener("resize", fitCanvas);
             root.removeEventListener("click", handleClick);
             root.removeEventListener("pointerdown", onPointer);
             root.removeEventListener("pointermove", onPointer);

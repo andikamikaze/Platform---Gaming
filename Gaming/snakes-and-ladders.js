@@ -5,6 +5,8 @@
    Setelah edit: node tools/build-games-manifest.mjs
 ===================================================================== */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "snakes-and-ladders", // harus sama dengan nama file (tanpa .js)
     name: "Snakes and Ladders",
@@ -167,28 +169,74 @@ export function mount(root, context = {}) {
 
     /* ---------------- state lokal (non-canonical) ---------------- */
     let destroyed = false;
-    const timers = new Set();
     let animT = [];
     let busy = false;              // animasi lokal sedang jalan
     let viewPos = [1, 1];          // posisi yang dirender (animasi), bukan state.pos
     let lastAnimId = null;
     let curGameId = -1;
     let helpOpen = false, cheatOpen = false, winDismissed = false;
+    let paused = false, pausedAt = 0, pausedTotal = 0;
     let flowTimer = null, aiTimer = null;
     let bestCountedGame = 0;
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("snakesAndLaddersHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("snakesAndLaddersHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
+    /* Jam game: berhenti saat pause. Semua timer memakai jam ini agar tidak loncat saat resume. */
+    const gameNow = () => (pausedAt || Date.now()) - pausedTotal;
+    const timers = new Set();
+
+    function armTimer(rec) {
+        if (rec.dead) return;
+        const wait = Math.max(0, rec.due - gameNow());
+        rec.id = setTimeout(() => {
+            rec.id = null;
+            if (rec.dead || !timers.has(rec)) return;
+            if (paused) return;                              // ditunda sampai resume
+            if (rec.due - gameNow() > 1) { armTimer(rec); return; }
+            timers.delete(rec);
+            if (!destroyed) rec.fn();
+        }, wait);
+    }
+    function cancelTimer(rec) {
+        if (!rec) return;
+        rec.dead = true;
+        if (rec.id) clearTimeout(rec.id);
+        timers.delete(rec);
+    }
     const later = (fn, ms) => {
-        const t = setTimeout(() => { timers.delete(t); if (!destroyed) fn(); }, ms);
-        timers.add(t);
-        return t;
+        const rec = { fn, due: gameNow() + Math.max(0, ms), id: null, dead: false };
+        timers.add(rec);
+        if (!paused) armTimer(rec);
+        return rec;
     };
-    const alater = (fn, ms) => { const t = later(fn, ms); animT.push(t); return t; };
+    const alater = (fn, ms) => { const rec = later(fn, ms); animT.push(rec); return rec; };
     const clearFlow = () => {
-        if (flowTimer) { clearTimeout(flowTimer); timers.delete(flowTimer); flowTimer = null; }
-        if (aiTimer) { clearTimeout(aiTimer); timers.delete(aiTimer); aiTimer = null; }
+        cancelTimer(flowTimer); flowTimer = null;
+        cancelTimer(aiTimer); aiTimer = null;
     };
+    function resetClock() {
+        paused = false; pausedAt = 0; pausedTotal = 0;
+    }
+    function setPaused(on) {
+        if (paused === on) return;
+        if (on) {
+            pausedAt = Date.now();
+            paused = true;
+            timers.forEach((rec) => { if (rec.id) { clearTimeout(rec.id); rec.id = null; } });
+        } else {
+            pausedTotal += Date.now() - pausedAt;
+            pausedAt = 0;
+            paused = false;
+            timers.forEach((rec) => { if (!rec.id && !rec.dead) armTimer(rec); });
+        }
+        render();
+    }
 
     /* ---------------- shell / UI minimalis ---------------- */
     const styleOptions = Object.entries(STYLES)
@@ -197,248 +245,245 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
   <style>
-    .snl{--snl-hop:250ms;--snl-slide:950ms;max-width:1100px;margin:0 auto;padding:18px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;color:#0f172a;font-size:14px;line-height:1.45}
-    .snl *{box-sizing:border-box}
-    .snl .game-intro{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}
-    .snl h2{margin:0 0 2px;font-size:19px;font-weight:700;letter-spacing:-.01em}
-    .snl .game-intro p{margin:0;color:#64748b;font-size:12.5px}
-    .snl .game-status{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border:1px solid #e2e8f0;background:#fff;border-radius:999px;font-size:12px;font-weight:600;color:#475569;white-space:nowrap}
-    .snl .game-status-dot{width:8px;height:8px;border-radius:50%;background:#cbd5e1;display:inline-block}
-    .snl .game-status-dot.on{background:#22c55e;animation:snlPulse 1.6s ease infinite}
-    @keyframes snlPulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.35)}50%{box-shadow:0 0 0 5px rgba(34,197,94,0)}}
-    .snl-stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-    .snl-chip{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:5px 11px;font-size:12px;color:#64748b}
-    .snl-chip b{color:#0f172a;font-weight:700}
-    .snl-chip.warn{color:#b45309;border-color:#fde68a;background:#fffbeb}
-    .snl-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
-    .snl-msg{min-height:20px;margin:0 0 12px;font-size:13px;font-weight:600;color:#334155}
-    .snl-stage{position:relative;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:16px;min-height:420px}
-    .snl-wrap{display:flex;gap:18px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
-    .snl-boardcard{flex:1 1 500px;max-width:660px;min-width:260px}
-    .snl-boardsvg{display:block;width:100%;height:auto;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-    .snl-caption{margin-top:8px;min-height:18px;text-align:center;font-size:12px;color:#94a3b8}
-    .snl-side{flex:0 1 250px;min-width:230px;display:flex;flex-direction:column;gap:12px}
-    .snl-card{background:#f8fafc;border:1px solid #e8edf3;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
-    .snl-dicecard{align-items:center}
-    .snl-die{width:76px;height:76px;filter:drop-shadow(0 3px 8px rgba(15,23,42,.12));cursor:pointer}
-    .snl-die.rolling{animation:snlShake .16s linear infinite}
-    @keyframes snlShake{0%{transform:rotate(0)}25%{transform:rotate(-8deg) translateY(-2px)}75%{transform:rotate(8deg) translateY(1px)}100%{transform:rotate(0)}}
-    .snl-btn{appearance:none;border:1px solid #d8dfe8;background:#fff;color:#0f172a;border-radius:12px;padding:10px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background .15s,border-color .15s,transform .05s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-    .snl-btn:hover:not(:disabled){background:#f1f5f9}
-    .snl-btn:active:not(:disabled){transform:translateY(1px)}
-    .snl-btn:disabled{opacity:.45;cursor:default}
-    .snl-btn.primary{background:#0f172a;border-color:#0f172a;color:#fff}
-    .snl-btn.primary:hover:not(:disabled){background:#1e293b}
-    .snl-btn.danger{color:#b91c1c;border-color:#fecaca}
-    .snl-roll{width:100%;min-height:52px;font-size:15px}
-    .snl kbd{font:700 10px/1 ui-monospace,monospace;border:1px solid #cbd5e1;border-bottom-width:2px;border-radius:5px;padding:2px 5px;background:#fff;color:#64748b}
-    .snl-btn.primary kbd{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.35);color:#e2e8f0}
-    .snl-legend{display:flex;gap:12px;font-size:12px;color:#64748b;flex-wrap:wrap;justify-content:center}
-    .snl-legend span{display:inline-flex;align-items:center;gap:5px}
-    .snl-field{display:flex;flex-direction:column;gap:5px;font-size:11.5px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
-    .snl select,.snl input[type=number],.snl input[type=text]{font:inherit;font-size:13px;padding:8px 10px;border:1px solid #d8dfe8;border-radius:10px;background:#fff;color:#0f172a;width:100%}
-    .snl-seed{font-size:11.5px;color:#94a3b8;text-align:center}
-    .snl-row{display:flex;gap:8px}
-    .snl-row>*{flex:1}
-    .snl-mobilebar{display:none}
-    .snl-foot{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
-    .snl-hint{font-size:11.5px;color:#94a3b8}
-    .snl-ov{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(248,250,252,.82);backdrop-filter:blur(5px);border-radius:16px}
-    .snl-ov[hidden]{display:none}
-    .snl-ovcard{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 20px 55px rgba(15,23,42,.14);padding:22px;width:100%;max-width:460px;max-height:100%;overflow:auto}
-    .snl-ovcard h3{margin:0 0 8px;font-size:18px}
-    .snl-ovcard h4{margin:14px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#64748b}
-    .snl-ovcard p,.snl-ovcard li{font-size:13px;color:#475569;line-height:1.55;margin:4px 0}
-    .snl-ovcard ul{margin:4px 0;padding-left:18px}
-    .snl-ovbtns{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
-    .snl-ovbtns .snl-btn{flex:1;min-height:46px}
-    .snl-win{color:#15803d}
-    .snl-lose{color:#b91c1c}
-    .snl-cheatgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
-    .snl-cheatgrid .snl-btn{padding:9px 0;min-height:42px}
-    .snl-check{display:flex;align-items:center;gap:8px;font-size:13px;color:#334155;font-weight:600}
-    .snl-check input{width:17px;height:17px;accent-color:#0f172a}
-    .snl-note{font-size:11.5px;color:#94a3b8}
-    .snl-token{transition:transform var(--snl-hop) cubic-bezier(.33,.66,.4,1)}
-    .snl-token.slide{transition:transform var(--snl-slide) cubic-bezier(.45,.05,.35,1)}
-    .snl-token.snap{transition:none!important}
-    @media (max-width:760px){
-      .snl{padding:12px}
-      .snl-stage{padding:10px}
-      .snl-side{flex:1 1 100%;min-width:0;flex-direction:row;flex-wrap:wrap}
-      .snl-side .snl-card{flex:1 1 200px}
-      .snl-dicecard{flex-direction:row;justify-content:center}
-      .snl-side .snl-roll{display:none}
-      .snl-mobilebar{display:flex;position:sticky;bottom:10px;margin-top:12px;gap:8px;z-index:20}
-      .snl-mobilebar .snl-roll{flex:1;display:inline-flex}
-      .snl-mobilebar .snl-btn{min-height:52px}
-      .snl-mobilebar .icon{flex:0 0 52px;font-size:17px}
-      .snl kbd{display:none}
-      .snl-hint{display:none}
-    }
-    @media (pointer:coarse){.snl kbd{display:none}}
-  </style>
-  <div class="game-app snl">
-    <div class="game-intro">
-      <div>
-        <h2>Snakes and Ladders</h2>
-        <p>Race to 100 — ladders lift you, snakes drop you. Exact landing wins.</p>
+/* Snakes & Ladders — HUD bar + fill-height board. */
+.snl{--snl-hop:200ms;--snl-slide:950ms;width:100%;max-width:1100px;margin:0 auto;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;color:#0f172a;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.snl *{box-sizing:border-box}
+.snl [hidden]{display:none!important}
+.snl :is(button,select,input):focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.snl-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:8px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.snl-hudinfo,.snl-hudctl{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.snl-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid #e2e8f0;border-radius:999px;background:#fff;color:#64748b;white-space:nowrap}
+.snl-chip b{color:#0f172a;font-weight:700;font-variant-numeric:tabular-nums}
+.snl-chip.warn{color:#b45309;border-color:#fde68a;background:#fffbeb}
+.snl-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none;background:#cbd5e1}
+.snl-dot.on{background:#22c55e;animation:snlPulse 1.6s ease infinite}
+@keyframes snlPulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.35)}50%{box-shadow:0 0 0 5px rgba(34,197,94,0)}}
+.snl-die{width:26px;height:26px;flex:none;cursor:pointer;filter:drop-shadow(0 1px 2px rgba(15,23,42,.12))}
+.snl-die.rolling{animation:snlShake .16s linear infinite}
+@keyframes snlShake{0%{transform:rotate(0)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}100%{transform:rotate(0)}}
+.snl-hud select{font:600 10px/1 ui-monospace,monospace;padding:5px 7px;min-height:30px;border:1px solid #d8dfe8;border-radius:8px;background:#fff;color:#334155;max-width:130px}
+.snl input[type=number],.snl input[type=text]{font:inherit;font-size:13px;padding:9px 10px;min-height:40px;border:1px solid #d8dfe8;border-radius:9px;background:#fff;color:#0f172a;width:100%}
+.snl-row{display:flex;gap:8px;flex-wrap:wrap}
+.snl-row>*{flex:1 1 80px}
+.snl-spacer{flex:1 1 auto}
+.snl-btn{appearance:none;border:1px solid #d8dfe8;background:#fff;color:#0f172a;border-radius:9px;padding:8px 12px;min-height:38px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background .15s,border-color .15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.snl-btn:hover:not(:disabled){background:#f1f5f9}
+.snl-btn:disabled{opacity:.45;cursor:default}
+.snl-btn.primary{background:#0f172a;border-color:#0f172a;color:#fff}
+.snl-btn.primary:hover:not(:disabled){background:#1e293b}
+.snl-btn.danger{color:#b91c1c;border-color:#fecaca}
+.snl-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.snl-icon-btn svg{flex:none;display:block}
+.snl-hud .snl-btn{min-height:32px;padding:6px 10px;font-size:10px}
+.snl-btn.on{border-color:#2563eb;color:#2563eb;background:#eff6ff}
+.snl-board{position:relative;width:100%;min-width:0;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:10px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.snl.game-fill>.snl-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.snl-boardsvg{display:block;width:100%;height:100%;min-height:0;flex:1 1 auto;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.snl-msg{min-height:18px;margin:0;text-align:center;font-size:12px;font-weight:600;color:#334155;flex:none}
+.snl-caption{min-height:16px;text-align:center;font-size:11px;color:#94a3b8;flex:none}
+.snl kbd{font:700 10px/1 ui-monospace,monospace;border:1px solid #cbd5e1;border-bottom-width:2px;border-radius:5px;padding:2px 5px;background:#fff;color:#64748b}
+.snl-ov{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(248,250,252,.85);backdrop-filter:blur(5px);border-radius:14px}
+.snl-ovcard{background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.10);padding:18px;width:100%;max-width:520px;max-height:100%;display:flex;flex-direction:column;overflow:hidden}
+.snl-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.snl-head h3{margin:0;font-size:17px}
+.snl-ovbody{flex:1 1 auto;min-height:0;overflow:auto}
+.snl-ovcard h4{margin:12px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#64748b}
+.snl-ovcard p,.snl-ovcard li{font-size:13px;color:#475569;line-height:1.55;margin:4px 0}
+.snl-ovcard ul{margin:4px 0;padding-left:18px}
+.snl-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:12px}
+.snl-ovbtns{display:flex;gap:8px;flex-wrap:wrap}
+.snl-ovbtns .snl-btn{flex:1 1 140px;min-height:44px}
+.snl-win{color:#15803d}
+.snl-lose{color:#b91c1c}
+.snl-cheatgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.snl-cheatgrid .snl-btn{padding:8px 0;min-height:44px}
+.snl-check{display:flex;align-items:center;gap:8px;font-size:13px;color:#334155;font-weight:600;min-height:44px}
+.snl-check input{width:18px;height:18px;accent-color:#0f172a}
+.snl-note{font-size:11.5px;color:#94a3b8}
+.snl-token{transition:transform var(--snl-hop) cubic-bezier(.33,.66,.4,1)}
+.snl-token.slide{transition:transform var(--snl-slide) cubic-bezier(.45,.05,.35,1)}
+.snl-token.snap{transition:none!important}
+.snl.is-paused *{animation-play-state:paused!important}
+/* Mobile overrides — keep LAST so they beat the design blocks and pointer:coarse. */
+@media (max-width:640px){
+.snl{padding:10px}
+.snl.game-fill>.snl-board:not(:has(.snl-ov:not([hidden]))){flex:0 0 auto;aspect-ratio:auto;min-height:0}
+.snl-boardsvg{height:auto;aspect-ratio:1;flex:none}
+.snl.game-fill>.snl-board:has(.snl-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.snl.game-fill>.snl-board:has(.snl-ov:not([hidden])) .snl-boardsvg{height:100%;aspect-ratio:auto;flex:1 1 auto}
+.snl .snl-hud{gap:5px;margin-bottom:8px}
+.snl .snl-hudinfo,.snl .snl-hudctl{width:100%;gap:5px}
+.snl .snl-hudctl{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.snl .snl-hudctl::-webkit-scrollbar{display:none}
+.snl .snl-hudctl>*{flex:none}
+.snl .snl-hud .snl-chip{padding:4px 6px;font-size:9px}
+.snl .snl-hud .snl-chip[data-hud="first"],.snl .snl-hud .snl-chip[data-seed]{display:none}
+.snl .snl-hud .snl-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.snl .snl-hud .snl-btn-label{display:none}
+.snl .snl-hud .snl-spacer{display:none}
+.snl .snl-hud .snl-die{width:22px;height:22px}
+.snl .snl-hud select{max-width:92px;min-height:32px;font-size:9px}
+.snl-ov{padding:8px}
+.snl .snl-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.snl .snl-ovbody{scrollbar-width:none}
+.snl .snl-ovbody::-webkit-scrollbar{display:none}
+.snl .snl-foot{position:static;margin:10px 0 0;padding:10px 0 0;border-top:1px solid #e2e8f0}
+.snl .snl-note{display:none}
+.snl-cheatgrid{grid-template-columns:repeat(3,1fr)}
+}
+@media (pointer:coarse){.snl .snl-hud .snl-btn{min-height:32px;padding:5px 9px;font-size:9px}}
+@media (prefers-reduced-motion:reduce){.snl *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+</style>
+  <div class="game-app snl game-fill" data-snl>
+    <div class="snl-hud">
+      <div class="snl-hudinfo">
+        <span class="snl-chip"><i class="snl-dot" data-dot></i><b data-status>Ready</b></span>
+        <span class="snl-chip"><i class="snl-dot" style="background:${COLORS[0]}"></i><span data-n0>You</span>&nbsp;<b data-p0>1</b></span>
+        <span class="snl-chip"><i class="snl-dot" style="background:${COLORS[1]}"></i><span data-n1>Bot</span>&nbsp;<b data-p1>1</b></span>
+        <span class="snl-chip">Rolls <b data-rolls>0</b></span>
+        <span class="snl-chip" data-hud="first">First <b data-first>—</b></span>
+        <span class="snl-chip" data-bestchip hidden>Best <b data-best>0</b></span>
+        <span class="snl-chip warn" data-cheatedchip hidden>Assisted</span>
+        <span class="snl-chip" data-seed>—</span>
       </div>
-      <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
+      <span class="snl-spacer"></span>
+      <div class="snl-hudctl">
+        <svg class="snl-die" data-die viewBox="0 0 64 64" role="img" aria-label="Die"></svg>
+        <button class="snl-btn snl-icon-btn snl-roll" type="button" data-roll disabled aria-label="Roll die" title="Roll die (Space)">${iconSVG("playCircle", { size: 14 })}<span class="snl-btn-label">Roll</span></button>
+        <select data-style aria-label="Map style">${styleOptions}</select>
+        <button class="snl-btn snl-icon-btn" type="button" data-newmap aria-label="New random map" title="New random map (N)">${iconSVG("spark", { size: 14 })}<span class="snl-btn-label">New map</span></button>
+        <button class="snl-btn snl-icon-btn" type="button" data-speed aria-label="Speed" title="Toggle speed">${iconSVG("forward", { size: 14 })}<span class="snl-btn-label" data-speedlabel>Chill</span></button>
+        <button class="snl-btn snl-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="snl-btn-label">Help</span></button>
+        <button class="snl-btn snl-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="snl-btn-label">Cheats</span></button>
+        <button class="snl-btn snl-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="snl-btn-label">Pause</span></button>
+        <button class="snl-btn snl-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="snl-btn-label">Restart</span></button>
+        <button class="snl-btn snl-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="snl-btn-label">Exit game</span></button>
+      </div>
     </div>
 
-    <div class="snl-stats">
-      <span class="snl-chip"><i class="snl-dot" style="background:${COLORS[0]}"></i><span data-n0>You</span>&nbsp;at&nbsp;<b data-p0>1</b></span>
-      <span class="snl-chip"><i class="snl-dot" style="background:${COLORS[1]}"></i><span data-n1>Bot</span>&nbsp;at&nbsp;<b data-p1>1</b></span>
-      <span class="snl-chip">Rolls <b data-rolls>0</b></span>
-      <span class="snl-chip">First move <b data-first>—</b></span>
-      <span class="snl-chip" data-bestchip hidden>Best <b data-best>0</b></span>
-      <span class="snl-chip warn" data-cheatedchip hidden>Assisted</span>
-    </div>
-    <p class="snl-msg" data-msg aria-live="polite">Press Start to begin.</p>
-
-    <section class="game-panel snl-stage" data-board>
-      <div class="snl-wrap">
-        <div class="snl-boardcard">
-          <svg class="snl-boardsvg" viewBox="0 0 456 456" font-family="inherit" role="img" aria-label="Snakes and ladders board"></svg>
-          <div class="snl-caption" data-caption>Hover a square to see what it hides.</div>
-        </div>
-        <aside class="snl-side">
-          <div class="snl-card snl-dicecard">
-            <svg class="snl-die" viewBox="0 0 64 64" font-family="inherit" role="img" aria-label="Die"></svg>
-            <button class="snl-btn primary snl-roll" type="button" data-roll disabled>Roll die <kbd>Space</kbd></button>
-            <div class="snl-legend" data-legend></div>
-          </div>
-          <div class="snl-card">
-            <label class="snl-field">Map style
-              <select data-style>${styleOptions}</select>
-            </label>
-            <button class="snl-btn" type="button" data-newmap>New random map <kbd>N</kbd></button>
-            <div class="snl-seed" data-seed>—</div>
-            <button class="snl-btn" type="button" data-speed>Speed: Chill</button>
-          </div>
-          <div class="snl-card">
-            <button class="snl-btn" type="button" data-help>How to play <kbd>H</kbd></button>
-            <button class="snl-btn" type="button" data-cheat>Cheats <kbd>C</kbd></button>
-          </div>
-        </aside>
-      </div>
-
-      <div class="snl-mobilebar">
-        <button class="snl-btn primary snl-roll" type="button" data-roll disabled>🎲 Roll die</button>
-        <button class="snl-btn icon" type="button" data-help aria-label="How to play" title="How to play">?</button>
-        <button class="snl-btn icon" type="button" data-cheat aria-label="Cheats" title="Cheats">⚡</button>
-      </div>
+    <section class="game-panel snl-board" data-board>
+      <svg class="snl-boardsvg" viewBox="0 0 456 456" font-family="inherit" role="img" aria-label="Snakes and ladders board"></svg>
+      <p class="snl-msg" data-msg aria-live="polite">Press Start to begin.</p>
+      <div class="snl-caption" data-caption>Hover a square to see what it hides.</div>
 
       <div class="snl-ov" data-ov="intro">
         <div class="snl-ovcard" role="dialog" aria-modal="true" aria-label="Start game">
-          <h3>Snakes and Ladders</h3>
-          <p>Race from square 1 to square 100 on a fresh, always-solvable random map.</p>
-          <ul>
-            <li>Roll the die, hop forward — <b>ladders</b> climb up, <b>snakes</b> slide down.</li>
-            <li>Land <b>exactly</b> on 100 to win; an overshoot bounces you back.</li>
-            <li>First move is a coin toss${online ? ", and player colors are randomized too" : ""}.</li>
-          </ul>
-          <div class="snl-ovbtns">
-            <button class="snl-btn primary" type="button" data-start>Start game</button>
-            <button class="snl-btn" type="button" data-help>How to play</button>
+          <div class="snl-head"><h3>Snakes and Ladders</h3></div>
+          <div class="snl-ovbody">
+            <p>Race from square 1 to square 100 on a fresh, always-solvable random map.</p>
+            <ul>
+              <li>Roll the die, hop forward — <b>ladders</b> climb up, <b>snakes</b> slide down.</li>
+              <li>Land <b>exactly</b> on 100 to win; an overshoot bounces you back.</li>
+              <li>First move is a coin toss${online ? ", and player colors are randomized too" : ""}.</li>
+            </ul>
           </div>
+          <div class="snl-foot"><span class="snl-note">Space/Enter to roll</span><div class="snl-ovbtns"><button class="snl-btn primary" type="button" data-start>Start game</button><button class="snl-btn" type="button" data-help>How to play</button></div></div>
           <p class="snl-note" data-waitstart hidden>Waiting for the host to start…</p>
         </div>
       </div>
 
       <div class="snl-ov" data-ov="help" hidden>
         <div class="snl-ovcard" role="dialog" aria-modal="true" aria-label="How to play">
-          <h3>How to play</h3>
-          <h4>Goal</h4>
-          <p>Be the first to land <b>exactly</b> on square 100. Overshooting bounces you back (98 + 5 → 97).</p>
-          <h4>Turns</h4>
-          <p>A coin toss picks who starts, then turns alternate. Roll 1–6 and your token hops cell by cell. Landing on a ladder's base climbs it instantly; landing on a snake's head slides you down.</p>
-          <h4>Maps</h4>
-          <p>Every map is generated from a seed and verified solvable from every square. Pick a style (Classic, Ladder Rush, Snake Pit, Chaos, Giant Leaps) and press <b>New random map</b> for a fresh layout.</p>
-          <h4>Controls — desktop</h4>
-          <ul>
-            <li><b>Space / R</b> — roll (or click the board / the die)</li>
-            <li><b>N</b> — new map · <b>H</b> — help · <b>C</b> — cheats · <b>Esc</b> — close</li>
-            <li><b>Mouse hover</b> — inspect a square's secret</li>
-          </ul>
-          <h4>Controls — mobile</h4>
-          <p>Tap the big <b>Roll</b> bar at the bottom, or tap the board itself. The ? and ⚡ buttons open help and cheats.</p>
-          <h4>Cheats</h4>
-          <p>Offline practice only (hidden in online rooms). Any cheat tags the run as <i>assisted</i> — assisted wins don't count for your personal best.</p>
-          <div class="snl-ovbtns"><button class="snl-btn primary" type="button" data-close>Got it</button></div>
+          <div class="snl-head"><h3>How to play</h3><button class="snl-btn" type="button" data-help-close aria-label="Close">${iconSVG("x", { size: 14 })}</button></div>
+          <div class="snl-ovbody">
+            <h4>Goal</h4>
+            <p>Be the first to land <b>exactly</b> on square 100. Overshooting bounces you back (98 + 5 → 97).</p>
+            <h4>Turns</h4>
+            <p>A coin toss picks who starts, then turns alternate. Roll 1–6 and your token hops cell by cell. Landing on a ladder's base climbs it instantly; landing on a snake's head slides you down.</p>
+            <h4>Maps</h4>
+            <p>Every map is generated from a seed and verified solvable from every square. Pick a style (Classic, Ladder Rush, Snake Pit, Chaos, Giant Leaps) and press <b>New map</b> for a fresh layout.</p>
+            <h4>Controls — desktop</h4>
+            <ul>
+              <li><kbd>Space</kbd> / <kbd>Enter</kbd> — roll (or click the board / the die)</li>
+              <li><kbd>R</kbd> — restart · <kbd>N</kbd> — new map · <kbd>H</kbd> — help</li>
+              <li><kbd>C</kbd> — cheats · <kbd>P</kbd> — pause · <kbd>Esc</kbd> — close</li>
+              <li><b>Mouse hover</b> — inspect a square's secret</li>
+            </ul>
+            <h4>Controls — mobile</h4>
+            <p>Tap the <b>Roll</b> button in the HUD, or tap the board itself. The other HUD buttons open help, cheats, pause, restart and exit.</p>
+            <h4>Cheats</h4>
+            <p>Offline practice only (hidden in online rooms). Any cheat tags the run as <i>assisted</i> — assisted wins don't count for your personal best.</p>
+          </div>
+          <div class="snl-foot"><span class="snl-note">Press H to reopen this guide</span><button class="snl-btn primary" type="button" data-help-close>Got it</button></div>
         </div>
       </div>
 
       <div class="snl-ov" data-ov="cheat" hidden>
         <div class="snl-ovcard" role="dialog" aria-modal="true" aria-label="Cheats">
-          <h3>Cheats <span class="snl-note">· practice mode</span></h3>
-          <p class="snl-note">Offline only. Using any cheat marks this run as assisted.</p>
-          <h4>Next roll — <span data-nextlabel>random</span></h4>
-          <div class="snl-cheatgrid">
-            <button class="snl-btn" type="button" data-cheat-op="next" data-val="1">1</button>
-            <button class="snl-btn" type="button" data-cheat-op="next" data-val="2">2</button>
-            <button class="snl-btn" type="button" data-cheat-op="next" data-val="3">3</button>
-            <button class="snl-btn" type="button" data-cheat-op="next" data-val="4">4</button>
-            <button class="snl-btn" type="button" data-cheat-op="next" data-val="5">5</button>
-            <button class="snl-btn" type="button" data-cheat-op="next" data-val="6">6</button>
+          <div class="snl-head"><h3>Cheats <span class="snl-note">· practice mode</span></h3><button class="snl-btn" type="button" data-close aria-label="Close">${iconSVG("x", { size: 14 })}</button></div>
+          <div class="snl-ovbody">
+            <p class="snl-note">Offline only. Using any cheat marks this run as assisted.</p>
+            <h4>Next roll — <span data-nextlabel>random</span></h4>
+            <div class="snl-cheatgrid">
+              <button class="snl-btn" type="button" data-cheat-op="next" data-val="1">1</button>
+              <button class="snl-btn" type="button" data-cheat-op="next" data-val="2">2</button>
+              <button class="snl-btn" type="button" data-cheat-op="next" data-val="3">3</button>
+              <button class="snl-btn" type="button" data-cheat-op="next" data-val="4">4</button>
+              <button class="snl-btn" type="button" data-cheat-op="next" data-val="5">5</button>
+              <button class="snl-btn" type="button" data-cheat-op="next" data-val="6">6</button>
+            </div>
+            <button class="snl-btn" type="button" data-cheat-op="clear">Back to random</button>
+            <h4>Defense</h4>
+            <label class="snl-check"><input type="checkbox" data-shield> Snake shield (you ignore snakes)</label>
+            <h4>Teleport (1–99)</h4>
+            <div class="snl-row">
+              <input type="number" min="1" max="99" value="50" data-tp aria-label="Teleport target">
+              <button class="snl-btn" type="button" data-cheat-op="tp" data-tpgo>Go</button>
+            </div>
+            <h4>Shortcuts</h4>
+            <div class="snl-row">
+              <button class="snl-btn" type="button" data-cheat-op="skip" data-skip>Skip bot turn</button>
+              <button class="snl-btn danger" type="button" data-cheat-op="win" data-cwin>Instant win</button>
+            </div>
+            <h4>Load map seed</h4>
+            <div class="snl-row">
+              <input type="text" placeholder="e.g. 1a2b3c" data-seedinput aria-label="Map seed">
+              <button class="snl-btn" type="button" data-cheat-op="seed">Load</button>
+            </div>
           </div>
-          <button class="snl-btn" type="button" data-cheat-op="clear">Back to random</button>
-          <h4>Defense</h4>
-          <label class="snl-check"><input type="checkbox" data-shield> Snake shield (you ignore snakes)</label>
-          <h4>Teleport (1–99)</h4>
-          <div class="snl-row">
-            <input type="number" min="1" max="99" value="50" data-tp aria-label="Teleport target">
-            <button class="snl-btn" type="button" data-cheat-op="tp" data-tpgo>Go</button>
-          </div>
-          <h4>Shortcuts</h4>
-          <div class="snl-row">
-            <button class="snl-btn" type="button" data-cheat-op="skip" data-skip>Skip bot turn</button>
-            <button class="snl-btn danger" type="button" data-cheat-op="win" data-cwin>Instant win</button>
-          </div>
-          <h4>Load map seed</h4>
-          <div class="snl-row">
-            <input type="text" placeholder="e.g. 1a2b3c" data-seedinput aria-label="Map seed">
-            <button class="snl-btn" type="button" data-cheat-op="seed">Load</button>
-          </div>
-          <div class="snl-ovbtns"><button class="snl-btn primary" type="button" data-close>Close</button></div>
+          <div class="snl-foot"><span class="snl-note"></span><button class="snl-btn primary" type="button" data-close>Close</button></div>
+        </div>
+      </div>
+
+      <div class="snl-ov" data-ov="pause" hidden>
+        <div class="snl-ovcard" role="dialog" aria-modal="true" aria-label="Paused">
+          <div class="snl-head"><h3>Paused</h3></div>
+          <div class="snl-ovbody"><p class="snl-note">The board, animations and bot are frozen. Press P or Esc to resume.</p></div>
+          <div class="snl-foot"><span class="snl-note"></span><button class="snl-btn primary" type="button" data-resume>Resume</button></div>
         </div>
       </div>
 
       <div class="snl-ov" data-ov="win" hidden>
         <div class="snl-ovcard" role="dialog" aria-modal="true" aria-label="Game over">
-          <h3 data-wintitle>Game over</h3>
-          <p data-winsub></p>
-          <div class="snl-ovbtns">
-            <button class="snl-btn primary" type="button" data-rematch>Play again</button>
-            <button class="snl-btn" type="button" data-viewboard>View board</button>
+          <div class="snl-head"><h3 data-wintitle>Game over</h3></div>
+          <div class="snl-ovbody">
+            <p data-winsub></p>
+            <p class="snl-note" data-waitrematch hidden>Waiting for the host to start a rematch…</p>
           </div>
-          <p class="snl-note" data-waitrematch hidden>Waiting for the host to start a rematch…</p>
+          <div class="snl-foot"><div class="snl-ovbtns"><button class="snl-btn primary" type="button" data-rematch>Play again</button><button class="snl-btn" type="button" data-viewboard>View board</button></div></div>
         </div>
       </div>
     </section>
-
-    <div class="game-actions snl-foot">
-      <button class="game-action-button snl-btn" type="button" data-exit>Exit game</button>
-      <span class="snl-hint">Space/R roll · click board to roll · N new map · H help · C cheats · Esc close</span>
-    </div>
   </div>`;
 
     /* ---------------- referensi DOM ---------------- */
     const snlRoot = root.querySelector(".snl");
+    const board = root.querySelector("[data-board]");
     const statusEl = root.querySelector("[data-status]");
     const dotEl = root.querySelector("[data-dot]");
     const msgEl = root.querySelector("[data-msg]");
     const captionEl = root.querySelector("[data-caption]");
     const boardSvg = root.querySelector(".snl-boardsvg");
-    const dieSvg = root.querySelector(".snl-die");
+    const dieSvg = root.querySelector("[data-die]");
     const rollBtns = [...root.querySelectorAll("[data-roll]")];
     const cheatBtns = [...root.querySelectorAll("[data-cheat]")];
     const styleSel = root.querySelector("[data-style]");
     const newMapBtn = root.querySelector("[data-newmap]");
     const speedBtn = root.querySelector("[data-speed]");
+    const speedLabel = root.querySelector("[data-speedlabel]");
+    const pauseBtn = root.querySelector("[data-pause]");
+    const restartBtn = root.querySelector("[data-restart]");
     const seedEl = root.querySelector("[data-seed]");
-    const legendEl = root.querySelector("[data-legend]");
     const n0 = root.querySelector("[data-n0]"), n1 = root.querySelector("[data-n1]");
     const p0 = root.querySelector("[data-p0]"), p1 = root.querySelector("[data-p1]");
     const rollsEl = root.querySelector("[data-rolls]");
@@ -448,6 +493,7 @@ export function mount(root, context = {}) {
     const introOv = root.querySelector('[data-ov="intro"]');
     const helpOv = root.querySelector('[data-ov="help"]');
     const cheatOv = root.querySelector('[data-ov="cheat"]');
+    const pauseOv = root.querySelector('[data-ov="pause"]');
     const winOv = root.querySelector('[data-ov="win"]');
     const startBtn = root.querySelector("[data-start]");
     const waitStart = root.querySelector("[data-waitstart]");
@@ -591,23 +637,27 @@ export function mount(root, context = {}) {
     function render() {
         if (!state) {
             statusEl.textContent = "Connecting…";
-            dotEl.className = "game-status-dot";
+            dotEl.className = "snl-dot";
             rollBtns.forEach((b) => (b.disabled = true));
             introOv.hidden = false;
             startBtn.hidden = true;
             waitStart.hidden = false;
-            helpOv.hidden = true; cheatOv.hidden = true; winOv.hidden = true;
+            helpOv.hidden = !helpOpen;
+            cheatOv.hidden = true; pauseOv.hidden = true; winOv.hidden = true;
             return;
         }
 
         // Game baru (start / rematch / new map): reset tampilan & animasi
         if (state.gameId !== curGameId) {
+            const firstPaint = curGameId === -1;
             curGameId = state.gameId;
             cancelAnim();
             drawBoard();
             lastAnimId = state.lastMove ? state.lastMove.id : null; // jangan animasikan riwayat
             viewPos = state.pos.slice();
-            winDismissed = false; helpOpen = false; cheatOpen = false;
+            // Jangan menutup modal help saat render pertama (first-run guide).
+            if (!firstPaint) { winDismissed = false; helpOpen = false; cheatOpen = false; }
+            resetClock();
             snapTokens();
         }
 
@@ -635,36 +685,44 @@ export function mount(root, context = {}) {
         cheatedChip.hidden = !state.cheated;
         msgEl.textContent = state.msg;
         seedEl.textContent = "Map #" + seedHex() + " · " + STYLES[state.style].label + " · solvable ✓";
-        legendEl.innerHTML =
-            `<span><i class="snl-dot" style="background:${COLORS[0]}"></i>${dispName(0)} (${COLOR_NAMES[0]})</span>` +
-            `<span><i class="snl-dot" style="background:${COLORS[1]}"></i>${dispName(1)} (${COLOR_NAMES[1]})</span>`;
 
         let sTxt;
         if (state.phase === "idle") sTxt = "Ready";
         else if (state.phase === "over") sTxt = "Finished";
         else if (state.phase === "anim" || busy) sTxt = "Moving…";
         else sTxt = state.turn === mine ? "Your turn" : dispName(state.turn) + "'s turn";
-        statusEl.textContent = sTxt;
-        dotEl.className = "game-status-dot" + (canRollNow() ? " on" : "");
+        statusEl.textContent = paused ? "Paused" : sTxt;
+        dotEl.className = "snl-dot" + (canRollNow() && !paused ? " on" : "");
+        snlRoot.classList.toggle("is-paused", paused);
 
         // Kontrol
         const hostOnly = online && !room.isHost;
-        rollBtns.forEach((b) => (b.disabled = !canRollNow()));
-        boardSvg.style.cursor = canRollNow() ? "pointer" : "default";
+        rollBtns.forEach((b) => (b.disabled = !canRollNow() || paused || helpOpen || cheatOpen));
+        boardSvg.style.cursor = canRollNow() && !paused ? "pointer" : "default";
         styleSel.value = state.style;
-        styleSel.disabled = hostOnly;
-        newMapBtn.disabled = hostOnly;
-        speedBtn.disabled = hostOnly || state.phase === "anim";
-        speedBtn.textContent = "Speed: " + (state.speed === 1 ? "Chill" : "Fast");
+        styleSel.disabled = hostOnly || paused;
+        newMapBtn.disabled = hostOnly || paused;
+        speedBtn.disabled = hostOnly || state.phase === "anim" || paused;
+        speedLabel.textContent = state.speed === 1 ? "Chill" : "Fast";
         cheatBtns.forEach((b) => (b.style.display = online ? "none" : ""));
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".snl-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            const icon = pauseBtn.querySelector("svg");
+            if (icon) icon.outerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+            pauseBtn.disabled = online;
+        }
+        if (restartBtn) restartBtn.disabled = hostOnly;
 
-        // Overlay
-        introOv.hidden = state.phase !== "idle";
+        // Overlay — saling menekan: help → cheats → pause → result
+        introOv.hidden = state.phase !== "idle" || helpOpen || cheatOpen || paused;
         startBtn.hidden = hostOnly;
         waitStart.hidden = !hostOnly;
         helpOv.hidden = !helpOpen;
         cheatOv.hidden = !cheatOpen || online;
-        const showWin = state.phase === "over" && !winDismissed && !busy;
+        pauseOv.hidden = !paused || helpOpen || cheatOpen;
+        const showWin = state.phase === "over" && !winDismissed && !busy && !helpOpen && !cheatOpen && !paused;
         winOv.hidden = !showWin;
         if (showWin) {
             const w = state.winner;
@@ -705,7 +763,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- animasi lokal (host & guest sama) ---------------- */
     function cancelAnim() {
-        animT.forEach((t) => { clearTimeout(t); timers.delete(t); });
+        animT.forEach(cancelTimer);
         animT = [];
         busy = false;
         dieSvg.classList.remove("rolling");
@@ -769,6 +827,10 @@ export function mount(root, context = {}) {
 
     function newGame({ style = "classic", seed = null, autostart = true } = {}) {
         clearFlow();
+        cancelAnim();
+        timers.forEach(cancelTimer);
+        timers.clear();
+        resetClock();
         const st = STYLES[style] ? style : "classic";
         const sd = seed === null ? (Math.random() * 4294967296) >>> 0 : seed >>> 0;
         const board = genBoard(sd, st);
@@ -847,7 +909,7 @@ export function mount(root, context = {}) {
 
     function maybeAI() {
         if (online || destroyed || !state) return;
-        if (aiTimer) { clearTimeout(aiTimer); timers.delete(aiTimer); aiTimer = null; }
+        if (aiTimer) { cancelTimer(aiTimer); aiTimer = null; }
         if (state.phase === "roll" && state.turn === 1) {
             aiTimer = later(() => {
                 aiTimer = null;
@@ -930,23 +992,52 @@ export function mount(root, context = {}) {
         applyAction(action, playerIndex);
     }
 
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) helpOpen = false;
+        render();
+    }
+    function restartGame() {
+        if (online && !room.isHost) return;
+        helpOpen = false; cheatOpen = false;
+        if (paused) { pausedTotal += Date.now() - pausedAt; pausedAt = 0; paused = false; }
+        newGame({ style: state ? state.style : "classic", autostart: true });
+    }
+
     function tryRoll() {
-        if (!canRollNow() || helpOpen || cheatOpen) return;
+        if (!canRollNow() || helpOpen || cheatOpen || paused) return;
         submitAction({ type: "roll" });
     }
 
     /* ---------------- input: mouse / touch / keyboard ---------------- */
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
         if (t.closest("[data-exit]")) return onExit();
         if (t.closest("[data-roll]")) return tryRoll();
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { if (!online) setPaused(!paused); return; }
+        if (t.closest("[data-resume]")) { if (paused) setPaused(false); return; }
+        if (t.closest("[data-restart]")) return restartGame();
         if (t.closest("[data-start]") || t.closest("[data-rematch]")) return submitAction({ type: "start" });
-        if (t.closest("[data-newmap]")) return submitAction({ type: "map", style: styleSel.value });
-        if (t.closest("[data-help]")) { helpOpen = !helpOpen; cheatOpen = false; render(); return; }
-        if (t.closest("[data-cheat]")) { if (!online) { cheatOpen = !cheatOpen; helpOpen = false; render(); } return; }
-        if (t.closest("[data-speed]")) return submitAction({ type: "speed" });
+        if (t.closest("[data-newmap]")) {
+            if (!paused && (!online || room.isHost)) submitAction({ type: "map", style: styleSel.value });
+            return;
+        }
+        if (t.closest("[data-speed]")) {
+            if (!paused && !busy && (!online || room.isHost)) submitAction({ type: "speed" });
+            return;
+        }
         if (t.closest("[data-viewboard]")) { winDismissed = true; render(); return; }
-        if (t.closest("[data-close]")) { helpOpen = false; cheatOpen = false; render(); return; }
+        if (t.closest("[data-close]")) { toggleCheats(false); return; }
         const opEl = t.closest("[data-cheat-op]");
         if (opEl) {
             const op = opEl.dataset.cheatOp;
@@ -970,8 +1061,14 @@ export function mount(root, context = {}) {
         const svgEl = event.target.closest ? event.target.closest(".snl-boardsvg") : null;
         if (!svgEl) { hideHl(); return; }
         const r = svgEl.getBoundingClientRect();
-        const x = ((event.clientX - r.left) / r.width) * 456;
-        const y = ((event.clientY - r.top) / r.height) * 456;
+        // SVG memakai preserveAspectRatio: petak 456x456 berada di tengah kotak (letterbox).
+        const side = Math.min(r.width, r.height);
+        if (!side) return;
+        const scale = side / 456;
+        const ox = r.left + (r.width - side) / 2;
+        const oy = r.top + (r.height - side) / 2;
+        const x = (event.clientX - ox) / scale;
+        const y = (event.clientY - oy) / scale;
         const c = Math.floor((x - M) / CELL), rr = Math.floor((y - M) / CELL);
         if (c < 0 || c > 9 || rr < 0 || rr > 9) { hideHl(); return; }
         const row = 9 - rr;
@@ -1000,25 +1097,36 @@ export function mount(root, context = {}) {
         const t = e.target;
         if (t && ((t.closest && t.closest("input,select,textarea")) || t.isContentEditable)) return;
         const k = e.code;
-        if (k === "Escape") {
-            if (helpOpen || cheatOpen) { helpOpen = false; cheatOpen = false; render(); e.preventDefault(); }
-            else if (!winOv.hidden) { winDismissed = true; render(); }
+        // Prioritas: help → cheats → pause/Escape → aksi game.
+        if (k === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (k === "KeyR") { restartGame(); e.preventDefault(); return; }
+        if (k === "KeyP" || k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (k === "Escape" && !winOv.hidden) { winDismissed = true; render(); }
+            else if (!online) setPaused(!paused);
+            e.preventDefault();
             return;
         }
-        if (k === "KeyH") { helpOpen = !helpOpen; cheatOpen = false; render(); e.preventDefault(); return; }
-        if (k === "KeyC" && !online) { cheatOpen = !cheatOpen; helpOpen = false; render(); e.preventDefault(); return; }
         if (k === "KeyN") {
-            if (!online || room.isHost) { submitAction({ type: "map", style: styleSel.value }); e.preventDefault(); }
+            if (!helpOpen && !cheatOpen && !paused && (!online || room.isHost)) {
+                submitAction({ type: "map", style: styleSel.value });
+            }
+            e.preventDefault();
             return;
         }
-        if (k === "Space" || k === "Enter" || k === "KeyR") {
-            if (e.repeat) { if (k === "Space") e.preventDefault(); return; }
+        if (k === "Space" || k === "Enter") {
+            if (e.repeat) { e.preventDefault(); return; }
+            if (helpOpen) { toggleHelp(false); e.preventDefault(); return; }
+            if (cheatOpen) { toggleCheats(false); e.preventDefault(); return; }
+            if (paused) { setPaused(false); e.preventDefault(); return; }
             if (state.phase === "idle" || (state.phase === "over" && !winOv.hidden)) {
-                if (!online || room.isHost) { submitAction({ type: "start" }); e.preventDefault(); }
+                if (!online || room.isHost) submitAction({ type: "start" });
+                e.preventDefault();
                 return;
             }
-            if (helpOpen || cheatOpen) return;
-            if (k !== "Enter") { tryRoll(); e.preventDefault(); }
+            if (k === "Space") { tryRoll(); e.preventDefault(); }
         }
     }
 
@@ -1051,7 +1159,7 @@ export function mount(root, context = {}) {
             destroyed = true;
             clearFlow();
             cancelAnim();
-            timers.forEach(clearTimeout);
+            timers.forEach(cancelTimer);
             timers.clear();
             root.removeEventListener("click", handleClick);
             root.removeEventListener("change", handleChange);

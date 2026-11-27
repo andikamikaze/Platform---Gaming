@@ -1,5 +1,7 @@
 /* ==== GAME: block-paint.js ==== */
 
+import { iconSVG } from "../JS/icons.js";
+
 /*
  * BLOCK PAINT - puzzle kompetitif (vs bot / multiplayer room).
  * Dua puck bergiliran meluncur sampai menabrak dinding / tepi arena /
@@ -260,27 +262,45 @@ export function mount(root, context = {}) {
     const online = mode === "room" && Boolean(room);
     let roomData = room?.room || null;
     let state = null;
+    let helpOpen = false, cheatsOpen = false, paused = false;
 
-    /* ---------- UI minimalis, tanpa tutorial ---------- */
+    /* Bantuan internal: tampil sekali saat game pertama dibuka. */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("blockPaintHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("blockPaintHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* ---------- shell: HUD + board + overlays ---------- */
     root.innerHTML = `
 <style>
 .bp-app{--p0:#4f46e5;--p0s:#c7d2fe;--p1:#d97706;--p1s:#fde68a;--ink:#27272a;--line:#e4e4e7;
   user-select:none;-webkit-tap-highlight-color:transparent;color:var(--ink);
-  display:flex;flex-direction:column;gap:12px;width:100%;height:100%;min-height:0}
-.bp-app .bp-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.bp-app .bp-title{margin:0;font-size:15px;font-weight:600;letter-spacing:.02em}
-.bp-app .bp-status{font-size:12px;color:#71717a;display:inline-flex;align-items:center;gap:6px}
-.bp-app .bp-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0}
+.bp-app [hidden]{display:none!important}
+.bp-app .bp-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 .bp-app .bp-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#52525b;
-  border:1px solid var(--line);border-radius:999px;padding:4px 10px;background:#fff}
-.bp-app .bp-chip b{font-weight:600;color:var(--ink)}
+  border:1px solid var(--line);border-radius:999px;padding:5px 10px;background:#fff;white-space:nowrap}
+.bp-app .bp-chip b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.bp-app .bp-statuschip{color:#71717a}
 .bp-app .bp-sw{width:9px;height:9px;border-radius:3px;display:inline-block}
 .bp-app .bp-sw0{background:var(--p0)} .bp-app .bp-sw1{background:var(--p1)}
 .bp-app .bp-colon{color:#a1a1aa}
 .bp-app .bp-turn{width:8px;height:8px;border-radius:50%;background:#a1a1aa;display:inline-block}
+.bp-app .bp-spacer{flex:1 1 auto}
+.bp-app .bp-btn{font:inherit;font-size:12px;padding:7px 11px;border-radius:9px;cursor:pointer;
+  border:1px solid var(--line);background:#fff;color:var(--ink);min-height:32px;
+  display:inline-flex;align-items:center;gap:6px;transition:background .15s,transform .05s}
+.bp-app .bp-btn:hover{background:#f4f4f5}
+.bp-app .bp-btn:active{transform:translateY(1px)}
+.bp-app .bp-btn.primary{background:#18181b;border-color:#18181b;color:#fff}
+.bp-app .bp-btn.primary:hover{background:#3f3f46}
+.bp-app .bp-btn.on{border-color:var(--p0);color:var(--p0);background:#eef0ff}
+.bp-app .bp-icon-btn svg{flex:none;display:block}
 .bp-app .bp-panel{position:relative;display:grid;place-items:center;padding:18px;
   background:#fafafa;border:1px solid #ececf0;border-radius:16px;min-height:0;flex:1}
-.bp-app .bp-board{--gap:4px;position:relative;display:grid;gap:var(--gap);touch-action:none}
+.bp-app .bp-grid{--gap:4px;position:relative;display:grid;gap:var(--gap);touch-action:none}
 .bp-app .bp-cell{width:var(--cs);height:var(--cs);border-radius:8px;background:#eef0f4;
   border:1px solid #e3e6ec;transition:background-color .22s ease,border-color .22s ease}
 .bp-app .bp-cell.bp-wall{background:#232838;border-color:#232838}
@@ -297,21 +317,22 @@ export function mount(root, context = {}) {
   pointer-events:none;z-index:3;opacity:0;transition:opacity .15s}
 .bp-app .bp-hint.bp-show{opacity:1}
 .bp-app .bp-hint svg{width:55%;height:55%;stroke:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
-.bp-app .bp-result,.bp-app .bp-cheats{position:absolute;inset:0;display:grid;place-items:center;
-  background:rgba(250,250,250,.78);backdrop-filter:blur(3px);border-radius:16px;z-index:5}
-.bp-app .bp-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;
-  width:min(280px,86%);display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.06)}
-.bp-app .bp-card h3{margin:0;font-size:15px;font-weight:600}
-.bp-app .bp-card p{margin:0;font-size:12.5px;color:#71717a}
-.bp-app .bp-row{display:flex;gap:8px;flex-wrap:wrap}
+.bp-app .bp-ov{position:absolute;inset:0;display:grid;place-items:center;padding:14px;
+  background:rgba(250,250,250,.82);backdrop-filter:blur(3px);border-radius:16px;z-index:5}
+.bp-app .bp-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;
+  width:min(420px,100%);max-height:100%;display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 4px 12px rgba(0,0,0,.06);overflow:hidden}
+.bp-app .bp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.bp-app .bp-head h3{margin:0;font-size:14px;font-weight:600}
+.bp-app .bp-sub{margin:0;font-size:12.5px;color:#71717a}
+.bp-app .bp-cheats,.bp-app .bp-help,.bp-app .bp-stats{flex:1 1 auto;min-height:0;overflow:auto}
 .bp-app .bp-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.bp-app .bp-btn{font:inherit;font-size:12.5px;padding:8px 14px;border-radius:10px;cursor:pointer;
-  border:1px solid transparent;background:#18181b;color:#fff;transition:background .15s,transform .05s}
-.bp-app .bp-btn:hover{background:#3f3f46}
-.bp-app .bp-btn:active{transform:translateY(1px)}
-.bp-app .bp-btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
-.bp-app .bp-btn.ghost:hover{background:#f4f4f5}
-.bp-app .bp-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.bp-app .bp-foot{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;flex:none}
+.bp-app .bp-note{font-size:11px;color:#71717a;margin-right:auto}
+.bp-app .bp-help b{display:block;margin:8px 0 4px;font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:.06em}
+.bp-app .bp-help ul{margin:0 0 10px;padding-left:18px;font-size:12px;line-height:1.6;color:#52525b}
+.bp-app .bp-kbd{display:inline-block;padding:0 4px;border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:4px;background:#fafafa;color:var(--ink);font-size:11px}
 .bp-app .bp-dpad{display:none;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(2,46px);
   gap:6px;justify-content:center}
 .bp-app .bp-dbtn{display:grid;place-items:center;border:1px solid var(--line);border-radius:12px;
@@ -323,41 +344,131 @@ export function mount(root, context = {}) {
   .bp-app .bp-dpad{display:grid}
   .bp-app .bp-panel{padding:12px}
 }
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.bp-app{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.bp-app *,.bp-app *::before,.bp-app *::after{box-sizing:border-box}
+.bp-app :where(svg,canvas,img){max-width:100%;height:auto}
+.bp-app :where(button,[role="button"],select,input){touch-action:manipulation}
+.bp-app :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--p0);outline-offset:2px}
+/* 4px spacing grid: HUD/control rows wrap instead of overflowing on narrow screens. */
+.bp-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+/* Thin borders and calm surfaces instead of heavy elevation. */
+.bp-app :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+/* Clear type hierarchy: 12px metadata, compact headings. */
+.bp-app :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.bp-app :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .bp-app :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .bp-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .bp-app :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .bp-app :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .bp-app *,.bp-app *::before,.bp-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* ==== LAYOUT REDESIGN · fill height, icon HUD, overlay modal ==== */
+.bp-app.game-fill > .bp-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.bp-app .bp-card{display:flex;flex-direction:column;overflow:hidden}
+.bp-app .bp-head,.bp-app .bp-foot{flex:none}
+.bp-app .bp-cheats,.bp-app .bp-help,.bp-app .bp-stats{min-height:0;overflow:auto}
+@media (max-width:640px){
+  .bp-app.game-fill > .bp-panel[data-board]:has(.bp-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .bp-app .bp-hud{gap:5px}
+  .bp-app .bp-hud .bp-chip{padding:4px 6px;font-size:9px}
+  .bp-app .bp-hud .bp-statuschip{display:none}
+  .bp-app .bp-hud .bp-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+  .bp-app .bp-hud .bp-btn-label,.bp-app .bp-hud .bp-spacer{display:none}
+  .bp-app .bp-ov{padding:8px}
+  .bp-app .bp-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .bp-app .bp-cheats,.bp-app .bp-help,.bp-app .bp-stats{scrollbar-width:none}
+  .bp-app .bp-cheats::-webkit-scrollbar,.bp-app .bp-help::-webkit-scrollbar,.bp-app .bp-stats::-webkit-scrollbar{display:none}
+  .bp-app .bp-note{display:none}
+}
 </style>
-<div class="game-app bp-app">
-  <div class="game-intro bp-head">
-    <h2 class="bp-title">Block Paint</h2>
-    <span class="game-status bp-status"><i class="game-status-dot" data-dot></i><span data-status>Loading</span></span>
-  </div>
+<div class="game-app bp-app game-fill" data-bp>
   <div class="bp-hud">
-    <span class="bp-chip">Lv <b data-hud="level">1</b></span>
+    <span class="bp-chip">LV <b data-hud="level">1</b></span>
     <span class="bp-chip"><i class="bp-sw bp-sw0"></i><b data-hud="s0">0</b><span class="bp-colon">:</span><b data-hud="s1">0</b><i class="bp-sw bp-sw1"></i></span>
     <span class="bp-chip"><i class="bp-turn" data-turn></i><span data-hud="turn">-</span></span>
+    <span class="bp-chip bp-statuschip"><i class="bp-turn" data-dot></i><span data-status>Waiting for host</span></span>
+    <span class="bp-spacer"></span>
+    <button class="bp-btn bp-icon-btn" type="button" data-shuffle aria-label="New level" title="New level (N)">${iconSVG("sparkles", { size: 14 })}<span class="bp-btn-label">New</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="bp-btn-label">Help</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="bp-btn-label">Cheats</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="bp-btn-label">Pause</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="bp-btn-label">Restart</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="bp-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel bp-panel">
-    <div class="bp-board" data-board></div>
-    <div class="bp-result" data-result hidden>
+  <section class="game-panel bp-panel" data-board>
+    <div class="bp-grid" data-grid></div>
+    <div class="bp-ov" data-result hidden>
       <div class="bp-card">
-        <h3 data-result-title>Done</h3>
-        <p data-result-sub></p>
-        <div class="bp-row">
-          <button class="bp-btn" type="button" data-act="new">Next level</button>
-          <button class="bp-btn ghost" type="button" data-act="restart">Rematch</button>
+        <div class="bp-head"><h3 data-result-title>Done</h3></div>
+        <div class="bp-stats"><p class="bp-sub" data-result-sub></p></div>
+        <div class="bp-foot">
+          <button class="bp-btn primary" type="button" data-act="new">Next level</button>
+          <button class="bp-btn" type="button" data-act="restart">Rematch</button>
         </div>
       </div>
     </div>
-    <div class="bp-cheats" data-cheats hidden>
+    <div class="bp-ov" data-ov="pause" hidden>
       <div class="bp-card">
-        <h3>Cheats</h3>
-        <div class="bp-cheatgrid">
-          <button class="bp-btn ghost" type="button" data-cheat="hint">Hint</button>
-          <button class="bp-btn ghost" type="button" data-cheat="auto">Best move</button>
-          <button class="bp-btn ghost" type="button" data-cheat="paint">Paint +5</button>
-          <button class="bp-btn ghost" type="button" data-cheat="turn">Extra turn</button>
-          <button class="bp-btn ghost" type="button" data-cheat="clear">Paint all</button>
-          <button class="bp-btn ghost" type="button" data-cheat="level">Skip level</button>
+        <div class="bp-head"><h3>Paused</h3></div>
+        <div class="bp-stats"><p class="bp-sub">Bot and timers are frozen. Take your time.</p></div>
+        <div class="bp-foot"><button class="bp-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="bp-ov" data-cheats hidden>
+      <div class="bp-card">
+        <div class="bp-head"><h3>Cheats</h3><button class="bp-btn" type="button" data-act="close-cheats">Close</button></div>
+        <div class="bp-cheats">
+          <div class="bp-cheatgrid">
+            <button class="bp-btn" type="button" data-cheat="hint">Hint</button>
+            <button class="bp-btn" type="button" data-cheat="auto">Best move</button>
+            <button class="bp-btn" type="button" data-cheat="paint">Paint +5</button>
+            <button class="bp-btn" type="button" data-cheat="turn">Extra turn</button>
+            <button class="bp-btn" type="button" data-cheat="clear">Paint all</button>
+            <button class="bp-btn" type="button" data-cheat="level">Skip level</button>
+          </div>
         </div>
-        <button class="bp-btn" type="button" data-act="close-cheats">Close</button>
+        <div class="bp-foot"><span class="bp-note">H help · C cheats · P pause · R restart</span></div>
+      </div>
+    </div>
+    <div class="bp-ov" data-ov="help" hidden>
+      <div class="bp-card">
+        <div class="bp-head"><h3>How to play</h3><button class="bp-btn" type="button" data-help-close>Close</button></div>
+        <div class="bp-help">
+          <div>
+            <b>Goal</b>
+            <ul>
+              <li>Slide your puck until it hits a wall or the rival puck; every cell you cross is painted.</li>
+              <li>Most painted cells when the floor is full wins. First turn is random.</li>
+            </ul>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="bp-kbd">Arrows</span> / <span class="bp-kbd">W A S D</span> — slide in a direction.</li>
+              <li>Click any cell to slide toward it.</li>
+              <li><span class="bp-kbd">H</span> help · <span class="bp-kbd">C</span> cheats · <span class="bp-kbd">P</span> pause · <span class="bp-kbd">R</span> restart · <span class="bp-kbd">N</span> new level.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Mobile</b>
+            <ul>
+              <li>Use the direction pad below the board, or swipe across the board.</li>
+              <li>Tap a cell to slide toward it.</li>
+            </ul>
+            <b>Rules</b>
+            <ul>
+              <li>A rival with no painting option passes automatically.</li>
+              <li>Levels are verified solvable; a corridor layout is the fallback.</li>
+            </ul>
+            <div class="bp-foot"><span class="bp-note">Press H to reopen this guide</span><button class="bp-btn primary" type="button" data-help-close>Got it</button></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -367,36 +478,40 @@ export function mount(root, context = {}) {
     <button class="bp-dbtn" type="button" data-dir="down" style="grid-column:2;grid-row:2" aria-label="Down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10l6 6 6-6"/></svg></button>
     <button class="bp-dbtn" type="button" data-dir="right" style="grid-column:3;grid-row:2" aria-label="Right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg></button>
   </div>
-  <div class="game-actions bp-actions">
-    <button class="bp-btn ghost" type="button" data-act="reshuffle">New level</button>
-    <button class="bp-btn ghost" type="button" data-act="restart">Restart</button>
-    <button class="bp-btn ghost" type="button" data-act="cheats">Cheats</button>
-    <button class="game-action-button bp-btn ghost" type="button" data-exit>Exit</button>
-  </div>
 </div>`;
 
     /* ---------- refs ---------- */
     const $ = (s) => root.querySelector(s);
-    const board = $("[data-board]");
+    const grid = $("[data-grid]");
     const statusEl = $("[data-status]");
     const dotEl = $("[data-dot]");
     const turnDot = $("[data-turn]");
     const hud = { level: $('[data-hud="level"]'), s0: $('[data-hud="s0"]'), s1: $('[data-hud="s1"]'), turn: $('[data-hud="turn"]') };
-    const resultEl = $("[data-result]");
+    const ov = {
+        result: $("[data-result]"),
+        pause: $('[data-ov="pause"]'),
+        cheat: $(".bp-ov[data-cheats]"),
+        help: $('[data-ov="help"]'),
+    };
     const resultTitle = $("[data-result-title]");
     const resultSub = $("[data-result-sub]");
-    const cheatsEl = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
+    const cheatsBtn = $("button[data-cheats]");
 
-    /* ---------- timers ---------- */
+    /* ---------- timers (dijeda saat pause) ---------- */
     let timers = [];
+    const queued = [];
     const later = (fn, ms) => {
+        if (paused) { queued.push({ fn, ms }); return null; }
         const t = setTimeout(() => { timers = timers.filter((x) => x !== t); fn(); }, ms);
         timers.push(t);
         return t;
     };
+    const flushQueued = () => { while (queued.length) { const q = queued.shift(); later(q.fn, q.ms); } };
     let botTimer = null, hintTimer = null;
     const clearTimers = () => {
         timers.forEach(clearTimeout); timers = [];
+        queued.length = 0;
         if (botTimer) { clearTimeout(botTimer); botTimer = null; }
         if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; }
     };
@@ -511,10 +626,10 @@ export function mount(root, context = {}) {
     /* ---------- bot (mode ai) ---------- */
     function scheduleBot() {
         if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (online || !state || state.status !== "playing" || state.turn !== 1) return;
+        if (online || paused || helpOpen || cheatsOpen || !state || state.status !== "playing" || state.turn !== 1) return;
         botTimer = setTimeout(() => {
             botTimer = null;
-            if (!state || state.status !== "playing" || state.turn !== 1) return;
+            if (paused || !state || state.status !== "playing" || state.turn !== 1) return;
             const mv = bestMove(state, 1);
             if (mv) applyAction({ type: "move", dir: mv.dir }, 1);
             else if (canPaint(state, 0)) { state.turn = 0; state.passed = 1; publish(); }
@@ -530,15 +645,15 @@ export function mount(root, context = {}) {
         const key = state.levelNo + ":" + w + "x" + h + ":" + walls.join(",");
         if (key === builtKey) return false;
         builtKey = key;
-        board.innerHTML = "";
-        board.style.setProperty("--cs", w >= 5 || h >= 5 ? "clamp(38px,12vmin,56px)" : "clamp(42px,13vmin,64px)");
-        board.style.gridTemplateColumns = "repeat(" + w + ", var(--cs))";
+        grid.innerHTML = "";
+        grid.style.setProperty("--cs", w >= 5 || h >= 5 ? "clamp(38px,12vmin,56px)" : "clamp(42px,13vmin,64px)");
+        grid.style.gridTemplateColumns = "repeat(" + w + ", var(--cs))";
         cellEls = [];
         for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
             const div = document.createElement("div");
             div.className = "bp-cell" + (state.level.cells[y][x] ? " bp-wall" : "");
             div.dataset.k = y * w + x;
-            board.appendChild(div);
+            grid.appendChild(div);
             cellEls.push(div);
         }
         puckEls = [0, 1].map((i) => {
@@ -547,13 +662,13 @@ export function mount(root, context = {}) {
             const d = document.createElement("div");
             d.className = "bp-dot";
             p.appendChild(d);
-            board.appendChild(p);
+            grid.appendChild(p);
             return p;
         });
         hintEl = document.createElement("div");
         hintEl.className = "bp-hint";
         hintEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>';
-        board.appendChild(hintEl);
+        grid.appendChild(hintEl);
         prevPainted = null;
         return true;
     }
@@ -567,8 +682,59 @@ export function mount(root, context = {}) {
         });
     }
 
+    /* Overlay prioritas: help > cheats > pause > result. */
+    function syncOverlays() {
+        ov.help.hidden = !helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.result.hidden = !state || state.status !== "over" || paused || cheatsOpen || helpOpen;
+        if (cheatsBtn) {
+            cheatsBtn.classList.toggle("on", cheatsOpen);
+            const label = cheatsBtn.querySelector(".bp-btn-label");
+            if (label) label.textContent = cheatsOpen ? "Close" : "Cheats";
+            cheatsBtn.setAttribute("aria-label", cheatsOpen ? "Close cheats" : "Cheats");
+        }
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".bp-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+        if (!helpOpen && !paused) scheduleBot();
+    }
+
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+        if (!cheatsOpen && !helpOpen && !paused) scheduleBot();
+    }
+
+    function setPaused(on) {
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) { render(); return; }
+        paused = next;
+        if (paused) {
+            helpOpen = false; cheatsOpen = false;
+            if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; }
+            if (hintEl) hintEl.classList.remove("bp-show");
+            root.querySelectorAll(".bp-dbtn.bp-flash").forEach((b) => b.classList.remove("bp-flash"));
+            if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+        } else {
+            flushQueued();
+            scheduleBot();
+        }
+        render();
+    }
+
     function render() {
-        if (!state) { statusEl.textContent = "Waiting for host"; return; }
+        if (!state) { statusEl.textContent = "Waiting for host"; syncOverlays(); return; }
         const rebuilt = ensureBoard();
         const { w } = state.level;
 
@@ -608,9 +774,7 @@ export function mount(root, context = {}) {
             resultTitle.textContent =
                 state.winner === -1 ? "Draw" : state.winner === me ? "You win" : nameFor(state.winner) + " wins";
             resultSub.textContent = a + " : " + b + " cells - Level " + state.levelNo;
-            resultEl.hidden = false;
         } else {
-            resultEl.hidden = true;
             const yours = state.turn === me;
             const label = yours ? "Your turn" : nameFor(state.turn) + "'s turn";
             const passNote = state.passed != null ? " - " + nameFor(state.passed) + " passes" : "";
@@ -620,6 +784,7 @@ export function mount(root, context = {}) {
             dotEl.style.background = c;
             turnDot.style.background = c;
         }
+        syncOverlays();
     }
 
     function publish() {
@@ -630,7 +795,7 @@ export function mount(root, context = {}) {
 
     /* ---------- hint (lokal, tidak mengubah state) ---------- */
     function showHint() {
-        if (!state || state.status !== "playing") return;
+        if (!state || state.status !== "playing" || paused || helpOpen || cheatsOpen) return;
         const mv = bestMove(state, myIndex());
         if (!mv || !hintEl) return;
         const rot = { up: "0deg", right: "90deg", down: "180deg", left: "270deg" }[mv.dir];
@@ -651,32 +816,41 @@ export function mount(root, context = {}) {
     /* ---------- input: klik / swipe / keyboard / dpad ---------- */
     function tryMove(dir) {
         if (!state || state.status !== "playing" || state.turn !== myIndex()) return;
+        if (paused || helpOpen || cheatsOpen) return;
         submitAction({ type: "move", dir });
     }
 
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-pause]")) { setPaused(); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-shuffle]")) { if (!helpOpen && !paused) submitAction({ type: "reshuffle" }); return; }
+        if (t.closest("[data-restart]")) { if (!helpOpen && !paused) submitAction({ type: "restart" }); return; }
+        if (t.closest("button[data-cheats]")) { toggleCheats(); return; }
         const dirBtn = t.closest("[data-dir]");
         if (dirBtn) { tryMove(dirBtn.dataset.dir); return; }
         const cheatBtn = t.closest("[data-cheat]");
         if (cheatBtn) {
             const kind = cheatBtn.dataset.cheat;
             if (kind === "hint") showHint();
-            else submitAction({ type: "cheat", kind });
+            else if (!helpOpen && !paused) submitAction({ type: "cheat", kind });
             return;
         }
         const act = t.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
-            if (a === "cheats") { cheatsEl.hidden = !cheatsEl.hidden; return; }
-            if (a === "close-cheats") { cheatsEl.hidden = true; return; }
-            if (a === "restart" || a === "new" || a === "reshuffle") submitAction({ type: a });
+            if (a === "cheats") { toggleCheats(); return; }
+            if (a === "close-cheats") { toggleCheats(false); return; }
+            if ((a === "restart" || a === "new" || a === "reshuffle") && !helpOpen && !paused) submitAction({ type: a });
             return;
         }
         // klik sel board (desktop): arah = sumbu dominan dari puck ke sel
         const cell = t.closest(".bp-cell");
-        if (cell && board.contains(cell) && state && state.status === "playing") {
+        if (cell && grid.contains(cell) && state && state.status === "playing" && !paused && !helpOpen && !cheatsOpen) {
             const k = +cell.dataset.k, w = state.level.w;
             const dx = (k % w) - state.pucks[myIndex()].x;
             const dy = ((k / w) | 0) - state.pucks[myIndex()].y;
@@ -702,19 +876,36 @@ export function mount(root, context = {}) {
     const onKey = (e) => {
         if (!state) return;
         const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        // Prioritas: help > cheats > pause/Escape > aksi game.
+        if (key === "h") { toggleHelp(); e.preventDefault(); return; }
+        if (key === "c") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (key === "p") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else setPaused();
+            e.preventDefault(); return;
+        }
+        if (key === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            e.preventDefault(); return;
+        }
+        if (key === "r" || key === "n") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (!paused) submitAction({ type: key === "r" ? "restart" : "reshuffle" });
+            e.preventDefault(); return;
+        }
         const dir = KEYMAP[key];
-        if (dir) { e.preventDefault(); tryMove(dir); return; }
-        if (key === "Escape") cheatsEl.hidden = true;
-        else if (key === "c") cheatsEl.hidden = !cheatsEl.hidden;
-        else if (key === "r") submitAction({ type: "restart" });
-        else if (key === "n") submitAction({ type: "reshuffle" });
+        if (dir && !helpOpen && !cheatsOpen && !paused) { e.preventDefault(); tryMove(dir); }
     };
 
     root.addEventListener("click", handleClick);
-    board.addEventListener("pointerdown", onPointerDown);
-    board.addEventListener("pointerup", onPointerUp);
-    board.addEventListener("pointercancel", onPointerCancel);
-    board.addEventListener("click", onBoardClickCapture, true);
+    grid.addEventListener("pointerdown", onPointerDown);
+    grid.addEventListener("pointerup", onPointerUp);
+    grid.addEventListener("pointercancel", onPointerCancel);
+    grid.addEventListener("click", onBoardClickCapture, true);
     document.addEventListener("keydown", onKey);
 
     /* ---------- init: online (host/guest) vs ai ---------- */
@@ -740,10 +931,10 @@ export function mount(root, context = {}) {
         destroy() {
             clearTimers();
             root.removeEventListener("click", handleClick);
-            board.removeEventListener("pointerdown", onPointerDown);
-            board.removeEventListener("pointerup", onPointerUp);
-            board.removeEventListener("pointercancel", onPointerCancel);
-            board.removeEventListener("click", onBoardClickCapture, true);
+            grid.removeEventListener("pointerdown", onPointerDown);
+            grid.removeEventListener("pointerup", onPointerUp);
+            grid.removeEventListener("pointercancel", onPointerCancel);
+            grid.removeEventListener("click", onBoardClickCapture, true);
             document.removeEventListener("keydown", onKey);
             offs.forEach((fn) => { try { fn(); } catch (_) { } });
         },

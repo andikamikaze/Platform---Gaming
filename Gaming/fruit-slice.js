@@ -4,6 +4,8 @@
   2. Setelah mengubah META, jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "fruit-slice",
     name: "Fruit Slice",
@@ -69,146 +71,207 @@ export function mount(root, context = {}) {
         return { vx, vy, y: H + 30 };
     }
 
-    /* ---------------- shell (minimalist, no tutorial text) ---------------- */
+    /* ---------------- shell (HUD + fill-height board) ---------------- */
     root.innerHTML = `
 <style>
-.fs-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--accent:#f43f5e;max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px;color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+.fs-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--accent:#f43f5e;display:flex;flex-direction:column;gap:8px;width:100%;height:100%;min-height:0;max-width:680px;margin:0 auto;color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 12px calc(12px + env(safe-area-inset-bottom));box-sizing:border-box}
+.fs-app *{box-sizing:border-box}
 .fs-app [hidden]{display:none!important}
-.fs-app .game-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.fs-app .game-intro h2{margin:0;font-size:18px;font-weight:650;letter-spacing:-.01em}
-.fs-app .game-intro p{margin:2px 0 0;font-size:12px;color:var(--mut)}
-.fs-app .game-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:4px 10px;white-space:nowrap}
-.fs-app .game-status-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;display:inline-block}
+.fs-app :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fs-hud{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.fs-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--mut);white-space:nowrap}
+.fs-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums;display:inline-block}
+.fs-app .game-status{display:inline-flex;align-items:center;gap:6px;min-height:0}
+.fs-app .game-status-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;display:inline-block;flex:none}
 .fs-app .game-status[data-state="playing"] .game-status-dot{background:#22c55e}
 .fs-app .game-status[data-state="paused"] .game-status-dot{background:#f59e0b}
 .fs-app .game-status[data-state="over"] .game-status-dot{background:#ef4444}
-.fs-app .game-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px}
-.fs-hud{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:2px 4px 10px}
-.fs-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
-.fs-chip b{color:var(--ink);font-weight:650;font-variant-numeric:tabular-nums;display:inline-block}
-.fs-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-.fs-flex{flex:1}
-.fs-combo,.fs-combo b{color:var(--accent);font-weight:650}
+.fs-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
 .fs-hearts{display:inline-flex;gap:2px;align-items:center}
-.fs-stage{position:relative;aspect-ratio:${W}/${H};border-radius:12px;overflow:hidden}
-.fs-stage.shake{animation:fs-shake .3s linear}
-.fs-board{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
-.fs-flash{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(circle,rgba(244,63,94,.30),rgba(244,63,94,0) 70%)}
-.fs-flash.on{animation:fs-flash .35s ease-out}
-.fs-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(248,250,252,.78);backdrop-filter:blur(5px)}
-.fs-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 26px;text-align:center;min-width:230px;max-width:300px;box-shadow:0 12px 32px rgba(15,23,42,.08)}
-.fs-card h3{margin:0 0 12px;font-size:19px;font-weight:650}
-.fs-card p{margin:-6px 0 12px;font-size:12.5px;color:var(--mut)}
-.fs-card p:empty{display:none}
-.fs-wait{font-size:12.5px;color:var(--mut)}
-.fs-app .game-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.fs-app .game-action-button{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:13px;color:var(--ink);cursor:pointer}
-.fs-app .game-action-button:hover{background:#f8fafc}
-.fs-app .game-action-button.primary{background:var(--ink);border-color:var(--ink);color:#fff}
-.fs-app .game-action-button.primary:hover{background:#1e293b}
-.fs-seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.fs-seg button{border:0;background:#fff;padding:8px 12px;font-size:13px;color:var(--mut);cursor:pointer}
+.fs-flex{flex:1 1 auto}
+.fs-combo,.fs-combo b{color:var(--accent);font-weight:700}
+.fs-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:6px 10px;min-height:32px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.fs-btn:hover{border-color:var(--accent);color:var(--accent)}
+.fs-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.fs-btn.primary:hover{background:#1e293b;color:#fff}
+.fs-btn.on{border-color:var(--accent);color:var(--accent);background:#fff1f2}
+.fs-btn:disabled{opacity:.4;cursor:not-allowed}
+.fs-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.fs-icon-btn svg{flex:none;display:block}
+.fs-seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff}
+.fs-seg button{min-height:32px;border:0;background:#fff;padding:6px 9px;font:700 10px/1 ui-monospace,monospace;color:var(--mut);cursor:pointer}
 .fs-seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
 .fs-cdot{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;margin-left:6px;vertical-align:middle}
-.fs-cheats{text-align:left}
-.fs-cheats h3{text-align:center}
-.fs-row{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;background:none;border:0;border-bottom:1px solid var(--line);padding:9px 2px;font-size:13px;color:var(--ink);cursor:pointer}
-.fs-row:last-of-type{border-bottom:0}
+.fs-board{position:relative;display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:${W}/${H};padding:0;border:1px solid var(--line);border-radius:12px;background:#0b1220;overflow:hidden}
+.fs-board.shake{animation:fs-shake .3s linear}
+.fs-svg{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
+.fs-flash{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:0;background:radial-gradient(circle,rgba(244,63,94,.30),rgba(244,63,94,0) 70%)}
+.fs-flash.on{animation:fs-flash .35s ease-out}
+.fs-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(248,250,252,.82);backdrop-filter:blur(4px)}
+.fs-card{display:flex;flex-direction:column;gap:10px;width:min(320px,100%);max-height:100%;padding:18px 20px;border:1px solid var(--line);border-radius:14px;background:#fff;text-align:center;box-shadow:0 6px 18px rgba(15,23,42,.08);overflow:hidden}
+.fs-card h3{margin:0;font-size:18px;font-weight:650;flex:none}
+.fs-card p{margin:0;font-size:12.5px;color:var(--mut);line-height:1.5}
+.fs-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+.fs-head h3{font-size:16px}
+.fs-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:4px}
+.fs-note{font:600 10px/1.4 ui-monospace,monospace;color:var(--mut);text-align:left}
+.fs-card .fs-btn{min-height:38px}
+.fs-wait{font-size:12.5px;color:var(--mut)}
+.fs-cheats,.fs-help,.fs-stats{display:grid;gap:6px;flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.fs-help{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.fs-help>div{min-width:0}
+.fs-help b{display:block;margin-bottom:5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+.fs-help ul{margin:0 0 10px;padding-left:16px;font:600 11px/1.6 ui-monospace,monospace;color:var(--mut)}
+.fs-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#f8fafc;color:var(--ink);font:inherit}
+.fs-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:40px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;background:#fff;font-size:12px;color:var(--ink);cursor:pointer;text-align:left}
+.fs-row:hover{border-color:var(--accent)}
+.fs-row[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:#fff1f2}
 .fs-sw{position:relative;width:34px;height:20px;border-radius:999px;background:#e2e8f0;transition:background .15s;flex:none}
 .fs-sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
 .fs-row[aria-pressed="true"] .fs-sw{background:var(--ink)}
 .fs-row[aria-pressed="true"] .fs-sw::after{transform:translateX(14px)}
-.fs-cheat-actions{display:flex;gap:8px;justify-content:center;margin-top:14px}
+.fs-cheat-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;flex:none;margin-top:4px}
 .fs-bump{animation:fs-bump .18s ease-out}
 .fs-app text.fs-pop{font-weight:700;font-family:system-ui,sans-serif;paint-order:stroke;stroke:#0b1220;stroke-width:3px;pointer-events:none}
 @keyframes fs-bump{0%{transform:scale(1.35)}100%{transform:scale(1)}}
 @keyframes fs-shake{0%,100%{transform:translate(0,0)}20%{transform:translate(-5px,2px)}40%{transform:translate(5px,-2px)}60%{transform:translate(-4px,-2px)}80%{transform:translate(3px,2px)}}
 @keyframes fs-flash{0%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.fs-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- layout overrides (keep last) --- */
+.fs-app.game-fill > .fs-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (pointer:coarse){.fs-app button:not(:disabled){min-height:44px}}
+.fs-app .fs-hud .fs-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.fs-app .fs-hud .fs-chip{padding:4px 6px;font-size:9px}
+@media (max-width:640px){
+.fs-app{gap:6px;padding-left:8px;padding-right:8px}
+.fs-app.game-fill > .fs-board:not(:has(.fs-ov:not([hidden]))){aspect-ratio:${W}/${H};flex:0 0 auto}
+.fs-app.game-fill > .fs-board:has(.fs-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.fs-app .fs-hud{gap:5px}
+.fs-app .fs-hud .fs-chip[data-hud="best"],.fs-app .fs-hud .fs-chip[data-hud="combo"]{display:none}
+.fs-app .fs-hud .fs-btn-label,.fs-app .fs-hud .fs-flex{display:none}
+.fs-app .fs-hud .fs-seg button{padding:5px 7px;font-size:9px}
+.fs-ov{padding:8px}
+.fs-app .fs-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.fs-app .fs-cheats,.fs-app .fs-help,.fs-app .fs-stats{scrollbar-width:none}
+.fs-app .fs-cheats::-webkit-scrollbar,.fs-app .fs-help::-webkit-scrollbar,.fs-app .fs-stats::-webkit-scrollbar{display:none}
+.fs-app .fs-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.fs-app .fs-note{display:none}
+}
 </style>
-<div class="game-app fs-app">
-  <div class="game-intro">
-    <div><h2>Fruit Slice</h2><p data-sub>Endless</p></div>
-    <span class="game-status" data-state="ready"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app fs-app game-fill" data-fs>
+  <div class="fs-hud">
+    <span class="fs-chip game-status" data-state="ready"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+    <span class="fs-chip" data-hud="mode" data-sub>Endless</span>
+    <span class="fs-chip"><i class="fs-dot" data-hud="dot0" hidden></i><span data-hud="lab0">Score</span> <b data-hud="s0">0</b> <span class="fs-hearts" data-hud="h0"></span></span>
+    <span class="fs-chip" data-hud="p2" hidden><i class="fs-dot" data-hud="dot1"></i><span data-hud="lab1">Bot</span> <b data-hud="s1">0</b> <span class="fs-hearts" data-hud="h1"></span></span>
+    <span class="fs-chip fs-combo" data-hud="combo" hidden>Combo ×<b data-hud="comboN">2</b></span>
+    <span class="fs-chip" data-hud="timer" hidden><b data-hud="time">${MATCH_S}</b>s</span>
+    <span class="fs-chip" data-hud="best">Best <b data-hud="bestN">0</b></span>
+    <span class="fs-flex"></span>
+    <span class="fs-seg" data-el="seg">
+      <button type="button" data-act="mode-solo" aria-pressed="true">Solo</button>
+      <button type="button" data-act="mode-vs" aria-pressed="false">VS Bot</button>
+    </span>
+    <button class="fs-btn fs-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="fs-btn-label">Help</span></button>
+    <button class="fs-btn fs-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="fs-btn-label">Cheats</span></button>
+    <button class="fs-btn fs-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="fs-btn-label">Pause</span></button>
+    <button class="fs-btn fs-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="fs-btn-label">Restart</span></button>
+    <button class="fs-btn fs-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="fs-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="fs-hud">
-      <span class="fs-chip"><i class="fs-dot" data-hud="dot0" hidden></i><span data-hud="lab0">Score</span> <b data-hud="s0">0</b> <span class="fs-hearts" data-hud="h0"></span></span>
-      <span class="fs-chip" data-hud="p2" hidden><i class="fs-dot" data-hud="dot1"></i><span data-hud="lab1">Bot</span> <b data-hud="s1">0</b> <span class="fs-hearts" data-hud="h1"></span></span>
-      <span class="fs-chip fs-combo" data-hud="combo" hidden>Combo ×<b data-hud="comboN">2</b></span>
-      <span class="fs-flex"></span>
-      <span class="fs-chip" data-hud="timer" hidden><b data-hud="time">${MATCH_S}</b>s</span>
-      <span class="fs-chip" data-hud="best">Best <b data-hud="bestN">0</b></span>
+  <section class="game-panel fs-board" data-board>
+    <svg class="fs-svg" data-el="board" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Fruit Slice board">
+      <rect x="0" y="0" width="${W}" height="${H}" rx="0" fill="#0b1220"/>
+      <g data-el="halves"></g>
+      <g data-el="items"></g>
+      <g data-el="juice"></g>
+      <g data-el="rings"></g>
+      <g data-el="pops"></g>
+      <g data-el="cursor" hidden><circle data-el="curRing" r="11" fill="none" stroke="#fff" stroke-width="1.5"/><circle data-el="curDot" r="2" fill="#fff"/></g>
+      <polyline data-el="trail" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".8" points=""/>
+    </svg>
+    <div class="fs-flash" data-el="flash"></div>
+    <div class="fs-ov" data-ov="start">
+      <div class="fs-card">
+        <h3>Fruit Slice</h3>
+        <p data-el="wait" hidden>Waiting for host…</p>
+        <button class="fs-btn primary" type="button" data-act="start" data-el="startBtn">Start</button>
+      </div>
     </div>
-    <div class="fs-stage" data-el="stage">
-      <svg class="fs-board" data-el="board" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Fruit Slice board">
-        <rect x="0" y="0" width="${W}" height="${H}" rx="12" fill="#0b1220"/>
-        <g data-el="halves"></g>
-        <g data-el="items"></g>
-        <g data-el="juice"></g>
-        <g data-el="rings"></g>
-        <g data-el="pops"></g>
-        <g data-el="cursor" hidden><circle data-el="curRing" r="11" fill="none" stroke="#fff" stroke-width="1.5"/><circle data-el="curDot" r="2" fill="#fff"/></g>
-        <polyline data-el="trail" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".8" points=""/>
-      </svg>
-      <div class="fs-flash" data-el="flash"></div>
-      <div class="fs-ov" data-ov="start">
-        <div class="fs-card">
-          <h3>Fruit Slice</h3>
-          <button class="game-action-button primary" type="button" data-act="start" data-el="startBtn">Start</button>
-          <span class="fs-wait" data-el="wait" hidden>Waiting for host…</span>
-        </div>
+    <div class="fs-ov" data-ov="over" hidden>
+      <div class="fs-card">
+        <h3 data-el="ovTitle">Game over</h3>
+        <p data-el="ovSub"></p>
+        <button class="fs-btn primary" type="button" data-act="start" data-el="again">Play again</button>
       </div>
-      <div class="fs-ov" data-ov="over" hidden>
-        <div class="fs-card">
-          <h3 data-el="ovTitle">Game over</h3>
-          <p data-el="ovSub"></p>
-          <button class="game-action-button primary" type="button" data-act="start" data-el="again">Play again</button>
-        </div>
+    </div>
+    <div class="fs-ov" data-ov="pause" hidden>
+      <div class="fs-card">
+        <h3>Paused</h3>
+        <p>Take a breath — the arena is frozen.</p>
+        <button class="fs-btn primary" type="button" data-act="resume">Resume</button>
       </div>
-      <div class="fs-ov" data-ov="pause" hidden>
-        <div class="fs-card">
-          <h3>Paused</h3>
-          <button class="game-action-button primary" type="button" data-act="resume">Resume</button>
-        </div>
-      </div>
-      <div class="fs-ov" data-ov="cheats" hidden>
-        <div class="fs-card fs-cheats">
-          <h3>Cheats</h3>
+    </div>
+    <div class="fs-ov" data-ov="cheats" hidden>
+      <div class="fs-card">
+        <div class="fs-head"><h3>Cheats</h3><button class="fs-btn" type="button" data-act="cheat-close" aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="fs-cheats">
           <button class="fs-row" type="button" data-cheat="lives" aria-pressed="false">Infinite lives<span class="fs-sw"></span></button>
           <button class="fs-row" type="button" data-cheat="noBomb" aria-pressed="false">No bombs<span class="fs-sw"></span></button>
           <button class="fs-row" type="button" data-cheat="slow" aria-pressed="false">Slow motion<span class="fs-sw"></span></button>
           <button class="fs-row" type="button" data-cheat="wide" aria-pressed="false">Wide blade<span class="fs-sw"></span></button>
           <button class="fs-row" type="button" data-cheat="auto" aria-pressed="false">Auto slice<span class="fs-sw"></span></button>
           <button class="fs-row" type="button" data-cheat="double" aria-pressed="false">Double points<span class="fs-sw"></span></button>
-          <div class="fs-cheat-actions">
-            <button class="game-action-button" type="button" data-act="cheat-add">+50 points</button>
-            <button class="game-action-button primary" type="button" data-act="cheat-close">Done</button>
+        </div>
+        <div class="fs-cheat-actions">
+          <button class="fs-btn" type="button" data-act="cheat-add">+50 points</button>
+          <button class="fs-btn primary" type="button" data-act="cheat-close">Done</button>
+        </div>
+      </div>
+    </div>
+    <div class="fs-ov" data-ov="help" hidden>
+      <div class="fs-card">
+        <div class="fs-head"><h3>How to play</h3><button class="fs-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="fs-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="fs-kbd">Drag</span> the mouse across fruit to slice</li>
+              <li><span class="fs-kbd">W A S D</span> / arrows — move blade, <span class="fs-kbd">Space</span> — slice</li>
+              <li><span class="fs-kbd">H</span> help · <span class="fs-kbd">C</span> cheats · <span class="fs-kbd">P</span> pause · <span class="fs-kbd">R</span> restart</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Drag a finger through several fruit in one stroke for a combo.</li>
+              <li>Tap the arena to resume after a pause.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Slice fruit for points; quick consecutive slices chain a combo bonus.</li>
+              <li>Never slice a bomb — it costs a life and resets the combo.</li>
+              <li>Missed fruit costs a life in Solo; you get 3 lives per run.</li>
+              <li>VS Bot is a 60-second score race with a brief headstart.</li>
+              <li>Best score is saved locally; cheats mark the run as cheated.</li>
+            </ul>
+            <div class="fs-foot"><span class="fs-note">Press H to reopen this guide</span><button class="fs-btn primary" type="button" data-help-close>Got it</button></div>
           </div>
         </div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <span class="fs-seg" data-el="seg">
-      <button type="button" data-act="mode-solo" aria-pressed="true">Solo</button>
-      <button type="button" data-act="mode-vs" aria-pressed="false">VS Bot</button>
-    </span>
-    <button class="game-action-button" type="button" data-act="restart" data-el="restartBtn">Restart</button>
-    <button class="game-action-button" type="button" data-act="pause" data-el="pauseBtn">Pause</button>
-    <button class="game-action-button" type="button" data-act="cheats" data-el="cheatBtn">Cheats<span class="fs-cdot" data-el="cdot" hidden></span></button>
-    <span class="fs-flex"></span>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (sel) => root.querySelector(sel);
     const show = (el) => el.removeAttribute("hidden");
     const hide = (el) => el.setAttribute("hidden", "");
+    const app = $("[data-fs]");
+    const boardWrap = $("[data-board]");
     const subEl = $("[data-sub]");
     const statusWrap = $(".game-status");
     const statusEl = $("[data-status]");
-    const stageEl = $('[data-el="stage"]');
     const boardEl = $('[data-el="board"]');
     const itemsG = $('[data-el="items"]');
     const halvesG = $('[data-el="halves"]');
@@ -230,14 +293,15 @@ export function mount(root, context = {}) {
     const bestChip = $('[data-hud="best"]'), bestN = $('[data-hud="bestN"]');
     const ovStart = $('[data-ov="start"]'), ovOver = $('[data-ov="over"]');
     const ovPause = $('[data-ov="pause"]'), ovCheats = $('[data-ov="cheats"]');
+    const ovHelp = $('[data-ov="help"]');
     const startBtn = $('[data-el="startBtn"]'), waitEl = $('[data-el="wait"]');
     const againBtn = $('[data-el="again"]');
     const ovTitle = $('[data-el="ovTitle"]'), ovSub = $('[data-el="ovSub"]');
     const segEl = $('[data-el="seg"]');
     const segSolo = $('[data-act="mode-solo"]'), segVs = $('[data-act="mode-vs"]');
-    const restartBtn = $('[data-el="restartBtn"]');
-    const pauseBtn = $('[data-el="pauseBtn"]');
-    const cheatBtn = $('[data-el="cheatBtn"]'), cdot = $('[data-el="cdot"]');
+    const restartBtn = $("[data-restart]");
+    const pauseBtn = $("[data-pause]");
+    const cheatBtn = $("[data-cheats]"), cdot = $('[data-el="cdot"]');
     const cheatRows = {};
     root.querySelectorAll("[data-cheat]").forEach((el) => {
         cheatRows[el.getAttribute("data-cheat")] = el;
@@ -248,7 +312,8 @@ export function mount(root, context = {}) {
     let sub = online ? "vs" : "solo"; /* solo = endless, vs = 60s race */
     let state = null;
     let raf = 0, lastT = 0, pubAcc = 0, lastFlush = 0, lastSnap = 0, lastEv = 0;
-    let cheatsOpen = false, pausedByCheats = false, cheatedRun = false;
+    let pauseAt = 0, pausedBy = null;
+    let cheatsOpen = false, cheatedRun = false, helpOpen = false;
     let swiping = false, botT = 1.2;
     const cheats = { lives: false, noBomb: false, slow: false, wide: false, auto: false, double: false };
     const itemEls = new Map(); /* id -> { el, kind } (DOM kept OUT of serializable state) */
@@ -257,6 +322,12 @@ export function mount(root, context = {}) {
     const cursor = { x: W / 2, y: H / 2, visible: false };
     const offs = [];
     let best = readBest();
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("fruitSliceHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("fruitSliceHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
 
     function readBest() {
         try { return parseInt(localStorage.getItem(META.bestKey), 10) || 0; } catch (e) { return 0; }
@@ -363,7 +434,7 @@ export function mount(root, context = {}) {
         rings.push({ t: 0, el });
         for (let k = 0; k < 10; k++) juiceDot(x, y, k % 2 ? "#f87171" : "#fbbf24");
         flashEl.classList.remove("on"); void flashEl.offsetWidth; flashEl.classList.add("on");
-        stageEl.classList.remove("shake"); void stageEl.offsetWidth; stageEl.classList.add("shake");
+        boardWrap.classList.remove("shake"); void boardWrap.offsetWidth; boardWrap.classList.add("shake");
     }
     function updateEffects(dt) {
         for (let i = halves.length - 1; i >= 0; i--) {
@@ -496,6 +567,7 @@ export function mount(root, context = {}) {
         state = freshState(sub, "playing");
         cheatedRun = anyCheat();
         botT = 1.2; lastEv = 0; sendQ.length = 0;
+        pauseAt = 0; pausedBy = null;
         publish();
     }
     function setSub(s) {
@@ -605,11 +677,15 @@ export function mount(root, context = {}) {
     /* ---------------- pointer input (mouse + touch, no virtual buttons) ---------------- */
     function toSvg(e) {
         const r = boardEl.getBoundingClientRect();
-        return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
+        const scale = Math.min(r.width / W, r.height / H); /* preserveAspectRatio="xMidYMid meet" */
+        if (!scale || !Number.isFinite(scale)) return { x: W / 2, y: H / 2 };
+        const ox = r.left + (r.width - W * scale) / 2;
+        const oy = r.top + (r.height - H * scale) / 2;
+        return { x: (e.clientX - ox) / scale, y: (e.clientY - oy) / scale };
     }
     function onDown(e) {
         if (!state) return;
-        if (state.phase === "paused" && !online && !cheatsOpen) resume();
+        if (state.phase === "paused" && !online && !cheatsOpen && !helpOpen) resume();
         if (state.phase !== "playing") return;
         e.preventDefault();
         try { boardEl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
@@ -631,6 +707,68 @@ export function mount(root, context = {}) {
     function onUp() { swiping = false; }
     function onCtx(e) { e.preventDefault(); }
 
+    /* ---------------- pause / cheats / help ---------------- */
+    function shiftAnchors() {
+        if (!pauseAt) return;
+        const now = performance.now();
+        lastT = now;            /* no dt spike on resume */
+        lastFlush = now;        /* batched guest actions start fresh */
+        lastSnap += Math.max(0, now - pauseAt); /* guest interpolation anchor */
+        pauseAt = 0;
+    }
+    function pauseFor(reason) {
+        if (!state || state.phase !== "playing") return;
+        state.phase = "paused";
+        pausedBy = reason;
+        swiping = false; keys.slice = false;
+        pauseAt = performance.now();
+    }
+    function resumeFrom(reason) {
+        if (!state || state.phase !== "paused") return;
+        if (reason && pausedBy && pausedBy !== reason) return;
+        state.phase = "playing";
+        pausedBy = null;
+        shiftAnchors();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) {
+            if (cheatsOpen) setCheats(false);
+        } else {
+            resumeFrom("help");
+        }
+        render();
+    }
+    function togglePause() {
+        if (!state || online) return;
+        if (cheatsOpen) { setCheats(false); return; }
+        if (helpOpen) { toggleHelp(false); return; }
+        if (state.phase === "playing") { pauseFor("manual"); publish(); }
+        else if (state.phase === "paused") { resumeFrom(null); publish(); }
+    }
+    function resume() {
+        if (!state || state.phase !== "paused") return;
+        resumeFrom(null);
+        publish();
+    }
+    function setCheats(open) {
+        if (online) return;
+        cheatsOpen = open;
+        if (open) {
+            if (helpOpen) { helpOpen = false; resumeFrom("help"); }
+            pauseFor("cheat");
+        } else {
+            resumeFrom("cheat");
+        }
+        render();
+    }
+    function onVis() {
+        if (document.hidden && !online && state && state.phase === "playing") {
+            pauseFor("manual");
+            render();
+        }
+    }
+
     /* ---------------- keyboard input (desktop) ---------------- */
     const MOVE_KEYS = {
         ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
@@ -639,7 +777,33 @@ export function mount(root, context = {}) {
     function onKeyDown(e) {
         if (e.target && e.target.closest && e.target.closest("input,textarea,select")) return;
         const k = e.key;
-        const move = MOVE_KEYS[k];
+        const move0 = MOVE_KEYS[k];
+        if (e.repeat && !move0 && k !== " ") return;
+        /* priority: help -> cheats -> pause / Escape -> game actions */
+        if (k === "h" || k === "H") { toggleHelp(); e.preventDefault(); return; }
+        if (helpOpen) {
+            if (k === "Escape" || k === "Enter" || k === " ") { toggleHelp(false); e.preventDefault(); }
+            else if (move0) e.preventDefault();
+            return;
+        }
+        if (k === "c" || k === "C") {
+            if (!online) { setCheats(!cheatsOpen); e.preventDefault(); }
+            return;
+        }
+        if (cheatsOpen) {
+            if (k === "Escape" || k === "Enter") { setCheats(false); e.preventDefault(); }
+            return;
+        }
+        if (k === "p" || k === "P" || k === "Escape") {
+            if (!online && state) { togglePause(); e.preventDefault(); }
+            return;
+        }
+        if (k === "r" || k === "R") {
+            if (isHost && state) { startGame(); e.preventDefault(); }
+            return;
+        }
+        if (state && state.phase === "paused") return;
+        const move = move0;
         if (move) {
             keys[move] = true; cursor.visible = true; show(cursorEl);
             e.preventDefault();
@@ -659,18 +823,8 @@ export function mount(root, context = {}) {
             keys.slice = true;
             return;
         }
-        if (e.repeat) return;
         if (k === "Enter") {
             if (state && (state.phase === "ready" || state.phase === "over") && isHost) { startGame(); e.preventDefault(); }
-        } else if (k === "p" || k === "P") {
-            if (!online && state) { togglePause(); e.preventDefault(); }
-        } else if (k === "r" || k === "R") {
-            if (isHost && state) { startGame(); e.preventDefault(); }
-        } else if (k === "c" || k === "C") {
-            if (!online) { setCheats(!cheatsOpen); e.preventDefault(); }
-        } else if (k === "Escape") {
-            if (cheatsOpen) { setCheats(false); e.preventDefault(); }
-            else if (!online && state && state.phase === "playing") { togglePause(); e.preventDefault(); }
         }
     }
     function onKeyUp(e) {
@@ -701,40 +855,16 @@ export function mount(root, context = {}) {
         cursorEl.setAttribute("transform", "translate(" + cursor.x.toFixed(1) + " " + cursor.y.toFixed(1) + ")");
     }
 
-    /* ---------------- pause / cheats ---------------- */
-    function togglePause() {
-        if (!state || online) return;
-        if (cheatsOpen) { setCheats(false); return; }
-        if (state.phase === "playing") { state.phase = "paused"; swiping = false; keys.slice = false; }
-        else if (state.phase === "paused") { state.phase = "playing"; pausedByCheats = false; }
-        publish();
-    }
-    function resume() {
-        if (!state || state.phase !== "paused") return;
-        state.phase = "playing"; pausedByCheats = false;
-        publish();
-    }
-    function setCheats(open) {
-        if (online) return;
-        cheatsOpen = open;
-        if (open) {
-            if (state && state.phase === "playing") { state.phase = "paused"; pausedByCheats = true; }
-        } else if (pausedByCheats && state && state.phase === "paused") {
-            state.phase = "playing"; pausedByCheats = false;
-        }
-        render();
-    }
-    function onVis() {
-        if (document.hidden && !online && state && state.phase === "playing") {
-            state.phase = "paused"; swiping = false; keys.slice = false;
-            render();
-        }
-    }
-
     /* ---------------- click routing (template pattern) ---------------- */
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { setCheats(!cheatsOpen); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) { if (isHost && state) startGame(); return; }
         const row = t.closest("[data-cheat]");
         if (row && !online) {
             const k = row.getAttribute("data-cheat");
@@ -749,10 +879,7 @@ export function mount(root, context = {}) {
         if (!act) return;
         switch (act.getAttribute("data-act")) {
             case "start": if (isHost) startGame(); break;
-            case "restart": if (isHost && state) startGame(); break;
-            case "pause": togglePause(); break;
             case "resume": resume(); break;
-            case "cheats": setCheats(!cheatsOpen); break;
             case "cheat-close": setCheats(false); break;
             case "cheat-add":
                 if (state && (state.phase === "playing" || state.phase === "paused")) {
@@ -801,20 +928,20 @@ export function mount(root, context = {}) {
         if (st.lock > 0) return label(st.first) + " first · " + st.lock.toFixed(1) + "s";
         return "Playing";
     }
-    function render() {
+    function syncUI() {
         segEl.hidden = online;
         pauseBtn.hidden = online;
         cheatBtn.hidden = online;
         restartBtn.hidden = online && !isHost;
         segSolo.setAttribute("aria-pressed", String(sub === "solo"));
         segVs.setAttribute("aria-pressed", String(sub === "vs"));
-        cdot.hidden = !anyCheat();
+        if (cdot) cdot.hidden = !anyCheat();
         for (const k in cheatRows) cheatRows[k].setAttribute("aria-pressed", String(cheats[k]));
         if (!state) {
             statusWrap.dataset.state = "ready";
             statusEl.textContent = "Connecting";
             subEl.textContent = "Multiplayer";
-            show(ovStart); hide(ovOver); hide(ovPause); hide(ovCheats);
+            show(ovStart); hide(ovOver); hide(ovPause); hide(ovCheats); hide(ovHelp);
             startBtn.hidden = true; waitEl.hidden = false;
             return;
         }
@@ -823,7 +950,7 @@ export function mount(root, context = {}) {
         const my = mySlot();
         subEl.textContent = online
             ? playerName + " · You are P" + (my + 1)
-            : vs ? "VS Bot · " + MATCH_S + "s match" : "Endless · Best " + best;
+            : vs ? "VS Bot · " + MATCH_S + "s match" : "Endless";
         dot0.hidden = !vs;
         dot0.style.background = SLOT_COLOR[0];
         dot1.style.background = SLOT_COLOR[1];
@@ -838,20 +965,28 @@ export function mount(root, context = {}) {
         bestChip.hidden = vs;
         bestN.textContent = String(best);
         const guest = online && !isHost;
-        ovStart.hidden = st.phase !== "ready";
+        ovStart.hidden = st.phase !== "ready" || cheatsOpen || helpOpen;
         startBtn.hidden = guest; waitEl.hidden = !guest;
-        ovOver.hidden = st.phase !== "over";
+        ovOver.hidden = st.phase !== "over" || cheatsOpen || helpOpen;
         againBtn.hidden = guest;
-        ovPause.hidden = !(st.phase === "paused" && !cheatsOpen);
-        ovCheats.hidden = !cheatsOpen;
+        ovPause.hidden = !(st.phase === "paused") || cheatsOpen || helpOpen;
+        ovCheats.hidden = !cheatsOpen || helpOpen;
+        ovHelp.hidden = !helpOpen;
         if (st.phase === "over") { ovTitle.textContent = resultTitle(); ovSub.textContent = resultSub(); }
         statusWrap.dataset.state = st.phase;
         statusEl.textContent = statusText();
+        const paused = st.phase === "paused";
+        const plabel = pauseBtn.querySelector(".fs-btn-label");
+        if (plabel) plabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        cheatBtn.classList.toggle("on", anyCheat());
         const col = vs ? SLOT_COLOR[my] : "#ffffff";
         trailEl.setAttribute("stroke", col);
         curRing.setAttribute("stroke", col);
         curDot.setAttribute("fill", col);
     }
+    function render() { syncUI(); }
     function renderLite() {
         if (!state) return;
         const st = state;

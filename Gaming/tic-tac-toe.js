@@ -5,9 +5,11 @@
   - Room mode: host-authoritative, mark diacak host lalu di-publish.
   - Puzzle generator acak yang diverifikasi minimax (selalu solvable).
   - Cheat overlay (solo): hint, best move, undo, freeze bot.
-  - Mouse + keyboard (1-9, panah, Enter, R/P/C/H) + keypad virtual mobile.
+  - Mouse + keyboard (1-9, panah, Enter, N, R/P/C/H) + keypad virtual mobile.
   Jalankan: node tools/build-games-manifest.mjs
 */
+
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "tic-tac-toe", // harus sama dengan nama file (tanpa .js)
@@ -27,135 +29,212 @@ export function mount(root, context = {}) {
     let roomData = room?.room || null;
     let state = null;
 
+    /* overlays + timer state (UI lokal, tidak diserialisasi ke room) */
+    let helpOpen = false;
+    let paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("ticTacToeHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("ticTacToeHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
     /* ---------- markup + scoped styles (minimalist, red vs blue) ---------- */
     root.innerHTML = `
 <style>
 .ttt-game{--x:#2563eb;--o:#dc2626;--ink:#111827;--mut:#6b7280;--line:#e5e7eb;--soft:#f3f4f6;
-  max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px;color:var(--ink);
-  font:14px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:6px 2px}
+  width:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:10px;color:var(--ink);
+  font:14px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:4px 2px}
 .ttt-game *{box-sizing:border-box}
-.ttt-game .game-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.ttt-game .game-intro h2{margin:0;font-size:19px;font-weight:650;letter-spacing:-.01em}
-.ttt-game .game-intro p{margin:2px 0 0;color:var(--mut);font-size:12.5px}
-.ttt-game .game-status{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);
-  border-radius:999px;padding:5px 11px;font-size:12px;color:var(--mut);white-space:nowrap;background:#fff}
-.ttt-game .game-status-dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;display:inline-block}
-.ttt-game .game-status-dot.is-you{background:var(--x)}
-.ttt-game .game-status-dot.is-opp{background:var(--o)}
-.ttt-game .game-status-dot.is-think{animation:ttt-pulse 1.1s infinite}
+.ttt-game [hidden]{display:none!important}
+.ttt-game :is(button,summary,[tabindex]):focus-visible{outline:2px solid var(--x);outline-offset:2px}
+
+/* --- satu bar HUD: info di kiri, tombol ikon di kanan --- */
+.ttt-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ttt-hud-info,.ttt-hud-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ttt-hud-info{min-width:0}
+.ttt-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;
+  border-radius:999px;padding:5px 9px;min-height:28px;color:var(--mut);white-space:nowrap}
+.ttt-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.ttt-dot{width:7px;height:7px;border-radius:50%;background:#9ca3af;display:inline-block;flex:none}
+.ttt-dot.is-you{background:var(--x)}
+.ttt-dot.is-opp{background:var(--o)}
+.ttt-dot.is-think{animation:ttt-pulse 1.1s infinite}
 @keyframes ttt-pulse{50%{opacity:.35}}
-.ttt-meta{display:flex;flex-direction:column;gap:6px}
-.ttt-role{font-size:13px;color:var(--mut)}
-.ttt-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;
-  padding:0 5px;border-radius:6px;font-size:12px;font-weight:700;color:#fff;vertical-align:-4px}
-.ttt-badge.is-x{background:var(--x)} .ttt-badge.is-o{background:var(--o)}
-.ttt-chips{display:flex;flex-wrap:wrap;gap:6px}
-.ttt-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 10px;
-  font-size:11.5px;color:var(--mut)}
-.ttt-board{position:relative;background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px}
-.ttt-svg{display:block;width:100%;max-width:340px;margin:0 auto;aspect-ratio:1/1}
+.ttt-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;
+  padding:0 4px;border-radius:5px;font-size:10px;font-weight:700;color:#fff;vertical-align:-3px}
+.ttt-badge.is-x{background:var(--x)}
+.ttt-badge.is-o{background:var(--o)}
+.ttt-spacer{flex:1 1 auto}
+.ttt-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);
+  border-radius:9px;padding:7px 11px;min-height:34px;font-size:11px;font-weight:600;cursor:pointer;
+  transition:background .15s,transform .05s}
+.ttt-btn:hover{background:var(--soft)}
+.ttt-btn:active{transform:translateY(1px)}
+.ttt-btn:disabled{opacity:.45;cursor:default}
+.ttt-btn.ttt-primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.ttt-btn.ttt-primary:hover{background:#000}
+.ttt-btn[aria-pressed="true"],.ttt-btn.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.ttt-btn.ttt-cheaty{border-style:dashed}
+.ttt-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ttt-icon-btn svg{flex:none;display:block}
+
+/* --- board: arena + overlay, tanpa wrapper tengah --- */
+.ttt-board{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;
+  padding:10px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  container-type:size}
+.ttt-svg{display:block;width:100%;max-width:560px;aspect-ratio:1/1;height:auto;
+  margin:0 auto;touch-action:manipulation}
+@supports (width:1cqw){.ttt-svg{width:min(100cqw,100cqh,560px);max-width:none}}
 .ttt-cell{fill:rgba(0,0,0,0);transition:fill .15s}
 .ttt-cell.ttt-play{cursor:pointer}
 .ttt-svg[data-turn="1"] .ttt-cell.ttt-play:hover{fill:rgba(37,99,235,.08)}
 .ttt-svg[data-turn="2"] .ttt-cell.ttt-play:hover{fill:rgba(220,38,38,.08)}
 .ttt-cell.ttt-hint-x{fill:rgba(37,99,235,.10);stroke:var(--x);stroke-width:1.5;stroke-dasharray:5 4}
 .ttt-cell.ttt-hint-o{fill:rgba(220,38,38,.10);stroke:var(--o);stroke-width:1.5;stroke-dasharray:5 4}
-.ttt-cell.ttt-wincell-x{fill:rgba(37,99,235,.10)} .ttt-cell.ttt-wincell-o{fill:rgba(220,38,38,.10)}
+.ttt-cell.ttt-wincell-x{fill:rgba(37,99,235,.10)}
+.ttt-cell.ttt-wincell-o{fill:rgba(220,38,38,.10)}
 .ttt-grid line{stroke:var(--line);stroke-width:2;stroke-linecap:round}
 .ttt-x{stroke:var(--x);stroke-width:8;stroke-linecap:round;fill:none}
 .ttt-o{stroke:var(--o);stroke-width:8;fill:none}
-.ttt-mark{transition:opacity .3s}
+.ttt-mark{transition:opacity .2s}
 .ttt-svg.ttt-dim .ttt-mark{opacity:.25}
 .ttt-svg.ttt-dim .ttt-mark.ttt-hit{opacity:1}
 .ttt-ghost{opacity:.22;pointer-events:none}
 .ttt-ax{stroke-dasharray:56;stroke-dashoffset:56;animation:ttt-draw .18s ease-out forwards}
-.ttt-ao{stroke-dasharray:128;stroke-dashoffset:128;animation:ttt-draw .3s ease-out forwards}
+.ttt-ao{stroke-dasharray:128;stroke-dashoffset:128;animation:ttt-draw .28s ease-out forwards}
 @keyframes ttt-draw{to{stroke-dashoffset:0}}
 .ttt-wl{stroke-width:5;stroke-linecap:round;opacity:.9;stroke-dasharray:300;stroke-dashoffset:300;
-  animation:ttt-draw .4s .05s ease-out forwards}
-.ttt-wl.is-x{stroke:var(--x)} .ttt-wl.is-o{stroke:var(--o)}
+  animation:ttt-draw .35s .05s ease-out forwards}
+.ttt-wl.is-x{stroke:var(--x)}
+.ttt-wl.is-o{stroke:var(--o)}
 .ttt-cursor{fill:none;stroke:#9ca3af;stroke-width:1.5;stroke-dasharray:4 3;pointer-events:none}
 .ttt-hide{display:none!important}
-.ttt-controls{display:flex;flex-wrap:wrap;gap:8px}
-.ttt-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);
-  border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:550;cursor:pointer;
-  transition:background .15s,transform .05s}
-.ttt-btn:hover{background:var(--soft)} .ttt-btn:active{transform:translateY(1px)}
-.ttt-btn:disabled{opacity:.45;cursor:default}
-.ttt-btn.ttt-primary{background:var(--ink);border-color:var(--ink);color:#fff}
-.ttt-btn.ttt-primary:hover{background:#000}
-.ttt-btn[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
-.ttt-btn.ttt-cheaty{border-style:dashed}
-.ttt-pad{display:none;grid-template-columns:repeat(3,1fr);gap:8px;max-width:280px;margin:0 auto;width:100%}
+
+/* --- overlay modal: flex column, head/foot tetap, body scroll --- */
+.ttt-ov{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:12px;
+  background:rgba(255,255,255,.88);backdrop-filter:blur(3px);border-radius:12px;
+  animation:ttt-fade .2s ease-out}
+.ttt-ov[data-ov="cheats"]{z-index:25}
+.ttt-ov[data-ov="result"]{z-index:30}
+.ttt-ov[data-ov="pause"]{z-index:35}
+.ttt-ov[data-ov="wait"]{z-index:40}
+.ttt-ov[data-ov="help"]{z-index:50}
+@keyframes ttt-fade{from{opacity:0}}
+.ttt-card{display:flex;flex-direction:column;gap:10px;width:min(360px,100%);max-width:100%;
+  max-height:100%;padding:18px;background:#fff;border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 8px 24px rgba(17,24,39,.08);overflow:hidden}
+.ttt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.ttt-head h3{margin:0;font-size:17px;font-weight:650}
+.ttt-head h3.ttt-good{color:var(--x)}
+.ttt-head h3.ttt-bad{color:var(--o)}
+.ttt-body{flex:1 1 auto;min-height:0;overflow:auto}
+.ttt-body p{margin:0;color:var(--mut);font-size:12.5px}
+.ttt-body.ttt-center{text-align:center}
+.ttt-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.ttt-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.ttt-card.ttt-cheatcard{text-align:left}
+.ttt-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:8px 0;min-height:44px;border-bottom:1px solid var(--soft);font-size:12.5px}
+.ttt-cheatrow:last-of-type{border-bottom:0}
+.ttt-note{font-size:11px;color:var(--mut)}
+.ttt-help{color:var(--mut);font-size:12.5px}
+.ttt-help ol{margin:0 0 10px;padding-left:18px}
+.ttt-help li{margin:5px 0}
+.ttt-help kbd{font:11px ui-monospace,monospace;background:var(--soft);border:1px solid var(--line);
+  border-radius:5px;padding:1px 5px;color:var(--ink)}
+
+/* --- keypad virtual: sibling setelah board --- */
+.ttt-pad{display:none;grid-template-columns:repeat(3,1fr);gap:8px;max-width:260px;margin:0 auto;width:100%;flex:none}
 @media (pointer:coarse),(max-width:640px){.ttt-pad{display:grid}}
 .ttt-game.pad-on .ttt-pad{display:grid}
 .ttt-game.pad-off .ttt-pad{display:none}
-.ttt-key{aspect-ratio:1/1;border:1px solid var(--line);border-radius:12px;background:#fff;
+.ttt-key{aspect-ratio:1/1;min-height:44px;border:1px solid var(--line);border-radius:10px;background:#fff;
   font-size:17px;font-weight:650;color:var(--mut);cursor:pointer}
 .ttt-key:active{background:var(--soft)}
 .ttt-key:disabled{opacity:.5;cursor:default}
-.ttt-key.has-x{color:var(--x)} .ttt-key.has-o{color:var(--o)}
-.ttt-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  background:rgba(255,255,255,.88);backdrop-filter:blur(3px);border-radius:18px;z-index:20;
-  animation:ttt-fade .25s ease-out}
-.ttt-ov[data-ov="result"]{z-index:30}
-.ttt-ov[data-ov="wait"]{z-index:40}
-@keyframes ttt-fade{from{opacity:0}}
-.ttt-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px 22px;
-  max-width:310px;width:calc(100% - 32px);text-align:center;box-shadow:0 8px 28px rgba(17,24,39,.08)}
-.ttt-card h3{margin:0 0 6px;font-size:18px;font-weight:650}
-.ttt-card h3.ttt-good{color:var(--x)} .ttt-card h3.ttt-bad{color:var(--o)}
-.ttt-card p{margin:0 0 14px;color:var(--mut);font-size:12.5px}
-.ttt-card .ttt-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.ttt-card.ttt-cheatcard{border-style:dashed;text-align:left}
-.ttt-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:7px 0;border-bottom:1px solid var(--soft);font-size:12.5px}
-.ttt-cheatrow:last-of-type{border-bottom:0}
-.ttt-note{font-size:11px;color:var(--mut);margin:10px 0 12px}
-.ttt-help{border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12.5px}
-.ttt-help summary{cursor:pointer;padding:10px 14px;font-weight:600;color:var(--ink);list-style:none}
-.ttt-help summary::before{content:"+ ";color:var(--mut)}
-.ttt-help[open] summary::before{content:"– "}
-.ttt-help .ttt-helpbody{padding:0 14px 12px;color:var(--mut)}
-.ttt-help ol{margin:4px 0 10px;padding-left:18px}
-.ttt-help li{margin:3px 0}
-.ttt-help kbd{font:11px ui-monospace,monospace;background:var(--soft);border:1px solid var(--line);
-  border-radius:5px;padding:1px 5px;color:var(--ink)}
-.ttt-game .game-actions{display:flex;justify-content:flex-end}
-@media (prefers-reduced-motion:reduce){.ttt-game *{animation:none!important;transition:none!important}}
+.ttt-key.has-x{color:var(--x)}
+.ttt-key.has-o{color:var(--o)}
+@media (pointer:coarse){.ttt-btn{min-height:44px}.ttt-chip{min-height:44px;padding:8px 12px}}
+@media (prefers-reduced-motion:reduce){.ttt-game *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- fill height + mobile refinements (PALING AKHIR) --- */
+.ttt-icon-btn svg{flex:none;display:block}
+.ttt-card{overflow:hidden}
+.ttt-head,.ttt-foot{flex:none}
+.ttt-body{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.ttt-game{gap:8px}
+.ttt-game .ttt-hud{gap:5px}
+.ttt-game .ttt-hud .ttt-hud-info,
+.ttt-game .ttt-hud .ttt-hud-actions{gap:5px}
+.ttt-game .ttt-hud .ttt-hud-actions{margin-left:auto}
+.ttt-game .ttt-hud .ttt-chip{padding:4px 6px;min-height:0;font-size:9px}
+.ttt-game .ttt-hud .ttt-chip[data-hud="puzzlechip"],
+.ttt-game .ttt-hud .ttt-chip[data-hud="bestchip"]{display:none}
+.ttt-game .ttt-hud .ttt-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.ttt-game .ttt-hud .ttt-btn-label,
+.ttt-game .ttt-hud .ttt-spacer{display:none}
+.ttt-game .ttt-board:not(:has(.ttt-ov:not([hidden]))){flex:1 1 auto;min-height:0}
+.ttt-game .ttt-board:has(.ttt-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+.ttt-game .ttt-ov{padding:8px}
+.ttt-game .ttt-card{width:100%;height:100%;max-height:100%;padding:12px}
+.ttt-game .ttt-body{scrollbar-width:none}
+.ttt-game .ttt-body::-webkit-scrollbar{display:none}
+}
 </style>
-<div class="game-app ttt-game" data-wrap>
-  <div class="game-intro">
-    <div><h2>Tic Tac Toe</h2><p>Three in a row wins. Blue X versus red O.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
-  </div>
-  <div class="ttt-meta">
-    <div class="ttt-role" data-role></div>
-    <div class="ttt-chips">
-      <span class="ttt-chip" data-chip="round">Round 1</span>
-      <span class="ttt-chip" data-chip="score">—</span>
-      <span class="ttt-chip" data-chip="streak">Streak 0 · Best 0</span>
-      <span class="ttt-chip" data-chip="puzzle" hidden>Puzzles solved 0</span>
+<div class="game-app ttt-game game-fill" data-wrap>
+  <div class="ttt-hud">
+    <div class="ttt-hud-info">
+      <span class="ttt-chip"><i class="ttt-dot" data-hud="dot"></i><b data-hud="status">Ready</b></span>
+      <span class="ttt-chip">YOU <b data-hud="role">—</b></span>
+      <span class="ttt-chip" data-hud="roundchip">RND <b data-hud="round">1</b></span>
+      <span class="ttt-chip">SCORE <b data-hud="score">—</b></span>
+      <span class="ttt-chip" data-hud="bestchip">STREAK <b data-hud="streak">0</b> · BEST <b data-hud="best">0</b></span>
+      <span class="ttt-chip" data-hud="puzzlechip" hidden>PUZZLES <b data-hud="puzzles">0</b></span>
+    </div>
+    <span class="ttt-spacer"></span>
+    <div class="ttt-hud-actions">
+      <button class="ttt-btn ttt-icon-btn" type="button" data-act="diff" data-btn="diff"
+              aria-label="Bot difficulty" title="Toggle bot difficulty (Perfect / Easy)">${iconSVG("brain", { size: 14 })}<span class="ttt-btn-label">Perfect</span></button>
+      <button class="ttt-btn ttt-icon-btn" type="button" data-act="puzzle" data-btn="puzzle"
+              aria-label="Puzzle" title="Deal a solvable puzzle (N)">${iconSVG("puzzle", { size: 14 })}<span class="ttt-btn-label">Puzzle</span></button>
+      <button class="ttt-btn ttt-icon-btn" type="button" data-act="pad" data-btn="pad" aria-pressed="false"
+              aria-label="Keypad" title="Toggle on-screen keypad">${iconSVG("grid", { size: 14 })}<span class="ttt-btn-label">Pad</span></button>
+      <button class="ttt-btn ttt-icon-btn" type="button" data-help
+              aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ttt-btn-label">Help</span></button>
+      <button class="ttt-btn ttt-icon-btn" type="button" data-cheats
+              aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ttt-btn-label">Cheats</span></button>
+      <button class="ttt-btn ttt-icon-btn" type="button" data-pause
+              aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="ttt-btn-label">Pause</span></button>
+      <button class="ttt-btn ttt-icon-btn" type="button" data-restart
+              aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ttt-btn-label">Restart</span></button>
+      <button class="ttt-btn ttt-icon-btn" type="button" data-exit
+              aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ttt-btn-label">Exit game</span></button>
     </div>
   </div>
-  <section class="game-panel" data-board>
-    <div class="ttt-board">
-      <svg class="ttt-svg" viewBox="0 0 300 300" data-svg data-turn="0" role="img" aria-label="Tic tac toe board">
-        <g data-cells></g>
-        <g class="ttt-grid">
-          <line x1="100" y1="14" x2="100" y2="286"/><line x1="200" y1="14" x2="200" y2="286"/>
-          <line x1="14" y1="100" x2="286" y2="100"/><line x1="14" y1="200" x2="286" y2="200"/>
-        </g>
-        <g data-ghost class="ttt-ghost"></g>
-        <g data-marks></g>
-        <g data-win></g>
-        <rect data-cursor class="ttt-cursor ttt-hide" width="84" height="84" rx="12"/>
-      </svg>
-      <div class="ttt-ov" data-ov="wait"><div class="ttt-card">
-        <h3>Waiting for host</h3><p>The host is setting up the first round. Marks are drawn randomly.</p>
-      </div></div>
-      <div class="ttt-ov" data-ov="cheats" hidden><div class="ttt-card ttt-cheatcard">
-        <h3>Cheats</h3>
+  <section class="game-panel ttt-board" data-board>
+    <svg class="ttt-svg" viewBox="0 0 300 300" data-svg data-turn="0" role="img" aria-label="Tic tac toe board">
+      <g data-cells></g>
+      <g class="ttt-grid">
+        <line x1="100" y1="14" x2="100" y2="286"/><line x1="200" y1="14" x2="200" y2="286"/>
+        <line x1="14" y1="100" x2="286" y2="100"/><line x1="14" y1="200" x2="286" y2="200"/>
+      </g>
+      <g data-ghost class="ttt-ghost"></g>
+      <g data-marks></g>
+      <g data-win></g>
+      <rect data-cursor class="ttt-cursor ttt-hide" width="84" height="84" rx="12"/>
+    </svg>
+
+    <div class="ttt-ov" data-ov="wait" hidden><div class="ttt-card">
+      <div class="ttt-head"><h3>Waiting for host</h3></div>
+      <div class="ttt-body ttt-center"><p>The host is setting up the first round. Marks are drawn randomly.</p></div>
+    </div></div>
+
+    <div class="ttt-ov" data-ov="cheats" hidden><div class="ttt-card ttt-cheatcard">
+      <div class="ttt-head"><h3>Cheats</h3><button class="ttt-btn" type="button" data-act="cheats-close" aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+      <div class="ttt-body">
         <div class="ttt-cheatrow"><span>Hint: outline my best move</span>
           <button class="ttt-btn ttt-cheaty" type="button" data-act="cheat-hint" aria-pressed="false">Off</button></div>
         <div class="ttt-cheatrow"><span>Play my best move now</span>
@@ -164,43 +243,44 @@ export function mount(root, context = {}) {
           <button class="ttt-btn ttt-cheaty" type="button" data-act="cheat-undo">Undo</button></div>
         <div class="ttt-cheatrow"><span>Freeze bot: skip its next turn</span>
           <button class="ttt-btn ttt-cheaty" type="button" data-act="cheat-skip">Freeze</button></div>
-        <p class="ttt-note">Solo mode only. Cheat-assisted rounds do not count toward score or streak.</p>
-        <div class="ttt-row"><button class="ttt-btn" type="button" data-act="cheats-close">Close</button></div>
+      </div>
+      <div class="ttt-foot"><span class="ttt-note">Solo only · assisted rounds don't count</span><button class="ttt-btn" type="button" data-act="cheats-close">Close</button></div>
+    </div></div>
+
+    <div class="ttt-ov" data-ov="result" hidden><div class="ttt-card">
+      <div class="ttt-head"><h3 data-res="title">Round over</h3></div>
+      <div class="ttt-body ttt-center"><p data-res="sub"></p></div>
+      <div class="ttt-foot"><span class="ttt-note"></span><div class="ttt-row">
+        <button class="ttt-btn ttt-primary" type="button" data-act="restart" data-res="again">Play again</button>
+        <button class="ttt-btn" type="button" data-act="retry" data-res="retry" hidden>Retry puzzle</button>
+        <button class="ttt-btn" type="button" data-act="puzzle" data-res="newpuzzle" hidden>New puzzle</button>
       </div></div>
-      <div class="ttt-ov" data-ov="result" hidden><div class="ttt-card">
-        <h3 data-res="title">Round over</h3>
-        <p data-res="sub"></p>
-        <div class="ttt-row">
-          <button class="ttt-btn ttt-primary" type="button" data-act="restart" data-res="again">Play again</button>
-          <button class="ttt-btn" type="button" data-act="retry" data-res="retry" hidden>Retry puzzle</button>
-          <button class="ttt-btn" type="button" data-act="puzzle" data-res="newpuzzle" hidden>New puzzle</button>
-        </div>
-      </div></div>
-    </div>
+    </div></div>
+
+    <div class="ttt-ov" data-ov="pause" hidden><div class="ttt-card">
+      <div class="ttt-head"><h3>Paused</h3></div>
+      <div class="ttt-body ttt-center"><p>Bot turns and pending timers are frozen. Take your time.</p></div>
+      <div class="ttt-foot"><span class="ttt-note">Press P or Esc to resume</span><button class="ttt-btn ttt-primary" type="button" data-resume>Resume</button></div>
+    </div></div>
+
+    <div class="ttt-ov" data-ov="help" hidden><div class="ttt-card">
+      <div class="ttt-head"><h3>How to play</h3><button class="ttt-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+      <div class="ttt-body ttt-help">
+        <ol>
+          <li>Place your mark on an empty cell. Three in a row, column or diagonal wins.</li>
+          <li>Marks are drawn randomly every round: blue X always opens, so you may start or answer — versus the bot or versus a friend in a room.</li>
+          <li><b>Puzzle</b> deals a random mid-game position verified solvable: find the forced win against perfect defense. Retry keeps the same position.</li>
+          <li><b>Cheats</b> (solo only) can hint, auto-play, undo or freeze the bot. Assisted rounds are not counted.</li>
+        </ol>
+        <div>Mouse: click a cell, hover previews your mark. Keyboard: <kbd>1</kbd>–<kbd>9</kbd> place (left to right, top to bottom),
+        <kbd>←↑↓→</kbd> + <kbd>Enter</kbd> move and place, <kbd>N</kbd> puzzle, <kbd>R</kbd> restart,
+        <kbd>P</kbd> pause, <kbd>C</kbd> cheats, <kbd>H</kbd> help, <kbd>Esc</kbd> close.
+        On touch devices a 3×3 keypad appears under the board.</div>
+      </div>
+      <div class="ttt-foot"><span class="ttt-note">Press H to reopen this guide</span><button class="ttt-btn ttt-primary" type="button" data-help-close>Got it</button></div>
+    </div></div>
   </section>
-  <div class="ttt-controls">
-    <button class="ttt-btn" type="button" data-act="diff" data-btn="diff">Bot: Perfect</button>
-    <button class="ttt-btn" type="button" data-act="puzzle" data-btn="puzzle">Puzzle</button>
-    <button class="ttt-btn ttt-cheaty" type="button" data-act="cheats" data-btn="cheats" aria-pressed="false">Cheats</button>
-    <button class="ttt-btn" type="button" data-act="pad" data-btn="pad" aria-pressed="false">Keypad</button>
-    <button class="ttt-btn" type="button" data-act="restart">Restart</button>
-  </div>
   <div class="ttt-pad" data-pad></div>
-  <details class="ttt-help">
-    <summary>How to play</summary>
-    <div class="ttt-helpbody">
-      <ol>
-        <li>Place your mark on an empty cell. Three in a row, column or diagonal wins.</li>
-        <li>Marks are drawn randomly every round: blue X always opens, so you may start or answer — versus the bot or versus a friend in a room.</li>
-        <li><b>Puzzle</b> deals a random mid-game position that is verified solvable: find the forced win against perfect defense. Retry keeps the same position.</li>
-        <li><b>Cheats</b> (solo only) can hint, auto-play, undo or freeze the bot. Assisted rounds are not counted.</li>
-      </ol>
-      <div>Mouse: click a cell, hover previews your mark. Keyboard: <kbd>1</kbd>–<kbd>9</kbd> place (left to right, top to bottom),
-      <kbd>←↑↓→</kbd> + <kbd>Enter</kbd> move and place, <kbd>R</kbd> restart, <kbd>P</kbd> puzzle, <kbd>C</kbd> cheats, <kbd>H</kbd> hint, <kbd>Esc</kbd> close.
-      On touch devices a 3×3 keypad appears under the board.</div>
-    </div>
-  </details>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------- refs + helpers ---------- */
@@ -212,16 +292,18 @@ export function mount(root, context = {}) {
     const gMarks = $("[data-marks]");
     const gWin = $("[data-win]");
     const cursorEl = $("[data-cursor]");
-    const statusEl = $("[data-status]");
-    const dotEl = $("[data-dot]");
-    const roleEl = $("[data-role]");
-    const chips = {
-        round: $('[data-chip="round"]'), score: $('[data-chip="score"]'),
-        streak: $('[data-chip="streak"]'), puzzle: $('[data-chip="puzzle"]'),
+    const hud = {
+        dot: $('[data-hud="dot"]'), status: $('[data-hud="status"]'),
+        role: $('[data-hud="role"]'), round: $('[data-hud="round"]'),
+        score: $('[data-hud="score"]'), streak: $('[data-hud="streak"]'),
+        best: $('[data-hud="best"]'), puzzles: $('[data-hud="puzzles"]'),
+        puzzleChip: $('[data-hud="puzzlechip"]'),
     };
-    const ovWait = $('[data-ov="wait"]');
-    const ovCheats = $('[data-ov="cheats"]');
-    const ovResult = $('[data-ov="result"]');
+    const ov = {
+        wait: $('[data-ov="wait"]'), cheats: $('[data-ov="cheats"]'),
+        result: $('[data-ov="result"]'), pause: $('[data-ov="pause"]'),
+        help: $('[data-ov="help"]'),
+    };
     const resTitle = $('[data-res="title"]');
     const resSub = $('[data-res="sub"]');
     const resAgain = $('[data-res="again"]');
@@ -229,7 +311,8 @@ export function mount(root, context = {}) {
     const resNew = $('[data-res="newpuzzle"]');
     const btnDiff = $('[data-btn="diff"]');
     const btnPuzzle = $('[data-btn="puzzle"]');
-    const btnCheats = $('[data-btn="cheats"]');
+    const btnCheats = $('[data-cheats]');
+    const btnPause = $('[data-pause]');
     const btnPad = $('[data-btn="pad"]');
     const padEl = $("[data-pad]");
     const cheatHintBtn = $('[data-act="cheat-hint"]');
@@ -265,13 +348,46 @@ export function mount(root, context = {}) {
         resultShown: false, resultPending: false, animKey: "",
     };
 
+    /* Jeda: semua timer memakai jam virtual yang berhenti saat help/cheats/pause
+       terbuka. Saat dilanjutkan, penanda Date.now() digeser sebesar jeda agar
+       bot tidak loncat. */
     let timers = [];
-    const later = (fn, ms) => {
-        const t = setTimeout(() => { timers = timers.filter((x) => x !== t); fn(); }, ms);
-        timers.push(t);
-        return t;
+    let timerTick = null;
+    let frozenAt = 0;
+    const frozen = () => paused || helpOpen || ui.cheats;
+
+    function ensureTimer() {
+        if (timerTick || frozen() || !timers.length) return;
+        const next = Math.min.apply(null, timers.map((t) => t.due));
+        timerTick = setTimeout(() => {
+            timerTick = null;
+            if (frozen()) return;
+            const now = Date.now();
+            const due = timers.filter((t) => t.due <= now);
+            timers = timers.filter((t) => t.due > now);
+            due.forEach((t) => t.fn());
+            ensureTimer();
+        }, Math.max(0, next - Date.now()));
+    }
+    const later = (fn, ms) => { timers.push({ fn, due: Date.now() + ms }); ensureTimer(); };
+    const clearTimers = () => {
+        if (timerTick) clearTimeout(timerTick);
+        timerTick = null;
+        timers = [];
     };
-    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+    function freezeTimers() {
+        if (frozenAt) return;
+        frozenAt = Date.now();
+        if (timerTick) { clearTimeout(timerTick); timerTick = null; }
+    }
+    function thawTimers() {
+        if (!frozenAt) return;
+        const shift = Date.now() - frozenAt;
+        frozenAt = 0;
+        timers.forEach((t) => { t.due += shift; });
+        ensureTimer();
+    }
+    const syncFreeze = () => { if (frozen()) freezeTimers(); else thawTimers(); };
 
     /* ---------- rules + AI (minimax + alpha-beta, perspektif X) ---------- */
     function winnerOf(b) {
@@ -360,7 +476,8 @@ export function mount(root, context = {}) {
         };
     }
     const myMark = () => (state ? state.marks[playerIndex] : 0);
-    const canPlay = (i) => Boolean(state && state.phase === "play" && state.turn === myMark() && !state.board[i]);
+    const canPlay = (i) => Boolean(state && state.phase === "play" && state.turn === myMark()
+        && !state.board[i] && !paused && !helpOpen && !ui.cheats);
     const rebuild = () => { const b = state.base.slice(); for (const mv of state.moves) b[mv.c] = mv.m; return b; };
     const scoreOf = (idx) => (state.marks[idx] === 1 ? state.score.x : state.score.o);
     const nameOf = (idx) => online
@@ -402,7 +519,7 @@ export function mount(root, context = {}) {
 
     /* ---------- rendering ---------- */
     function updateCursor() {
-        const showKbd = ui.kbd && state && state.phase === "play";
+        const showKbd = ui.kbd && state && state.phase === "play" && !frozen();
         cursorEl.classList.toggle("ttt-hide", !showKbd);
         if (showKbd) {
             cursorEl.setAttribute("x", CX(ui.cursor) - 42);
@@ -413,14 +530,49 @@ export function mount(root, context = {}) {
         if (i >= 0 && canPlay(i)) drawMark(gGhost, i, myMark());
     }
 
+    function syncOverlays() {
+        const waiting = !state;
+        const over = Boolean(state && state.phase === "over");
+        ov.help.hidden = !helpOpen;
+        ov.cheats.hidden = !ui.cheats || helpOpen || waiting || online;
+        ov.pause.hidden = !paused || helpOpen || ui.cheats || waiting;
+        ov.wait.hidden = !waiting || helpOpen || ui.cheats || paused;
+        ov.result.hidden = !(over && ui.resultShown) || helpOpen || ui.cheats || paused;
+
+        const pLabel = btnPause.querySelector(".ttt-btn-label");
+        if (pLabel) pLabel.textContent = paused ? "Resume" : "Pause";
+        btnPause.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        btnPause.disabled = online;
+
+        const cLabel = btnCheats.querySelector(".ttt-btn-label");
+        if (cLabel) cLabel.textContent = ui.cheats ? "Cheats on" : "Cheats";
+        btnCheats.setAttribute("aria-pressed", String(ui.cheats));
+        btnCheats.classList.toggle("on", ui.cheats || ui.hint);
+        btnCheats.disabled = online;
+
+        btnDiff.hidden = online;
+        btnPuzzle.hidden = online;
+        if (!online) {
+            const dLabel = btnDiff.querySelector(".ttt-btn-label");
+            if (dLabel) dLabel.textContent = state && state.difficulty === "easy" ? "Easy" : "Perfect";
+            btnDiff.setAttribute("aria-label", state && state.difficulty === "easy"
+                ? "Bot: Easy — click for Perfect" : "Bot: Perfect — click for Easy");
+        }
+    }
+
     function render() {
+        syncOverlays();
         if (!state) { // guest menunggu state pertama dari host
-            ovWait.hidden = false;
-            statusEl.textContent = "Waiting for host…";
-            dotEl.className = "game-status-dot";
+            hud.status.textContent = "Waiting for host…";
+            hud.dot.className = "ttt-dot";
+            hud.role.textContent = "—";
+            hud.round.textContent = "—";
+            hud.score.textContent = "—";
+            hud.streak.textContent = "—";
+            hud.best.textContent = String(best);
+            hud.puzzleChip.hidden = true;
             return;
         }
-        ovWait.hidden = true;
         const my = myMark(), opp = 3 - my;
         const over = state.phase === "over";
         const myTurn = state.phase === "play" && state.turn === my;
@@ -461,38 +613,31 @@ export function mount(root, context = {}) {
         updateCursor();
 
         /* HUD */
-        dotEl.className = "game-status-dot";
-        if (over) { statusEl.textContent = "Round over"; }
-        else if (myTurn) { statusEl.textContent = "Your turn"; dotEl.classList.add("is-you"); }
+        hud.dot.className = "ttt-dot";
+        if (over) { hud.status.textContent = "Round over"; }
+        else if (myTurn) { hud.status.textContent = "Your turn"; hud.dot.classList.add("is-you"); }
         else {
-            statusEl.textContent = online ? "Opponent's turn" : "Bot thinking…";
-            dotEl.classList.add("is-opp");
-            if (!online) dotEl.classList.add("is-think");
+            hud.status.textContent = online ? "Opponent's turn" : "Bot thinking…";
+            hud.dot.classList.add("is-opp");
+            if (!online) hud.dot.classList.add("is-think");
         }
 
         const badge = (m) => `<b class="ttt-badge ${m === 1 ? "is-x" : "is-o"}">${m === 1 ? "X" : "O"}</b>`;
         if (state.puzzle) {
-            roleEl.innerHTML = `Puzzle #${state.puzzle.num}: you are ${badge(my)} — find the forced win.`;
+            hud.role.innerHTML = `Puzzle ${badge(my)} — find the forced win.`;
         } else if (online) {
-            roleEl.innerHTML = `You are ${badge(my)} vs ${esc(nameOf(1 - playerIndex))} ${badge(opp)}. X opens; marks are re-drawn every round.`;
+            hud.role.innerHTML = `${badge(my)} vs ${esc(nameOf(1 - playerIndex))} ${badge(opp)}`;
         } else {
-            roleEl.innerHTML = `You are ${badge(my)} · Bot is ${badge(opp)}. ${my === 1 ? "You open this round." : "Bot opens this round."}`;
+            hud.role.innerHTML = `${badge(my)} / ${badge(opp)}`;
         }
-        chips.round.textContent = state.puzzle ? "Puzzle #" + state.puzzle.num : "Round " + state.round;
-        chips.score.textContent = online
-            ? `${nameOf(0)} ${scoreOf(0)} · ${nameOf(1)} ${scoreOf(1)} · Draws ${state.score.d}`
-            : `You ${scoreOf(0)} · Bot ${scoreOf(1)} · Draws ${state.score.d}`;
-        chips.streak.hidden = online;
-        chips.streak.textContent = `Streak ${state.streak} · Best ${best}`;
-        chips.puzzle.hidden = !state.puzzle;
-        chips.puzzle.textContent = `Puzzles solved ${state.puzzlesSolved}`;
-
-        /* controls */
-        btnDiff.hidden = online;
-        btnDiff.textContent = state.difficulty === "perfect" ? "Bot: Perfect" : "Bot: Easy";
-        btnPuzzle.hidden = online;
-        btnCheats.hidden = online;
-        btnCheats.setAttribute("aria-pressed", String(ui.cheats));
+        hud.round.textContent = state.puzzle ? "P#" + state.puzzle.num : String(state.round);
+        hud.score.textContent = online
+            ? `${scoreOf(0)}–${scoreOf(1)} · D${state.score.d}`
+            : `${scoreOf(0)}–${scoreOf(1)} · D${state.score.d}`;
+        hud.streak.textContent = String(state.streak);
+        hud.best.textContent = String(best);
+        hud.puzzleChip.hidden = !state.puzzle;
+        hud.puzzles.textContent = String(state.puzzlesSolved);
 
         /* keypad virtual */
         for (let i = 0; i < 9; i++) {
@@ -503,9 +648,8 @@ export function mount(root, context = {}) {
             padKeys[i].disabled = !canPlay(i);
         }
 
-        /* cheat overlay */
+        /* cheat overlay controls */
         if (over) ui.cheats = false;
-        ovCheats.hidden = !ui.cheats || online;
         cheatHintBtn.setAttribute("aria-pressed", String(ui.hint));
         cheatHintBtn.textContent = ui.hint ? "On" : "Off";
         cheatBestBtn.disabled = !myTurn;
@@ -521,7 +665,6 @@ export function mount(root, context = {}) {
             }, 650);
         }
         if (!over) { ui.resultShown = false; }
-        ovResult.hidden = !(over && ui.resultShown);
         if (over && ui.resultShown) renderResult();
     }
 
@@ -574,6 +717,7 @@ export function mount(root, context = {}) {
         state.winner = w.p;
         state.winLine = w.line;
         ui.cheats = false;
+        syncFreeze();
         const human = state.marks[0];
         if (state.puzzle) {
             state.puzzle.result = w.p === human ? "solved" : "failed";
@@ -597,6 +741,9 @@ export function mount(root, context = {}) {
         ui.resultShown = false;
         ui.resultPending = false;
         ui.cheats = false;
+        helpOpen = false;
+        paused = false;
+        syncFreeze();
         state.moves = [];
         state.phase = "play";
         state.winner = 0;
@@ -640,7 +787,7 @@ export function mount(root, context = {}) {
     }
 
     function aiTurn() {
-        if (online || !state || state.phase !== "play" || state.turn !== state.marks[1]) return;
+        if (online || !state || state.phase !== "play" || state.turn !== state.marks[1] || frozen()) return;
         if (state.skipAI) { // cheat freeze: bot lewati giliran
             state.skipAI = false;
             state.turn = state.marks[0];
@@ -732,11 +879,37 @@ export function mount(root, context = {}) {
     }
 
     function submitAction(action) {
+        if (!action || typeof action !== "object") return;
+        if (frozen() && (action.type === "place" || action.type === "cheat")) return;
         if (online && !room.isHost) {
             room.sendAction(action).catch(console.warn);
             return;
         }
         applyAction(action, playerIndex);
+    }
+
+    /* ---------- overlay toggles ---------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { ui.cheats = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        ui.cheats = typeof on === "boolean" ? on : !ui.cheats;
+        if (ui.cheats) { helpOpen = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function setPaused(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) { helpOpen = false; ui.cheats = false; }
+        syncFreeze();
+        render();
     }
 
     /* ---------- input: mouse / touch ---------- */
@@ -748,22 +921,30 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const cellEl = event.target.closest("[data-cell]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { setPaused(); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        const cellEl = t.closest("[data-cell]");
         if (cellEl) {
+            if (frozen()) return;
             ui.kbd = false;
             submitAction({ type: "place", cell: Number(cellEl.getAttribute("data-cell")) });
             return;
         }
-        const actEl = event.target.closest("[data-act]");
+        const actEl = t.closest("[data-act]");
         if (!actEl) return;
         switch (actEl.getAttribute("data-act")) {
             case "restart": submitAction({ type: "restart" }); break;
             case "puzzle": submitAction({ type: "puzzle" }); break;
             case "retry": submitAction({ type: "retry" }); break;
             case "diff": submitAction({ type: "difficulty" }); break;
-            case "cheats": ui.cheats = !ui.cheats; render(); break;
-            case "cheats-close": ui.cheats = false; render(); break;
+            case "cheats": toggleCheats(); break;
+            case "cheats-close": toggleCheats(false); break;
             case "cheat-hint":
                 ui.hint = !ui.hint;
                 submitAction({ type: "cheat", kind: "hint", on: ui.hint });
@@ -778,7 +959,7 @@ export function mount(root, context = {}) {
 
     function onOver(e) {
         const c = e.target.closest ? e.target.closest("[data-cell]") : null;
-        if (c && svg.contains(c)) {
+        if (c && svg.contains(c) && !frozen()) {
             ui.hover = Number(c.getAttribute("data-cell"));
             ui.kbd = false;
             updateCursor();
@@ -797,6 +978,20 @@ export function mount(root, context = {}) {
         if (t && !root.contains(t) && t !== document.body) return;
         const k = e.key;
         if ((k === "Enter" || k === " ") && t && t.closest && t.closest("button,summary,a")) return;
+
+        /* prioritas: help → cheats → pause/Escape → aksi game */
+        if (k === "h" || k === "H") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "c" || k === "C") { toggleCheats(); e.preventDefault(); return; }
+        if (k === "p" || k === "P" || k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (ui.cheats) toggleCheats(false);
+            else setPaused();
+            e.preventDefault();
+            return;
+        }
+        if (k === "r" || k === "R") { submitAction({ type: "restart" }); e.preventDefault(); return; }
+        if (frozen()) { e.preventDefault(); return; }
+
         if (k >= "1" && k <= "9") {
             ui.kbd = true;
             ui.cursor = Number(k) - 1;
@@ -821,17 +1016,7 @@ export function mount(root, context = {}) {
             case "Enter": case " ":
                 if (ui.kbd) { submitAction({ type: "place", cell: ui.cursor }); e.preventDefault(); }
                 break;
-            case "r": case "R": submitAction({ type: "restart" }); break;
-            case "p": case "P": if (!online) submitAction({ type: "puzzle" }); break;
-            case "c": case "C": if (!online) { ui.cheats = !ui.cheats; render(); } break;
-            case "h": case "H":
-                if (!online) {
-                    ui.hint = !ui.hint;
-                    submitAction({ type: "cheat", kind: "hint", on: ui.hint });
-                    render();
-                }
-                break;
-            case "Escape": if (ui.cheats) { ui.cheats = false; render(); } break;
+            case "n": case "N": if (!online) submitAction({ type: "puzzle" }); break;
         }
     }
 
@@ -863,6 +1048,7 @@ export function mount(root, context = {}) {
         render();
         if (state.marks[1] === 1) later(aiTurn, 700); // bot kebagian X → bot jalan duluan
     }
+    syncFreeze();
 
     return {
         destroy() {

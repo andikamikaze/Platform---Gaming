@@ -9,6 +9,7 @@ STICKMAN FIGHTER — duel 2D side-scrolling realtime.
   otomatis), tangkis, jurus. Keyboard + mouse + tombol virtual.
 - Overlay tutorial & overlay cheat (khusus mode AI).
 ============================================================= */
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "stickman-fighter", // harus sama dengan nama file (tanpa .js)
@@ -330,16 +331,10 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.sf-app{--sf-card:#131a24;--sf-line:#ffffff14;--sf-mut:#8b95a7;color:#e7eaf0;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;max-width:1100px;margin:0 auto}
+.sf-app{--sf-card:#131a24;--sf-line:#ffffff14;--sf-mut:#8b95a7;color:#e7eaf0;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;max-width:1100px;margin:0 auto;width:100%;padding:0 12px calc(12px + env(safe-area-inset-bottom));box-sizing:border-box;display:flex;flex-direction:column;gap:10px;min-height:0}
 .sf-app *{box-sizing:border-box}
-.sf-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.sf-head h2{margin:0;font-size:20px;letter-spacing:.3px}
-.sf-head p{margin:2px 0 0;font-size:12.5px;color:var(--sf-mut)}
-.sf-head-right{display:flex;gap:8px;align-items:center}
-.sf-icon{position:relative;width:36px;height:36px;border-radius:10px;border:1px solid var(--sf-line);background:var(--sf-card);color:#cdd5e1;font-size:14px;cursor:pointer}
-.sf-icon:hover{border-color:#ffffff3a}
-.sf-badge{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#f87171}
-.sf-hud{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;margin:12px 0 8px}
+.sf-hud{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sf-side{flex:1 1 150px;min-width:108px}
 .sf-name{display:flex;gap:8px;align-items:baseline;font-size:13px;font-weight:700}
 .sf-right .sf-name{justify-content:flex-end}
 .sf-tag{font-size:9.5px;font-weight:800;color:#0d1117;background:#34d399;border-radius:5px;padding:1px 5px;letter-spacing:.5px}
@@ -353,72 +348,95 @@ export function mount(root, context = {}) {
 .sf-sp i{display:block;height:100%;background:#8b5cf6;transition:width .2s}
 .sf-sp.sf-ready i{background:#c4b5fd;animation:sfPulse 1.2s infinite}
 @keyframes sfPulse{50%{opacity:.55}}
-.sf-mid{text-align:center;min-width:118px}
-.sf-timer{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+.sf-mid{text-align:center;min-width:100px;flex:0 0 auto}
+.sf-timer{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
 .sf-pips{display:flex;gap:5px;justify-content:center;align-items:center;margin-top:2px}
 .sf-pips i{width:8px;height:8px;border-radius:50%;background:#2a3446}
 .sf-pips i.sf-w0{background:#34d399}
 .sf-pips i.sf-w1{background:#f87171}
 .sf-pips span{font-size:9.5px;color:var(--sf-mut);letter-spacing:1px;margin:0 4px}
-.sf-stage{position:relative;padding:0;border-radius:16px;overflow:hidden;border:1px solid var(--sf-line);background:#0a0d16}
-.sf-svg{display:block;width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none;cursor:crosshair}
+.sf-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 8px;border:1px solid var(--sf-line);border-radius:8px;background:var(--sf-card);color:#cdd5e1;font-size:10px;white-space:nowrap}
+.sf-chip .game-status-dot{width:6px;height:6px;border-radius:50%;background:#34d399;flex:none}
+.sf-spacer{flex:1 1 auto}
+.sf-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.sf-btn{border:1px solid var(--sf-line);background:#0f1520;color:#e7eaf0;min-height:44px;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer}
+.sf-btn:hover:not(:disabled){border-color:#ffffff3a}
+.sf-btn:disabled{opacity:.4;cursor:not-allowed}
+.sf-icon-btn{position:relative;display:inline-flex;align-items:center;gap:6px}
+.sf-icon-btn svg{flex:none;display:block}
+.sf-badge{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#f87171}
+.sf-board{position:relative;padding:0;border-radius:14px;overflow:hidden;border:1px solid var(--sf-line);background:#0a0d16;aspect-ratio:960/420}
+.sf-svg{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;cursor:crosshair}
 .sf-banner{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;pointer-events:none;text-align:center;z-index:3}
 .sf-banner b{font-size:clamp(28px,6vw,52px);font-weight:900;letter-spacing:3px;color:#fff;text-shadow:0 4px 24px #000}
 .sf-banner span{font-size:clamp(12px,2.4vw,16px);color:#cbd5e1;text-shadow:0 2px 10px #000;margin-top:6px}
 .sf-pop{animation:sfPop .45s cubic-bezier(.2,1.6,.4,1)}
 @keyframes sfPop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
 .sf-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:2}
-.sf-ov{position:absolute;inset:0;display:grid;place-items:center;background:#0a0d16cc;backdrop-filter:blur(4px);padding:14px;overflow:auto;z-index:5}
-.sf-card{width:min(94%,560px);background:var(--sf-card);border:1px solid var(--sf-line);border-radius:16px;padding:20px;text-align:center}
-.sf-card h3{margin:0 0 6px;font-size:20px}
+.sf-ov{position:absolute;inset:0;display:grid;place-items:center;background:#0a0d16cc;backdrop-filter:blur(4px);padding:12px;overflow:auto;z-index:5}
+.sf-card{width:min(94%,560px);max-height:100%;background:var(--sf-card);border:1px solid var(--sf-line);border-radius:14px;padding:16px;text-align:center;display:flex;flex-direction:column;overflow:hidden}
+.sf-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex:none;text-align:left}
+.sf-head h3,.sf-head h4{margin:0;font-size:19px}
+.sf-scroll{flex:1 1 auto;min-height:0;overflow:auto;text-align:center}
+.sf-scroll.sf-cheats{text-align:left}
+.sf-foot{flex:none;margin-top:10px}
+.sf-foot-btn{display:block;width:100%;margin-top:6px;padding:7px}
+.sf-note{color:var(--sf-mut);font-size:10.5px;display:block;margin-bottom:6px}
 .sf-muted{color:var(--sf-mut);font-size:12.5px;margin:6px 0}
 .sf-heroes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
-.sf-hero{border:1px solid var(--sf-line);background:#0f1520;border-radius:12px;padding:10px 6px;color:#e7eaf0;cursor:pointer}
+.sf-hero{border:1px solid var(--sf-line);background:#0f1520;border-radius:12px;padding:10px 6px;min-height:64px;color:#e7eaf0;cursor:pointer}
 .sf-hero b{display:block;color:var(--hc);font-size:15px}
 .sf-hero span{display:block;font-size:10.5px;color:var(--sf-mut);margin-top:3px;line-height:1.35}
 .sf-hero.sf-sel{border-color:var(--hc);box-shadow:0 0 0 1px var(--hc)}
-.sf-diff{display:flex;gap:6px;justify-content:center;margin:4px 0 10px}
-.sf-diff button{border:1px solid var(--sf-line);background:#0f1520;color:#cdd5e1;border-radius:9px;padding:6px 12px;font-size:12px;cursor:pointer}
+.sf-diff{display:flex;gap:6px;justify-content:center;margin:4px 0 10px;flex-wrap:wrap}
+.sf-diff button{border:1px solid var(--sf-line);background:#0f1520;color:#cdd5e1;min-height:44px;border-radius:9px;padding:6px 12px;font-size:12px;cursor:pointer}
 .sf-diff button.sf-sel{border-color:#8b5cf6;color:#fff;background:#231a3d}
-.sf-how{text-align:left;font-size:12.5px;color:#c3cbd8;background:#0f1520;border:1px solid var(--sf-line);border-radius:12px;padding:10px 12px;margin:10px 0}
-.sf-how summary{cursor:pointer;font-weight:700;color:#e7eaf0}
-.sf-how ul{margin:8px 0 2px;padding-left:18px;line-height:1.6}
-.sf-primary{width:100%;border:0;border-radius:12px;padding:12px;font-size:15px;font-weight:800;color:#0d1117;background:linear-gradient(90deg,#34d399,#38bdf8);cursor:pointer;margin-top:4px}
+.sf-primary{width:100%;border:0;border-radius:10px;padding:12px;min-height:44px;font-size:15px;font-weight:800;color:#0d1117;background:linear-gradient(90deg,#34d399,#38bdf8);cursor:pointer;margin-top:4px}
 .sf-primary:hover{filter:brightness(1.1)}
-.sf-btn{border:1px solid var(--sf-line);background:#0f1520;color:#e7eaf0;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer}
-.sf-btn:hover{border-color:#ffffff3a}
-.sf-cheats{position:absolute;top:10px;right:10px;z-index:6;width:232px;background:var(--sf-card);border:1px solid var(--sf-line);border-radius:14px;padding:12px;text-align:left}
-.sf-cheats h4{margin:0 0 8px;font-size:13px}
 .sf-cheats label{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:5px 0;cursor:pointer;color:#c3cbd8}
 .sf-cheats input{accent-color:#8b5cf6}
-.sf-cheats .sf-btn{width:100%;margin-top:6px;padding:7px}
-.sf-pad{display:none;justify-content:space-between;gap:10px;margin-top:10px;touch-action:none}
-.sf-pad>div{display:flex;gap:8px}
-.sf-vb{min-width:56px;height:56px;padding:0 12px;border-radius:14px;border:1px solid var(--sf-line);background:var(--sf-card);color:#e7eaf0;font-size:11.5px;font-weight:800;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
+.sf-pad{display:none;flex-wrap:wrap;justify-content:center;gap:8px 10px;margin-top:10px;touch-action:none}
+.sf-pad>div{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.sf-vb{min-width:56px;height:56px;padding:0 12px;border-radius:12px;border:1px solid var(--sf-line);background:var(--sf-card);color:#e7eaf0;font-size:11.5px;font-weight:800;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
 .sf-vb:active{transform:scale(.94)}
 .sf-vb-a{background:#3b1d5e;border-color:#8b5cf655}
 .sf-vb-b{background:#172a45;border-color:#38bdf855}
 .sf-vb-s{background:#4c1d24;border-color:#f8717155}
-.sf-hints{margin-top:8px;font-size:11.5px;color:var(--sf-mut);text-align:center;line-height:1.6}
 .sf-tut-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left;font-size:12.5px;margin:10px 0}
 .sf-tut-grid div{background:#0f1520;border:1px solid var(--sf-line);border-radius:10px;padding:8px 10px;line-height:1.55;color:#c3cbd8}
 .sf-tut-grid b{color:#e7eaf0}
-.sf-app .game-actions{margin-top:12px}
-@media (pointer:coarse),(max-width:820px){.sf-pad{display:flex}.sf-hints .sf-desk{display:none}}
-@media (hover:hover) and (pointer:fine){.sf-hints .sf-mob{display:none}}
+.sf-app :focus-visible{outline:2px solid #8b5cf6;outline-offset:2px}
+@media (pointer:coarse),(max-width:820px){.sf-pad{display:flex}}
 .sf-app.sf-pad-on .sf-pad{display:flex}
-@media(max-width:560px){.sf-tut-grid{grid-template-columns:1fr}.sf-hud{gap:8px}.sf-mid{min-width:90px}.sf-timer{font-size:19px}}
+@media(max-width:560px){.sf-app{padding-left:8px;padding-right:8px}.sf-tut-grid{grid-template-columns:1fr}.sf-timer{font-size:19px}.sf-pad{gap:8px}.sf-vb{min-width:44px;height:48px;padding:0 8px;font-size:10.5px}}
+@media (prefers-reduced-motion:reduce){.sf-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- layout shell overrides (last: beat pointer:coarse min-height) --- */
+.sf-app.game-fill > .sf-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.sf-app .sf-hud .sf-btn{min-height:36px;padding:7px 10px;font-size:11px}
+@media (max-width:640px){
+.sf-app.game-fill > .sf-board:not(:has(.sf-ov:not([hidden]))){aspect-ratio:960/420;flex:0 0 auto}
+.sf-app.game-fill > .sf-board:has(.sf-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sf-app .sf-hud{gap:5px}
+.sf-app .sf-hud .sf-side{flex:1 1 100px;min-width:88px}
+.sf-app .sf-hud .sf-mid{min-width:70px}
+.sf-app .sf-hud .sf-name{font-size:10px}
+.sf-app .sf-hud .sf-bar{height:9px}
+.sf-app .sf-hud .sf-chip{padding:4px 6px;font-size:9px}
+.sf-app .sf-hud .sf-status{display:none}
+.sf-app .sf-hud .sf-controls{gap:4px}
+.sf-app .sf-hud .sf-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.sf-app .sf-hud .sf-btn-label,.sf-app .sf-hud .sf-spacer{display:none}
+.sf-app .sf-ov{padding:8px}
+.sf-app .sf-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sf-app .sf-scroll{scrollbar-width:none}
+.sf-app .sf-scroll::-webkit-scrollbar{display:none}
+.sf-app .sf-foot{position:static;margin:10px 0 0;padding:10px 0 0;border-top:1px solid var(--sf-line)}
+.sf-app .sf-note{display:none}
+.sf-tut-grid{grid-template-columns:1fr}
+}
 </style>
-<div class="game-app sf-app">
-  <div class="game-intro sf-head">
-    <div><h2>Stickman Fighter</h2><p>Duel 2D side-scroll realtime &bull; arena &amp; giliran pertama diacak &bull; menang 2 ronde.</p></div>
-    <div class="sf-head-right">
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
-      <button class="sf-icon" type="button" data-act="tutorial" title="Cara main">?</button>
-      <button class="sf-icon" type="button" data-act="cheats" title="Cheat (mode AI)">&#128736;<i class="sf-badge" data-cheatbadge hidden></i></button>
-      <button class="sf-icon" type="button" data-act="pad" title="Tombol virtual">&#127918;</button>
-    </div>
-  </div>
+<div class="game-app sf-app game-fill" data-sf>
   <div class="sf-hud">
     <div class="sf-side">
       <div class="sf-name"><b data-n0>-</b><span class="sf-tag" data-tag0 hidden>KAMU</span></div>
@@ -434,8 +452,18 @@ export function mount(root, context = {}) {
       <div class="sf-bar"><i class="sf-ghost" data-g1 style="width:100%"></i><i class="sf-fill" data-h1 style="width:100%"></i></div>
       <div class="sf-sp" data-spwrap1><i data-s1 style="width:100%"></i></div>
     </div>
+    <span class="sf-chip sf-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+    <span class="sf-spacer"></span>
+    <div class="sf-controls">
+      <button class="sf-btn sf-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sf-btn-label">Help</span></button>
+      <button class="sf-btn sf-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<i class="sf-badge" data-cheatbadge hidden></i><span class="sf-btn-label">Cheats</span></button>
+      <button class="sf-btn sf-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sf-btn-label">Pause</span></button>
+      <button class="sf-btn sf-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sf-btn-label">Restart</span></button>
+      <button class="sf-btn sf-icon-btn" type="button" data-act="pad" aria-label="Virtual pad" title="Virtual pad">${iconSVG("gamepad2", { size: 14 })}<span class="sf-btn-label">Pad</span></button>
+      <button class="sf-btn sf-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sf-btn-label">Exit game</span></button>
+    </div>
   </div>
-  <section class="game-panel sf-stage" data-board>
+  <section class="game-panel sf-board" data-board>
     <svg class="sf-svg" viewBox="0 0 960 420" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Arena duel stickman">
       <defs>
         <linearGradient id="sfSky" x1="0" y1="0" x2="0" y2="1">
@@ -449,64 +477,76 @@ export function mount(root, context = {}) {
 
     <div class="sf-ov" data-ov="menu">
       <div class="sf-card">
-        <h3>Pilih jagoanmu</h3>
-        <p class="sf-muted">Cukup gerak + <b>tahan SERANG</b> (combo otomatis) + jurus. Arena baru tiap ronde, posisi &amp; giliran pertama diacak.</p>
-        <div class="sf-heroes">${HEROES.map((h, i) => `<button type="button" class="sf-hero" data-hero="${i}" style="--hc:${h.color}"><b>${h.name}</b><span>${h.sp} &mdash; ${h.spDesc}</span></button>`).join("")}</div>
-        <div class="sf-diff" data-diffwrap>${DIFFS.map((d, i) => `<button type="button" data-diff="${i}">${d.name}</button>`).join("")}</div>
-        <details class="sf-how" open>
-          <summary>Cara main (30 detik)</summary>
-          <ul>
-            <li><b>Gerak:</b> A/D atau &larr;/&rarr; &bull; <b>Lompat:</b> W/&uarr;/Spasi.</li>
-            <li><b>Serang:</b> tahan J atau klik kiri &mdash; pukulan &amp; tendangan keluar otomatis.</li>
-            <li><b>Tangkis:</b> tahan K / klik kanan (damage masuk tinggal 20%).</li>
-            <li><b>Jurus:</b> L / E / tombol JURUS saat bar ungu penuh.</li>
-            <li>Pijakan melayang bisa ditembus dari bawah &mdash; manfaatkan untuk menghindar.</li>
-            <li>Menang 2 ronde = juara. Waktu habis? HP terbanyak menang.</li>
-          </ul>
-        </details>
-        <button class="sf-primary" type="button" data-act="start">Mulai duel</button>
-        <p class="sf-muted" data-menunote></p>
-        <p class="sf-muted">Total menang tersimpan: <b data-wins>0</b></p>
+        <div class="sf-head"><h3>Pilih jagoanmu</h3></div>
+        <div class="sf-scroll">
+          <p class="sf-muted">Cukup gerak + <b>tahan SERANG</b> (combo otomatis) + jurus. Arena baru tiap ronde, posisi &amp; giliran pertama diacak.</p>
+          <div class="sf-heroes">${HEROES.map((h, i) => `<button type="button" class="sf-hero" data-hero="${i}" style="--hc:${h.color}"><b>${h.name}</b><span>${h.sp} &mdash; ${h.spDesc}</span></button>`).join("")}</div>
+          <div class="sf-diff" data-diffwrap>${DIFFS.map((d, i) => `<button type="button" data-diff="${i}">${d.name}</button>`).join("")}</div>
+        </div>
+        <div class="sf-foot">
+          <button class="sf-primary" type="button" data-act="start">Mulai duel</button>
+          <p class="sf-muted" data-menunote></p>
+          <p class="sf-muted">Tekan <b>H</b> untuk panduan &bull; Total menang: <b data-wins>0</b></p>
+        </div>
       </div>
     </div>
 
     <div class="sf-ov" data-ov="end" hidden>
       <div class="sf-card">
-        <h3 data-mtitle>Selesai</h3>
-        <p class="sf-muted" data-mmsg></p>
-        <button class="sf-primary" type="button" data-act="rematch">Main lagi (arena baru)</button>
-        <p style="margin:10px 0 0"><button class="sf-btn" type="button" data-act="menu" data-hostonly>Ganti jagoan</button></p>
+        <div class="sf-head"><h3 data-mtitle>Selesai</h3></div>
+        <div class="sf-scroll"><p class="sf-muted" data-mmsg></p></div>
+        <div class="sf-foot">
+          <button class="sf-primary" type="button" data-act="rematch">Main lagi (arena baru)</button>
+          <button class="sf-btn sf-foot-btn" type="button" data-act="menu" data-hostonly>Ganti jagoan</button>
+        </div>
       </div>
     </div>
 
     <div class="sf-ov" data-ov="wait" hidden>
-      <div class="sf-card"><h3>Menunggu host&hellip;</h3><p class="sf-muted">Menunggu sinkronisasi pertandingan dari host.</p></div>
-    </div>
-
-    <div class="sf-ov" data-ov="tutorial" hidden>
       <div class="sf-card">
-        <h3>Cara bermain</h3>
-        <div class="sf-tut-grid">
-          <div><b>Desktop</b><br>A/D atau &larr;/&rarr; gerak<br>W/&uarr;/Spasi lompat<br>J / klik kiri (tahan) serang<br>K / klik kanan (tahan) tangkis<br>L / E jurus</div>
-          <div><b>Mobile</b><br>Tombol &#9664; &#9654; gerak<br>LOMPAT, SERANG (tahan),<br>TAHAN (tangkis), JURUS<br>Bisa multi-sentuh bersamaan</div>
-          <div><b>Aturan</b><br>Menang 2 ronde = juara<br>Timer 60 detik; habis &rarr; HP terbanyak menang<br>Koin acak menentukan siapa menyerang duluan (lawan terkunci 0,8 detik)</div>
-          <div><b>Tips</b><br>Tahan SERANG dari dekat = combo pukulan-pukulan-tendangan<br>Tangkis mengurangi damage 80%<br>Fireball bisa dilompati; Frost membekukan; Volt menerjang<br>Pijakan satu arah: tembus dari bawah, mendarat di atas</div>
-        </div>
-        <p class="sf-muted">Online: posisi pemain (kiri/kanan) diacak otomatis oleh host. Cheat hanya tersedia saat melawan bot.</p>
-        <button class="sf-primary" type="button" data-act="tutorial">Tutup</button>
+        <div class="sf-head"><h3>Menunggu host&hellip;</h3></div>
+        <div class="sf-scroll"><p class="sf-muted">Menunggu sinkronisasi pertandingan dari host.</p></div>
       </div>
     </div>
 
-    <div class="sf-cheats" data-ov="cheats" hidden>
-      <h4>&#128736; Cheat <span class="sf-muted" style="font-size:10px">(mode AI)</span></h4>
-      <label><input type="checkbox" data-cheat="god"> Darah kebal (God)</label>
-      <label><input type="checkbox" data-cheat="onehit"> Sekali pukul K.O.</label>
-      <label><input type="checkbox" data-cheat="nocd"> Jurus tanpa cooldown</label>
-      <label><input type="checkbox" data-cheat="speed"> Lari super cepat</label>
-      <label><input type="checkbox" data-cheat="botoff"> Bot diam di tempat</label>
-      <button class="sf-btn" type="button" data-act="heal">Pulihkan HP penuh</button>
-      <button class="sf-btn" type="button" data-act="winround">Langsung menang ronde</button>
-      <p class="sf-muted" data-cheatnote style="font-size:10.5px"></p>
+    <div class="sf-ov" data-ov="help" hidden>
+      <div class="sf-card">
+        <div class="sf-head"><h3>Cara bermain</h3><button class="sf-btn sf-icon-btn" type="button" data-help-close aria-label="Tutup panduan" title="Tutup panduan">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="sf-scroll sf-help">
+          <div class="sf-tut-grid">
+            <div><b>Desktop</b><br>A/D atau &larr;/&rarr; gerak<br>W/&uarr;/Spasi lompat<br>J / klik kiri (tahan) serang<br>K / klik kanan (tahan) tangkis<br>L / E jurus</div>
+            <div><b>Mobile</b><br>Tombol &#9664; &#9654; gerak<br>LOMPAT, SERANG (tahan),<br>TAHAN (tangkis), JURUS<br>Bisa multi-sentuh bersamaan</div>
+            <div><b>Aturan</b><br>Menang 2 ronde = juara<br>Timer 60 detik; habis &rarr; HP terbanyak menang<br>Koin acak menentukan siapa menyerang duluan (lawan terkunci 0,8 detik)</div>
+            <div><b>Tips</b><br>Tahan SERANG dari dekat = combo pukulan-pukulan-tendangan<br>Tangkis mengurangi damage 80%<br>Fireball bisa dilompati; Frost membekukan; Volt menerjang<br>Pijakan satu arah: tembus dari bawah, mendarat di atas</div>
+          </div>
+          <p class="sf-muted">Online: posisi pemain (kiri/kanan) diacak otomatis oleh host. Cheat hanya tersedia saat melawan bot.</p>
+        </div>
+        <div class="sf-foot"><span class="sf-note">Tekan H untuk membuka panduan</span><button class="sf-primary" type="button" data-help-close>Mengerti</button></div>
+      </div>
+    </div>
+
+    <div class="sf-ov" data-ov="pause" hidden>
+      <div class="sf-card">
+        <div class="sf-head"><h3>Dijeda</h3></div>
+        <div class="sf-scroll"><p class="sf-muted">Timer, simulasi, dan bot dihentikan sementara.</p></div>
+        <div class="sf-foot"><button class="sf-primary" type="button" data-resume>Lanjutkan</button></div>
+      </div>
+    </div>
+
+    <div class="sf-ov" data-ov="cheats" hidden>
+      <div class="sf-card">
+        <div class="sf-head"><h4>&#128736; Cheat <span class="sf-muted" style="font-size:10px">(mode AI)</span></h4><button class="sf-btn sf-icon-btn" type="button" data-cheats-close aria-label="Tutup cheat" title="Tutup cheat">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="sf-scroll sf-cheats">
+          <label><input type="checkbox" data-cheat="god"> Darah kebal (God)</label>
+          <label><input type="checkbox" data-cheat="onehit"> Sekali pukul K.O.</label>
+          <label><input type="checkbox" data-cheat="nocd"> Jurus tanpa cooldown</label>
+          <label><input type="checkbox" data-cheat="speed"> Lari super cepat</label>
+          <label><input type="checkbox" data-cheat="botoff"> Bot diam di tempat</label>
+          <button class="sf-btn sf-foot-btn" type="button" data-act="heal">Pulihkan HP penuh</button>
+          <button class="sf-btn sf-foot-btn" type="button" data-act="winround">Langsung menang ronde</button>
+        </div>
+        <div class="sf-foot"><p class="sf-muted" data-cheatnote style="font-size:10.5px"></p><button class="sf-primary" type="button" data-cheats-close>Tutup</button></div>
+      </div>
     </div>
   </section>
   <div class="sf-pad" data-pad>
@@ -521,11 +561,6 @@ export function mount(root, context = {}) {
       <button class="sf-vb sf-vb-s" type="button" data-k="s">JURUS</button>
     </div>
   </div>
-  <div class="sf-hints">
-    <span class="sf-desk">A/D gerak &bull; W/Spasi lompat &bull; tahan J / klik kiri = combo &bull; tahan K / klik kanan = tangkis &bull; L/E = jurus</span>
-    <span class="sf-mob">Tahan SERANG untuk combo otomatis &bull; tahan TAHAN untuk menangkis &bull; JURUS saat bar ungu penuh</span>
-  </div>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar game</button></div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -542,7 +577,7 @@ export function mount(root, context = {}) {
         s: [$("[data-s0]"), $("[data-s1]")], spw: [$("[data-spwrap0]"), $("[data-spwrap1]")],
         p: [$("[data-p0]"), $("[data-p1]")], q: [$("[data-q0]"), $("[data-q1]")],
         ovMenu: $('[data-ov="menu"]'), ovEnd: $('[data-ov="end"]'), ovWait: $('[data-ov="wait"]'),
-        ovTut: $('[data-ov="tutorial"]'), ovCheats: $('[data-ov="cheats"]'),
+        ovHelp: $('[data-ov="help"]'), ovPause: $('[data-ov="pause"]'), ovCheats: $('[data-ov="cheats"]'),
         mtitle: $("[data-mtitle]"), mmsg: $("[data-mmsg]"),
         start: $('[data-act="start"]'), diffwrap: $("[data-diffwrap]"), menunote: $("[data-menunote]"),
         wins: $("[data-wins]"), cheatbadge: $("[data-cheatbadge]"), cheatnote: $("[data-cheatnote]"),
@@ -559,7 +594,13 @@ export function mount(root, context = {}) {
     let scenery = null, sceneryKey = "";
     let raf = null, lastT = 0, pubT = 0, lastPhase = "";
     let lastBanner = "", lastGuestInKey = "", matchCounted = false;
-    let tutOpen = false, cheatOpen = false, padOn = false;
+    let helpOpen = false, cheatOpen = false, pausePaused = false, padOn = false;
+    try {
+        if (localStorage.getItem("stickmanFighterHelpSeen") !== "1") {
+            helpOpen = true;
+            localStorage.setItem("stickmanFighterHelpSeen", "1");
+        }
+    } catch (e) { /* localStorage bisa diblokir */ }
     const cheats = { god: false, onehit: false, nocd: false, speed: false, botoff: false };
     let selHero = 0, selDiff = 1;
     let totalWins = 0;
@@ -576,7 +617,7 @@ export function mount(root, context = {}) {
         return o;
     }
     function getDisplay() { return isHost ? S : disp; }
-    function paused() { return vsBot && (tutOpen || cheatOpen); }
+    function paused() { return vsBot && (helpOpen || cheatOpen || pausePaused); }
 
     /* ---------- init state / jaringan ---------- */
     const randSeed = () => (Math.random() * 1e9) >>> 0;
@@ -748,7 +789,50 @@ export function mount(root, context = {}) {
             const li = getLocal(), k = JSON.stringify(li);
             if (k !== lastGuestInKey) { lastGuestInKey = k; room.sendAction({ t: "input", k: li }).catch(console.warn); }
         }
-        renderFrame(dt);
+        renderFrame(paused() ? 0 : dt);
+    }
+
+    /* ---------- overlay / pause helpers ---------- */
+    function releaseInputs() {
+        for (const k in src.key) src.key[k] = false;
+        for (const k in src.pad) src.pad[k] = false;
+        for (const k in src.mouse) src.mouse[k] = false;
+    }
+    function shiftTimeAnchor() {
+        // rAF memakai time origin yang sama dengan performance.now(): geser penanda
+        // saat resume supaya dt tidak meloncat setelah jeda panjang.
+        lastT = (typeof performance !== "undefined" && performance.now) ? performance.now() : 0;
+    }
+    function toggleHelp(on) {
+        const was = helpOpen;
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatOpen = false; releaseInputs(); }
+        else if (was) shiftTimeAnchor();
+        render();
+    }
+    function toggleCheats(on) {
+        if (helpOpen) return;
+        const was = cheatOpen;
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) releaseInputs();
+        else if (was) shiftTimeAnchor();
+        render();
+    }
+    function togglePause(on) {
+        if (!vsBot) return;
+        const can = !!S && S.phase !== "menu" && S.phase !== "matchend";
+        if (!pausePaused && on === true && !can) return;
+        const was = pausePaused;
+        pausePaused = typeof on === "boolean" ? on : !pausePaused;
+        if (pausePaused) releaseInputs(); else if (was) shiftTimeAnchor();
+        render();
+    }
+    function restartGame() {
+        if (!vsBot || !S) return;
+        helpOpen = false; cheatOpen = false; pausePaused = false;
+        releaseInputs(); shiftTimeAnchor();
+        startMatch(S);
+        render();
     }
 
     /* ---------- input: keyboard ---------- */
@@ -757,11 +841,21 @@ export function mount(root, context = {}) {
         ArrowUp: "j", KeyW: "j", Space: "j",
         KeyJ: "a", KeyZ: "a",
         KeyK: "b", KeyX: "b", ShiftLeft: "b", ShiftRight: "b",
-        KeyL: "s", KeyE: "s", KeyC: "s",
+        KeyL: "s", KeyE: "s",
     };
     function onKeyDown(e) {
-        if (e.code === "Escape") { tutOpen = false; cheatOpen = false; return; }
-        const k = KEYMAP[e.code];
+        const c = e.code;
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else togglePause(!pausePaused);
+            e.preventDefault(); return;
+        }
+        if (c === "KeyR") { restartGame(); e.preventDefault(); return; }
+        if (helpOpen || cheatOpen || pausePaused) return;
+        const k = KEYMAP[c];
         if (!k) return;
         e.preventDefault();
         src.key[k] = true;
@@ -772,7 +866,8 @@ export function mount(root, context = {}) {
 
     /* ---------- input: mouse di arena ---------- */
     function onBoardDown(e) {
-        if (e.target.closest(".sf-ov,.sf-cheats,button")) return;
+        if (helpOpen || cheatOpen || pausePaused) return;
+        if (e.target.closest(".sf-ov,button")) return;
         if (e.button === 2) src.mouse.b = true; else src.mouse.a = true;
     }
     function onWinUp(e) { if (e.button === 2) src.mouse.b = false; else src.mouse.a = false; }
@@ -787,6 +882,7 @@ export function mount(root, context = {}) {
         b.addEventListener("pointerdown", (e) => {
             e.preventDefault();
             try { b.setPointerCapture(e.pointerId); } catch (err) { }
+            if (helpOpen || cheatOpen || pausePaused) { src.pad[k] = false; return; }
             src.pad[k] = true;
         });
         const off = (e) => { e.preventDefault(); src.pad[k] = false; };
@@ -797,9 +893,16 @@ export function mount(root, context = {}) {
 
     /* ---------- klik UI ---------- */
     function handleClick(event) {
-        const t = event.target.closest("[data-act],[data-hero],[data-diff],[data-exit]");
+        const t = event.target.closest("[data-act],[data-hero],[data-diff],[data-exit],[data-help],[data-help-close],[data-cheats],[data-cheats-close],[data-pause],[data-resume],[data-restart]");
         if (!t) return;
         if (t.hasAttribute("data-exit")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
         if (t.dataset.hero !== undefined) {
             selHero = clamp(Number(t.dataset.hero) | 0, 0, 2);
             submitAction({ t: "hero", h: selHero });
@@ -814,8 +917,6 @@ export function mount(root, context = {}) {
         if (a === "start") submitAction({ t: "start" });
         else if (a === "rematch") submitAction({ t: "rematch" });
         else if (a === "menu") submitAction({ t: "menu" });
-        else if (a === "tutorial") tutOpen = !tutOpen;
-        else if (a === "cheats") cheatOpen = !cheatOpen;
         else if (a === "pad") { padOn = !padOn; app.classList.toggle("sf-pad-on", padOn); }
         else if (a === "heal") { if (vsBot && S && S.phase === "fight") S.f[0].hp = S.f[0].maxHp; }
         else if (a === "winround") { if (vsBot && S && S.phase === "fight") ko(S, 0); }
@@ -1039,14 +1140,26 @@ export function mount(root, context = {}) {
             ko: "K.O.!", roundend: "Jeda ronde", matchend: "Selesai",
         };
         el.status.textContent = st[D.phase] || "Siap";
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".sf-btn-label");
+            if (label) label.textContent = pausePaused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", pausePaused ? "Resume" : "Pause");
+            pbtn.title = pausePaused ? "Resume (P)" : "Pause (P)";
+            pbtn.disabled = !vsBot;
+        }
+        const rbtn = root.querySelector("[data-restart]");
+        if (rbtn) rbtn.disabled = !vsBot;
     }
     function updateOverlays(D) {
         const menu = !!D && D.phase === "menu";
-        el.ovMenu.hidden = !menu;
-        el.ovWait.hidden = !(online && !isHost && !snap);
-        el.ovEnd.hidden = !D || D.phase !== "matchend";
-        el.ovTut.hidden = !tutOpen;
-        el.ovCheats.hidden = !cheatOpen;
+        const blocked = cheatOpen || helpOpen;
+        el.ovMenu.hidden = !menu || blocked || pausePaused;
+        el.ovWait.hidden = !(online && !isHost && !snap) || blocked;
+        el.ovEnd.hidden = !D || D.phase !== "matchend" || blocked || pausePaused;
+        el.ovHelp.hidden = !helpOpen;
+        el.ovPause.hidden = !pausePaused || !vsBot || blocked;
+        el.ovCheats.hidden = !cheatOpen || helpOpen;
         if (menu) {
             el.start.hidden = online && !isHost;
             el.diffwrap.hidden = online;
@@ -1087,6 +1200,7 @@ export function mount(root, context = {}) {
     }
     function renderFrame(dt) {
         const D = getDisplay();
+        if (pausePaused && (!D || D.phase === "menu" || D.phase === "matchend")) pausePaused = false;
         updateHud(D);
         updateOverlays(D);
         updateBanner(D);

@@ -32,7 +32,6 @@ Dashboard dan aset inti disajikan sebagai situs statis melalui GitHub Pages. Set
 - `JS/game-icons.js` memetakan tiap id game ke nama ikon; generator manifest memakai pemetaan ini untuk seluruh cover art.
 - Placeholder HTML: `<span class="icon" data-icon="nama"></span>`; diisi saat boot oleh `hydrateIcons()`.
 - Ikon dinamis (tema, favorit) memakai `setIcon()` / `iconSVG()` langsung.
-- `npm run check:icons` memvalidasi konsistensi sistem ini.
 
 ---
 

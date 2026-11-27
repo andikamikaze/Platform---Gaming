@@ -5,6 +5,8 @@
   3. Setelah menyimpan file, jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "piano-tiles",
     name: "Piano Tiles",
@@ -125,11 +127,18 @@ export function mount(root, context = {}) {
 
     /* ---- runtime lokal (tidak diserialisasi ke Firebase) ---- */
     let chart = [], tiles = [], currentKey = "";
-    let simT = 0, lastT = 0, roundLocalStart = 0, rafId = 0;
-    let paused = false, uiOv = null, muted = false, newBest = false;
+    let simT = 0, lastT = 0, roundLocalStart = 0, pauseAt = 0, rafId = 0;
+    let paused = false, muted = false, newBest = false;
+    let helpOpen = false, cheatsOpen = false;
     const cheats = { auto: false, slow: false, wide: false, shield: false, nerf: false };
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("pianoTilesHelpSeen") === "1"; } catch (e) { }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("pianoTilesHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
 
     /* ---- audio synth kecil (tanpa aset) ---- */
     let AC = null;
@@ -157,32 +166,29 @@ export function mount(root, context = {}) {
         } catch (e) { }
     }
 
-    /* ---- UI minimalis, semua CSS di-scope ke .pt-root ---- */
+    /* ---- UI shell: HUD + board + overlays, semua CSS di-scope ke .pt-root ---- */
     root.classList.add("pt-root");
     root.innerHTML = `
 <style>
 .pt-root{--me:#111827;--op:#0f766e;--accent:#8b5cf6;--ink:#1f2937;--mut:#6b7280;--line:#e5e7eb;--bg:#fbfbfd;
   color:var(--ink);font-family:inherit;-webkit-tap-highlight-color:transparent}
 .pt-root [hidden]{display:none!important}
-.pt-root .pt-app{max-width:560px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:12px}
-.pt-root .pt-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.pt-root .pt-intro h2{margin:0;font-size:20px;font-weight:700;letter-spacing:-.02em}
-.pt-root .pt-intro p{margin:2px 0 0;font-size:13px;color:var(--mut)}
-.pt-root .pt-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);
-  border:1px solid var(--line);border-radius:999px;padding:4px 10px;white-space:nowrap;background:#fff}
-.pt-root .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block}
-.pt-root .pt-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;
-  display:flex;flex-direction:column;gap:10px}
-.pt-root .pt-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--mut)}
-.pt-root .pt-chip{border:1px solid var(--line);border-radius:999px;padding:3px 9px;background:#fff}
-.pt-root .pt-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+.pt-root .pt-app{width:100%;max-width:600px;height:100%;min-height:0;margin:0 auto;padding:16px;
+  display:flex;flex-direction:column;gap:12px}
+.pt-root .pt-hud{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mut)}
+.pt-root .pt-hud .pt-btn{min-height:32px;padding:6px 10px;font-size:10px}
+.pt-root .pt-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;
+  padding:6px 10px;background:#fff;white-space:nowrap}
+.pt-root .pt-chip b,.pt-root .pt-chip span[data-hud]{color:var(--ink);font-variant-numeric:tabular-nums}
 .pt-root .pt-chip.soft{background:var(--bg)}
-.pt-root .pt-spacer{flex:1}
-.pt-root .pt-board{position:relative;width:min(100%,340px);margin:0 auto;user-select:none}
-.pt-root .pt-prog{height:3px;border-radius:2px;background:var(--line);overflow:hidden;margin-bottom:8px}
-.pt-root .pt-prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
-.pt-root .pt-svg{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:14px;
-  background:var(--bg);touch-action:manipulation}
+.pt-root .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block;flex:none}
+.pt-root .pt-spacer{flex:1 1 auto}
+.pt-root .pt-board{position:relative;width:min(100%,360px);margin:0 auto;padding:0;overflow:hidden;
+  border:1px solid var(--line);border-radius:12px;background:var(--bg);user-select:none}
+.pt-root .pt-prog{position:absolute;top:0;left:0;right:0;height:4px;z-index:2;background:var(--line);overflow:hidden}
+.pt-root .pt-prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .18s}
+.pt-root .pt-svg{width:100%;height:100%;display:block;touch-action:manipulation}
 .pt-root .pt-lane{fill:#ffffff;stroke:#eef0f3;stroke-width:1;cursor:pointer}
 .pt-root .pt-lane:active{fill:#f5f3ff}
 .pt-root .pt-zone{fill:#8b5cf60d;stroke:#8b5cf633;stroke-dasharray:5 5}
@@ -197,158 +203,203 @@ export function mount(root, context = {}) {
 .pt-root .pt-toast.show{animation:ptToast 1.6s ease-out}
 @keyframes ptJudge{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-24px)}}
 @keyframes ptToast{0%{opacity:0}12%{opacity:1}75%{opacity:1}100%{opacity:0}}
-.pt-root .pt-pad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:min(100%,340px);margin:0 auto}
-.pt-root .pt-key{height:56px;border:1px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
-  font:inherit;font-weight:700;font-size:15px;color:var(--ink);touch-action:manipulation;transition:transform .05s}
+.pt-root .pt-pad{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;width:min(100%,360px);margin:0 auto}
+.pt-root .pt-key{min-height:56px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  font:inherit;font-weight:700;font-size:15px;color:var(--ink);touch-action:manipulation;transition:transform .15s,background .15s,border-color .15s}
 .pt-root .pt-key i{width:22px;height:4px;border-radius:2px;background:var(--me)}
-.pt-root .pt-key:active{transform:scale(.94);background:#f5f3ff;border-color:var(--accent)}
-@media (hover:hover) and (pointer:fine){.pt-root .pt-key{height:42px}}
-.pt-root .pt-legend{display:flex;gap:14px;justify-content:center;font-size:12px;color:var(--mut)}
+.pt-root .pt-key:active{transform:scale(.97);background:#f5f3ff;border-color:var(--accent)}
+@media (hover:hover) and (pointer:fine){.pt-root .pt-key{min-height:44px}}
+.pt-root .pt-legend{flex:none;display:flex;flex-wrap:wrap;gap:16px;justify-content:center;font-size:12px;color:var(--mut)}
 .pt-root .pt-legend i{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:5px;vertical-align:-1px}
 .pt-root .pt-legend [data-el="swMe"]{background:var(--me)}
 .pt-root .pt-legend [data-el="swOp"]{background:var(--op)}
 .pt-root .pt-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  background:#ffffffd9;backdrop-filter:blur(3px);border-radius:14px;padding:12px;z-index:5}
-.pt-root .pt-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;
-  width:100%;max-width:300px;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px;
+  background:#ffffffd9;backdrop-filter:blur(3px);border-radius:12px;padding:16px;z-index:5}
+.pt-root .pt-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;
+  width:100%;max-width:min(340px,100%);max-height:100%;overflow:hidden;display:flex;flex-direction:column;gap:12px;
   box-shadow:0 8px 30px #11182714;text-align:center}
 .pt-root .pt-card h3{margin:0;font-size:18px;letter-spacing:-.02em}
-.pt-root .pt-sub{margin:0;font-size:13px;color:var(--mut);line-height:1.5}
+.pt-root .pt-head,.pt-root .pt-foot{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.pt-root .pt-head{justify-content:space-between}
+.pt-root .pt-head h3{flex:1 1 auto;text-align:left}
+.pt-root .pt-rows,.pt-root .pt-cheats,.pt-root .pt-stats,.pt-root .pt-help{flex:1 1 auto;min-height:0;overflow:auto;
+  display:flex;flex-direction:column;gap:8px}
+.pt-root .pt-sub{margin:0;font-size:13px;color:var(--mut);line-height:1.55}
 .pt-root .pt-hint{margin:0;font-size:11px;color:var(--mut)}
-.pt-root .pt-rows{display:flex;flex-direction:column;gap:8px}
+.pt-root .pt-note{font-size:10px;color:var(--mut)}
 .pt-root .pt-row{display:flex;align-items:center;justify-content:space-between;font-size:13px;gap:8px}
-.pt-root select{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:#fff;color:var(--ink)}
-.pt-root .pt-btn{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:10px;
-  background:#fff;color:var(--ink);padding:8px 12px;cursor:pointer;transition:background .12s}
-.pt-root .pt-btn:hover{background:#f3f4f6}
+.pt-root select{font:inherit;font-size:13px;min-height:44px;border:1px solid var(--line);border-radius:9px;padding:0 12px;background:#fff;color:var(--ink)}
+.pt-root .pt-btn{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:9px;
+  background:#fff;color:var(--ink);min-height:44px;padding:0 16px;cursor:pointer;transition:background .15s,border-color .15s}
+.pt-root .pt-btn:hover{background:#f3f4f6;border-color:#d1d5db}
 .pt-root .pt-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .pt-root .pt-btn.primary:hover{background:#7c3aed}
 .pt-root .pt-btn:disabled{opacity:.45;cursor:not-allowed}
-.pt-root .pt-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-.pt-root .pt-help{text-align:left;font-size:13px;line-height:1.55;display:flex;flex-direction:column;gap:8px}
+.pt-root .pt-help{text-align:left;font-size:13px;line-height:1.6;gap:10px}
 .pt-root .pt-help b{display:block;font-size:13px}
+.pt-root .pt-cheats{text-align:left}
 .pt-root .pt-cheatrow{display:flex;align-items:center;gap:8px;font-size:13px;text-align:left}
 .pt-root .pt-cheatrow input{width:16px;height:16px;accent-color:var(--accent)}
-.pt-root .pt-stats{width:100%;border-collapse:collapse;font-size:12px}
-.pt-root .pt-stats td,.pt-root .pt-stats th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
-.pt-root .pt-stats td:first-child,.pt-root .pt-stats th:first-child{text-align:left;color:var(--mut);font-weight:400}
-.pt-root .pt-badge{margin:0;font-size:11px;color:#b45309;background:#fef3c7;border-radius:8px;padding:5px 8px}
+.pt-root .pt-stats{display:block;width:100%;font-size:12px}
+.pt-root .pt-stats-table{width:100%;border-collapse:collapse}
+.pt-root .pt-stats-table td,.pt-root .pt-stats-table th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+.pt-root .pt-stats-table td:first-child,.pt-root .pt-stats-table th:first-child{text-align:left;color:var(--mut);font-weight:400}
+.pt-root .pt-badge{margin:0;font-size:11px;color:#b45309;background:#fef3c7;border-radius:8px;padding:6px 12px}
+@media (max-width:640px){
+.pt-root .pt-app{padding:12px;gap:10px}
+.pt-root .pt-card{padding:16px}
+.pt-root .pt-hud{gap:6px}
+.pt-root .pt-key{min-height:60px}
+.pt-root .pt-legend{gap:12px;font-size:11px}
+}
+@media (prefers-reduced-motion:reduce){
+.pt-root .pt-prog i,.pt-root .pt-key,.pt-root .pt-btn{transition:none}
+.pt-root .pt-judge.show,.pt-root .pt-toast.show{animation:none;opacity:0}
+}
+/* --- fill height + mobile refinements (LAST: beat pointer:coarse 44px) --- */
+.pt-root .pt-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.pt-root .pt-icon-btn svg,.pt-root .pt-btn-icon svg{flex:none;display:block}
+.pt-root .pt-btn-icon{display:inline-flex;align-items:center}
+.pt-root.game-fill > .pt-board{flex:1 1 auto;min-height:0}
+@media (max-width:640px){
+.pt-root.game-fill > .pt-board:not(:has(.pt-ov:not([hidden]))){aspect-ratio:320/480;flex:0 0 auto}
+.pt-root.game-fill > .pt-board:has(.pt-ov:not([hidden])){aspect-ratio:auto;min-height:min(70dvh,620px);flex:0 0 auto}
+.pt-root .pt-hud{gap:5px;margin-bottom:8px}
+.pt-root .pt-hud .pt-chip{padding:4px 6px;font-size:9px}
+.pt-root .pt-hud .pt-chip[data-hud="combo"],.pt-root .pt-hud .pt-chip[data-el="modeChip"]{display:none}
+.pt-root .pt-hud .pt-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.pt-root .pt-hud .pt-btn-label,.pt-root .pt-hud .pt-spacer{display:none}
+.pt-root .pt-ov{padding:8px}
+.pt-root .pt-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.pt-root .pt-rows,.pt-root .pt-cheats,.pt-root .pt-stats,.pt-root .pt-help{scrollbar-width:none}
+.pt-root .pt-rows::-webkit-scrollbar,.pt-root .pt-cheats::-webkit-scrollbar,
+.pt-root .pt-stats::-webkit-scrollbar,.pt-root .pt-help::-webkit-scrollbar{display:none}
+.pt-root .pt-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.pt-root .pt-note{display:none}
+}
+@media (pointer:coarse){
+.pt-root .pt-hud .pt-btn{min-height:32px;padding:5px 9px;font-size:9px}
+}
 </style>
-<div class="game-app pt-app">
-  <div class="game-intro pt-intro">
-    <div><h2>Piano Tiles</h2><p>Ketuk balok tepat di garis nada. PERFECT = poin besar, 3 miss lagu berakhir.</p></div>
-    <span class="game-status pt-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+<div class="game-app pt-app game-fill" data-pt>
+  <div class="pt-hud">
+    <span class="pt-chip"><i class="game-status-dot"></i><span data-hud="status">Siap</span></span>
+    <span class="pt-chip">SKOR <b data-hud="score">0</b></span>
+    <span class="pt-chip" data-hud="combo">COMBO <b data-hud="comboVal">0</b></span>
+    <span class="pt-chip">BALOK <b data-hud="tiles">0</b>/<b data-hud="song">0</b></span>
+    <span class="pt-chip" data-el="oppChip" hidden><span data-el="oppName">Bot</span> <b data-hud="oscore">0</b> · <b data-hud="ostrikes">0</b>✗</span>
+    <span class="pt-chip soft" data-el="modeChip">VS Bot</span>
+    <span class="pt-chip soft">REKOR <b data-hud="best">0</b></span>
+    <span class="pt-spacer"></span>
+    <button class="pt-btn pt-icon-btn" type="button" data-mute aria-label="Suara" title="Suara (M)"><span class="pt-btn-icon" data-mute-icon>${iconSVG("volume1", { size: 14 })}</span><span class="pt-btn-label">Suara</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-help aria-label="Cara bermain" title="Cara bermain (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pt-btn-label">Bantuan</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-cheats aria-label="Cheat" title="Cheat (C)">${iconSVG("wrench", { size: 14 })}<span class="pt-btn-label">Cheat</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-pause aria-label="Jeda" title="Jeda (P)"><span class="pt-btn-icon" data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="pt-btn-label">Jeda</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-restart aria-label="Ulangi" title="Ulangi (R)">${iconSVG("refresh", { size: 14 })}<span class="pt-btn-label">Ulangi</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-exit aria-label="Keluar game" title="Keluar game">${iconSVG("logOut", { size: 14 })}<span class="pt-btn-label">Keluar</span></button>
   </div>
-  <section class="game-panel pt-panel" data-board>
-    <div class="pt-hud">
-      <span class="pt-chip">Skor <b data-hud="score">0</b></span>
-      <span class="pt-chip">Combo <b data-hud="combo">0</b></span>
-      <span class="pt-chip">Balok <b data-hud="tiles">0</b>/<b data-hud="song">0</b></span>
-      <span class="pt-chip" data-el="oppChip" hidden><span data-el="oppName">Bot</span> <b data-hud="oscore">0</b> · <b data-hud="ostrikes">0</b>✗</span>
-      <span class="pt-spacer"></span>
-      <span class="pt-chip soft" data-el="modeChip">VS Bot</span>
-      <span class="pt-chip soft">Rekor <b data-hud="best">0</b></span>
-    </div>
-    <div class="pt-board">
-      <div class="pt-prog"><i data-el="prog"></i></div>
-      <svg class="pt-svg" viewBox="0 0 320 480" data-el="svg" aria-label="Lajur Piano Tiles">
-        <g data-el="lanes"></g>
-        <rect class="pt-zone" x="0" y="360" width="320" height="118" pointer-events="none"/>
-        <line class="pt-line" x1="0" y1="415" x2="320" y2="415" pointer-events="none"/>
-        <g data-el="tiles" pointer-events="none"></g>
-        <g data-el="strikes" transform="translate(16,18)" pointer-events="none"></g>
-        <text class="pt-judge" data-el="judge" x="160" y="252" pointer-events="none"></text>
-        <text class="pt-toast" data-el="toast" x="160" y="150" pointer-events="none"></text>
-      </svg>
+  <section class="game-panel pt-board" data-board>
+    <div class="pt-prog"><i data-el="prog"></i></div>
+    <svg class="pt-svg" viewBox="0 0 320 480" preserveAspectRatio="xMidYMid meet" data-el="svg" aria-label="Lajur Piano Tiles">
+      <g data-el="lanes"></g>
+      <rect class="pt-zone" x="0" y="360" width="320" height="118" pointer-events="none"/>
+      <line class="pt-line" x1="0" y1="415" x2="320" y2="415" pointer-events="none"/>
+      <g data-el="tiles" pointer-events="none"></g>
+      <g data-el="strikes" transform="translate(16,18)" pointer-events="none"></g>
+      <text class="pt-judge" data-el="judge" x="160" y="252" pointer-events="none"></text>
+      <text class="pt-toast" data-el="toast" x="160" y="150" pointer-events="none"></text>
+    </svg>
 
-      <div class="pt-ov" data-ov="start">
-        <div class="pt-card">
-          <h3>Piano Tiles 🎹</h3>
+    <div class="pt-ov" data-ov="start">
+      <div class="pt-card">
+        <div class="pt-head"><h3>Piano Tiles 🎹</h3><span class="pt-note">D F J K</span></div>
+        <div class="pt-rows" data-el="startLocal">
           <p class="pt-sub">Balok jatuh dari atas — ketuk <b>balok milikmu</b> saat menyentuh garis ungu. Jangan ketuk lajur kosong!</p>
-          <div class="pt-rows" data-el="startLocal">
-            <label class="pt-row" data-el="rowMode">Mode
-              <select data-el="selMode"><option value="bot" selected>VS Bot</option><option value="solo">Solo</option></select>
-            </label>
-            <label class="pt-row">Tingkat
-              <select data-el="selDiff"><option value="easy">Mudah</option><option value="normal" selected>Normal</option><option value="hard">Sulit</option></select>
-            </label>
-            <button class="pt-btn primary" type="button" data-act="start">▶ Mulai</button>
-          </div>
-          <p class="pt-sub" data-el="startWait" hidden>Menunggu host memulai permainan…</p>
-          <button class="pt-btn" type="button" data-act="tutorial">📖 Cara bermain</button>
-          <p class="pt-hint">D F J K = lajur · Spasi = mulai/jeda · P = jeda · M = suara · C = cheat</p>
+          <label class="pt-row" data-el="rowMode">Mode
+            <select data-el="selMode"><option value="bot" selected>VS Bot</option><option value="solo">Solo</option></select>
+          </label>
+          <label class="pt-row">Tingkat
+            <select data-el="selDiff"><option value="easy">Mudah</option><option value="normal" selected>Normal</option><option value="hard">Sulit</option></select>
+          </label>
+        </div>
+        <p class="pt-sub" data-el="startWait" hidden>Menunggu host memulai permainan…</p>
+        <div class="pt-foot">
+          <button class="pt-btn" type="button" data-act="help">📖 Cara bermain</button>
+          <button class="pt-btn primary" type="button" data-act="start">▶ Mulai</button>
         </div>
       </div>
+    </div>
 
-      <div class="pt-ov" data-ov="over" hidden>
-        <div class="pt-card">
-          <h3 data-el="ovTitle">Lagu berakhir</h3>
+    <div class="pt-ov" data-ov="over" hidden>
+      <div class="pt-card">
+        <div class="pt-head"><h3 data-el="ovTitle">Lagu berakhir</h3></div>
+        <div class="pt-stats">
           <p class="pt-sub" data-el="ovReason"></p>
           <div data-el="ovStats"></div>
           <p class="pt-badge" data-el="ovBadge" hidden>🧪 Cheat aktif — rekor tidak disimpan.</p>
           <p class="pt-hint" data-el="ovBest"></p>
+        </div>
+        <div class="pt-foot">
           <button class="pt-btn primary" type="button" data-act="restart" data-el="btnAgain">↻ Main lagi</button>
           <button class="pt-btn" type="button" data-act="menu" data-el="btnMenu">☰ Menu</button>
-          <p class="pt-hint" data-el="ovWait" hidden>Host dapat memulai ulang.</p>
         </div>
+        <p class="pt-hint" data-el="ovWait" hidden>Host dapat memulai ulang.</p>
       </div>
+    </div>
 
-      <div class="pt-ov" data-ov="pause" hidden>
-        <div class="pt-card">
-          <h3>⏸ Jeda</h3>
-          <button class="pt-btn primary" type="button" data-act="resume">▶ Lanjutkan</button>
+    <div class="pt-ov" data-ov="pause" hidden>
+      <div class="pt-card">
+        <div class="pt-head"><h3>⏸ Jeda</h3></div>
+        <div class="pt-foot">
           <button class="pt-btn" type="button" data-act="restart">↻ Ulang dari awal</button>
+          <button class="pt-btn primary" type="button" data-act="resume">▶ Lanjutkan</button>
         </div>
       </div>
+    </div>
 
-      <div class="pt-ov" data-ov="tutorial" hidden>
-        <div class="pt-card">
-          <h3>📖 Cara bermain</h3>
-          <div class="pt-help">
-            <div><b>🎯 Tujuan</b>Ketuk balok milikmu saat pusatnya melewati garis ungu. Solo: selesaikan lagu dengan akurasi ≥ 70%. 3 miss = lagu berakhir.</div>
-            <div><b>🎮 Kontrol</b>Keyboard <b>D F J K</b>, klik lajur, atau tombol virtual di bawah papan. Spasi mulai/jeda, P jeda, M suara, C cheat, H bantuan.</div>
-            <div><b>⭐ Penilaian</b>PERFECT (≤ 24px dari garis): 100 + bonus combo. GOOD (≤ 60px): 60 + bonus combo. Di luar itu / lajur kosong: MISS.</div>
-            <div><b>👥 Mode</b>Solo: semua balok milikmu. VS Bot &amp; Online: balok bergantian milik dua pemain — koin menentukan siapa dapat balok pertama, dan posisi P1/P2 diacak tiap ronde. Hanya ketuk balok bergaris ungu (milikmu)!</div>
-            <div><b>🧪 Cheat</b>Hanya mode lokal. Saat cheat aktif, rekor tidak disimpan.</div>
-          </div>
-          <button class="pt-btn primary" type="button" data-act="close">Mengerti</button>
-        </div>
-      </div>
-
-      <div class="pt-ov" data-ov="cheat" hidden>
-        <div class="pt-card">
-          <h3>🧪 Cheat</h3>
+    <div class="pt-ov" data-ov="cheat" hidden>
+      <div class="pt-card">
+        <div class="pt-head"><h3>🧪 Cheat</h3><button class="pt-btn" type="button" data-cheat-close aria-label="Tutup cheat" title="Tutup cheat">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="pt-cheats">
           <p class="pt-hint">Mode lokal saja · rekor tidak disimpan saat cheat aktif.</p>
           <label class="pt-cheatrow"><input type="checkbox" data-cheat="auto"> Auto-play (balokmu diketuk sempurna)</label>
           <label class="pt-cheatrow"><input type="checkbox" data-cheat="slow"> Slow-motion (0,6×)</label>
           <label class="pt-cheatrow"><input type="checkbox" data-cheat="wide"> Zona penilaian lebar (1,8×)</label>
           <label class="pt-cheatrow"><input type="checkbox" data-cheat="shield"> Anti-miss (miss tidak menambah ✗)</label>
           <label class="pt-cheatrow" data-el="nerfRow"><input type="checkbox" data-cheat="nerf"> Bot kacau (50% gagal)</label>
+        </div>
+        <div class="pt-foot">
           <button class="pt-btn" type="button" data-act="forcewin" data-el="btnWin">🏆 Menang instan</button>
-          <button class="pt-btn primary" type="button" data-act="close">Tutup</button>
+          <button class="pt-btn primary" type="button" data-cheat-close>Tutup</button>
         </div>
       </div>
     </div>
 
-    <div class="pt-pad">
-      <button type="button" class="pt-key" data-lane="0" aria-label="Lajur 1 (D)"><b>D</b><i></i></button>
-      <button type="button" class="pt-key" data-lane="1" aria-label="Lajur 2 (F)"><b>F</b><i></i></button>
-      <button type="button" class="pt-key" data-lane="2" aria-label="Lajur 3 (J)"><b>J</b><i></i></button>
-      <button type="button" class="pt-key" data-lane="3" aria-label="Lajur 4 (K)"><b>K</b><i></i></button>
-    </div>
-    <div class="pt-legend" data-el="legend" hidden>
-      <span><i data-el="swMe"></i>Kamu</span>
-      <span><i data-el="swOp"></i><span data-el="opName">Bot</span></span>
+    <div class="pt-ov" data-ov="help" hidden>
+      <div class="pt-card">
+        <div class="pt-head"><h3>📖 Cara bermain</h3><button class="pt-btn" type="button" data-help-close aria-label="Tutup bantuan" title="Tutup bantuan">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="pt-help">
+          <div><b>🎯 Tujuan</b>Ketuk balok milikmu saat pusatnya melewati garis ungu. Solo: selesaikan lagu dengan akurasi ≥ 70%. 3 miss = lagu berakhir.</div>
+          <div><b>🎮 Kontrol</b>Keyboard <b>D F J K</b>, klik lajur, atau tombol virtual di bawah papan. Spasi mulai/jeda, P jeda, R ulang, M suara, C cheat, H bantuan.</div>
+          <div><b>⭐ Penilaian</b>PERFECT (≤ 24px dari garis): 100 + bonus combo. GOOD (≤ 60px): 60 + bonus combo. Di luar itu / lajur kosong: MISS.</div>
+          <div><b>👥 Mode</b>Solo: semua balok milikmu. VS Bot &amp; Online: balok bergantian milik dua pemain — koin menentukan siapa dapat balok pertama, dan posisi P1/P2 diacak tiap ronde. Hanya ketuk balok bergaris ungu (milikmu)!</div>
+          <div><b>🧪 Cheat</b>Hanya mode lokal. Saat cheat aktif, rekor tidak disimpan.</div>
+        </div>
+        <div class="pt-foot"><span class="pt-note">Tekan H untuk membuka lagi</span><button class="pt-btn primary" type="button" data-help-close>Mengerti</button></div>
+      </div>
     </div>
   </section>
-  <div class="game-actions pt-actions">
-    <button class="game-action-button pt-btn" type="button" data-act="restart" data-el="btnRestart">↻ Ulang</button>
-    <button class="game-action-button pt-btn" type="button" data-act="pause" data-el="btnPause">⏸ Jeda</button>
-    <button class="game-action-button pt-btn" type="button" data-act="mute" data-el="btnMute" aria-label="Suara">🔊</button>
-    <button class="game-action-button pt-btn" type="button" data-act="cheat" data-el="btnCheat">🧪 Cheat</button>
-    <button class="game-action-button pt-btn" type="button" data-act="tutorial">❓ Cara main</button>
-    <button class="game-action-button pt-btn" type="button" data-exit>✕ Keluar</button>
+
+  <div class="pt-pad">
+    <button type="button" class="pt-key" data-lane="0" aria-label="Lajur 1 (D)"><b>D</b><i></i></button>
+    <button type="button" class="pt-key" data-lane="1" aria-label="Lajur 2 (F)"><b>F</b><i></i></button>
+    <button type="button" class="pt-key" data-lane="2" aria-label="Lajur 3 (J)"><b>J</b><i></i></button>
+    <button type="button" class="pt-key" data-lane="3" aria-label="Lajur 4 (K)"><b>K</b><i></i></button>
+  </div>
+  <div class="pt-legend" data-el="legend" hidden>
+    <span><i data-el="swMe"></i>Kamu</span>
+    <span><i data-el="swOp"></i><span data-el="opName">Bot</span></span>
   </div>
 </div>`;
 
@@ -356,19 +407,20 @@ export function mount(root, context = {}) {
     const $ = (s) => root.querySelector(s);
     const lanesG = $('[data-el="lanes"]'), tilesG = $('[data-el="tiles"]'), strikesG = $('[data-el="strikes"]');
     const judgeEl = $('[data-el="judge"]'), toastEl = $('[data-el="toast"]'), progEl = $('[data-el="prog"]');
-    const statusEl = $('[data-status]'), modeChip = $('[data-el="modeChip"]');
+    const statusEl = $('[data-hud="status"]'), modeChip = $('[data-el="modeChip"]');
     const hud = {
-        score: $('[data-hud="score"]'), combo: $('[data-hud="combo"]'), tiles: $('[data-hud="tiles"]'),
+        score: $('[data-hud="score"]'), combo: $('[data-hud="comboVal"]'), tiles: $('[data-hud="tiles"]'),
         song: $('[data-hud="song"]'), best: $('[data-hud="best"]'),
         oscore: $('[data-hud="oscore"]'), ostrikes: $('[data-hud="ostrikes"]'),
     };
     const ovs = {
         start: $('[data-ov="start"]'), over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'),
-        tutorial: $('[data-ov="tutorial"]'), cheat: $('[data-ov="cheat"]'),
+        cheat: $('[data-ov="cheat"]'), help: $('[data-ov="help"]'),
     };
     const selMode = $('[data-el="selMode"]'), selDiff = $('[data-el="selDiff"]');
-    const btnRestart = $('[data-el="btnRestart"]'), btnPause = $('[data-el="btnPause"]'),
-        btnMute = $('[data-el="btnMute"]'), btnCheat = $('[data-el="btnCheat"]');
+    const btnRestart = $('[data-restart]'), btnPause = $('[data-pause]'), btnCheat = $('[data-cheats]');
+    const btnPauseLabel = btnPause.querySelector(".pt-btn-label"), btnPauseIcon = $('[data-pause-icon]');
+    const btnMute = $('[data-mute]'), btnMuteLabel = btnMute.querySelector(".pt-btn-label"), btnMuteIcon = $('[data-mute-icon]');
     const oppChip = $('[data-el="oppChip"]'), oppName = $('[data-el="oppName"]'), legend = $('[data-el="legend"]');
     const opName = $('[data-el="opName"]'), nerfRow = $('[data-el="nerfRow"]'), btnWin = $('[data-el="btnWin"]');
     const startLocal = $('[data-el="startLocal"]'), startWait = $('[data-el="startWait"]'), rowMode = $('[data-el="rowMode"]');
@@ -477,11 +529,12 @@ export function mount(root, context = {}) {
 
     function renderOverlays() {
         let name = null;
-        if (uiOv) name = uiOv;
-        else if (!state || state.status === "idle") name = "start";
+        if (!state || state.status === "idle") name = "start";
         else if (state.status === "finished") name = "over";
         else if (paused && !online) name = "pause";
-        for (const k in ovs) ovs[k].hidden = k !== name;
+        for (const k of ["start", "over", "pause"]) ovs[k].hidden = k !== name || cheatsOpen || helpOpen;
+        ovs.cheat.hidden = !cheatsOpen || helpOpen;
+        ovs.help.hidden = !helpOpen;
     }
 
     function renderOverContent() {
@@ -497,7 +550,7 @@ export function mount(root, context = {}) {
                     ? `Akurasi ${Math.round((state.players[0].hits / state.song) * 100)}% (butuh ${Math.round(WIN_ACC * 100)}%).`
                     : "Semua balok selesai — skor tertinggi menang.";
         const slots = mk === "solo" ? [0] : [0, 1];
-        let h = `<table class="pt-stats"><tr><th></th>${slots.map((s) => `<th>${state.players[s].name}</th>`).join("")}</tr>`;
+        let h = `<table class="pt-stats-table"><tr><th></th>${slots.map((s) => `<th>${state.players[s].name}</th>`).join("")}</tr>`;
         const rows = [
             ["Skor", (p) => p.score], ["Perfect", (p) => p.perfect], ["Good", (p) => p.good],
             ["Miss", (p) => p.misses], ["Combo maks", (p) => p.maxCombo],
@@ -513,7 +566,13 @@ export function mount(root, context = {}) {
     function renderControls() {
         const guest = online && !room.isHost;
         btnRestart.hidden = guest; btnPause.hidden = online; btnCheat.hidden = online;
-        btnPause.textContent = paused ? "▶ Lanjut" : "⏸ Jeda";
+        btnPauseLabel.textContent = paused ? "Lanjut" : "Jeda";
+        btnPause.setAttribute("aria-label", paused ? "Lanjutkan" : "Jeda");
+        btnPause.setAttribute("title", paused ? "Lanjutkan (P)" : "Jeda (P)");
+        btnPauseIcon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+        btnMuteLabel.textContent = muted ? "Bisu" : "Suara";
+        btnMute.setAttribute("aria-label", muted ? "Nyalakan suara" : "Matikan suara");
+        btnMuteIcon.innerHTML = iconSVG(muted ? "volumeX" : "volume1", { size: 14 });
         rowMode.hidden = online;
         startLocal.hidden = guest; startWait.hidden = !guest;
         btnAgain.hidden = guest; btnMenu.hidden = online; ovWait.hidden = !guest;
@@ -549,7 +608,7 @@ export function mount(root, context = {}) {
             botSkip: Math.random() < (cheats.nerf ? 0.5 : bc),
             botTried: false, autoTried: false,
         }));
-        roundLocalStart = Date.now(); simT = 0; lastT = 0; paused = false; newBest = false;
+        roundLocalStart = Date.now(); simT = 0; lastT = 0; pauseAt = 0; paused = false; newBest = false;
         toast(state.modeKey === "solo" ? "🎵 Siap…"
             : state.first === mySlot() ? "🪙 Kamu duluan!" : `🪙 ${state.players[state.first].name} duluan!`);
         kick();
@@ -572,7 +631,7 @@ export function mount(root, context = {}) {
             players: [mkPlayer(""), mkPlayer("")],
         };
         namePlayers(state);
-        paused = false; uiOv = null;
+        paused = false; pauseAt = 0; cheatsOpen = false;
         publish();
     }
 
@@ -644,7 +703,7 @@ export function mount(root, context = {}) {
         } else if (a.t === "menu") {
             if (online) return;
             state = idleState(); namePlayers(state);
-            currentKey = ""; tiles = []; chart = []; paused = false;
+            currentKey = ""; tiles = []; chart = []; paused = false; pauseAt = 0; cheatsOpen = false;
             render();
         }
     }
@@ -742,33 +801,75 @@ export function mount(root, context = {}) {
         if (state.status === "playing") rafId = requestAnimationFrame(loop);
     }
 
-    function togglePause() {
+    function setPaused(on) {
         if (online || !state || state.status !== "playing") return;
-        paused = !paused; lastT = 0;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        if (next) {
+            pauseAt = Date.now();
+            paused = true;
+        } else {
+            if (pauseAt) {
+                const moved = Date.now() - pauseAt;
+                roundLocalStart += moved;      // geser anchor waktu agar tidak loncat saat resume
+                state.startAt += moved;
+                pauseAt = 0;
+            }
+            paused = false;
+        }
+        lastT = 0;
         render();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function toggleMute() { muted = !muted; render(); }
+    function restartRound() {
+        if (online && !room.isHost) return;
+        helpOpen = false; cheatsOpen = false;
+        startRound(state ? state.difficulty : "normal", state ? state.modeKey : online ? "duet" : "bot");
     }
 
     /* ---- events ---- */
     function handleClick(event) {
-        const btn = event.target.closest ? event.target.closest("[data-act],[data-exit]") : null;
-        if (!btn) return;
-        if (btn.hasAttribute("data-exit")) { onExit(); return; }
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else setPaused();
+            return;
+        }
+        if (t.closest("[data-restart]")) { restartRound(); return; }
+        if (t.closest("[data-mute]")) { toggleMute(); return; }
         actx();
+        const btn = t.closest("[data-act]");
+        if (!btn) return;
         const a = btn.dataset.act;
         if (a === "start") {
             if (online && !room.isHost) return;
             startRound(selDiff.value, online ? "duet" : selMode.value);
-        } else if (a === "restart") {
-            if (online && !room.isHost) return;
-            startRound(state ? state.difficulty : "normal", state ? state.modeKey : online ? "duet" : "bot");
-        } else if (a === "menu") applyAction({ t: "menu" }, mySlot());
-        else if (a === "pause") togglePause();
-        else if (a === "resume") { paused = false; lastT = 0; render(); }
-        else if (a === "mute") { muted = !muted; btnMute.textContent = muted ? "🔇" : "🔊"; }
-        else if (a === "cheat") { if (!online) { uiOv = uiOv === "cheat" ? null : "cheat"; render(); } }
-        else if (a === "tutorial") { uiOv = uiOv === "tutorial" ? null : "tutorial"; render(); }
-        else if (a === "close") { uiOv = null; render(); }
-        else if (a === "forcewin") { applyAction({ t: "forcewin" }, mySlot()); uiOv = null; render(); }
+        } else if (a === "restart") restartRound();
+        else if (a === "menu") applyAction({ t: "menu" }, mySlot());
+        else if (a === "resume") setPaused(false);
+        else if (a === "help") toggleHelp(true);
+        else if (a === "forcewin") {
+            applyAction({ t: "forcewin" }, mySlot());
+            cheatsOpen = false; render();
+        }
     }
 
     function handlePointer(event) {
@@ -797,37 +898,51 @@ export function mount(root, context = {}) {
         const tag = ((e.target && e.target.tagName) || "").toLowerCase();
         if (tag === "input" || tag === "select" || tag === "textarea") return;
         const k = (e.key || "").toLowerCase();
-        if (uiOv) {
-            if (k === "escape" || (k === "h" && uiOv === "tutorial") || (k === "c" && uiOv === "cheat")) {
-                uiOv = null; render();
-            }
-            return;
+        const c = e.code || (k.length === 1 ? "Key" + k.toUpperCase() : "");
+        // prioritas: help → cheats → pause/Escape → aksi game
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (helpOpen) {
+            if (c === "Escape" || c === "KeyP" || c === "Enter") toggleHelp(false);
+            e.preventDefault(); return;
         }
+        if (c === "KeyC") { toggleCheats(); e.preventDefault(); return; }
+        if (cheatsOpen) {
+            if (c === "Escape" || c === "KeyP" || c === "Enter") toggleCheats(false);
+            e.preventDefault(); return;
+        }
+        if (c === "KeyP" || c === "Escape") { setPaused(); e.preventDefault(); return; }
+        if (c === "KeyR") { restartRound(); e.preventDefault(); return; }
+        if (c === "KeyM") { toggleMute(); e.preventDefault(); return; }
         if (k in KEYS) {
             if (e.repeat) return;
             e.preventDefault(); actx();
             performTap(KEYS[k], mySlot());
             return;
         }
-        if (e.code === "Space" || k === " ") {
+        if (c === "Space" || k === " ") {
             e.preventDefault(); actx();
             const guest = online && !room.isHost;
             if (!state || state.status === "idle") {
                 if (!guest) startRound(selDiff.value, online ? "duet" : selMode.value);
             } else if (state.status === "finished") {
                 if (!guest) startRound(state.difficulty, state.modeKey);
-            } else togglePause();
+            } else setPaused();
             return;
         }
-        if (k === "p") togglePause();
-        else if (k === "m") { muted = !muted; btnMute.textContent = muted ? "🔇" : "🔊"; }
-        else if (k === "c" && !online) { uiOv = uiOv === "cheat" ? null : "cheat"; render(); }
-        else if (k === "h") { uiOv = uiOv === "tutorial" ? null : "tutorial"; render(); }
+        if (c === "Enter") {
+            const guest = online && !room.isHost;
+            if (!state || state.status === "idle") {
+                if (!guest) startRound(selDiff.value, online ? "duet" : selMode.value);
+            } else if (state.status === "finished") {
+                if (!guest) startRound(state.difficulty, state.modeKey);
+            } else if (paused) setPaused(false);
+            e.preventDefault();
+        }
     }
 
     function handleVis() {
         if (document.hidden && !online && state && state.status === "playing" && !paused) {
-            paused = true; render(); // auto-jeda saat tab ditinggal (mode lokal)
+            setPaused(true); // auto-jeda saat tab ditinggal (mode lokal)
         }
     }
 

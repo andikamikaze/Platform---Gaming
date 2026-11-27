@@ -1,6 +1,8 @@
 /* ==== GAME: edm-pad.js ==== */
 /* EDM Pad — minimalist synth pads, loop studio, VS Bot / online battle. */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "edm-pad", // harus sama dengan nama file (tanpa .js)
     name: "EDM Pad",
@@ -135,8 +137,11 @@ export function mount(root, context = {}) {
     let saved = loadJSON("edmPadLoops", []);
     let best = loadJSON(META.bestKey, 0);
     const cheats = { reveal: false, auto: false }; // purely local assists
-    let cheatsUsed = false, showHelp = false, showCheats = false;
+    let cheatsUsed = false;
+    let helpOpen = false, cheatsOpen = false, loopsOpen = false, paused = false;
+    let frozen = false, pauseStart = 0;
     let lastAbs = -1, lastLoopAbs = -1, prevT0 = 0, prevHitsLen = 0;
+    const isFrozen = () => paused || helpOpen || cheatsOpen || loopsOpen;
 
     function loadJSON(k, fb) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? fb : v; } catch (e) { return fb; } }
     function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
@@ -171,140 +176,221 @@ export function mount(root, context = {}) {
     const phaseDur = (p) => (CYCLES[p] || 0) * STEPS * state.stepMs;
 
     /* ---------------- DOM ---------------- */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("edmPadHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("edmPadHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+
     root.innerHTML = `
 <style>
-.ep-app{color:#e7ecf3;font-size:14px}
+.ep-app{color:#e7ecf3;font-size:14px;line-height:1.5}
 .ep-app [hidden]{display:none!important}
-.ep-app .ep-board{display:flex;flex-direction:column;gap:12px;max-width:600px;margin:0 auto;width:100%}
-.ep-app .ep-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
-.ep-app .ep-spacer{flex:1}
-.ep-app .ep-btn{background:#141821;border:1px solid #ffffff14;color:#dbe3ee;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;touch-action:manipulation;transition:border-color .12s,background .12s}
+.ep-app .ep-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ep-app .ep-hud-info{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ep-app .ep-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #ffffff14;border-radius:999px;background:#141821;color:#a5b1c2;white-space:nowrap}
+.ep-app .ep-chip b{color:#e7ecf3;font-variant-numeric:tabular-nums}
+.ep-app .ep-lives{display:inline-flex;gap:4px;vertical-align:middle}
+.ep-app .ep-life{width:8px;height:8px;border-radius:50%;background:#f87171}
+.ep-app .ep-life.off{background:#ffffff1c}
+.ep-app .ep-status .ep-status-dot{width:6px;height:6px;border-radius:50%;background:#a5b1c2}
+.ep-app .ep-status.good{color:#6ee7b7;border-color:#6ee7b755}
+.ep-app .ep-status.good .ep-status-dot{background:#6ee7b7}
+.ep-app .ep-status.bad{color:#fca5a5;border-color:#fca5a555}
+.ep-app .ep-status.bad .ep-status-dot{background:#fca5a5}
+.ep-app .ep-spacer{flex:1 1 auto}
+.ep-app .ep-btn{background:#141821;border:1px solid #ffffff14;color:#dbe3ee;border-radius:9px;padding:0 14px;min-height:44px;font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer;touch-action:manipulation;transition:border-color .15s,background .15s}
 .ep-app .ep-btn:hover{border-color:#ffffff33}
-.ep-app .ep-btn.on{border-color:#a78bfa;color:#c4b5fd}
+.ep-app .ep-btn.on{border-color:#a78bfa;color:#c4b5fd;background:#a78bfa1c}
 .ep-app .ep-btn.primary{background:#a78bfa;border-color:transparent;color:#10131a}
-.ep-app .ep-btn:disabled{opacity:.35;cursor:default}
-.ep-app .ep-tabs{display:flex;background:#141821;border:1px solid #ffffff14;border-radius:10px;padding:3px;gap:3px}
-.ep-app .ep-tabs .ep-btn{border:0;background:transparent;padding:6px 12px}
-.ep-app .ep-tabs .ep-btn.on{background:#a78bfa22;color:#c4b5fd}
-.ep-app .ep-status{min-height:20px;text-align:center;font-weight:600;font-size:13px;color:#93a0b4}
-.ep-app .ep-status.good{color:#6ee7b7}
-.ep-app .ep-status.bad{color:#fca5a5}
-.ep-app .ep-stage{position:relative;display:flex;flex-direction:column;gap:12px;padding:4px 0}
-.ep-app .ep-pads{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:100%}
-.ep-app .ep-pad{position:relative;height:clamp(64px,15vw,92px);border:1px solid #ffffff12;border-radius:12px;background:#161a21;color:#dbe3ee;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;touch-action:manipulation;user-select:none;-webkit-user-select:none;transition:transform .07s,background .07s,border-color .07s}
+.ep-app .ep-btn:disabled{opacity:.4;cursor:default}
+.ep-app .ep-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ep-app .ep-icon-btn svg{flex:none;display:block}
+.ep-app .ep-tabs{display:inline-flex;gap:4px;padding:4px;border:1px solid #ffffff14;border-radius:10px;background:#141821}
+.ep-app .ep-tabs .ep-btn{min-height:32px;padding:0 10px;border:0;background:transparent;border-radius:7px}
+.ep-app .ep-tabs .ep-btn.on{background:#a78bfa2b;color:#c4b5fd}
+.ep-app .ep-board{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;width:100%;min-height:0;padding:14px;border:1px solid #ffffff12;border-radius:12px;background:#0b0e13;overflow:hidden}
+.ep-app .ep-pads{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;width:100%;max-width:640px}
+.ep-app .ep-pad{position:relative;min-height:76px;height:clamp(72px,16vw,96px);border:1px solid #ffffff12;border-radius:10px;background:#161a21;color:#dbe3ee;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;touch-action:manipulation;user-select:none;-webkit-user-select:none;transition:transform .15s,background .15s,border-color .15s}
 .ep-app .ep-pad i{width:8px;height:8px;border-radius:50%;background:var(--h)}
-.ep-app .ep-pad small{position:absolute;top:6px;right:8px;font-size:10px;font-weight:600;opacity:.35}
-.ep-app .ep-pad:active,.ep-app .ep-pad.lit{transform:scale(.96);background:var(--hs);border-color:var(--h)}
-.ep-app .ep-steps{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;width:100%}
-.ep-app .ep-bar{height:8px;border-radius:3px;background:#ffffff10}
+.ep-app .ep-pad small{position:absolute;top:8px;right:8px;font-size:10px;font-weight:600;opacity:.5}
+.ep-app .ep-pad:active,.ep-app .ep-pad.lit{transform:scale(.97);background:var(--hs);border-color:var(--h)}
+.ep-app .ep-steps{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;width:100%;max-width:640px}
+.ep-app .ep-bar{height:8px;border-radius:4px;background:#ffffff10}
 .ep-app .ep-bar.rec{background:#a78bfa}
 .ep-app .ep-bar.hint{box-shadow:inset 0 0 0 1px #facc15aa}
 .ep-app .ep-bar.cur{background:#e2e8f0}
-.ep-app .ep-meta{display:flex;gap:14px;align-items:center;justify-content:center;font-size:12px;color:#93a0b4;flex-wrap:wrap}
-.ep-app .ep-meta b{color:#e7ecf3}
-.ep-app .ep-lives{display:inline-flex;gap:5px;vertical-align:middle}
-.ep-app .ep-life{width:9px;height:9px;border-radius:50%;background:#f87171}
-.ep-app .ep-life.off{background:#ffffff1c}
-.ep-app .ep-panel{border:1px solid #ffffff12;background:#ffffff06;border-radius:12px;padding:12px;font-size:13px;line-height:1.55;color:#c3cde2}
-.ep-app .ep-panel h3{margin:0 0 8px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#93a0b4}
-.ep-app .ep-panel ul{margin:0;padding-left:18px}
-.ep-app .ep-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #ffffff0a}
+.ep-app .ep-transport{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
+.ep-app .ep-transport .ep-btn{min-height:40px;padding:0 12px}
+.ep-app .ep-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:#0b0e13d9;backdrop-filter:blur(4px)}
+.ep-app .ep-card{width:min(420px,100%);max-height:100%;display:flex;flex-direction:column;gap:12px;padding:18px;border:1px solid #ffffff14;border-radius:14px;background:#141821;box-shadow:0 16px 40px #0008;text-align:center}
+.ep-app .ep-card.wide{width:min(600px,100%);text-align:left}
+.ep-app .ep-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.ep-app .ep-head h3{margin:0;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#a5b1c2}
+.ep-app .ep-body{flex:1 1 auto;min-height:0;overflow:auto;text-align:left;font-size:13px;line-height:1.6;color:#c3cde2}
+.ep-app .ep-body b{color:#e7ecf3}
+.ep-app .ep-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;flex:1 1 auto;min-height:0;overflow:auto;text-align:left;font-size:12px;line-height:1.6;color:#c3cde2}
+.ep-app .ep-help b{display:block;margin-bottom:6px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#a5b1c2}
+.ep-app .ep-help ul{margin:0 0 12px;padding-left:18px}
+.ep-app .ep-cheats,.ep-app .ep-loops{flex:1 1 auto;min-height:0;overflow:auto;font-size:13px;line-height:1.6;color:#c3cde2}
+.ep-app .ep-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;min-height:44px;border-bottom:1px solid #ffffff0a}
 .ep-app .ep-cheat-row:last-child{border-bottom:0}
-.ep-app .ep-cheat-row span{font-size:12.5px}
-.ep-app .ep-loop-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #ffffff0a}
+.ep-app .ep-cheat-row span{font-size:13px}
+.ep-app .ep-loop-item{display:flex;align-items:center;gap:8px;padding:8px 0;min-height:44px;border-bottom:1px solid #ffffff0a}
 .ep-app .ep-loop-item:last-child{border-bottom:0}
 .ep-app .ep-loop-item .name{flex:1;font-weight:600;font-size:13px}
-.ep-app .ep-loop-item .meta{font-size:11px;color:#93a0b4}
-.ep-app .ep-empty{font-size:12px;color:#93a0b4;text-align:center;padding:4px}
-.ep-app .ep-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:#0b0e13d9;backdrop-filter:blur(4px);border-radius:14px}
-.ep-app .ep-card{max-width:330px;text-align:center;padding:20px;display:flex;flex-direction:column;gap:12px;align-items:center}
-.ep-app .ep-card h2{margin:0;font-size:20px}
-.ep-app .ep-card p{margin:0;font-size:13px;color:#93a0b4;line-height:1.55}
-.ep-app .ep-chip{font-size:11.5px;color:#93a0b4;border:1px solid #ffffff14;border-radius:99px;padding:3px 10px}
+.ep-app .ep-loop-item .meta{font-size:11px;color:#a5b1c2}
+.ep-app .ep-empty{font-size:12px;color:#a5b1c2;text-align:center;padding:8px}
+.ep-app .ep-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;padding-top:10px;border-top:1px solid #ffffff14}
+.ep-app .ep-note{font-size:11px;color:#a5b1c2;text-align:left}
+.ep-app .ep-kbd{display:inline-block;padding:1px 5px;border:1px solid #ffffff24;border-bottom-width:2px;border-radius:5px;background:#0b0e13;color:#e7ecf3;font:inherit}
+.ep-app .ep-title{font-size:22px;font-weight:800;margin:0}
+.ep-app .ep-sub{margin:0;font-size:13px;color:#a5b1c2;line-height:1.6}
+.ep-app .ep-center{display:flex;flex-direction:column;align-items:center;gap:12px}
 @media (hover:none){.ep-app .ep-keys{display:none}}
-@media (max-width:480px){.ep-app .ep-pads{gap:7px}.ep-app .ep-btn{padding:7px 9px}}
+@media (prefers-reduced-motion:reduce){.ep-app .ep-btn,.ep-app .ep-pad{transition:none}}
+
+/* --- fill height + mobile refinements (LAST: beat pointer:coarse 44px) --- */
+.ep-app.game-fill > .ep-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (pointer:coarse){.ep-app button:not(:disabled){min-height:44px}}
+@media (max-width:640px){
+.ep-app.game-fill > .ep-board:not(:has(.ep-ov:not([hidden]))){aspect-ratio:auto;flex:1 1 auto;min-height:min(52dvh,520px)}
+.ep-app.game-fill > .ep-board:has(.ep-ov:not([hidden])){aspect-ratio:auto;flex:0 0 auto;min-height:min(70dvh,620px)}
+.ep-app .ep-hud{gap:4px;margin-bottom:0}
+.ep-app .ep-hud .ep-hud-info{flex:1 1 100%;gap:4px}
+.ep-app .ep-hud .ep-chip{padding:4px 6px;font-size:9px;gap:4px}
+.ep-app .ep-hud .ep-chip[data-el="status"],
+.ep-app .ep-hud .ep-chip:has([data-el="best"]),
+.ep-app .ep-hud .ep-chip[data-el="battleInfo"] .ep-lives{display:none}
+.ep-app .ep-hud .ep-btn{min-height:32px;padding:5px 6px;font-size:9px;gap:4px}
+.ep-app .ep-hud .ep-btn-label,.ep-app .ep-hud .ep-spacer{display:none}
+.ep-app .ep-hud .ep-tabs{padding:3px;gap:3px}
+.ep-app .ep-hud .ep-tabs .ep-btn{min-height:32px;padding:5px 6px}
+.ep-app .ep-board{gap:8px;padding:8px}
+.ep-app .ep-pads,.ep-app .ep-steps{gap:6px}
+.ep-app .ep-pad{min-height:60px;height:clamp(58px,14vw,76px);font-size:10px}
+.ep-app .ep-transport .ep-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.ep-app .ep-ov{padding:8px}
+.ep-app .ep-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.ep-app .ep-body,.ep-app .ep-cheats,.ep-app .ep-loops,.ep-app .ep-help{scrollbar-width:none}
+.ep-app .ep-body::-webkit-scrollbar,.ep-app .ep-cheats::-webkit-scrollbar,.ep-app .ep-loops::-webkit-scrollbar,.ep-app .ep-help::-webkit-scrollbar{display:none}
+.ep-app .ep-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid #ffffff14}
+.ep-app .ep-note{display:none}
+}
+@media (pointer:coarse) and (max-width:640px){.ep-app .ep-hud .ep-btn{min-height:32px}}
 </style>
-<div class="game-app ep-app">
-  <div class="game-intro">
-    <div><h2>EDM Pad</h2><p>Synth pads, loop studio &amp; pattern battles.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app ep-app game-fill" data-ep>
+  <div class="ep-hud">
+    <div class="ep-hud-info">
+      <span class="ep-chip">MODE <b data-el="mode">Free jam</b></span>
+      <span class="ep-chip ep-status" data-el="status"><i class="ep-status-dot"></i><span data-status>Ready</span></span>
+      <span class="ep-chip">BEST <b data-el="best">—</b></span>
+      <span class="ep-chip" data-el="battleInfo" hidden>R <b data-el="round">1</b> · LEAD <b data-el="lead">—</b> · SCORE <b data-el="me-score">0</b>–<b data-el="op-score">0</b> · <span class="ep-lives" data-el="me-lives"></span>/<span class="ep-lives" data-el="op-lives"></span></span>
+    </div>
+    <span class="ep-spacer"></span>
+    <div class="ep-tabs" data-el="tabs">
+      <button class="ep-btn ep-icon-btn" type="button" data-act="tab-free" aria-label="Free jam" title="Free jam">${iconSVG("music", { size: 14 })}<span class="ep-btn-label">Free</span></button>
+      <button class="ep-btn ep-icon-btn" type="button" data-act="tab-loop" aria-label="Loop studio" title="Loop studio">${iconSVG("repeat", { size: 14 })}<span class="ep-btn-label">Loop</span></button>
+      <button class="ep-btn ep-icon-btn" type="button" data-act="tab-battle" aria-label="Pattern battle" title="Pattern battle">${iconSVG("swords", { size: 14 })}<span class="ep-btn-label">Battle</span></button>
+    </div>
+    <button class="ep-btn ep-icon-btn" type="button" data-act="loops" data-el="loopsbtn" aria-label="Recordings" title="Recordings" hidden>${iconSVG("library", { size: 14 })}<span class="ep-btn-label">Loops</span></button>
+    <button class="ep-btn ep-icon-btn" type="button" data-act="mute" data-el="mute" aria-label="Mute sound" title="Mute sound">${iconSVG("volume", { size: 14 })}<span class="ep-btn-label" data-el="muteLabel">Mute</span></button>
+    <button class="ep-btn ep-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ep-btn-label">Help</span></button>
+    <button class="ep-btn ep-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ep-btn-label">Cheats</span></button>
+    <button class="ep-btn ep-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-icon-pause>${iconSVG("pause", { size: 14 })}</span><span data-icon-play hidden>${iconSVG("play", { size: 14 })}</span><span class="ep-btn-label" data-el="pauseLabel">Pause</span></button>
+    <button class="ep-btn ep-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ep-btn-label">Restart</span></button>
+    <button class="ep-btn ep-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ep-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="ep-board">
-      <div class="ep-row">
-        <div class="ep-tabs" data-el="tabs">
-          <button class="ep-btn" type="button" data-act="tab-free">Free</button>
-          <button class="ep-btn" type="button" data-act="tab-loop">Loop</button>
-          <button class="ep-btn" type="button" data-act="tab-battle">Battle</button>
-        </div>
-        <span class="ep-spacer"></span>
-        <span class="ep-chip" data-el="best">Best —</span>
-        <button class="ep-btn" type="button" data-act="help" data-el="helpbtn">?</button>
-        <button class="ep-btn" type="button" data-act="cheats" data-el="cheatbtn">Cheats</button>
-        <button class="ep-btn" type="button" data-act="mute" data-el="mute">Mute</button>
+  <section class="game-panel ep-board" data-board>
+    <div class="ep-pads" data-el="pads"></div>
+    <div class="ep-steps" data-el="steps"></div>
+    <div class="ep-transport" data-el="transport" hidden>
+      <button class="ep-btn primary" type="button" data-act="play" data-el="play">Play</button>
+      <button class="ep-btn" type="button" data-act="stop">Stop</button>
+      <button class="ep-btn" type="button" data-act="restart-loop">Restart</button>
+      <button class="ep-btn" type="button" data-act="rec" data-el="rec">Rec</button>
+      <button class="ep-btn" type="button" data-act="clear">Clear</button>
+      <button class="ep-btn" type="button" data-act="save" data-el="save">Save</button>
+    </div>
+    <div class="ep-ov" data-ov="lobby" hidden>
+      <div class="ep-card ep-center">
+        <h2 class="ep-title">Pattern battle</h2>
+        <p class="ep-sub">Coin flip decides who leads each round. Lead: play a pattern. Follow: echo it. 3 lives each.</p>
+        <button class="ep-btn primary" type="button" data-act="start">Start</button>
       </div>
-      <div class="ep-status" data-el="status"></div>
-      <div class="ep-panel" data-el="help" hidden>
-        <h3>How to play</h3>
-        <ul>
-          <li><b>Free</b> — tap pads to jam.</li>
-          <li><b>Loop</b> — press Play, keep Rec on, tap pads: hits are quantized to the 16-step grid and replayed. Save takes into the recordings list.</li>
-          <li><b>Battle</b> — a coin flip picks the leader each round. Leader plays a pattern (min 2 hits), follower echoes it. Miss = lose a life. 3 lives each.</li>
-          <li class="ep-keys"><b>Keys</b> — 1–8 pads · Space play/start · R rec · S stop · H help · Esc close.</li>
-        </ul>
+    </div>
+    <div class="ep-ov" data-ov="over" hidden>
+      <div class="ep-card ep-center">
+        <h2 class="ep-title" data-el="over-title">Game over</h2>
+        <p class="ep-sub" data-el="over-sub"></p>
+        <button class="ep-btn primary" type="button" data-act="start">Play again</button>
       </div>
-      <div class="ep-panel" data-el="cheatpanel" hidden>
-        <h3>Cheats</h3>
-        <div class="ep-cheat-row"><span>Infinite lives (you)</span><button class="ep-btn" type="button" data-cheat="lives">Off</button></div>
-        <div class="ep-cheat-row"><span>Slow tempo</span><button class="ep-btn" type="button" data-cheat="slow">Off</button></div>
-        <div class="ep-cheat-row"><span>Lenient timing (±3 steps)</span><button class="ep-btn" type="button" data-cheat="lenient">Off</button></div>
-        <div class="ep-cheat-row"><span>Reveal pattern on grid</span><button class="ep-btn" type="button" data-cheat="reveal">Off</button></div>
-        <div class="ep-cheat-row"><span>Auto-echo (plays for you)</span><button class="ep-btn" type="button" data-cheat="auto">Off</button></div>
+    </div>
+    <div class="ep-ov" data-ov="pause" hidden>
+      <div class="ep-card ep-center">
+        <h2 class="ep-title">Paused</h2>
+        <p class="ep-sub">Timers and playback are on hold.</p>
+        <button class="ep-btn primary" type="button" data-resume>Resume</button>
       </div>
-      <div class="ep-stage">
-        <div class="ep-meta" data-el="battlebar" hidden>
-          <span><b data-el="me-name">You</b> <span class="ep-lives" data-el="me-lives"></span> · <b data-el="me-score">0</b></span>
-          <span class="ep-chip">Round <b data-el="round">1</b></span>
-          <span class="ep-chip">Lead: <b data-el="lead">—</b></span>
-          <span><b data-el="op-name">Bot</b> <span class="ep-lives" data-el="op-lives"></span> · <b data-el="op-score">0</b></span>
-          <button class="ep-btn" type="button" data-act="restart">Restart</button>
+    </div>
+    <div class="ep-ov" data-ov="cheat" hidden>
+      <div class="ep-card wide">
+        <div class="ep-head"><h3>Cheats</h3><button class="ep-btn" type="button" data-close-cheats aria-label="Close cheats" title="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="ep-cheats">
+          <div class="ep-cheat-row"><span>Infinite lives (you)</span><button class="ep-btn" type="button" data-cheat="lives">Off</button></div>
+          <div class="ep-cheat-row"><span>Slow tempo</span><button class="ep-btn" type="button" data-cheat="slow">Off</button></div>
+          <div class="ep-cheat-row"><span>Lenient timing (±3 steps)</span><button class="ep-btn" type="button" data-cheat="lenient">Off</button></div>
+          <div class="ep-cheat-row"><span>Reveal pattern on grid</span><button class="ep-btn" type="button" data-cheat="reveal">Off</button></div>
+          <div class="ep-cheat-row"><span>Auto-echo (plays for you)</span><button class="ep-btn" type="button" data-cheat="auto">Off</button></div>
         </div>
-        <div class="ep-pads" data-el="pads"></div>
-        <div class="ep-steps" data-el="steps"></div>
-        <div class="ep-row" data-el="transport" hidden>
-          <button class="ep-btn primary" type="button" data-act="play" data-el="play">Play</button>
-          <button class="ep-btn" type="button" data-act="stop">Stop</button>
-          <button class="ep-btn" type="button" data-act="restart-loop">Restart</button>
-          <button class="ep-btn" type="button" data-act="rec" data-el="rec">Rec</button>
-          <button class="ep-btn" type="button" data-act="clear">Clear</button>
-          <button class="ep-btn" type="button" data-act="save" data-el="save">Save</button>
-        </div>
-        <div class="ep-panel" data-el="loops" hidden>
-          <h3>Recordings</h3>
-          <div data-el="looplist"></div>
-        </div>
-        <div class="ep-ov" data-el="ov-lobby" hidden>
-          <div class="ep-card">
-            <h2>Pattern battle</h2>
-            <p data-el="lobby-sub">Coin flip decides who leads each round. Lead: play a pattern. Follow: echo it. 3 lives each.</p>
-            <button class="ep-btn primary" type="button" data-act="start">Start</button>
+        <div class="ep-foot"><span class="ep-note">Cheats work locally in VS Bot mode.</span><button class="ep-btn primary" type="button" data-close-cheats>Done</button></div>
+      </div>
+    </div>
+    <div class="ep-ov" data-ov="loops" hidden>
+      <div class="ep-card wide">
+        <div class="ep-head"><h3>Recordings</h3><button class="ep-btn" type="button" data-close-loops aria-label="Close recordings" title="Close recordings">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="ep-loops" data-el="looplist"></div>
+        <div class="ep-foot"><span class="ep-note">Save a loop from the transport bar.</span><button class="ep-btn primary" type="button" data-close-loops>Close</button></div>
+      </div>
+    </div>
+    <div class="ep-ov" data-ov="help" hidden>
+      <div class="ep-card wide">
+        <div class="ep-head"><h3>How to play</h3><button class="ep-btn" type="button" data-help-close aria-label="Close help" title="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="ep-help">
+          <div>
+            <b>Controls</b>
+            <ul>
+              <li><span class="ep-kbd">1–8</span> / tap pads — play a sound (records a hit in Loop / Battle).</li>
+              <li><span class="ep-kbd">Space</span> — play/pause loop or start battle.</li>
+              <li><span class="ep-kbd">S</span> — stop loop · <span class="ep-kbd">R</span> — restart.</li>
+              <li><span class="ep-kbd">H</span> help · <span class="ep-kbd">C</span> cheats · <span class="ep-kbd">P</span>/<span class="ep-kbd">Esc</span> pause.</li>
+              <li class="ep-keys">Use the HUD to switch Free / Loop / Battle and mute audio.</li>
+            </ul>
           </div>
-        </div>
-        <div class="ep-ov" data-el="ov-over" hidden>
-          <div class="ep-card">
-            <h2 data-el="over-title">Game over</h2>
-            <p data-el="over-sub"></p>
-            <button class="ep-btn primary" type="button" data-act="start">Play again</button>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li><b>Free</b> — tap pads to jam.</li>
+              <li><b>Loop</b> — keep Rec on and tap pads: hits snap to the 16-step grid and replay. Save stores the loop.</li>
+              <li><b>Battle</b> — a coin flip picks the leader. The leader plays a pattern (min 2 hits), the follower echoes it. Miss = lose a life. 3 lives each.</li>
+            </ul>
+            <div class="ep-foot"><span class="ep-note">Press H to reopen this guide</span><button class="ep-btn primary" type="button" data-help-close>Got it</button></div>
           </div>
         </div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const padsEl = $('[data-el="pads"]'), stepsEl = $('[data-el="steps"]'), statusEl = $('[data-el="status"]');
+    const padsEl = $('[data-el="pads"]'), stepsEl = $('[data-el="steps"]');
+    const statusEl = $('[data-status]'), statusChip = $('[data-el="status"]');
+    const pauseBtn = $('[data-pause]');
+    const ov = {
+        lobby: $('[data-ov="lobby"]'), over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'), loops: $('[data-ov="loops"]'), help: $('[data-ov="help"]'),
+    };
 
     padsEl.innerHTML = PAD_DEFS.map((p, i) =>
         `<button class="ep-pad" type="button" data-pad="${i}" style="--h:${HUES[i]};--hs:${HUES[i]}33"><i></i>${p.label}<small class="ep-keys">${i + 1}</small></button>`
@@ -369,28 +455,24 @@ export function mount(root, context = {}) {
     function render() {
         if (destroyed) return;
         if (state.t0 !== prevT0) { prevT0 = state.t0; lastAbs = -1; prevHitsLen = 0; }
-        $('[data-status]').textContent = online ? `Online · You are P${mySeat() + 1}` : ({ free: "Free jam", loop: "Loop studio", battle: "VS Bot" })[uiMode];
-        $('[data-el="best"]').textContent = best > 0 ? `Best R${best}` : "Best —";
+        const battle = uiMode === "battle";
+        $('[data-el="mode"]').textContent = online ? `Online · P${mySeat() + 1}` : ({ free: "Free jam", loop: "Loop studio", battle: "VS Bot" })[uiMode];
+        $('[data-el="best"]').textContent = best > 0 ? `R${best}` : "—";
         $('[data-el="tabs"]').hidden = online;
         for (const m of ["free", "loop", "battle"]) $(`[data-act="tab-${m}"]`).classList.toggle("on", uiMode === m);
-        $('[data-el="help"]').hidden = !showHelp;
-        $('[data-el="helpbtn"]').classList.toggle("on", showHelp);
-        $('[data-el="cheatpanel"]').hidden = !showCheats;
-        $('[data-el="cheatbtn"]').classList.toggle("on", showCheats || anyCheatActive());
-        $('[data-el="mute"]').textContent = muted ? "Unmute" : "Mute";
+        $('[data-el="loopsbtn"]').hidden = uiMode !== "loop";
+        $('[data-el="muteLabel"]').textContent = muted ? "Unmute" : "Mute";
+        $('[data-el="mute"]').classList.toggle("on", muted);
+        $('[data-el="mute"]').setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
 
         const [txt, cls] = statusText();
         statusEl.textContent = txt;
-        statusEl.className = "ep-status" + (cls ? " " + cls : "");
+        statusChip.className = "ep-chip ep-status" + (cls ? " " + cls : "");
 
-        const battle = uiMode === "battle";
-        $('[data-el="battlebar"]').hidden = !battle;
+        $('[data-el="battleInfo"]').hidden = !battle;
         $('[data-el="transport"]').hidden = uiMode !== "loop";
-        $('[data-el="loops"]').hidden = uiMode !== "loop";
         if (battle) {
             const me = mySeat(), op = 1 - me;
-            $('[data-el="me-name"]').textContent = "You";
-            $('[data-el="op-name"]').textContent = seatLabel(op);
             $('[data-el="me-lives"]').innerHTML = livesHTML(state.lives[me]);
             $('[data-el="op-lives"]').innerHTML = livesHTML(state.lives[op]);
             $('[data-el="me-score"]').textContent = state.scores[me];
@@ -413,12 +495,29 @@ export function mount(root, context = {}) {
             b.textContent = on ? "On" : "Off";
             b.classList.toggle("on", on);
         });
-        $('[data-el="ov-lobby"]').hidden = !(battle && state.phase === "lobby");
-        $('[data-el="ov-over"]').hidden = !(battle && state.phase === "over");
-        if (battle && state.phase === "over") {
+
+        ov.lobby.hidden = !(battle && state.phase === "lobby") || cheatsOpen || helpOpen || loopsOpen || paused;
+        ov.over.hidden = !(battle && state.phase === "over") || cheatsOpen || helpOpen || loopsOpen || paused;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen || loopsOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.loops.hidden = !loopsOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+        if (battle && state.phase === "over" && !helpOpen && !cheatsOpen && !loopsOpen && !paused) {
             const win = state.winner === mySeat();
             $('[data-el="over-title"]').textContent = win ? "You win!" : `${seatLabel(state.winner)} wins`;
             $('[data-el="over-sub"]').textContent = `Rounds: ${state.round} · Score ${state.scores[mySeat()]} – ${state.scores[1 - mySeat()]}`;
+        }
+
+        $('[data-help]').classList.toggle("on", helpOpen);
+        $('[data-cheats]').classList.toggle("on", cheatsOpen || anyCheatActive());
+        $('[data-el="loopsbtn"]').classList.toggle("on", loopsOpen);
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".ep-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            const iconPause = pauseBtn.querySelector("[data-icon-pause]"), iconPlay = pauseBtn.querySelector("[data-icon-play]");
+            if (iconPause) iconPause.hidden = paused;
+            if (iconPlay) iconPlay.hidden = !paused;
         }
         paintSteps(uiMode === "loop" ? Math.floor(loop.pos / BASE_STEP) % STEPS : (battle && state.t0 ? battleClock().s : -1));
     }
@@ -543,7 +642,7 @@ export function mount(root, context = {}) {
         }
     }
     const ticker = setInterval(() => {
-        if (destroyed) return;
+        if (destroyed || isFrozen()) return;
         const now = Date.now();
         if (uiMode === "loop") {
             if (loop.playing) {
@@ -569,6 +668,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- pad input ---------------- */
     function doHit(pad) {
+        if (destroyed || isFrozen()) return;
         actx();
         SOUNDS[pad]();
         flashPad(pad);
@@ -589,13 +689,69 @@ export function mount(root, context = {}) {
         }
     }
 
+    /* ---------------- overlays / freeze ---------------- */
+    function shiftAnchors(ms) {
+        if (ms <= 0) return;
+        if (!online || isHost) {
+            if (state.t0) { state.t0 += ms; prevT0 = state.t0; }
+            if (state.until) state.until += ms;
+        }
+        if (loop.last) loop.last += ms;
+        if (online && isHost) publish();
+    }
+    function syncFreeze() {
+        const shouldFreeze = isFrozen();
+        if (shouldFreeze === frozen) return;
+        if (shouldFreeze) pauseStart = Date.now();
+        else { shiftAnchors(Date.now() - pauseStart); pauseStart = 0; }
+        frozen = shouldFreeze;
+    }
+    function setPause(on) {
+        paused = Boolean(on);
+        if (paused) { cheatsOpen = false; loopsOpen = false; }
+        syncFreeze(); render();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatsOpen = false; loopsOpen = false; paused = false; }
+        syncFreeze(); render();
+    }
+    function toggleCheatsPanel(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; loopsOpen = false; paused = false; }
+        syncFreeze(); render();
+    }
+    function toggleLoops(on) {
+        loopsOpen = typeof on === "boolean" ? on : !loopsOpen;
+        if (loopsOpen) { helpOpen = false; cheatsOpen = false; paused = false; }
+        syncFreeze(); render();
+    }
+    function closeTopOverlay() {
+        if (helpOpen) { toggleHelp(false); return true; }
+        if (cheatsOpen) { toggleCheatsPanel(false); return true; }
+        if (loopsOpen) { toggleLoops(false); return true; }
+        if (paused) { setPause(false); return true; }
+        return false;
+    }
+    function restartGame() {
+        helpOpen = false; cheatsOpen = false; loopsOpen = false; paused = false;
+        syncFreeze();
+        if (uiMode === "loop") {
+            loop.pos = 0; lastLoopAbs = -1; loop.playing = true; loop.last = Date.now();
+        } else if (uiMode === "battle") {
+            submitAction({ type: "restart" });
+        }
+        render();
+    }
+
     /* ---------------- UI actions ---------------- */
     function setUiMode(m) {
         if (online || uiMode === m) return;
         loop.playing = false;
         if (m !== "battle") state = freshState();
         uiMode = m;
-        render();
+        helpOpen = false; cheatsOpen = false; loopsOpen = false; paused = false;
+        syncFreeze(); render();
     }
     function toggleCheat(key) {
         if (key === "reveal" || key === "auto") {
@@ -619,22 +775,32 @@ export function mount(root, context = {}) {
         render();
     }
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const cheatBtn = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-close-cheats]")) { toggleCheatsPanel(false); return; }
+        if (t.closest("[data-close-loops]")) { toggleLoops(false); return; }
+        if (t.closest("[data-pause]") || t.closest("[data-resume]")) {
+            if (t.closest("[data-resume]")) { setPause(false); return; }
+            if (!closeTopOverlay()) setPause(true);
+            return;
+        }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheatsPanel(); return; }
+        const cheatBtn = t.closest("[data-cheat]");
         if (cheatBtn) { toggleCheat(cheatBtn.dataset.cheat); return; }
-        const loopBtn = event.target.closest("[data-loop]");
+        const loopBtn = t.closest("[data-loop]");
         if (loopBtn) { loopAction(loopBtn.dataset.loop, Number(loopBtn.dataset.id)); return; }
-        const btn = event.target.closest("[data-act]");
+        const btn = t.closest("[data-act]");
         if (!btn) return;
         switch (btn.dataset.act) {
             case "tab-free": setUiMode("free"); break;
             case "tab-loop": setUiMode("loop"); break;
             case "tab-battle": setUiMode("battle"); break;
-            case "help": showHelp = !showHelp; render(); break;
-            case "cheats": showCheats = !showCheats; render(); break;
+            case "loops": toggleLoops(); break;
             case "mute": muted = !muted; render(); break;
             case "start": submitAction({ type: "start" }); break;
-            case "restart": submitAction({ type: "restart" }); break;
             case "play":
                 loop.playing = !loop.playing; loop.last = Date.now(); render(); break;
             case "stop":
@@ -652,24 +818,36 @@ export function mount(root, context = {}) {
         }
     }
     function handlePointer(event) {
+        if (destroyed || isFrozen() || event.target.closest(".ep-ov")) return;
         const el = event.target.closest("[data-pad]");
         if (el) { event.preventDefault(); doHit(Number(el.dataset.pad)); }
     }
     function handleKey(event) {
         if (destroyed || event.repeat) return;
         if (event.target.closest?.("input,textarea,[contenteditable]")) return;
-        const k = event.key;
+        const k = event.key, code = event.code;
+        if (code === "KeyH" || k === "?") { toggleHelp(); event.preventDefault(); return; }
+        if (code === "KeyC") { if (!helpOpen) toggleCheatsPanel(); event.preventDefault(); return; }
+        if (code === "KeyP" || k === "Escape") {
+            if (!closeTopOverlay()) setPause(true);
+            event.preventDefault(); return;
+        }
+        if (code === "KeyR") {
+            if (isFrozen()) closeTopOverlay(); else restartGame();
+            event.preventDefault(); return;
+        }
+        if (isFrozen()) {
+            if (k === " " || code === "Space" || k === "Enter") { closeTopOverlay(); event.preventDefault(); }
+            return;
+        }
         if (k >= "1" && k <= "8") { doHit(Number(k) - 1); return; }
-        if (k === " " || event.code === "Space") {
+        if (k === " " || code === "Space") {
             event.preventDefault();
             if (uiMode === "loop") { loop.playing = !loop.playing; loop.last = Date.now(); render(); }
             else if (uiMode === "battle" && (state.phase === "lobby" || state.phase === "over")) submitAction({ type: "start" });
             return;
         }
-        if (k === "r" || k === "R") { if (uiMode === "loop") { loop.record = !loop.record; render(); } }
-        else if (k === "s" || k === "S") { if (uiMode === "loop") { loop.playing = false; loop.pos = 0; lastLoopAbs = -1; render(); } }
-        else if (k === "h" || k === "H" || k === "?") { showHelp = !showHelp; render(); }
-        else if (k === "Escape") { showHelp = false; showCheats = false; render(); }
+        if (k === "s" || k === "S") { if (uiMode === "loop") { loop.playing = false; loop.pos = 0; lastLoopAbs = -1; render(); } }
     }
 
     root.addEventListener("click", handleClick);
@@ -699,6 +877,7 @@ export function mount(root, context = {}) {
     } else {
         state = freshState();
     }
+    syncFreeze();
     render();
 
     return {

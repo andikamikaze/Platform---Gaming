@@ -1,4 +1,5 @@
 /* ==== GAME: shikaku.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
   Shikaku - puzzle module (template-compatible).
   1. META.id harus sama dengan nama file tanpa .js  -> "shikaku".
@@ -237,18 +238,70 @@ export function mount(root, context = {}) {
     let state = null;
 
     /* ---------- UI state (lokal, tidak disinkronkan) ---------- */
-    let helpOpen = true, startedOnce = false, cheatsOpen = false, soloMode = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("shikaku-help-seen") === "1"; } catch (_) { seenHelp = true; }
+    let helpOpen = !seenHelp;
+    if (!seenHelp) {
+        try { localStorage.setItem("shikaku-help-seen", "1"); } catch (_) { /* storage blocked */ }
+    }
+    let startedOnce = !helpOpen;
+    let cheatsOpen = false, paused = false, soloMode = false;
     let eraseMode = false, eraseHover = null;
     let pending = null, dragAnchor = null, dragging = false, previewRect = null;
     let cursor = { r: 0, c: 0 }, cursorOn = false;
     let hintRect = null, showSolution = false;
     let boardKey = null, overKeyNow = null, overDismissed = null, lastNote = "";
-    let botTimer = null, clockId = null, msgTimer = null, fxTimers = [];
+    let botTimer = null, clockId = null;
     let padHold1 = null, padHold2 = null;
     let padVisible =
         (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
         "ontouchstart" in window;
     const unsubs = [];
+
+    /* Waktu game ikut berhenti saat help / cheat / pause terbuka. */
+    let freezeStart = helpOpen ? Date.now() : 0, freezeOffset = 0;
+    let frozenNow = helpOpen;
+    const gameNow = () =>
+        Date.now() - freezeOffset - (frozenNow ? Date.now() - freezeStart : 0);
+
+    /* Timer kosmetik (pesan & flash) juga ikut dibekukan saat permainan dijeda. */
+    const timers = new Map();
+    let timerSeq = 0;
+    function armTimer(id, delay) {
+        const rec = timers.get(id);
+        if (!rec) return;
+        rec.t = setTimeout(() => {
+            timers.delete(id);
+            rec.fn();
+        }, Math.max(0, delay));
+    }
+    function later(fn, ms) {
+        const id = ++timerSeq;
+        timers.set(id, { fn, due: gameNow() + ms, t: null });
+        armTimer(id, ms);
+        return id;
+    }
+    function freezeTimers() {
+        for (const rec of timers.values()) {
+            if (rec.t !== null) { clearTimeout(rec.t); rec.t = null; }
+        }
+    }
+    function resumeTimers() {
+        for (const [id, rec] of timers) {
+            if (rec.t === null) armTimer(id, rec.due - gameNow());
+        }
+    }
+    function clearTimers() {
+        for (const rec of timers.values()) if (rec.t !== null) clearTimeout(rec.t);
+        timers.clear();
+    }
+    function updateFreeze() {
+        const frozen = paused || helpOpen || cheatsOpen;
+        if (frozen === frozenNow) return;
+        if (frozen) { freezeStart = Date.now(); freezeTimers(); }
+        else { freezeOffset += Date.now() - freezeStart; resumeTimers(); }
+        frozenNow = frozen;
+    }
 
     const mySeat = () => (state ? state.seatOf[playerIndex] : 0);
     const oppSeat = () => 1 - mySeat();
@@ -266,43 +319,56 @@ export function mount(root, context = {}) {
             first, turn: first, passCount: 0,
             status: "playing", winner: null,
             assisted: false, note: "",
-            startedAt: Date.now(), endedAt: null,
+            startedAt: gameNow(), endedAt: null,
         };
     }
 
     /* ---------- scaffold ---------- */
     root.innerHTML = `
 <style>
-.shk{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--card:#fff;--soft:#f8fafc;--bad:#ef4444;--ok:#10b981;color:var(--ink)}
-.shk-panel{display:flex;flex-direction:column;gap:10px;align-items:center;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
-.shk-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
-.shk-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:3px 10px;white-space:nowrap}
-.shk-chip b{color:var(--ink);font-weight:600}
+.shk{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--card:#fff;--soft:#f8fafc;--bad:#ef4444;--ok:#10b981;color:var(--ink);min-width:0;min-height:0;flex:1 1 auto;gap:10px;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.shk *,.shk *::before,.shk *::after{box-sizing:border-box}
+.shk [hidden]{display:none!important}
+.shk :where(svg,canvas,img){max-width:100%}
+.shk :where(button,[role="button"],select,input){touch-action:manipulation}
+.shk :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.shk-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.shk-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--soft);color:var(--muted);white-space:nowrap}
+.shk-chip b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.shk-chip.err{color:var(--bad);border-color:#fecaca;background:#fef2f2;font-weight:700}
+.shk-chip:empty{display:none}
 .shk-dot{width:8px;height:8px;border-radius:50%;background:#cbd5e1;display:inline-block;flex:none}
-.shk-stage{position:relative;width:100%;display:flex;justify-content:center}
-.shk-boardbox{width:min(440px,100%)}
-.shk svg.shk-svg{display:block;width:100%;height:auto;max-height:62vh;touch-action:none;user-select:none;-webkit-user-select:none;cursor:crosshair}
-.shk-msg{min-height:18px;font-size:12.5px;color:var(--muted);text-align:center}
-.shk-msg.err{color:var(--bad);font-weight:600}
-.shk-controls{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
-.shk-btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:10px;cursor:pointer;transition:background .15s,border-color .15s}
+.shk-spacer{flex:1 1 auto}
+.shk-btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:11px;font-weight:600;padding:7px 11px;border-radius:9px;cursor:pointer;transition:background .15s,border-color .15s}
 .shk-btn:hover:not(:disabled){background:var(--soft)}
 .shk-btn:active:not(:disabled){transform:translateY(1px)}
 .shk-btn:disabled{opacity:.4;cursor:default}
 .shk-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
 .shk-btn.primary:hover:not(:disabled){background:#1e293b}
 .shk-btn.on{border-color:var(--ink);background:var(--ink);color:#fff}
-.shk-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.9);backdrop-filter:blur(3px);z-index:5;padding:8px;overflow:auto}
-.shk-card{position:relative;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.08);padding:16px;max-width:400px;width:100%;max-height:100%;overflow:auto;font-size:13px;line-height:1.55}
-.shk-card h3{margin:0 0 8px;font-size:16px}
+.shk-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.shk-icon-btn svg{flex:none;display:block}
+.shk-btn-label{white-space:nowrap}
+.shk-board{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-width:0;min-height:0;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+.shk-svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;touch-action:none;user-select:none;-webkit-user-select:none;cursor:crosshair}
+.shk-svg .shk-ln{stroke:#e2e8f0;stroke-width:1}
+.shk-svg .shk-brd{stroke:#cbd5e1;stroke-width:2;fill:none}
+.shk-svg text{pointer-events:none;user-select:none}
+.shk-flash{fill:rgba(239,68,68,.3);stroke:#ef4444;stroke-width:2.5;animation:shkfade .5s forwards}
+@keyframes shkfade{to{opacity:0}}
+.shk-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(248,250,252,.9);backdrop-filter:blur(3px);overflow:auto}
+.shk-card{display:flex;flex-direction:column;width:min(460px,100%);max-width:100%;max-height:100%;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 4px 12px rgba(15,23,42,.08);overflow:hidden;font-size:13px;line-height:1.55}
+.shk-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:10px}
+.shk-head h3{margin:0;font-size:16px;line-height:1.25;letter-spacing:-.01em}
+.shk-help,.shk-cheatlist,.shk-rules,.shk-keys,.shk-fineprint{flex:1 1 auto;min-height:0;overflow:auto}
 .shk-rules{margin:0 0 10px;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .shk-keys{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:10px}
-.shk-toss{font-size:12.5px;font-weight:600;margin:0 0 10px}
-.shk-x{position:absolute;top:8px;right:8px;border:none;background:none;font-size:18px;line-height:1;color:var(--muted);cursor:pointer;padding:4px}
-.shk-fineprint{font-size:11.5px;color:var(--muted);margin:0 0 8px}
-.shk-overbtns{display:flex;gap:6px;flex-wrap:wrap}
+.shk-toss{flex:none;font-size:12.5px;font-weight:600;margin:0 0 10px}
+.shk-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;padding-top:10px;border-top:1px solid var(--line)}
+.shk-note{font-size:11px;color:var(--muted)}
+.shk-overbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .shk-cheatlist{display:flex;flex-direction:column;gap:6px}
-.shk-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+.shk-cheatrow{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:10px;padding:6px 10px}
 .shk-cheatrow span{font-size:12.5px}
 .shk-pad{display:flex;gap:14px;align-items:center;justify-content:center;padding:4px 0}
 .shk-dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:4px}
@@ -311,42 +377,87 @@ export function mount(root, context = {}) {
 .shk-padbtn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .shk-padside{display:flex;flex-direction:column;gap:6px}
 .shk-padside .shk-btn{min-height:44px;min-width:84px}
-.shk-svg .shk-ln{stroke:#e2e8f0;stroke-width:1}
-.shk-svg .shk-brd{stroke:#cbd5e1;stroke-width:2;fill:none}
-.shk-svg text{pointer-events:none;user-select:none}
-.shk-flash{fill:rgba(239,68,68,.3);stroke:#ef4444;stroke-width:2.5;animation:shkfade .5s forwards}
-@keyframes shkfade{to{opacity:0}}
-@media (max-width:480px){.shk-card{padding:12px}.shk-dpad{grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px)}}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.shk :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+.shk :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+.shk :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.shk :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .shk :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .shk :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .shk :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .shk :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .shk *,.shk *::before,.shk *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* --- fill-height + mobile refinements (last, beat pointer:coarse 44px) --- */
+.shk.game-fill > .shk-board[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+  .shk.game-fill > .shk-board[data-board]{flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .shk .shk-hud{gap:5px}
+  .shk .shk-hud .shk-chip{padding:4px 6px;font-size:9px}
+  .shk .shk-hud .shk-chip[data-chip="size"],
+  .shk .shk-hud .shk-chip[data-chip="mode"],
+  .shk .shk-hud .shk-chip[data-el="status"]{display:none}
+  .shk .shk-hud .shk-btn-label{display:none}
+  .shk .shk-hud .shk-spacer{flex:0 0 100%;height:0;min-width:0}
+  .shk .shk-hud .shk-btn{min-height:32px;min-width:0;padding:4px;font-size:9px;gap:3px}
+  .shk .shk-ov{padding:8px}
+  .shk .shk-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .shk .shk-help,.shk .shk-cheatlist,.shk .shk-rules,.shk .shk-keys{scrollbar-width:none}
+  .shk .shk-help::-webkit-scrollbar,.shk .shk-cheatlist::-webkit-scrollbar,
+  .shk .shk-rules::-webkit-scrollbar,.shk .shk-keys::-webkit-scrollbar{display:none}
+  .shk .shk-foot{gap:6px;padding-top:8px}
+  .shk .shk-note{display:none}
+  .shk-dpad{grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px)}
+}
+@media (pointer:coarse){
+  .shk .shk-hud .shk-btn{min-height:32px;min-width:0;padding:4px;font-size:9px;gap:3px}
+  .shk .shk-card .shk-btn{min-height:44px}
+}
 </style>
-<div class="game-app shk">
-  <div class="game-intro">
-    <div><h2>Shikaku</h2><p>Iris grid jadi persegi panjang sesuai angka petunjuk. Lawan bot atau pemain lain secara bergiliran.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-el="dot"></i><span data-el="status">Siap</span></span>
+<div class="game-app shk game-fill" data-shk>
+  <div class="shk-hud">
+    <span class="shk-chip">LV <b data-hud="level">1</b></span>
+    <span class="shk-chip" data-chip="size">Grid <b data-hud="size">6×6</b></span>
+    <span class="shk-chip"><i class="shk-dot" data-el="turndot"></i><b data-hud="turn">-</b></span>
+    <span class="shk-chip" title="Skor kamu : lawan (total sel)">Skor <b data-hud="score">0 : 0</b></span>
+    <span class="shk-chip">Kotak <b data-hud="rects">0/0</b></span>
+    <span class="shk-chip">Waktu <b data-hud="time">0:00</b></span>
+    <span class="shk-chip" data-chip="mode">Mode <b data-hud="mode">vs Bot</b></span>
+    <span class="shk-chip" data-hud="assisted" hidden>🧪 cheat</span>
+    <span class="shk-chip" data-el="status">Kamu = P1</span>
+    <span class="shk-chip" data-el="msg" aria-live="polite"></span>
+    <span class="shk-spacer"></span>
+    <button class="shk-btn shk-icon-btn" type="button" data-help aria-label="How to play (H)" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="shk-btn-label">Help</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-cheats aria-label="Cheats (C)" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="shk-btn-label">Cheats</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-pause aria-label="Pause (P)" title="Pause (P)"><span class="shk-picon">${iconSVG("pause", { size: 14 })}</span><span class="shk-btn-label">Pause</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-restart aria-label="Restart (R)" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="shk-btn-label">Restart</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="shk-btn-label">Exit game</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-act="undo" aria-label="Undo (U)" title="Undo (U)">${iconSVG("rotateCcw", { size: 14 })}<span class="shk-btn-label">Undo</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-act="erase" aria-label="Erase mode (X)" title="Erase mode (X)">${iconSVG("ban", { size: 14 })}<span class="shk-btn-label">Hapus</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-act="pass" aria-label="Pass turn (L)" title="Pass turn (L)">${iconSVG("skipForward", { size: 14 })}<span class="shk-btn-label">Lewati</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-act="clear" aria-label="Clear board" title="Clear board">${iconSVG("trash", { size: 14 })}<span class="shk-btn-label">Bersihkan</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-act="new" aria-label="New puzzle (N)" title="New puzzle (N)">${iconSVG("sparkles", { size: 14 })}<span class="shk-btn-label">Baru</span></button>
+    <button class="shk-btn shk-icon-btn" type="button" data-act="pad-toggle" aria-label="Toggle touch pad" title="Toggle touch pad">${iconSVG("gamepad2", { size: 14 })}<span class="shk-btn-label">Pad</span></button>
   </div>
-  <section class="game-panel shk-panel" data-board>
-    <div class="shk-chips">
-      <span class="shk-chip">Level <b data-hud="level">1</b></span>
-      <span class="shk-chip">Grid <b data-hud="size">6×6</b></span>
-      <span class="shk-chip"><i class="shk-dot" data-el="turndot"></i><b data-hud="turn">-</b></span>
-      <span class="shk-chip" title="Skor kamu : lawan (total sel)">Skor <b data-hud="score">0 : 0</b></span>
-      <span class="shk-chip">Kotak <b data-hud="rects">0/0</b></span>
-      <span class="shk-chip">Waktu <b data-hud="time">0:00</b></span>
-      <span class="shk-chip">Mode <b data-hud="mode">vs Bot</b></span>
-      <span class="shk-chip" data-hud="assisted" hidden>🧪 cheat</span>
-    </div>
-    <div class="shk-stage">
-      <div class="shk-boardbox">
-        <svg class="shk-svg" data-el="svg" viewBox="0 0 288 288" role="img" aria-label="Papan Shikaku">
-          <g data-el="gghost"></g>
-          <g data-el="gplaced"></g>
-          <g data-el="ggrid"></g>
-          <g data-el="gclues"></g>
-          <g data-el="gfx"></g>
-        </svg>
-      </div>
-      <div class="shk-ov" data-ov="help">
-        <div class="shk-card">
-          <h3>Cara bermain</h3>
+  <section class="game-panel shk-board" data-board>
+    <svg class="shk-svg" data-el="svg" viewBox="0 0 288 288" role="img" aria-label="Papan Shikaku">
+      <g data-el="gghost"></g>
+      <g data-el="gplaced"></g>
+      <g data-el="ggrid"></g>
+      <g data-el="gclues"></g>
+      <g data-el="gfx"></g>
+    </svg>
+    <div class="shk-ov" data-ov="help">
+      <div class="shk-card">
+        <div class="shk-head"><h3>Cara bermain</h3><button class="shk-btn" type="button" data-help-close aria-label="Tutup bantuan">Tutup</button></div>
+        <div class="shk-help">
           <ol class="shk-rules">
             <li>Bagi grid menjadi persegi panjang. Setiap kotak wajib memuat <b>tepat satu angka</b>, dan <b>luas kotak = angka itu</b> (jumlah sel).</li>
             <li>Gambar kotak: <b>seret dari satu sel sudut ke sudut berlawanan</b>, atau <b>klik dua sel sudut</b>. Pratinjau hijau/biru = valid, merah = tidak valid.</li>
@@ -355,68 +466,56 @@ export function mount(root, context = {}) {
             <li>Menghapus: aktifkan <b>Hapus</b> lalu ketuk kotak <b>milikmu</b>, atau pakai <b>Undo</b> / <b>Bersihkan</b>.</li>
           </ol>
           <div class="shk-keys">
-            <div><b>Desktop</b>: seret / klik dua sudut • klik kanan = batal • Panah/WASD = kursor • Enter/Spasi = tandai sudut • U = undo • X = mode hapus • P = lewati • H = petunjuk • C = bersihkan • Esc = batal/tutup</div>
+            <div><b>Desktop</b>: seret / klik dua sudut • klik kanan = batal • Panah/WASD = kursor • Enter/Spasi = tandai sudut • U = undo • X = mode hapus • L = lewati • N = puzzle baru • H = bantuan • C = cheat • P = jeda • R = ulangi • Esc = tutup</div>
             <div><b>Mobile</b>: seret langsung di grid, atau pakai tombol virtual (tombol 🎮 untuk menampilkan/menyembunyikan). ⊙ = tandai sudut.</div>
           </div>
           <p class="shk-toss" data-el="toss">Mengundi posisi pemain…</p>
-          <button class="shk-btn primary" type="button" data-act="begin">Mulai bermain</button>
         </div>
-      </div>
-      <div class="shk-ov" data-ov="over" hidden>
-        <div class="shk-card">
-          <button class="shk-x" type="button" data-act="over-close" aria-label="Tutup">×</button>
-          <h3 data-el="overtitle">Selesai</h3>
-          <p data-el="oversub"></p>
-          <div class="shk-overbtns">
-            <button class="shk-btn primary" type="button" data-act="next">Level berikutnya</button>
-            <button class="shk-btn" type="button" data-act="restart">Ulangi puzzle</button>
-          </div>
-          <p class="shk-fineprint" data-el="overnote"></p>
-        </div>
-      </div>
-      <div class="shk-ov" data-ov="cheats" hidden>
-        <div class="shk-card">
-          <button class="shk-x" type="button" data-act="cheats-close" aria-label="Tutup">×</button>
-          <h3>Cheat</h3>
-          <p class="shk-fineprint">Aksi cheat menandai permainan sebagai "assisted". Lihat solusi & petunjuk hanya tampilan lokal.</p>
-          <div class="shk-cheatlist">
-            <div class="shk-cheatrow"><span>👁 Lihat garis solusi</span><button class="shk-btn" type="button" data-act="cheat-solution" data-el="cheatsol">Off</button></div>
-            <div class="shk-cheatrow"><span>💡 Petunjuk satu langkah</span><button class="shk-btn" type="button" data-act="cheat-hint">Petunjuk</button></div>
-            <div class="shk-cheatrow"><span>⚡ Pasang langkah terbaik</span><button class="shk-btn" type="button" data-act="cheat-auto">Pasang</button></div>
-            <div class="shk-cheatrow"><span>🧩 Selesaikan papan</span><button class="shk-btn" type="button" data-act="cheat-solve" data-el="cheatsolve">Selesaikan</button></div>
-            <div class="shk-cheatrow"><span>⏭ Lompati giliran lawan</span><button class="shk-btn" type="button" data-act="cheat-skip" data-el="cheatskip">Lompati</button></div>
-            <div class="shk-cheatrow"><span>🧘 Mode santai (tanpa bot)</span><button class="shk-btn" type="button" data-act="cheat-solo" data-el="cheatsolo">Off</button></div>
-          </div>
-        </div>
+        <div class="shk-foot"><span class="shk-note">Tekan H untuk membuka lagi</span><button class="shk-btn primary" type="button" data-act="begin" data-help-close>Mulai bermain</button></div>
       </div>
     </div>
-    <div class="shk-msg" data-el="msg" aria-live="polite"></div>
-    <div class="shk-controls">
-      <button class="shk-btn" type="button" data-act="undo" title="Undo (U)">↩ Undo</button>
-      <button class="shk-btn" type="button" data-act="erase" title="Mode hapus (X)">🧽 Hapus</button>
-      <button class="shk-btn" type="button" data-act="pass" title="Lewati giliran (P)">⏭ Lewati</button>
-      <button class="shk-btn" type="button" data-act="clear" title="Bersihkan papan (C)">🗑 Bersihkan</button>
-      <button class="shk-btn" type="button" data-act="new" title="Puzzle baru, level sama (N)">🎲 Puzzle baru</button>
-      <button class="shk-btn" type="button" data-act="restart" title="Ulangi puzzle ini">⟳ Ulangi</button>
-      <button class="shk-btn" type="button" data-act="cheats" title="Buka cheat">🧪 Cheat</button>
-      <button class="shk-btn" type="button" data-act="help" title="Cara bermain">❔ Bantuan</button>
-      <button class="shk-btn" type="button" data-act="pad-toggle" title="Tombol virtual">🎮</button>
-    </div>
-    <div class="shk-pad" data-el="pad" hidden>
-      <div class="shk-dpad">
-        <span></span><button class="shk-padbtn" type="button" data-pad="up" aria-label="Atas">▲</button><span></span>
-        <button class="shk-padbtn" type="button" data-pad="left" aria-label="Kiri">◀</button>
-        <button class="shk-padbtn" type="button" data-pad="set" aria-label="Tandai sudut">⊙</button>
-        <button class="shk-padbtn" type="button" data-pad="right" aria-label="Kanan">▶</button>
-        <span></span><button class="shk-padbtn" type="button" data-pad="down" aria-label="Bawah">▼</button><span></span>
+    <div class="shk-ov" data-ov="over" hidden>
+      <div class="shk-card">
+        <div class="shk-head"><h3 data-el="overtitle">Selesai</h3><button class="shk-btn" type="button" data-act="over-close" aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+        <p class="shk-fineprint" data-el="oversub"></p>
+        <div class="shk-foot"><span class="shk-note" data-el="overnote"></span><span class="shk-overbtns"><button class="shk-btn primary" type="button" data-act="next">Level berikutnya</button><button class="shk-btn" type="button" data-act="restart">Ulangi puzzle</button></span></div>
       </div>
-      <div class="shk-padside">
-        <button class="shk-btn" type="button" data-pad="cancel">✕ Batal</button>
-        <button class="shk-btn" type="button" data-pad="erase" data-el="paderase">🧽 Hapus</button>
+    </div>
+    <div class="shk-ov" data-ov="cheats" hidden>
+      <div class="shk-card">
+        <div class="shk-head"><h3>Cheat</h3><button class="shk-btn" type="button" data-cheats-close aria-label="Tutup cheat">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="shk-cheatlist">
+          <div class="shk-cheatrow"><span>👁 Lihat garis solusi</span><button class="shk-btn" type="button" data-act="cheat-solution" data-el="cheatsol">Off</button></div>
+          <div class="shk-cheatrow"><span>💡 Petunjuk satu langkah</span><button class="shk-btn" type="button" data-act="cheat-hint">Petunjuk</button></div>
+          <div class="shk-cheatrow"><span>⚡ Pasang langkah terbaik</span><button class="shk-btn" type="button" data-act="cheat-auto">Pasang</button></div>
+          <div class="shk-cheatrow"><span>🧩 Selesaikan papan</span><button class="shk-btn" type="button" data-act="cheat-solve" data-el="cheatsolve">Selesaikan</button></div>
+          <div class="shk-cheatrow"><span>⏭ Lompati giliran lawan</span><button class="shk-btn" type="button" data-act="cheat-skip" data-el="cheatskip">Lompati</button></div>
+          <div class="shk-cheatrow"><span>🧘 Mode santai (tanpa bot)</span><button class="shk-btn" type="button" data-act="cheat-solo" data-el="cheatsolo">Off</button></div>
+        </div>
+        <div class="shk-foot"><span class="shk-note">Aksi cheat menandai permainan sebagai "assisted".</span></div>
+      </div>
+    </div>
+    <div class="shk-ov" data-ov="pause" hidden>
+      <div class="shk-card">
+        <div class="shk-head"><h3>Dijeda</h3></div>
+        <p class="shk-fineprint">Papan, waktu, dan bot dibekukan sampai kamu melanjutkan.</p>
+        <div class="shk-foot"><span class="shk-note">Tekan P atau Esc untuk melanjutkan</span><button class="shk-btn primary" type="button" data-act="resume">Lanjutkan</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar</button></div>
+  <div class="shk-pad" data-el="pad" hidden>
+    <div class="shk-dpad">
+      <span></span><button class="shk-padbtn" type="button" data-pad="up" aria-label="Atas">▲</button><span></span>
+      <button class="shk-padbtn" type="button" data-pad="left" aria-label="Kiri">◀</button>
+      <button class="shk-padbtn" type="button" data-pad="set" aria-label="Tandai sudut">⊙</button>
+      <button class="shk-padbtn" type="button" data-pad="right" aria-label="Kanan">▶</button>
+      <span></span><button class="shk-padbtn" type="button" data-pad="down" aria-label="Bawah">▼</button><span></span>
+    </div>
+    <div class="shk-padside">
+      <button class="shk-btn" type="button" data-pad="cancel">✕ Batal</button>
+      <button class="shk-btn" type="button" data-pad="erase" data-el="paderase">🧽 Hapus</button>
+    </div>
+  </div>
 </div>`;
 
     const $ = (s, r) => (r || root).querySelector(s);
@@ -434,9 +533,10 @@ export function mount(root, context = {}) {
     const gClues = $('[data-el="gclues"]');
     const gFx = $('[data-el="gfx"]');
     const msgEl = $('[data-el="msg"]');
-    const dotEl = $('[data-el="dot"]');
     const statusEl = $('[data-el="status"]');
     const turnDot = $('[data-el="turndot"]');
+    const pauseBtn = $('[data-pause]');
+    const pauseIcon = $(".shk-picon");
     const hud = {
         level: $('[data-hud="level"]'), size: $('[data-hud="size"]'),
         turn: $('[data-hud="turn"]'), score: $('[data-hud="score"]'),
@@ -446,6 +546,7 @@ export function mount(root, context = {}) {
     const ovHelp = $('[data-ov="help"]');
     const ovOver = $('[data-ov="over"]');
     const ovCheats = $('[data-ov="cheats"]');
+    const ovPause = $('[data-ov="pause"]');
     const tossEl = $('[data-el="toss"]');
     const overTitle = $('[data-el="overtitle"]');
     const overSub = $('[data-el="oversub"]');
@@ -474,17 +575,20 @@ export function mount(root, context = {}) {
     const fmt = (sec) => ((sec / 60) | 0) + ":" + String(sec % 60).padStart(2, "0");
     const timeSec = () => {
         if (!state) return 0;
-        const end = state.status === "done" && state.endedAt ? state.endedAt : Date.now();
+        const end = state.status === "done" && state.endedAt ? state.endedAt : gameNow();
         return Math.max(0, ((end - state.startedAt) / 1000) | 0);
     };
 
     function showMsg(text, err) {
         msgEl.textContent = text;
-        msgEl.className = "shk-msg" + (err ? " err" : "");
-        if (msgTimer !== null) { clearTimeout(msgTimer); msgTimer = null; }
-        if (text) msgTimer = setTimeout(() => {
-            msgTimer = null; msgEl.textContent = ""; msgEl.className = "shk-msg";
-        }, 3200);
+        msgEl.className = "shk-chip" + (err ? " err" : "");
+        for (const [id, rec] of timers) if (rec.msg) { clearTimeout(rec.t); timers.delete(id); }
+        if (text) {
+            const id = later(() => {
+                msgEl.textContent = ""; msgEl.className = "shk-chip";
+            }, 3200);
+            timers.get(id).msg = true;
+        }
     }
 
     function flashRect(rc) {
@@ -492,11 +596,7 @@ export function mount(root, context = {}) {
             x: rc.x * CS + 2, y: rc.y * CS + 2,
             width: rc.w * CS - 4, height: rc.h * CS - 4, rx: 6, class: "shk-flash",
         }, gFx);
-        const t = setTimeout(() => {
-            fxTimers = fxTimers.filter((x) => x !== t);
-            el.remove();
-        }, 520);
-        fxTimers.push(t);
+        later(() => el.remove(), 520);
     }
 
     /* ---------- board ---------- */
@@ -559,7 +659,7 @@ export function mount(root, context = {}) {
             box(anchorEl, { x: pending.c, y: pending.r, w: 1, h: 1 }, 2);
             anchorEl.setAttribute("display", "");
         } else anchorEl.setAttribute("display", "none");
-        if (cursorOn && !helpOpen && !cheatsOpen) {
+        if (cursorOn && !helpOpen && !cheatsOpen && !paused) {
             box(cursorEl, { x: cursor.c, y: cursor.r, w: 1, h: 1 }, 3);
             cursorEl.setAttribute("display", "");
         } else cursorEl.setAttribute("display", "none");
@@ -574,8 +674,10 @@ export function mount(root, context = {}) {
             for (const k in btns) btns[k].disabled = true;
             ovHelp.hidden = !helpOpen;
             ovOver.hidden = true;
-            ovCheats.hidden = !cheatsOpen;
+            ovCheats.hidden = !cheatsOpen || helpOpen;
+            ovPause.hidden = !paused || cheatsOpen || helpOpen;
             padEl.hidden = !padVisible;
+            syncHudButtons();
             return;
         }
         if (boardKey !== state.pid) drawBoard();
@@ -617,8 +719,7 @@ export function mount(root, context = {}) {
         else { turnText = seatName(state.turn) + "…"; turnColor = SEAT_COLOR[state.turn]; }
         hud.turn.textContent = turnText;
         turnDot.style.background = turnColor;
-        statusEl.textContent = turnText + " • Kamu = " + SEAT_LABEL[mine];
-        dotEl.style.background = turnColor;
+        statusEl.textContent = "Kamu = " + SEAT_LABEL[mine];
 
         tossEl.textContent =
             "Kamu = " + SEAT_LABEL[mine] + " (" + (mine === 0 ? "biru" : "kuning") + ") • Undian: " +
@@ -637,7 +738,7 @@ export function mount(root, context = {}) {
         btns.next.disabled = hostOnly;
         btns.new.title = hostOnly ? "Hanya host" : "Puzzle baru, level sama (N)";
         btns.restart.title = hostOnly ? "Hanya host" : "Ulangi puzzle ini";
-        btns.clear.title = hostOnly ? "Hanya host" : "Bersihkan papan (C)";
+        btns.clear.title = hostOnly ? "Hanya host" : "Bersihkan papan";
         cheatBtns.sol.textContent = showSolution ? "On" : "Off";
         cheatBtns.sol.classList.toggle("on", showSolution);
         cheatBtns.solo.textContent = soloMode ? "On" : "Off";
@@ -662,14 +763,16 @@ export function mount(root, context = {}) {
             overNote.textContent =
                 (state.assisted ? "Permainan dibantu cheat. " : "") +
                 (hostOnly ? "Puzzle baru hanya bisa dimulai oleh host." : "");
-            ovOver.hidden = overDismissed === overKeyNow;
+            ovOver.hidden = overDismissed === overKeyNow || cheatsOpen || helpOpen || paused;
         } else {
             overKeyNow = null;
             ovOver.hidden = true;
         }
         ovHelp.hidden = !helpOpen;
-        ovCheats.hidden = !cheatsOpen;
+        ovCheats.hidden = !cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || cheatsOpen || helpOpen;
         padEl.hidden = !padVisible;
+        syncHudButtons();
         if (state.note && state.note !== lastNote) { showMsg(state.note, false); lastNote = state.note; }
         if (!state.note) lastNote = "";
         updateFx();
@@ -678,7 +781,7 @@ export function mount(root, context = {}) {
     /* ---------- alur permainan (host / lokal otoritatif) ---------- */
     function finish(st) {
         st.status = "done";
-        st.endedAt = Date.now();
+        st.endedAt = gameNow();
         const s = scoresOf(st);
         st.winner = s[0] === s[1] ? -1 : s[0] > s[1] ? 0 : 1;
     }
@@ -753,7 +856,7 @@ export function mount(root, context = {}) {
             state.turn = state.first;
             state.passCount = 0;
             state.assisted = false;
-            state.startedAt = Date.now();
+            state.startedAt = gameNow();
             state.note = "Papan dibersihkan.";
         } else if (t === "restart") {
             if (hostOnly) { publish(); return; }
@@ -764,7 +867,7 @@ export function mount(root, context = {}) {
             state.winner = null;
             state.assisted = false;
             state.note = "";
-            state.startedAt = Date.now();
+            state.startedAt = gameNow();
             state.endedAt = null;
         } else if (t === "new" || t === "next") {
             if (hostOnly) { publish(); return; }
@@ -827,13 +930,13 @@ export function mount(root, context = {}) {
     function scheduleBot() {
         if (botTimer !== null) { clearTimeout(botTimer); botTimer = null; }
         if (online || soloMode || !state) return;
-        if (state.status !== "playing" || helpOpen || cheatsOpen) return;
+        if (state.status !== "playing" || helpOpen || cheatsOpen || paused) return;
         if (state.turn !== state.seatOf[1]) return;
         botTimer = setTimeout(botStep, 700 + Math.random() * 700);
     }
     function botStep() {
         botTimer = null;
-        if (!state || state.status !== "playing" || helpOpen || cheatsOpen || soloMode) return;
+        if (!state || state.status !== "playing" || helpOpen || cheatsOpen || paused || soloMode) return;
         if (state.turn !== state.seatOf[1]) return;
         const mv = findMoves(state);
         if (!mv.length) { applyAction({ type: "pass" }, 1); return; }
@@ -866,7 +969,7 @@ export function mount(root, context = {}) {
     }
 
     function canDraw() {
-        if (!state || state.status !== "playing" || helpOpen || cheatsOpen) return false;
+        if (!state || state.status !== "playing" || helpOpen || cheatsOpen || paused) return false;
         if (!soloMode || online) {
             if (state.turn !== mySeat()) { showMsg("Tunggu giliranmu.", true); return false; }
         }
@@ -926,14 +1029,14 @@ export function mount(root, context = {}) {
     }
 
     function padSet() {
-        if (!state || helpOpen || cheatsOpen) return;
+        if (!state || helpOpen || cheatsOpen || paused) return;
         cursorOn = true;
         tapCell({ r: cursor.r, c: cursor.c });
         updateFx();
     }
 
     function toggleErase() {
-        if (!state || state.status !== "playing") return;
+        if (!state || state.status !== "playing" || helpOpen || cheatsOpen || paused) return;
         eraseMode = !eraseMode;
         cancelDraw();
         eraseHover = null;
@@ -942,7 +1045,7 @@ export function mount(root, context = {}) {
     }
 
     function doHint() {
-        if (!state || state.status !== "playing") return;
+        if (!state || state.status !== "playing" || paused) return;
         const mv = bestMove();
         if (!mv) { showMsg("Tidak ada langkah valid tersisa.", true); return; }
         hintRect = mv;
@@ -955,23 +1058,62 @@ export function mount(root, context = {}) {
         if (padHold2 !== null) { clearInterval(padHold2); padHold2 = null; }
     }
 
+    function syncHudButtons() {
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) {
+            cbtn.classList.toggle("on", cheatsOpen);
+            const label = cbtn.querySelector(".shk-btn-label");
+            if (label) label.textContent = cheatsOpen ? "Cheats •" : "Cheats";
+        }
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".shk-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume (P)" : "Pause (P)");
+            pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+            if (pauseIcon) pauseIcon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+        }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        if (!helpOpen) startedOnce = true;
+        updateFreeze();
+        render();
+        scheduleBot();
+    }
     function closeHelp() {
         const firstBegin = !startedOnce;
-        helpOpen = false;
         startedOnce = true;
+        helpOpen = false;
+        updateFreeze();
         if (firstBegin && state && (!online || room.isHost)) {
-            state.startedAt = Date.now();
+            state.startedAt = gameNow();
             publish();
         } else {
             render();
             scheduleBot();
         }
     }
-    function closeCheats() { cheatsOpen = false; render(); scheduleBot(); }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen && helpOpen) helpOpen = false;
+        updateFreeze();
+        render();
+        scheduleBot();
+    }
+    function closeCheats() { toggleCheats(false); }
+    function setPaused(on) {
+        if (paused === on) return;
+        paused = on;
+        if (on && botTimer !== null) { clearTimeout(botTimer); botTimer = null; }
+        updateFreeze();
+        render();
+        if (!on) scheduleBot();
+    }
 
     /* ---------- pointer (mouse + sentuh) ---------- */
     function onPointerDown(e) {
-        if (!state || helpOpen || cheatsOpen) return;
+        if (!state || helpOpen || cheatsOpen || paused) return;
         const cell = cellFromEvent(e);
         if (!cell) return;
         e.preventDefault();
@@ -985,7 +1127,7 @@ export function mount(root, context = {}) {
         try { svg.setPointerCapture(e.pointerId); } catch (err) { /* abaikan */ }
     }
     function onPointerMove(e) {
-        if (!state || helpOpen || cheatsOpen) return;
+        if (!state || helpOpen || cheatsOpen || paused) return;
         const cell = cellFromEvent(e);
         if (eraseMode) {
             eraseHover = null;
@@ -1035,35 +1177,54 @@ export function mount(root, context = {}) {
         if (!state) return;
         const tag = e.target && e.target.tagName ? e.target.tagName : "";
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        const k = e.key;
-        if (k === "Escape") {
-            if (cheatsOpen) closeCheats();
-            else if (helpOpen && startedOnce) closeHelp();
-            else cancelDraw();
+        const c = e.code;
+        /* Prioritas: help → cheats → pause/Escape → aksi game. */
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            if (helpOpen) closeHelp();
+            else if (cheatsOpen) closeCheats();
+            else setPaused(!paused);
+            e.preventDefault();
             return;
         }
-        if (helpOpen || cheatsOpen) return;
-        const lk = k.length === 1 ? k.toLowerCase() : k;
-        if (lk === "ArrowUp" || lk === "w") { e.preventDefault(); moveCursor(-1, 0); }
-        else if (lk === "ArrowDown" || lk === "s") { e.preventDefault(); moveCursor(1, 0); }
-        else if (lk === "ArrowLeft" || lk === "a") { e.preventDefault(); moveCursor(0, -1); }
-        else if (lk === "ArrowRight" || lk === "d") { e.preventDefault(); moveCursor(0, 1); }
-        else if (k === "Enter" || k === " ") {
+        if (c === "KeyR") {
+            if (!helpOpen && !cheatsOpen && !paused) submitAction({ type: "restart" });
+            e.preventDefault();
+            return;
+        }
+        if (c === "Enter") {
+            if (helpOpen) { closeHelp(); e.preventDefault(); return; }
+            if (cheatsOpen) { closeCheats(); e.preventDefault(); return; }
+            if (paused) { setPaused(false); e.preventDefault(); return; }
+            if (state.status === "done") { submitAction({ type: "next" }); e.preventDefault(); return; }
+        }
+        if (helpOpen || cheatsOpen || paused) return;
+        if (c === "ArrowUp" || c === "KeyW") { e.preventDefault(); moveCursor(-1, 0); }
+        else if (c === "ArrowDown" || c === "KeyS") { e.preventDefault(); moveCursor(1, 0); }
+        else if (c === "ArrowLeft" || c === "KeyA") { e.preventDefault(); moveCursor(0, -1); }
+        else if (c === "ArrowRight" || c === "KeyD") { e.preventDefault(); moveCursor(0, 1); }
+        else if (c === "Enter" || c === " ") {
             if (tag === "BUTTON") return;
             e.preventDefault();
             padSet();
         }
-        else if (lk === "u") { if (!btns.undo.disabled) submitAction({ type: "undo" }); }
-        else if (lk === "x") toggleErase();
-        else if (lk === "p") { if (!btns.pass.disabled) submitAction({ type: "pass" }); }
-        else if (lk === "h") doHint();
-        else if (lk === "c") { if (!btns.clear.disabled) submitAction({ type: "clear" }); }
-        else if (lk === "n") { if (!btns.new.disabled) submitAction({ type: "new" }); }
+        else if (c === "KeyU") { if (!btns.undo.disabled) submitAction({ type: "undo" }); }
+        else if (c === "KeyX") toggleErase();
+        else if (c === "KeyL") { if (!btns.pass.disabled) submitAction({ type: "pass" }); }
+        else if (c === "KeyN") { if (!btns.new.disabled) submitAction({ type: "new" }); }
     }
 
     /* ---------- klik tombol (delegasi) ---------- */
     function handleClick(e) {
+        if (!e.target || !e.target.closest) return;
         if (e.target.closest("[data-exit]")) { onExit(); return; }
+        if (e.target.closest("[data-help]")) { toggleHelp(); return; }
+        if (e.target.closest("[data-help-close]")) { closeHelp(); return; }
+        if (e.target.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (e.target.closest("[data-cheats-close]")) { closeCheats(); return; }
+        if (e.target.closest("[data-pause]")) { setPaused(!paused); return; }
+        if (e.target.closest("[data-restart]")) { submitAction({ type: "restart" }); return; }
         const padBtn = e.target.closest("[data-pad]");
         if (padBtn) {
             const v = padBtn.getAttribute("data-pad");
@@ -1078,9 +1239,7 @@ export function mount(root, context = {}) {
         if (btn.blur) btn.blur();
         const act = btn.getAttribute("data-act");
         if (act === "begin") closeHelp();
-        else if (act === "help") { helpOpen = true; render(); scheduleBot(); }
-        else if (act === "cheats") { cheatsOpen = true; render(); scheduleBot(); }
-        else if (act === "cheats-close") closeCheats();
+        else if (act === "resume") setPaused(false);
         else if (act === "over-close") { overDismissed = overKeyNow; ovOver.hidden = true; }
         else if (act === "undo") submitAction({ type: "undo" });
         else if (act === "erase") toggleErase();
@@ -1171,7 +1330,7 @@ export function mount(root, context = {}) {
         render();
     }
     clockId = setInterval(() => {
-        if (state) hud.time.textContent = fmt(timeSec());
+        if (state && !frozenNow) hud.time.textContent = fmt(timeSec());
     }, 500);
 
     return {
@@ -1190,8 +1349,7 @@ export function mount(root, context = {}) {
             svg.removeEventListener("contextmenu", onContext);
             if (botTimer !== null) clearTimeout(botTimer);
             if (clockId !== null) clearInterval(clockId);
-            if (msgTimer !== null) clearTimeout(msgTimer);
-            fxTimers.forEach(clearTimeout);
+            clearTimers();
             stopPadHold();
             unsubs.forEach((fn) => { try { fn(); } catch (err) { /* abaikan */ } });
             root.innerHTML = "";

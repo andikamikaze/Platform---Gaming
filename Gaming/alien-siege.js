@@ -4,6 +4,8 @@
  * Setelah file ini ada di folder games, jalankan: node tools/build-games-manifest.mjs
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "alien-siege", // harus sama dengan nama file (tanpa .js)
     name: "Alien Siege",
@@ -168,8 +170,8 @@ const HELP = [
     ["Pasukan", "Tab <b>Units</b> memproduksi unit di bangunan yang sesuai (Barracks, Vehicle Factory, Airbase, Shipyard). Pilih unit lalu beri perintah. Medic menyembuhkan infantri, Engineer memperbaiki bangunan, Repair Robot memperbaiki kendaraan. APC dan Transport Helicopter mengangkut infantri (klik kanan transport, lalu tombol Unload). Setelah riset AI, <b>AI Command</b> membuat unit diam menjaga markas otomatis."],
     ["Upkeep & upgrade", "<b>Energy</b>: bangunan canggih (Vehicle Factory, Airbase, Shipyard, Radar, Lab) memakai Energy tiap detik. Bila Energy habis, produksi dan riset melambat dan Radar mati; lihat angka +/- di samping E. <b>Fuel</b>: kendaraan, kapal, pesawat, dan robot memakai Fuel saat bergerak; bila habis unit melambat 60%. <b>Upgrade</b> bangunan sampai Lv3 lewat panel seleksi (HP, damage, jangkauan, produksi, dan income naik). <b>Rally point</b>: pilih bangunan produksi lalu tekan Rally. <b>Bunker</b>: masukkan infantri (klik kanan) untuk bonus damage."],
     ["Riset", "Bangun Research Lab, lalu buka tab <b>Research</b>. Sembilan jalur, masing-masing 3 level: infantri, kendaraan, laut, udara, robot, senjata, armor, AI, dan biologi alien. Beberapa unit baru hanya terbuka setelah riset tertentu."],
-    ["Kontrol desktop", "<b>Klik kiri</b>: pilih / drag kotak. <b>Klik kanan</b>: gerak / serang. <b>WASD</b> atau panah: geser kamera, <b>roda mouse</b>: zoom. <b>Q</b>: attack-move, <b>X</b>: stop, <b>H</b>: hold, <b>Z</b>: unload, <b>Ctrl+A</b>: semua pasukan, <b>Ctrl+1-9</b> / <b>1-9</b>: grup. <b>V</b>: patroli, <b>E</b>: kemampuan unit, <b>B/T/U/R/G/Y</b>: tab, <b>N</b>: ping, <b>P</b>: jeda, <b>C</b>: cheat, <b>Esc</b>: batal, <b>F</b>: ke HQ."],
-    ["Kontrol mobile", "Tombol virtual muncul otomatis di layar sentuh (atau tombol Touch di atas). <b>D-pad</b> menggeser kamera, +/- zoom. <b>Tap</b> unit untuk memilih; tap tanah/musuh untuk perintah gerak/serang. Tombol: <b>All</b> pilih semua pasukan, <b>Q</b> attack-move, <b>Stop</b>, <b>Box</b> (drag untuk pilih area), <b>Batal</b>. Seret satu jari di peta untuk menggeser kamera."],
+    ["Kontrol desktop", "<b>Klik kiri</b>: pilih (klik dua kali = pilih semua sejenis). <b>Drag cepat</b>: geser kamera; <b>tahan ~0,3 dtk lalu geser</b>: drag kotak pilih unit. <b>Klik kanan</b>: gerak / serang. <b>WASD</b> atau panah: geser kamera, <b>roda mouse</b>: zoom. <b>Q</b>: attack-move, <b>X</b>: stop, <b>H</b>: hold, <b>Z</b>: unload, <b>Ctrl+A</b>: semua pasukan, <b>Ctrl+1-9</b> / <b>1-9</b>: grup. <b>V</b>: patroli, <b>E</b>: kemampuan unit, <b>B/T/U/R/G/Y</b>: tab, <b>N</b>: ping, <b>P</b>: jeda, <b>C</b>: cheat, <b>Esc</b>: batal, <b>F</b>: ke HQ."],
+    ["Kontrol mobile", "Tombol virtual muncul otomatis di layar sentuh (atau tombol Touch di atas). <b>D-pad</b> menggeser kamera, +/- zoom. <b>Tap</b> unit/bangunan untuk memilih; <b>double-tap</b> tanah/musuh/transport untuk gerak/serang/board (double-tap unit sendiri = pilih semua sejenis). <b>Tahan ~0,3 dtk lalu geser</b> untuk drag kotak pilih area; <b>geser cepat</b> menggeser kamera. Tombol: <b>All</b> pilih semua pasukan, <b>Q</b> attack-move, <b>Stop</b>, <b>Box</b> (drag langsung pilih area tanpa tahan), <b>Batal</b>."],
     ["Kemampuan komandan", "Butuh <b>Radar Station</b>. Tab <b>Powers</b> (G): <b>Airstrike</b> dan <b>Orbital Laser</b> dan <b>Stasis Field</b> (pilih lokasi), <b>Supply Drop</b>, <b>Repair Wave</b>. Setiap kemampuan punya cooldown. Unit juga punya kemampuan: Carrier meluncurkan pesawat, Mech menghentak tanah, AI Defense Unit bisa di-<b>Deploy</b> (E). Unit yang banyak membunuh naik pangkat (▲) dan menjadi lebih kuat. Turret bisa diatur prioritas targetnya."],
     ["AI Command & Co-op", "Riset <b>AI Technology</b> membuka tombol: <b>Auto-defend</b> (Lv1), <b>Auto-repair</b> jarak jauh (Lv1), <b>Auto-rebuild</b> bangunan yang hancur (Lv2), <b>Focus fire</b> (Lv3). Co-op: tab <b>Tim</b> (Y) untuk ping (Alt+klik), pesan cepat, dan kirim resource bila markas terpisah. Bagi peran: satu pemain fokus darat+turret, satu lagi laut+udara+riset (combined arms)."],
     ["Tips", "Radar Station menampilkan alien di minimap dan jenis wave berikutnya. Wave pertama: lihat hasil undian siapa yang mulai lebih dulu. Tempatkan turret di arah datangnya alien, jangan lupa Anti-Air dan pertahanan pantai. Gunakan Cheat (C) bila ingin santai. Skor terbaik hanya tersimpan jika tidak memakai cheat."],
@@ -991,10 +993,20 @@ export function mount(root, context = {}) {
 
     /* ============================ UI ============================ */
     const CSS = `
-.as{--bg:#0b1016;--pn:#0e141b;--ln:#1f2a37;--tx:#e5e9f0;--mu:#7b8796;--ac:#38bdf8;--bad:#f87171;--th:42px;--dh:96px;position:relative;height:clamp(460px,78vh,800px);background:var(--bg);color:var(--tx);border:1px solid var(--ln);border-radius:12px;overflow:hidden;font:12px/1.35 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none;touch-action:none}
+.as-app{--bg:#0b1016;--pn:#0e141b;--ln:#1f2a37;--tx:#e5e9f0;--mu:#7b8796;--ac:#38bdf8;--bad:#f87171;--dh:96px;color:var(--tx);font:13px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.as-board{position:relative;padding:0;border:0;border-radius:12px;overflow:hidden}
+.as-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:10px;padding:8px 12px;background:var(--pn);border:1px solid var(--ln);border-radius:10px}
+.as-app .as-btn{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;min-height:30px;font:inherit;font-size:11px;font-weight:600;color:var(--tx);background:var(--bg);border:1px solid var(--ln);border-radius:8px;cursor:pointer;touch-action:manipulation}
+.as-app .as-btn:hover{border-color:var(--ac)}
+.as-app .as-btn.on{border-color:var(--ac);color:var(--ac)}
+.as-app .as-btn.off{opacity:.45}
+.as-app .as-btn svg{flex:none;display:block}
+.as-spacer{flex:1 1 auto}
+.as{--bg:#0b1016;--pn:#0e141b;--ln:#1f2a37;--tx:#e5e9f0;--mu:#7b8796;--ac:#38bdf8;--bad:#f87171;--th:0px;--dh:96px;position:absolute;inset:0;width:100%;height:100%;background:var(--bg);color:var(--tx);border:1px solid var(--ln);border-radius:12px;overflow:hidden;font:13px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none;touch-action:none}
 .as canvas{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
-.as button{font:inherit;color:var(--tx);background:var(--pn);border:1px solid var(--ln);border-radius:8px;padding:5px 10px;cursor:pointer;touch-action:manipulation}
+.as button{font:inherit;color:var(--tx);background:var(--pn);border:1px solid var(--ln);border-radius:8px;padding:6px 12px;cursor:pointer;touch-action:manipulation;transition:border-color .15s,background .15s}
 .as button:hover{border-color:var(--ac)}
+.as button:focus-visible,.as input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .as button.on{border-color:var(--ac);color:var(--ac)}
 .as button.off{opacity:.4}
 .as button[hidden]{display:none}
@@ -1003,65 +1015,85 @@ export function mount(root, context = {}) {
 .as p{margin:0 0 8px;line-height:1.5}
 .as small{font-size:11px}
 .as .mu{color:var(--mu)}
-.as input{background:var(--bg);color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:6px 8px;font:inherit;width:140px;-webkit-user-select:text;user-select:text}
-.as-top{position:absolute;left:0;right:0;top:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:6px 8px;background:var(--pn);border-bottom:1px solid var(--ln)}
-.as-res{display:flex;flex-wrap:wrap;gap:4px 12px}
-.as-r{display:inline-flex;align-items:center;gap:5px;color:var(--mu)}
+.as input{background:var(--bg);color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:8px 12px;font:inherit;width:140px;max-width:100%;-webkit-user-select:text;user-select:text}
+.as-res{display:flex;flex-wrap:wrap;gap:4px 14px}
+.as-status{font-size:11px;color:var(--mu);white-space:nowrap}
+.as-r{display:inline-flex;align-items:center;gap:6px;color:var(--mu)}
 .as-r i{width:7px;height:7px;border-radius:50%;background:var(--c)}
 .as-r b{color:var(--tx);font-weight:600;min-width:2ch}
 .as-r.warn b,.as-r.warn small{color:var(--bad)}
 .as-wave{flex:1;min-width:150px;text-align:center}
 .as-wave small{display:block;color:var(--mu)}
 .as-tb{display:flex;gap:4px;flex-wrap:wrap}
-.as-tb button{padding:3px 8px}
-.as .as-mini{left:auto;right:8px;top:calc(var(--th) + 8px);width:150px;height:103px;border:1px solid var(--ln);border-radius:8px;background:var(--bg);cursor:pointer}
-.as-hint{position:absolute;left:8px;top:calc(var(--th) + 8px);max-width:calc(100% - 180px);color:var(--mu)}
-.as-toast{position:absolute;left:50%;top:calc(var(--th) + 10px);transform:translateX(-50%);background:var(--pn);border:1px solid var(--ac);border-radius:8px;padding:6px 12px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:70%;text-align:center}
+.as .as-mini{left:auto;right:12px;top:calc(var(--th) + 8px);width:150px;height:103px;border:1px solid var(--ln);border-radius:8px;background:var(--bg);cursor:pointer}
+.as-hint{position:absolute;left:12px;top:calc(var(--th) + 8px);max-width:calc(100% - 180px);color:var(--mu);line-height:1.4}
+.as-toast{position:absolute;left:50%;top:calc(var(--th) + 12px);transform:translateX(-50%);background:var(--pn);border:1px solid var(--ac);border-radius:8px;padding:6px 12px;opacity:0;pointer-events:none;transition:opacity .18s;max-width:70%;text-align:center;z-index:2}
 .as-toast.show{opacity:1}
-.as-sel{position:absolute;left:8px;bottom:calc(var(--dh) + 8px);max-width:calc(100% - 16px);background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:7px 10px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.as-sel{position:absolute;left:12px;bottom:calc(var(--dh) + 12px);max-width:calc(100% - 24px);background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:8px 12px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
 .as-sel:empty{display:none}
-.as-sel button{padding:3px 8px}
-.as-dock{position:absolute;left:0;right:0;bottom:0;background:var(--pn);border-top:1px solid var(--ln);padding:6px 8px}
-.as-tabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
-.as-tabs button{padding:3px 10px}
-.as-items{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;touch-action:pan-x}
+.as-sel button{padding:4px 10px}
+.as-dock{position:absolute;left:0;right:0;bottom:0;background:var(--pn);border-top:1px solid var(--ln);padding:8px 12px}
+.as-tabs{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap}
+.as-tabs button{padding:4px 12px}
+.as-items{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;touch-action:pan-x;scrollbar-width:thin}
 .as-it{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-width:104px}
 .as-it b{font-weight:600}
 .as-it i{font-style:normal;color:var(--mu);font-size:11px}
-.as-vc{position:absolute;bottom:calc(var(--dh) + 60px);display:none;gap:6px}
+.as-vc{position:absolute;bottom:calc(var(--dh) + 64px);display:none;gap:8px}
 .as.touch .as-vc{display:grid}
-.as-vcl{left:8px;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px)}
-.as-vcr{right:8px;grid-template-columns:repeat(2,54px)}
-.as-vc button{padding:0;opacity:.88;background:rgba(14,20,27,.85)}
+.as-vcl{left:12px;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px)}
+.as-vcr{right:12px;grid-template-columns:repeat(2,54px)}
+.as-vc button{padding:0;opacity:.9;background:rgba(14,20,27,.85)}
 .as-vcl .u{grid-area:1/2}.as-vcl .l{grid-area:2/1}.as-vcl .r{grid-area:2/3}.as-vcl .dn{grid-area:3/2}
-.as-ov{position:absolute;inset:0;background:rgba(6,9,13,.8);display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto;touch-action:pan-y}
+.as-ov{position:absolute;inset:0;background:rgba(6,9,13,.8);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto;touch-action:pan-y;z-index:3}
 .as-ov[hidden]{display:none}
-.as-card{width:min(540px,100%);max-height:100%;overflow:auto;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:18px 20px}
+.as-card{width:min(540px,100%);max-height:100%;overflow:auto;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:20px 24px}
 .as-row{margin-top:12px}
-.as-row>span{display:block;color:var(--mu);margin-bottom:5px}
-.as-seg{display:flex;flex-wrap:wrap;gap:6px}
+.as-row>span{display:block;color:var(--mu);margin-bottom:4px}
+.as-seg{display:flex;flex-wrap:wrap;gap:8px}
 .as-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
-.as-st{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;margin-top:10px}
+.as-st{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;margin-top:12px}
 .as-stars{font-size:22px;letter-spacing:4px;color:#facc15}
-.as-coin{width:54px;height:54px;border-radius:50%;border:2px solid var(--ac);margin:10px auto;animation:asf .6s linear infinite}
+.as-coin{width:54px;height:54px;border-radius:50%;border:2px solid var(--ac);margin:12px auto;animation:asf .6s linear infinite}
 @keyframes asf{to{transform:rotateY(360deg)}}
-@media (prefers-reduced-motion:reduce){.as-coin{animation:none}}
-@media (max-width:640px){.as-wave{order:3;flex-basis:100%}.as .as-mini{width:110px;height:76px}.as-hint{max-width:calc(100% - 130px)}}
+@media (pointer:coarse){.as-tabs button,.as-sel button{min-height:44px}}
+@media (max-width:640px){
+.as-app .as-board{flex:0 0 auto;min-height:min(72dvh,620px)}
+.as-app .as-hud{gap:5px 8px;padding:6px 8px;margin-bottom:8px}
+.as-app .as-hud .as-rl,.as-app .as-hud .as-status,.as-app .as-spacer{display:none}
+.as-app .as-hud .as-btn{min-width:26px;min-height:28px;padding:4px 6px;font-size:10px}
+.as-app .as-hud .as-btn-label{display:none}
+.as-wave{order:3;flex-basis:100%;min-width:0;text-align:left}
+.as .as-mini{width:110px;height:76px}
+.as-hint{max-width:calc(100% - 130px)}
+.as-card{padding:16px}
+.as-vcl{left:6px;grid-template-columns:repeat(3,36px);grid-template-rows:repeat(3,36px);gap:3px}
+.as-vcr{right:6px;grid-template-columns:repeat(2,44px);gap:3px}
+.as-vc button{min-width:36px;min-height:36px;font-size:11px}
+}
+@media (prefers-reduced-motion:reduce){.as *{transition-duration:.01ms!important}.as-coin{animation:none}}
 `;
     root.innerHTML = `<style>${CSS}</style>
-  <div class="game-app">
-    <div class="game-intro">
-      <div><h2>Alien Siege</h2><p>Tahan invasi alien serangga: bangun markas, pasang turret, kerahkan pasukan darat, laut, udara, dan robot.</p></div>
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+  <div class="game-app as-app game-fill">
+    <div class="as-hud">
+      <div class="as-res" data-res></div>
+      <div class="as-wave" data-wave></div>
+      <span class="as-status" data-status>Siap</span>
+      <span class="as-spacer"></span>
+      <div class="as-tb">
+        <button class="as-btn" type="button" data-act="early" title="Call the next wave early for bonus Credits">${iconSVG("forward", { size: 14 })}<span class="as-btn-label">Wave+</span></button>
+        <button class="as-btn" type="button" data-act="help" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="as-btn-label">Help</span></button>
+        <button class="as-btn" type="button" data-act="cheat" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="as-btn-label">Cheats</span></button>
+        <button class="as-btn" type="button" data-act="pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="as-btn-label">Pause</span></button>
+        <button class="as-btn" type="button" data-act="restart" title="Restart mission">${iconSVG("refresh", { size: 14 })}<span class="as-btn-label">Restart</span></button>
+        <button class="as-btn" type="button" data-exit title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="as-btn-label">Exit</span></button>
+        <button class="as-btn" type="button" data-act="snd" data-snd title="Sound">${iconSVG("volume", { size: 14 })}<span class="as-btn-label">Sound</span></button>
+        <button class="as-btn" type="button" data-act="touch" title="Toggle touch controls">${iconSVG("smartphone", { size: 14 })}<span class="as-btn-label">Touch</span></button>
+      </div>
     </div>
-    <section class="game-panel" data-board>
+    <section class="game-panel as-board" data-board>
       <div class="as" data-as>
         <canvas data-cv></canvas>
-        <div class="as-top" data-top>
-          <div class="as-res" data-res></div>
-          <div class="as-wave" data-wave></div>
-          <div class="as-tb"><button data-act="early" title="Panggil wave berikutnya lebih awal untuk bonus Credits">Wave+</button><button data-act="pause">Jeda</button><button data-act="help">Bantuan</button><button data-act="cheat">Cheat</button><button data-act="snd" data-snd>Suara</button><button data-act="touch">Touch</button></div>
-        </div>
         <div class="as-hint" data-hint></div>
         <canvas class="as-mini" data-mini width="150" height="103"></canvas>
         <div class="as-toast" data-toast></div>
@@ -1072,13 +1104,12 @@ export function mount(root, context = {}) {
         <div class="as-ov" data-ov hidden></div>
       </div>
     </section>
-    <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
   </div>`;
     const $ = (s) => root.querySelector(s);
     const stage = $("[data-as]"), cv = $("[data-cv]"), ctx = cv.getContext("2d"), mini = $("[data-mini]"), mctx = mini.getContext("2d");
-    const topEl = $("[data-top]"), dockEl = $("[data-dock]"), ovEl = $("[data-ov]"), selEl = $("[data-sel]"), toastEl = $("[data-toast]"), waveEl = $("[data-wave]"), hintEl = $("[data-hint]"), statusEl = $("[data-status]");
+    const dockEl = $("[data-dock]"), ovEl = $("[data-ov]"), selEl = $("[data-sel]"), toastEl = $("[data-toast]"), waveEl = $("[data-wave]"), hintEl = $("[data-hint]"), statusEl = $("[data-status]");
     const rEl = {};
-    $("[data-res]").innerHTML = RK.map((k) => `<span class="as-r" data-rw="${k}" title="${RLABEL[k]}" style="--c:${RCOL[k]}"><i></i>${k.toUpperCase()} <b data-r="${k}">0</b>${k === "e" ? ' <small data-net></small>' : ""}</span>`).join("");
+    $("[data-res]").innerHTML = RK.map((k) => `<span class="as-r" data-rw="${k}" title="${RLABEL[k]}" style="--c:${RCOL[k]}"><i></i><span class="as-rl">${k.toUpperCase()}</span> <b data-r="${k}">0</b>${k === "e" ? ' <small data-net></small>' : ""}</span>`).join("");
     RK.forEach((k) => (rEl[k] = $(`[data-r="${k}"]`)));
 
     const cam = { x: 0, y: 0, z: 0.9 };
@@ -1087,6 +1118,8 @@ export function mount(root, context = {}) {
     const setup = { diff: "normal", mission: "random", first: "random", seed: "", base: "shared" };
     const groups = {}, keys = {}, mouse = { x: 0, y: 0 }, pings = [], timers = [];
     let hold = "", ptr = null, lastMsg = 0, sigSel = "", toastUntil = 0, lastClick = { id: 0, t: 0 }, lowPowerT = 0;
+    const HOLD_MS = 280, TAP_MS = 350, DRAG_SLOP = 8, TAP_SLOP = 26;
+    let holdTimer = 0, lastTap = { id: 0, t: 0, x: 0, y: 0 };
     let raf = 0, last = 0, accT = 0, uiT = 0, miniT = 0, pubT = 0;
     try { touchUI = Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); } catch (e) { /* abaikan */ }
 
@@ -1139,7 +1172,7 @@ export function mount(root, context = {}) {
         const r = stage.getBoundingClientRect();
         vw = Math.max(200, r.width || 800); vh = Math.max(200, r.height || 500); dpr = Math.min(2, window.devicePixelRatio || 1);
         cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
-        stage.style.setProperty("--th", topEl.offsetHeight + "px"); stage.style.setProperty("--dh", dockEl.offsetHeight + "px");
+        stage.style.setProperty("--th", "0px"); stage.style.setProperty("--dh", dockEl.offsetHeight + "px");
         clampCam();
     }
 
@@ -1199,10 +1232,25 @@ export function mount(root, context = {}) {
         command(w.x, w.y, pickAt(w.x, w.y));
     }
     function tapAt(wx, wy) {
-        const hit = pickAt(wx, wy);
-        if (hit && hit.tm === "h" && canCmd(hit) && !(selUnits().length && D[hit.t].cap && !sel.has(hit.id) && selUnits().some((e) => D[e.t].cl === "inf"))) { sel.clear(); sel.add(hit.id); return; }
-        if (selUnits().length) { command(wx, wy, hit); return; }
-        sel.clear(); if (hit) sel.add(hit.id);
+        const hit = pickAt(wx, wy), now = performance.now();
+        const dbl = now - lastTap.t < TAP_MS && Math.hypot(wx - lastTap.x, wy - lastTap.y) < TAP_SLOP;
+        if (dbl) {
+            const boardable = hit && hit.tm === "h" && D[hit.t].cap && !sel.has(hit.id) && selUnits().some((e) => D[e.t].cl === "inf");
+            if (boardable) command(wx, wy, hit);
+            else if (hit && hit.tm === "h" && canCmd(hit) && hit.k === "u" && hit.id === lastTap.id) {
+                const x0 = cam.x, y0 = cam.y, x1 = cam.x + vw / cam.z, y1 = cam.y + vh / cam.z;
+                sel.clear();
+                for (const e of state.ents) if (e.t === hit.t && canCmd(e) && !e.inside && e.x > x0 && e.x < x1 && e.y > y0 && e.y < y1) sel.add(e.id);
+            } else command(wx, wy, hit);
+            lastTap = { id: 0, t: 0, x: 0, y: 0 };
+            return;
+        }
+        if (hit && hit.tm === "h" && canCmd(hit)) {
+            const boardIntent = D[hit.t].cap && !sel.has(hit.id) && selUnits().some((e) => D[e.t].cl === "inf");
+            if (!boardIntent) { sel.clear(); sel.add(hit.id); }
+        }
+        // tanah kosong / musuh: seleksi dipertahankan supaya double-tap bisa memberi perintah
+        lastTap = { id: hit ? hit.id : 0, t: now, x: wx, y: wy };
     }
     function tryPlace(w, keep) {
         const d = D[placing], ox = Math.round(w.x / TS - d.sz / 2), oy = Math.round(w.y / TS - d.sz / 2);
@@ -1229,34 +1277,51 @@ export function mount(root, context = {}) {
 
     /* ---------- input ---------- */
     const ovBlocks = () => ovK !== "";
+    function clearHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = 0; } }
+    function armHold() {
+        clearHold();
+        holdTimer = setTimeout(() => {
+            holdTimer = 0;
+            if (ptr && ptr.mode === "pending" && !ptr.moved) {
+                ptr.mode = "box"; ptr.held = true;
+                try { if (ptr.touch && navigator.vibrate) navigator.vibrate(12); } catch (e) { /* abaikan */ }
+            }
+        }, HOLD_MS);
+    }
     function onDown(ev) {
-        if (!state || ovBlocks()) return;
+        if (!state || ovBlocks() || ptr) return;
         const r = cv.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top; mouse.x = sx; mouse.y = sy;
         if (ev.button === 0 && ev.altKey && online) { const w = toWorld(sx, sy); submit({ t: "ping", x: Math.round(w.x), y: Math.round(w.y) }); return; }
         try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* abaikan */ }
         const touch = ev.pointerType === "touch";
-        ptr = { id: ev.pointerId, sx, sy, x: sx, y: sy, touch, moved: false, mode: "box" };
+        ptr = { id: ev.pointerId, sx, sy, x: sx, y: sy, touch, moved: false, mode: "pending", held: false };
         if (ev.button === 1 || keys[" "]) ptr.mode = "pan";
         else if (ev.button === 2) { ptr.mode = "cmd"; rightClick(sx, sy); }
         else if (placing) ptr.mode = "place";
         else if (cmdMode) ptr.mode = "mode";
-        else if (touch && !boxMode) ptr.mode = "tpan";
+        else if (boxMode) ptr.mode = "box";
+        else armHold();
     }
     function onMove(ev) {
         const r = cv.getBoundingClientRect(); mouse.x = ev.clientX - r.left; mouse.y = ev.clientY - r.top;
         if (!ptr || ptr.id !== ev.pointerId) return;
-        if (Math.hypot(mouse.x - ptr.sx, mouse.y - ptr.sy) > 8) ptr.moved = true;
-        if (ptr.mode === "pan" || (ptr.moved && (ptr.mode === "tpan" || (ptr.mode === "mode" && ptr.touch)))) { cam.x -= (mouse.x - ptr.x) / cam.z; cam.y -= (mouse.y - ptr.y) / cam.z; clampCam(); }
+        if (Math.hypot(mouse.x - ptr.sx, mouse.y - ptr.sy) > DRAG_SLOP) {
+            if (!ptr.moved) lastTap = { id: 0, t: 0, x: 0, y: 0 };
+            ptr.moved = true;
+        }
+        if (ptr.mode === "pending" && ptr.moved) { clearHold(); ptr.mode = "pan"; }
+        if (ptr.mode === "pan" || (ptr.mode === "mode" && ptr.touch && ptr.moved)) { cam.x -= (mouse.x - ptr.x) / cam.z; cam.y -= (mouse.y - ptr.y) / cam.z; clampCam(); }
         ptr.x = mouse.x; ptr.y = mouse.y;
     }
     function onUp(ev) {
         if (!ptr || ptr.id !== ev.pointerId) return;
-        const p = ptr; ptr = null; if (!state) return;
+        const p = ptr; ptr = null; clearHold(); if (!state) return;
         const w = toWorld(p.x, p.y);
         if (p.mode === "place") tryPlace(w, ev.shiftKey);
         else if (p.mode === "mode") { if (!(p.touch && p.moved)) execMode(w); }
         else if (p.mode === "box") { if (p.moved) boxSelect(toWorld(p.sx, p.sy), w, ev.shiftKey); else if (p.touch) tapAt(w.x, w.y); else clickAt(w.x, w.y, ev.shiftKey); }
-        else if (p.mode === "tpan" && !p.moved) tapAt(w.x, w.y);
+        else if (p.mode === "pending" && !p.moved) { if (p.touch) tapAt(w.x, w.y); else clickAt(w.x, w.y, ev.shiftKey); }
+        // "pan": drag cepat hanya menggeser kamera, bukan seleksi
     }
     function onWheel(ev) {
         ev.preventDefault(); if (!state) return;
@@ -1418,7 +1483,13 @@ export function mount(root, context = {}) {
             g.strokeStyle = "#c4b5fd"; g.lineWidth = 2; g.setLineDash([8, 6]); g.beginPath(); g.arc(w.x, w.y, r, 0, 7); g.stroke(); g.setLineDash([]);
         }
         g.restore();
-        if (ptr && ptr.mode === "box" && ptr.moved) { g.strokeStyle = "#38bdf8"; g.fillStyle = "rgba(56,189,248,.1)"; g.lineWidth = 1; g.fillRect(ptr.sx, ptr.sy, ptr.x - ptr.sx, ptr.y - ptr.sy); g.strokeRect(ptr.sx, ptr.sy, ptr.x - ptr.sx, ptr.y - ptr.sy); }
+        if (ptr && ptr.mode === "box" && ptr.moved) {
+            const bx = Math.min(ptr.sx, ptr.x), by = Math.min(ptr.sy, ptr.y), bw = Math.abs(ptr.x - ptr.sx), bh = Math.abs(ptr.y - ptr.sy);
+            g.strokeStyle = "#38bdf8"; g.fillStyle = "rgba(56,189,248,.1)"; g.lineWidth = 1; g.fillRect(bx, by, bw, bh); g.strokeRect(bx, by, bw, bh);
+        } else if (ptr && ptr.held && !ptr.moved) {
+            g.strokeStyle = "#38bdf8"; g.globalAlpha = 0.45 + 0.35 * Math.sin(performance.now() / 120); g.lineWidth = 2;
+            g.beginPath(); g.arc(ptr.sx, ptr.sy, 14, 0, 7); g.stroke(); g.globalAlpha = 1;
+        }
     }
     function drawMini() {
         const g = mctx, w = 150, h = 103, sx = w / (MW * TS), sy = h / (MH * TS), S = state;
@@ -1474,10 +1545,30 @@ export function mount(root, context = {}) {
         statusEl.textContent = DIFF[S.cfg.diff].n + " · Wave " + W.n + (online ? " · P" + (myOwner() + 1) : "");
         hintEl.textContent = hint();
         stage.classList.toggle("touch", touchUI);
-        $('[data-act="touch"]').classList.toggle("on", touchUI); $("[data-box]").classList.toggle("on", boxMode);
-        $("[data-snd]").classList.toggle("on", audioOn); $("[data-snd]").textContent = audioOn ? "Suara" : "Senyap";
+        $('[data-act="touch"]').classList.toggle("on", touchUI);
+        $("[data-box]").classList.toggle("on", boxMode);
+        const sndBtn = $("[data-snd]");
+        if (sndBtn && sndBtn.dataset.iconState !== String(audioOn)) {
+            sndBtn.dataset.iconState = String(audioOn);
+            sndBtn.classList.toggle("on", audioOn);
+            const label = sndBtn.querySelector(".as-btn-label");
+            if (label) label.textContent = audioOn ? "Sound" : "Muted";
+            const ico = sndBtn.querySelector("svg");
+            if (ico) ico.outerHTML = iconSVG(audioOn ? "volume" : "volumeX", { size: 14 });
+        }
+        const pauseBtn = $('[data-act="pause"]');
+        if (pauseBtn) {
+            const want = ovK === "pause" ? "play" : "pause";
+            if (pauseBtn.dataset.iconState !== want) {
+                pauseBtn.dataset.iconState = want;
+                const ico = pauseBtn.querySelector("svg");
+                if (ico) ico.outerHTML = iconSVG(want, { size: 14 });
+                const label = pauseBtn.querySelector(".as-btn-label");
+                if (label) label.textContent = want === "play" ? "Resume" : "Pause";
+            }
+        }
         $('[data-act="early"]').classList.toggle("off", Boolean(S.over) || (ms.fin && W.n >= ms.tot) || W.timer < 6);
-        stage.style.setProperty("--th", topEl.offsetHeight + "px"); stage.style.setProperty("--dh", dockEl.offsetHeight + "px");
+        stage.style.setProperty("--th", "0px"); stage.style.setProperty("--dh", dockEl.offsetHeight + "px");
     }
     function dockBuild() {
         if (!state) return;
@@ -1662,9 +1753,10 @@ export function mount(root, context = {}) {
             case "hp": helpPg = clamp(helpPg + Number(p1), 0, HELP.length - 1); ovHelp(); break;
             case "close": closeOv(); break;
             case "cheat": if (state) ovCheat(); break;
-            case "touch": touchUI = !touchUI; break;
+            case "touch": touchUI = !touchUI; if (touchUI && state) toast("Tap=pilih · double-tap=gerak · tahan lalu geser=box select"); break;
             case "set": setup[p1] = p2; ovSetup(); break;
             case "start": beginGame(); break;
+            case "restart": if (isHost) ovSetup(); break;
             case "again": ovSetup(); break;
             case "ch":
                 if (p1 === "speed") { speed = speed >= 3 ? 1 : speed + 1; state.cheated = 1; ovCheat(); break; }
@@ -1672,7 +1764,8 @@ export function mount(root, context = {}) {
             case "vc":
                 if (p1 === "all") sel = new Set(armyIds()); else if (p1 === "q") { if (selUnits().length) { cmdMode = "amove"; placing = null; } }
                 else if (p1 === "stop") submit({ t: "order", ids: selUnits().map((e) => e.id), o: { k: "stop" } });
-                else if (p1 === "box") boxMode = !boxMode; else if (p1 === "zin") { cam.z *= 1.2; clampCam(); } else if (p1 === "zout") { cam.z /= 1.2; clampCam(); }
+                else if (p1 === "box") { boxMode = !boxMode; toast(boxMode ? "Box: drag langsung pilih area" : "Box: tahan lalu geser untuk pilih area"); }
+                else if (p1 === "zin") { cam.z *= 1.2; clampCam(); } else if (p1 === "zout") { cam.z /= 1.2; clampCam(); }
                 else if (p1 === "cancel") { placing = null; cmdMode = ""; sel.clear(); }
                 break;
         }
@@ -1681,6 +1774,7 @@ export function mount(root, context = {}) {
 
     /* ---------- mulai game & jaringan ---------- */
     function resetUI() {
+        clearHold(); ptr = null; lastTap = { id: 0, t: 0, x: 0, y: 0 }; lastClick = { id: 0, t: 0 };
         sel.clear(); placing = null; cmdMode = ""; paused = false; bestSaved = false; lastMsg = 0; sigSel = ""; Object.keys(groups).forEach((k) => delete groups[k]); pings.length = 0;
         tab = "b"; accT = 0; pubT = 0;
         const h = state.ents.find((e) => e.t === "hq" && (state.shared || e.o === myOwner())) || state.ents.find((e) => e.t === "hq");
@@ -1752,7 +1846,7 @@ export function mount(root, context = {}) {
 
     return {
         destroy() {
-            dead = true; cancelAnimationFrame(raf); timers.forEach(clearTimeout);
+            dead = true; cancelAnimationFrame(raf); clearHold(); timers.forEach(clearTimeout);
             root.removeEventListener("click", handleClick); root.removeEventListener("pointerdown", onHoldDown); root.removeEventListener("input", onInput);
             window.removeEventListener("pointerup", onHoldUp); window.removeEventListener("pointercancel", onHoldUp); window.removeEventListener("resize", resize);
             document.removeEventListener("keydown", onKey); document.removeEventListener("keyup", onKey); document.removeEventListener("visibilitychange", onVis);

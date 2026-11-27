@@ -6,6 +6,8 @@
   3. Regenerate manifest: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "food-match-swipe",
     name: "Food Match Swipe",
@@ -253,26 +255,35 @@ export function mount(root, context = {}) {
     /* ---------- shell (minimal layout, no forced tutorial) ---------- */
     root.innerHTML = `
 <style>
-.fms{display:flex;flex-direction:column;gap:12px;outline:none}
+.fms{display:flex;flex-direction:column;gap:8px;outline:none;min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
 .fms [hidden]{display:none!important}
-.fms .game-intro p{color:#94a3b8;font-size:13px;margin:2px 0 0}
-.fms-players{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
-.fms-p{--acc:#38bdf8;flex:1;min-width:215px;display:flex;align-items:center;gap:10px;border:1px solid #ffffff14;border-radius:12px;padding:8px 12px;transition:border-color .2s,background .2s}
-.fms-p[data-p="1"]{--acc:#f472b6}
-.fms-p.fms-active{border-color:var(--acc);background:#ffffff08}
-.fms-dot{width:9px;height:9px;border-radius:50%;background:var(--acc);flex:none}
-.fms-pinfo{display:flex;flex-direction:column;gap:2px;min-width:0}
-.fms-pinfo>b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fms-stats{display:flex;gap:10px;font-size:12px;color:#94a3b8;align-items:center;flex-wrap:wrap}
-.fms-stats b{color:#e2e8f0;font-weight:600}
-.fms-goal{display:inline-flex;align-items:center;gap:4px}
-.fms-goal svg{display:block}
-.fms-turn{margin-left:auto;font-size:9.5px;letter-spacing:.12em;font-weight:700;color:var(--acc);border:1px solid var(--acc);border-radius:999px;padding:2px 7px;opacity:0;transition:opacity .2s;flex:none}
+.fms *,.fms *::before,.fms *::after{box-sizing:border-box}
+/* ---------- HUD: all match info lives here, board is arena only ---------- */
+.fms-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+.fms-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid #ffffff1f;border-radius:999px;background:#ffffff08;color:#94a3b8;white-space:nowrap}
+.fms-chip b{color:#e2e8f0;font-weight:700;font-variant-numeric:tabular-nums}
+.fms-chip.good{color:#34d399;border-color:#34d39966}
+.fms-chip.bad{color:#f87171;border-color:#f8717166}
+.fms-pchip{--acc:#38bdf8;transition:border-color .2s,background .2s}
+.fms-pchip[data-p="1"]{--acc:#f472b6}
+.fms-pchip.fms-active{border-color:var(--acc);background:#ffffff12}
+.fms-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex:none}
+.fms-goal{display:inline-flex;align-items:center;gap:3px}
+.fms-goal svg{display:block;width:13px;height:13px}
+.fms-turn{font-size:8px;letter-spacing:.1em;color:var(--acc);border:1px solid var(--acc);border-radius:999px;padding:1px 5px;opacity:0}
 .fms-active .fms-turn{opacity:1}
-.fms-vs{align-self:center;color:#64748b;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
-.fms-flip{font-size:11.5px;color:#64748b;text-align:center;margin-top:-4px;min-height:14px}
-.fms-panel{position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px}
-.fms-boardwrap{width:min(560px,100%,calc(100dvh - 300px));min-width:250px;aspect-ratio:1/1;background:#0b1220;border:1px solid #ffffff12;border-radius:16px;padding:8px}
+.fms-vs{color:#64748b;font-size:9px;letter-spacing:.1em}
+.fms-spacer{flex:1 1 auto}
+.fms-btn{border:1px solid #ffffff1f;background:#ffffff08;color:#cbd5e1;border-radius:9px;padding:6px 10px;min-height:30px;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer}
+.fms-btn:hover{background:#ffffff16}
+.fms-btn:disabled{opacity:.4;cursor:not-allowed}
+.fms-btn.primary{border-color:#38bdf8;background:#38bdf8;color:#0b1220}
+.fms-btn.primary:hover{background:#7dd3fc}
+.fms-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.fms-icon-btn svg{flex:none;display:block}
+.fms-danger{border-color:#f8717166;color:#f87171}
+/* ---------- fill-height board (SVG keeps its square ratio via preserveAspectRatio) ---------- */
+.fms-board{position:relative;display:flex;align-items:center;justify-content:center;flex:1 1 auto;min-height:0;padding:8px;background:#0b1220;border:1px solid #ffffff12;border-radius:16px;overflow:hidden}
 .fms-svg{width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
 .fms-svg [data-r]{cursor:pointer}
 .fms-tile{transition:transform .3s cubic-bezier(.25,.8,.3,1.05);will-change:transform;pointer-events:none}
@@ -283,10 +294,8 @@ export function mount(root, context = {}) {
 @keyframes fmsShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}50%{transform:translateX(4px)}75%{transform:translateX(-3px)}}
 .fms-hint{animation:fmsPulse 1s ease-in-out infinite}
 @keyframes fmsPulse{0%,100%{opacity:.25}50%{opacity:.9}}
-.fms-msg{min-height:20px;font-size:13px;color:#94a3b8;font-weight:500;text-align:center}
-.fms-msg.good{color:#34d399}
-.fms-msg.bad{color:#f87171}
-.fms-pad{display:none;grid-template-areas:". u ." "l o r" ". d .";gap:6px;margin-top:2px}
+/* ---------- touch pad is a sibling AFTER the board ---------- */
+.fms-pad{display:none;grid-template-areas:". u ." "l o r" ". d .";gap:6px;margin-top:2px;justify-content:center}
 .fms.pad-on .fms-pad{display:grid}
 @media (pointer:coarse){.fms-pad{display:grid}}
 .fms-padbtn{width:52px;height:44px;border-radius:12px;border:1px solid #ffffff1f;background:#ffffff08;color:#e2e8f0;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation;padding:0}
@@ -296,86 +305,120 @@ export function mount(root, context = {}) {
 .fms-padbtn[data-pad="ok"]{grid-area:o;border-color:#38bdf8;color:#38bdf8}
 .fms-padbtn[data-pad="right"]{grid-area:r}
 .fms-padbtn[data-pad="down"]{grid-area:d}
-.fms-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.fms-btn{border:1px solid #ffffff1f;background:transparent;color:#cbd5e1;border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer}
-.fms-btn:hover{background:#ffffff10}
-.fms-danger{border-color:#f8717166;color:#f87171}
-.fms-help{border:1px solid #ffffff12;border-radius:12px;padding:10px 14px;font-size:12.5px;color:#94a3b8}
-.fms-help ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:4px}
-.fms-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0b1220d9;backdrop-filter:blur(3px);border-radius:inherit;z-index:5;animation:fmsFade .25s ease-out}
+/* ---------- overlays: help / cheats / pause / result ---------- */
+.fms-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:12px;background:#0b1220d9;backdrop-filter:blur(3px);border-radius:inherit;animation:fmsFade .25s ease-out}
 @keyframes fmsFade{from{opacity:0}to{opacity:1}}
-.fms-card{display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center;padding:22px;max-width:340px}
-.fms-card h3{margin:0;font-size:20px}
-.fms-card p{margin:0;font-size:13px;color:#94a3b8}
-.fms-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.fms-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.fms-card{display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center;padding:18px;max-width:min(420px,100%);max-height:100%;overflow:hidden;border:1px solid #ffffff16;border-radius:14px;background:#0f172a}
+.fms-head{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+.fms-card h3{margin:0;font-size:18px}
+.fms-card p{margin:0;font-size:12.5px;color:#94a3b8}
+.fms-cheats,.fms-help,.fms-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.fms-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+.fms-help{font-size:12px;color:#94a3b8;line-height:1.5}
+.fms-help ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:5px;text-align:left}
+.fms-foot,.fms-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .fms-best{font-size:12px;color:#64748b}
+.fms-note{font-size:10px;color:#64748b}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.fms :where(svg,canvas,img){max-width:100%}
+.fms :where(button,[role="button"],select,input){touch-action:manipulation}
+.fms :where(button,[role="button"],select,input):focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
+.fms :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+.fms :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+.fms :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.fms :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .fms :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .fms :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .fms :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .fms :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .fms *,.fms *::before,.fms *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* --- fill height + mobile refinements LAST (beat pointer:coarse 44px) --- */
+.fms .fms-hud .fms-btn{min-height:32px;padding:5px 9px;font-size:9px}
+@media (max-width:640px){
+  .fms.game-fill > .fms-board:not(:has(.fms-ov:not([hidden]))){aspect-ratio:1/1;flex:0 0 auto}
+  .fms.game-fill > .fms-board:has(.fms-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .fms .fms-hud{gap:5px}
+  .fms .fms-hud .fms-chip{padding:4px 6px;font-size:9px}
+  .fms .fms-hud .fms-chip[data-hud="start"],.fms .fms-hud .fms-vs{display:none}
+  .fms .fms-hud .fms-chip[data-hud="msg"]{max-width:130px;overflow:hidden;text-overflow:ellipsis}
+  .fms .fms-hud .fms-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .fms .fms-hud .fms-btn-label,.fms .fms-hud .fms-spacer{display:none}
+  .fms .fms-ov{padding:8px}
+  .fms .fms-card{width:100%;height:100%;max-height:100%;padding:12px}
+  .fms .fms-cheats,.fms .fms-help,.fms .fms-stats{scrollbar-width:none}
+  .fms .fms-cheats::-webkit-scrollbar,.fms .fms-help::-webkit-scrollbar,.fms .fms-stats::-webkit-scrollbar{display:none}
+  .fms .fms-note{display:none}
+}
+@media (max-width:480px){
+  .fms .fms-hud{gap:4px}
+  .fms .fms-hud .fms-vs,
+  .fms .fms-hud .fms-chip[data-hud="goal"],
+  .fms .fms-hud .fms-chip[data-hud="start"],
+  .fms .fms-hud .fms-chip[data-hud="status"]{display:none}
+  .fms .fms-hud .fms-pchip > span:not(.fms-goal):not(.fms-turn){display:none}
+  .fms .fms-hud .fms-chip[data-hud="msg"]{max-width:100px}
+  .fms .fms-hud .fms-btn{min-width:28px;padding:4px 6px;gap:3px}
+}
 </style>
-<div class="game-app fms">
-  <div class="game-intro">
-    <div><h2>Food Match Swipe</h2><p>Match-3 duel. First to ${TARGET} goal treats wins.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <div class="fms-players">
-    <div class="fms-p" data-p="0">
-      <span class="fms-dot"></span>
-      <div class="fms-pinfo">
-        <b data-pname>P1</b>
-        <span class="fms-stats">
-          <span class="fms-goal"><span data-pgoal></span><b data-pcol>0</b>/${TARGET}</span>
-          <span>Moves <b data-pmoves>${MOVES}</b></span>
-          <span>Score <b data-pscore>0</b></span>
-        </span>
-      </div>
+<div class="game-app fms game-fill" data-fms>
+  <div class="fms-hud">
+    <span class="fms-chip fms-pchip" data-p="0">
+      <i class="fms-dot"></i><b data-pname>P1</b>
+      <span class="fms-goal"><span data-pgoal></span><b data-pcol>0</b>/${TARGET}</span>
+      <span>MOV <b data-pmoves>${MOVES}</b></span>
+      <span>PTS <b data-pscore>0</b></span>
       <span class="fms-turn">TURN</span>
-    </div>
-    <div class="fms-vs">vs</div>
-    <div class="fms-p" data-p="1">
-      <span class="fms-dot"></span>
-      <div class="fms-pinfo">
-        <b data-pname>P2</b>
-        <span class="fms-stats">
-          <span class="fms-goal"><span data-pgoal></span><b data-pcol>0</b>/${TARGET}</span>
-          <span>Moves <b data-pmoves>${MOVES}</b></span>
-          <span>Score <b data-pscore>0</b></span>
-        </span>
-      </div>
+    </span>
+    <span class="fms-vs">VS</span>
+    <span class="fms-chip fms-pchip" data-p="1">
+      <i class="fms-dot"></i><b data-pname>P2</b>
+      <span class="fms-goal"><span data-pgoal></span><b data-pcol>0</b>/${TARGET}</span>
+      <span>MOV <b data-pmoves>${MOVES}</b></span>
+      <span>PTS <b data-pscore>0</b></span>
       <span class="fms-turn">TURN</span>
-    </div>
+    </span>
+    <span class="fms-chip" data-hud="status">Ready</span>
+    <span class="fms-chip fms-goal" data-hud="goal">GOAL <span data-hudgoal></span></span>
+    <span class="fms-chip" data-hud="msg" hidden></span>
+    <span class="fms-chip" data-hud="start">START —</span>
+    <span class="fms-spacer"></span>
+    <button class="fms-btn fms-icon-btn" type="button" data-act="pad" aria-label="Toggle D-pad" title="Toggle D-pad">${iconSVG("gamepad2", { size: 14 })}<span class="fms-btn-label">D-pad</span></button>
+    <button class="fms-btn fms-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="fms-btn-label">Help</span></button>
+    <button class="fms-btn fms-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="fms-btn-label">Cheats</span></button>
+    <button class="fms-btn fms-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-ico="pause">${iconSVG("pause", { size: 14 })}</span><span data-ico="play" hidden>${iconSVG("play", { size: 14 })}</span><span class="fms-btn-label">Pause</span></button>
+    <button class="fms-btn fms-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="fms-btn-label">Restart</span></button>
+    <button class="fms-btn fms-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="fms-btn-label">Exit game</span></button>
   </div>
-  <div class="fms-flip" data-flip></div>
-  <section class="game-panel fms-panel" data-board>
-    <div class="fms-boardwrap">
-      <svg class="fms-svg" data-svg viewBox="0 0 ${BOARD} ${BOARD}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Food Match board">
-        <g data-g="grid"></g>
-        <g data-g="tiles"></g>
-        <g data-g="marks"></g>
-        <g data-g="hit"></g>
-      </svg>
-    </div>
-    <div class="fms-msg" data-msg></div>
-    <div class="fms-pad" data-padwrap>
-      <button type="button" class="fms-padbtn" data-pad="up" aria-label="Up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg></button>
-      <button type="button" class="fms-padbtn" data-pad="left" aria-label="Left"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
-      <button type="button" class="fms-padbtn" data-pad="ok" aria-label="Select or swap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg></button>
-      <button type="button" class="fms-padbtn" data-pad="right" aria-label="Right"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
-      <button type="button" class="fms-padbtn" data-pad="down" aria-label="Down"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6"/></svg></button>
-    </div>
+  <section class="game-panel fms-board" data-board>
+    <svg class="fms-svg" data-svg viewBox="0 0 ${BOARD} ${BOARD}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Food Match board">
+      <g data-g="grid"></g>
+      <g data-g="tiles"></g>
+      <g data-g="marks"></g>
+      <g data-g="hit"></g>
+    </svg>
     <div class="fms-ov" data-ov="over" hidden>
       <div class="fms-card">
-        <h3 data-ovtitle>Game over</h3>
+        <div class="fms-head"><h3 data-ovtitle>Game over</h3></div>
         <p data-ovreason></p>
         <p class="fms-best" data-ovbest></p>
-        <div class="fms-row">
+        <div class="fms-foot">
           <button type="button" class="fms-btn" data-act="restart" data-again>Play again</button>
-          <button type="button" class="fms-btn" data-exit>Exit</button>
+          <button type="button" class="fms-btn" data-exit>Exit game</button>
         </div>
         <p data-ovwait hidden>Waiting for the host to restart...</p>
       </div>
     </div>
     <div class="fms-ov" data-ov="cheat" hidden>
       <div class="fms-card">
-        <h3>Cheats</h3>
+        <div class="fms-head"><h3>Cheats</h3><button class="fms-btn" type="button" data-act="cheat-close">Close</button></div>
         <p>Offline only. Using cheats disables best-score saving.</p>
         <div class="fms-cheats">
           <button type="button" class="fms-btn" data-cheat="moves">+5 moves</button>
@@ -386,50 +429,71 @@ export function mount(root, context = {}) {
           <button type="button" class="fms-btn" data-cheat="unlimited" data-unl>Unlimited moves: off</button>
           <button type="button" class="fms-btn fms-danger" data-cheat="win">Instant win</button>
         </div>
-        <button type="button" class="fms-btn" data-act="cheat-close">Close</button>
+      </div>
+    </div>
+    <div class="fms-ov" data-ov="pause" hidden>
+      <div class="fms-card">
+        <div class="fms-head"><h3>Paused</h3></div>
+        <p>Timers and the bot are frozen.</p>
+        <div class="fms-foot">
+          <button type="button" class="fms-btn" data-exit>Exit game</button>
+          <button type="button" class="fms-btn primary" data-act="resume">Resume</button>
+        </div>
+      </div>
+    </div>
+    <div class="fms-ov" data-ov="help" hidden>
+      <div class="fms-card">
+        <div class="fms-head"><h3>How to play</h3><button class="fms-btn" type="button" data-help-close>Close</button></div>
+        <div class="fms-help">
+          <ul>
+            <li>Swap two adjacent treats to line up 3 or more of a kind.</li>
+            <li>Cleared goal treats fill your counter; cascades multiply score.</li>
+            <li>Turns alternate. First to ${TARGET} goal treats wins; ${MOVES} moves each.</li>
+            <li>Mouse: drag a treat, or click two neighbors. Keyboard: arrows move the cursor, Space selects, an arrow swaps, Esc cancels. Touch: swipe, tap-tap, or use the D-pad.</li>
+            <li>Shortcuts: H help · C cheats · P pause · R restart.</li>
+          </ul>
+        </div>
+        <div class="fms-foot"><span class="fms-note">Press H to reopen this guide</span><button type="button" class="fms-btn primary" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions fms-actions">
-    <button type="button" class="fms-btn" data-act="help" aria-expanded="false">How to play</button>
-    <button type="button" class="fms-btn" data-act="cheat" data-cheatbtn>Cheats</button>
-    <button type="button" class="fms-btn" data-act="pad">D-pad</button>
-    <button type="button" class="fms-btn" data-act="restart" data-restart>Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
-  <div class="fms-help" data-help hidden>
-    <ul>
-      <li>Swap two adjacent treats to line up 3 or more of a kind.</li>
-      <li>Cleared goal treats fill your counter; cascades multiply score.</li>
-      <li>Turns alternate. First to ${TARGET} goal treats wins; ${MOVES} moves each.</li>
-      <li>Mouse: drag a treat, or click two neighbors. Keyboard: arrows move the cursor, Space selects, an arrow swaps, Esc cancels. Touch: swipe, tap-tap, or use the D-pad.</li>
-    </ul>
+  <div class="fms-pad" data-padwrap>
+    <button type="button" class="fms-padbtn" data-pad="up" aria-label="Up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg></button>
+    <button type="button" class="fms-padbtn" data-pad="left" aria-label="Left"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
+    <button type="button" class="fms-padbtn" data-pad="ok" aria-label="Select or swap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg></button>
+    <button type="button" class="fms-padbtn" data-pad="right" aria-label="Right"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
+    <button type="button" class="fms-padbtn" data-pad="down" aria-label="Down"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6"/></svg></button>
   </div>
 </div>`;
 
     /* ---------- refs ---------- */
     const $ = (s) => root.querySelector(s);
-    const wrapEl = $(".fms");
+    const app = $("[data-fms]");
     const gridG = $('[data-g="grid"]');
     const tilesG = $('[data-g="tiles"]');
     const marksG = $('[data-g="marks"]');
     const hitG = $('[data-g="hit"]');
-    const msgEl = $("[data-msg]");
-    const statusEl = $("[data-status]");
-    const flipEl = $("[data-flip]");
-    const helpEl = $("[data-help]");
-    const ovOver = $('[data-ov="over"]');
+    const msgEl = $('[data-hud="msg"]');
+    const statusEl = $('[data-hud="status"]');
+    const flipEl = $('[data-hud="start"]');
+    const goalEl = $('[data-hudgoal]');
+    const pauseBtn = $("[data-pause]");
+    const ov = {
+        over: $('[data-ov="over"]'),
+        cheat: $('[data-ov="cheat"]'),
+        pause: $('[data-ov="pause"]'),
+        help: $('[data-ov="help"]'),
+    };
     const ovTitle = $("[data-ovtitle]");
     const ovReason = $("[data-ovreason]");
     const ovBest = $("[data-ovbest]");
     const ovWait = $("[data-ovwait]");
     const againBtn = $("[data-again]");
-    const ovCheat = $('[data-ov="cheat"]');
-    const cheatBtn = $("[data-cheatbtn]");
+    const cheatBtn = $("[data-cheats]");
     const restartBtn = $("[data-restart]");
     const unlBtn = $("[data-unl]");
     const pEls = [0, 1].map((i) => {
-        const card = root.querySelector('.fms-p[data-p="' + i + '"]');
+        const card = root.querySelector('.fms-pchip[data-p="' + i + '"]');
         return {
             card,
             name: card.querySelector("[data-pname]"),
@@ -449,29 +513,71 @@ export function mount(root, context = {}) {
     const tileEls = new Map();      /* tileKey -> {el, r, c, t} */
     let lastReject = 0;
     let lastTarget = -1;
-    let timers = [];
+    let timers = [];                /* pausable setTimeout records */
     const unsubs = [];
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { /* ignore */ }
 
+    /* Overlays: help > cheats > pause. While any is open the game clock is frozen. */
+    let cheatsOpen = false;
+    let helpOpen = false;
+    let paused = false;
+    let frozen = false;
+    let freezeAt = 0;
+    let timeShift = 0;              /* accumulated pause: anchor never jumps on resume */
+    let dateAnchor = Date.now();
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("foodMatchSwipeHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("foodMatchSwipeHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+    const perfNow = () => performance.now();
+    /* performance.now() and Date.now() anchors both shift by the paused duration. */
+    const gameNow = () => frozen ? freezeAt - timeShift : perfNow() - timeShift;
+    const blocked = () => helpOpen || cheatsOpen || paused;
+
+    function armTimer(rec) {
+        rec.tm = setTimeout(() => {
+            timers = timers.filter((x) => x !== rec);
+            rec.tm = null;
+            if (!destroyed && !frozen && !paused) rec.fn();
+        }, Math.max(0, rec.due - gameNow()));
+    }
     const later = (fn, ms) => {
-        const tm = setTimeout(() => {
-            timers = timers.filter((x) => x !== tm);
-            if (!destroyed) fn();
-        }, ms);
-        timers.push(tm);
-        return tm;
+        const rec = { fn, due: gameNow() + ms, tm: null };
+        timers.push(rec);
+        if (!frozen) armTimer(rec);
+        return rec;
     };
     const clearTimers = () => {
-        timers.forEach(clearTimeout);
+        timers.forEach((r) => { if (r.tm) clearTimeout(r.tm); });
         timers = [];
     };
+    /* Freeze on overlay open; on resume shift both the performance and Date anchors. */
+    function syncFreeze() {
+        const shouldFreeze = blocked();
+        if (shouldFreeze === frozen) return;
+        if (shouldFreeze) {
+            freezeAt = perfNow();
+            timers.forEach((r) => { if (r.tm) { clearTimeout(r.tm); r.tm = null; } });
+            frozen = true;
+        } else {
+            frozen = false;
+            const held = perfNow() - freezeAt;
+            if (held > 0) { timeShift += held; dateAnchor += held; }
+            timers.forEach((r) => { if (!r.tm) armTimer(r); });
+            /* First-run help can open before the bot was ever queued. */
+            if (state && !online && state.phase === "playing" && state.turn === 1 &&
+                !timers.some((r) => r.fn === botPlay)) scheduleBot();
+        }
+    }
     const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
     /* seat mapping: connection index -> board seat (randomized in multiplayer) */
     const seatOf = (actor) => (state && state.seatFlip ? 1 - actor : actor);
     const mySeat = () => seatOf(playerIndex);
-    const canAct = () => !!state && state.phase === "playing" && state.turn === mySeat();
+    const canAct = () => !!state && state.phase === "playing" && state.turn === mySeat() && !blocked();
 
     /* ---------- shapes (centered at 0,0) ---------- */
     function shapeSvg(t, cx, cy) {
@@ -599,6 +705,7 @@ export function mount(root, context = {}) {
         if (state.target !== lastTarget) {
             lastTarget = state.target;
             pEls.forEach((p) => { p.goal.innerHTML = miniGoalSvg(state.target); });
+            goalEl.innerHTML = miniGoalSvg(state.target);
         }
         for (let s = 0; s < 2; s++) {
             const p = state.players[s];
@@ -614,12 +721,16 @@ export function mount(root, context = {}) {
             status = state.winner === "draw" ? "Draw" : state.winner === mySeat() ? "You win" : "Game over";
         } else if (state.phase === "resolving") {
             status = "Resolving...";
+        } else if (paused) {
+            status = "Paused";
         } else {
             status = canAct() ? "Your turn" : online ? state.players[state.turn].name + " to move" : "Bot thinking...";
         }
         statusEl.textContent = status;
-        msgEl.textContent = (state.msg && state.msg.text) || "";
-        msgEl.className = "fms-msg" + (state.msg && state.msg.mood ? " " + state.msg.mood : "");
+        const msgText = (state.msg && state.msg.text) || "";
+        msgEl.textContent = msgText;
+        msgEl.hidden = !msgText;
+        msgEl.className = "fms-chip" + (state.msg && state.msg.mood ? " " + state.msg.mood : "");
         flipEl.textContent = online
             ? "You are Player " + (mySeat() + 1) + " \u00b7 Player " + (state.startPlayer + 1) + " starts"
             : state.startPlayer === 0 ? "Coin flip: you start" : "Coin flip: Bot starts";
@@ -632,23 +743,34 @@ export function mount(root, context = {}) {
         againBtn.hidden = online && !room.isHost;
         ovWait.hidden = !(online && !room.isHost);
         unlBtn.textContent = "Unlimited moves: " + (state.unlimited ? "on" : "off");
+        pauseBtn.disabled = online;
+        pauseBtn.title = online ? "Pause unavailable online" : "Pause (P)";
+        const label = pauseBtn.querySelector(".fms-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        const pauseIco = pauseBtn.querySelector('[data-ico="pause"]');
+        const playIco = pauseBtn.querySelector('[data-ico="play"]');
+        if (pauseIco) pauseIco.hidden = paused;
+        if (playIco) playIco.hidden = !paused;
+        /* Overlays suppress one another: help > cheats > pause > result. */
+        ov.help.hidden = !helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.over.hidden = state.phase !== "over" || cheatsOpen || helpOpen || paused;
     }
 
     function renderOver() {
-        if (state.phase !== "over") {
-            ovOver.hidden = true;
-            return;
-        }
+        if (state.phase !== "over") return;
         const w = state.winner;
         ovTitle.textContent = w === "draw" ? "Draw game" : w === mySeat() ? "You win!" : online ? state.players[w].name + " wins" : "Bot wins";
         ovTitle.style.color = w === "draw" ? "#e2e8f0" : w === mySeat() ? "#34d399" : "#f87171";
         const a = state.players[0], b = state.players[1];
         ovReason.textContent = a.name + " " + a.collected + "/" + TARGET + " (" + a.score + " pts) \u00b7 " + b.name + " " + b.collected + "/" + TARGET + " (" + b.score + " pts)";
         ovBest.textContent = online ? "" : "Best score: " + best + (state.cheated ? " \u00b7 cheats used" : "");
-        ovOver.hidden = false;
     }
 
     function render() {
+        syncFreeze();
         if (!state) {
             statusEl.textContent = "Waiting for host...";
             return;
@@ -815,14 +937,14 @@ export function mount(root, context = {}) {
 
     /* ---------- bot ---------- */
     function scheduleBot() {
-        if (online || destroyed) return;
+        if (online || destroyed || blocked()) return;
         if (state && state.phase === "playing" && state.turn === 1) {
             later(botPlay, 700 + Math.random() * 600);
         }
     }
 
     function botPlay() {
-        if (destroyed || !state || state.phase !== "playing" || state.turn !== 1) return;
+        if (destroyed || blocked() || !state || state.phase !== "playing" || state.turn !== 1) return;
         const mv = bestMove(state.board, state.target);
         if (mv) {
             applyAction({ type: "swap", r1: mv.r1, c1: mv.c1, r2: mv.r2, c2: mv.c2 }, 1);
@@ -925,11 +1047,12 @@ export function mount(root, context = {}) {
     /* ---------- input helpers ---------- */
     function flashLocal(text) {
         msgEl.textContent = text;
-        msgEl.className = "fms-msg bad";
+        msgEl.hidden = false;
+        msgEl.className = "fms-chip bad";
     }
 
     function trySwapLocal(r1, c1, r2, c2) {
-        if (!state || state.phase !== "playing") return;
+        if (blocked() || !state || state.phase !== "playing") return;
         if (r2 < 0 || c2 < 0 || r2 >= SIZE || c2 >= SIZE) return;
         if (Math.abs(r1 - r2) + Math.abs(c1 - c2) !== 1) return;
         if (!canAct()) {
@@ -971,23 +1094,70 @@ export function mount(root, context = {}) {
         renderMarks();
     }
 
-    /* ---------- keyboard (desktop) ---------- */
+    /* ---------- overlay controls ---------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; paused = false; }
+        render();
+    }
+    function setPause(on) {
+        if (online) return;
+        paused = Boolean(on);
+        if (paused) { helpOpen = false; cheatsOpen = false; }
+        render();
+    }
+    function closeTopOverlay() {
+        if (helpOpen) { toggleHelp(false); return true; }
+        if (cheatsOpen) { toggleCheats(false); return true; }
+        if (paused) { setPause(false); return true; }
+        return false;
+    }
+    function restartGame() {
+        if (online && !room.isHost) return;
+        helpOpen = false;
+        cheatsOpen = false;
+        paused = false;
+        render();              /* resume the clock before clearing timers */
+        submitAction({ type: "restart" });
+    }
+
+    /* ---------- keyboard: help → cheats → pause → Escape → game actions ---------- */
     function handleKey(e) {
-        if (!state) return;
+        if (!state || destroyed) return;
         const k = e.code;
+        const key = e.key;
+        if (e.repeat && (k === "KeyH" || k === "KeyC" || k === "KeyP" || k === "KeyR" || k === "Space" || k === "Enter" || key === "Escape")) return;
         if ((k === "Space" || k === "Enter") && e.target.closest && e.target.closest("button")) return;
+        const tag = e.target && e.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (k === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (k === "KeyP") { if (!helpOpen && !cheatsOpen) setPause(!paused); e.preventDefault(); return; }
+        if (key === "Escape") {
+            if (!closeTopOverlay()) { sel = null; renderMarks(); }
+            e.preventDefault(); return;
+        }
+        if (k === "KeyR") {
+            if (blocked()) closeTopOverlay(); else restartGame();
+            e.preventDefault(); return;
+        }
+        if (blocked()) {
+            if (k === "Space" || k === "Enter") { closeTopOverlay(); e.preventDefault(); }
+            return;
+        }
         let handled = true;
         if (k === "ArrowUp") padDir(-1, 0);
         else if (k === "ArrowDown") padDir(1, 0);
         else if (k === "ArrowLeft") padDir(0, -1);
         else if (k === "ArrowRight") padDir(0, 1);
         else if (k === "Space" || k === "Enter") padOk();
-        else if (k === "Escape") {
-            if (!ovCheat.hidden) ovCheat.hidden = true;
-            else if (!helpEl.hidden) helpEl.hidden = true;
-            else sel = null;
-            renderMarks();
-        } else handled = false;
+        else handled = false;
         if (handled) e.preventDefault();
     }
 
@@ -999,7 +1169,7 @@ export function mount(root, context = {}) {
     }
 
     function onPointerDown(e) {
-        if (!state) return;
+        if (blocked() || !state) return;
         const cell = cellFromEvent(e);
         if (!cell) return;
         e.preventDefault();
@@ -1012,6 +1182,7 @@ export function mount(root, context = {}) {
     }
 
     function onPointerMove(e) {
+        if (blocked()) return;
         if (drag && !drag.moved) {
             const dx = e.clientX - drag.x;
             const dy = e.clientY - drag.y;
@@ -1032,6 +1203,7 @@ export function mount(root, context = {}) {
 
     function onPointerUp() {
         if (!drag) return;
+        if (blocked()) { drag = null; return; }
         const wasDrag = drag.moved;
         const start = { r: drag.r, c: drag.c };
         drag = null;
@@ -1052,44 +1224,33 @@ export function mount(root, context = {}) {
         drag = null;
     }
 
-    /* ---------- clicks (buttons, D-pad, cheats) ---------- */
+    /* ---------- clicks (HUD, D-pad, overlays, cheats) ---------- */
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) {
-            onExit();
-            return;
-        }
-        const pad = event.target.closest("[data-pad]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest('[data-act="cheat-close"]')) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { setPause(!paused); return; }
+        if (t.closest('[data-act="resume"]')) { setPause(false); return; }
+        const pad = t.closest("[data-pad]");
         if (pad) {
-            const d = pad.dataset.pad;
-            if (d === "up") padDir(-1, 0);
-            else if (d === "down") padDir(1, 0);
-            else if (d === "left") padDir(0, -1);
-            else if (d === "right") padDir(0, 1);
-            else if (d === "ok") padOk();
+            if (!blocked()) {
+                const d = pad.dataset.pad;
+                if (d === "up") padDir(-1, 0);
+                else if (d === "down") padDir(1, 0);
+                else if (d === "left") padDir(0, -1);
+                else if (d === "right") padDir(0, 1);
+                else if (d === "ok") padOk();
+            }
             return;
         }
-        const ch = event.target.closest("[data-cheat]");
-        if (ch) {
-            applyCheat(ch.dataset.cheat);
-            return;
-        }
-        const act = event.target.closest("[data-act]");
-        if (!act) return;
-        const a = act.dataset.act;
-        if (a === "help") {
-            helpEl.hidden = !helpEl.hidden;
-            act.setAttribute("aria-expanded", String(!helpEl.hidden));
-        } else if (a === "cheat") {
-            if (!online) ovCheat.hidden = !ovCheat.hidden;
-        } else if (a === "cheat-close") {
-            ovCheat.hidden = true;
-        } else if (a === "pad") {
-            wrapEl.classList.toggle("pad-on");
-        } else if (a === "restart") {
-            if (online && !room.isHost) return;
-            ovCheat.hidden = true;
-            submitAction({ type: "restart" });
-        }
+        const ch = t.closest("[data-cheat]");
+        if (ch) { applyCheat(ch.dataset.cheat); return; }
+        if (t.closest('[data-act="pad"]')) { app.classList.toggle("pad-on"); return; }
+        if (t.closest('[data-act="restart"]')) { restartGame(); }
     }
 
     function focusRoot() {

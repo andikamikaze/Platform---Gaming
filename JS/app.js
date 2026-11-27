@@ -1,6 +1,9 @@
 import { createRoom, joinRoom } from "./room-client.js";
 import { iconSVG, hydrateIcons } from "./icons.js";
 import { GAMES as GENERATED_GAMES } from "./games-manifest.js";
+import { GAMES_WITH_INTERNAL_HELP, resolveGameInfo } from "./game-info.js";
+import { gameModeCategories, launchModeInfo, MODE_LABELS, MODE_OPTIONS } from "./game-modes.js";
+import { applyGameTheme, restoreGameTheme, watchGameTheme } from "./game-theme.js";
 import {
   rawPlayerName as sharedRawPlayerName,
   getDisplayName,
@@ -43,15 +46,21 @@ const STORAGE = {
 };
 
 let activeFilter = "all";
+let activeMode = "all";
 let selectedGameId = "";
 let currentGame = null;
 let currentGameKind = "";
 let currentGameModule = null;
+let currentGameRoot = null;
 let activeWatcher = null;
 let currentRoom = null;
 let launchBusy = false;
 let currentPage = "overview";
 let searchDebounce = 0;
+
+document.addEventListener("mgp:themechange", (event) => {
+  applyGameTheme(currentGameRoot, event.detail);
+});
 
 /* =============================================================
  * LOCAL STORAGE
@@ -135,7 +144,6 @@ function recordResult(gameId, { bestScore = 0, result = "" }) {
   else if (result === "loss") entry.losses += 1;
   entry.lastPlayed = Date.now();
   saveStats();
-  updateBestBadge();
   renderOverviewStats();
   refreshActiveDynamicPage();
 }
@@ -179,7 +187,7 @@ function gameById(id) {
   return GAMES_BY_ID.get(id);
 }
 function gameIndex(game) {
-  return String(GAMES.indexOf(game) + 1).padStart(2, "0");
+  return String(GAMES.indexOf(game) + 1);
 }
 function safeColor(value, fallback) {
   return typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : fallback;
@@ -193,7 +201,7 @@ function gameArt(game) {
 }
 function bestTag(game) {
   const best = Number(statsFor(game.id).best || 0);
-  return best > 0 ? `Best ${best.toLocaleString("en-US")}` : "Solo · 1P";
+  return best > 0 ? `Best ${best.toLocaleString("en-US")}` : "";
 }
 function toast(message, kind = "") {
   const node = document.createElement("div");
@@ -303,15 +311,6 @@ function attachResultWatcher(container, gameId) {
 /* =============================================================
  * LAUNCH / CLOSE GAME
  * ============================================================= */
-function updateBestBadge() {
-  const badge = $("#gameBestBadge");
-  if (!badge || !currentGame) return;
-  const game = gameById($("#gameDialogTitle").dataset.gameId || "");
-  const best = game ? Number(statsFor(game.id).best || 0) : 0;
-  badge.hidden = !(best > 0);
-  badge.textContent = best > 0 ? `Best ${best.toLocaleString("en-US")}` : "";
-}
-
 async function launchGame(gameId, mode, room = null) {
   const game = gameById(gameId);
   if (!game) throw new Error("Game tidak ditemukan di library.");
@@ -328,7 +327,6 @@ async function launchGame(gameId, mode, room = null) {
   $("#gameHost").innerHTML = '<div class="game-loading"><span class="loading-spinner"></span><p>Loading game…</p></div>';
   currentRoom = room;
   recordSession(gameId);
-  updateBestBadge();
   try {
     if (game.kind === "esm") {
       const module = await import(gameModuleURL(game));
@@ -336,12 +334,14 @@ async function launchGame(gameId, mode, room = null) {
       node.className = "mgp-app";
       $("#gameHost").innerHTML = "";
       $("#gameHost").append(node);
+      currentGameRoot = node;
       currentGame = module.mount(node, {
         mode,
         room,
         playerName: playerName(),
         onExit: closeGame
       });
+      watchGameTheme(currentGameRoot);
       currentGameKind = "esm";
       currentGameModule = game;
     } else {
@@ -353,12 +353,15 @@ async function launchGame(gameId, mode, room = null) {
         wrapper.id = `${game.id}-app`;
         wrapper.className = "mgp-app";
         $("#gameHost").append(wrapper);
+        currentGameRoot = wrapper;
         const instance = meta.build(wrapper);
         built = { wrapper, instance };
         builtGames.set(game.id, built);
       } else {
         $("#gameHost").append(built.wrapper);
+        currentGameRoot = built.wrapper;
       }
+      watchGameTheme(currentGameRoot);
       currentGame = {
         destroy() {
           try { built.instance.close?.(); } catch (error) { console.warn(error); }
@@ -370,7 +373,15 @@ async function launchGame(gameId, mode, room = null) {
     }
     activeWatcher?.();
     activeWatcher = attachResultWatcher($("#gameHost"), game.id);
-    updateBestBadge();
+    /* Game tanpa bantuan internal tetap dapat panduan sekali saat pertama dibuka. */
+    if (!GAMES_WITH_INTERNAL_HELP.includes(game.id)) {
+      let seenGuide = true;
+      try { seenGuide = localStorage.getItem(`mgp-help-seen:${game.id}`) === "1"; } catch (_) { seenGuide = true; }
+      if (!seenGuide) {
+        try { localStorage.setItem(`mgp-help-seen:${game.id}`, "1"); } catch (_) { /* storage blocked */ }
+        showGameHowTo();
+      }
+    }
   } catch (error) {
     console.error(error);
     activeWatcher?.();
@@ -383,18 +394,17 @@ async function launchGame(gameId, mode, room = null) {
 async function startSelectedMode(mode) {
   if (launchBusy) return;
   launchBusy = true;
-  const gameId = $("#launchGameSelect").value;
-  selectedGameId = gameId;
+  const gameId = selectedGameId;
   try {
-    if (mode === "ai") {
-      await launchGame(gameId, "ai", null);
+    if (mode === "solo" || mode === "ai" || mode === "local") {
+      await launchGame(gameId, mode, null);
       return;
     }
-    toast("Creating a private room…");
+    toast(mode === "coop" ? "Creating a co-op room…" : "Creating a private room…", "warning");
     const room = await createRoom(gameId, playerName());
     writeRaw(STORAGE.rooms, String(totalRooms() + 1));
     renderOverviewStats();
-    toast(`Room ${room.code} created. Share the code with your friend.`);
+    toast(`Room ${room.code} created. Share the code with your friend.`, "success");
     await launchGame(gameId, "room", room);
   } catch (error) {
     console.error(error);
@@ -416,7 +426,7 @@ async function submitJoinRoom() {
       await room.leave();
       throw new Error("Game dari room ini belum tersedia di versi library ini.");
     }
-    toast(`Joined room ${room.code}.`);
+    toast(`Joined room ${room.code}.`, "success");
     await launchGame(room.gameId, "room", room);
   } catch (error) {
     $("#joinError").textContent = error.message || "Unable to join this room.";
@@ -427,8 +437,11 @@ async function submitJoinRoom() {
 }
 
 async function closeGame() {
+  closeDialog("howToDialog");
   activeWatcher?.();
   activeWatcher = null;
+  restoreGameTheme(currentGameRoot);
+  currentGameRoot = null;
   if (currentGame?.destroy) {
     try { currentGame.destroy(); } catch (error) { console.warn(error); }
   }
@@ -452,7 +465,6 @@ async function closeGame() {
   $("#gameHost").innerHTML = "";
   $("#gameDialog").hidden = true;
   $("#shareRoomButton").hidden = true;
-  $("#gameBestBadge").hidden = true;
   if (currentPage === "play") refreshActiveDynamicPage();
 }
 
@@ -460,22 +472,43 @@ async function copyRoomCode() {
   if (!currentRoom?.code) return;
   try {
     await navigator.clipboard.writeText(currentRoom.code);
-    toast(`Room code ${currentRoom.code} copied.`);
+    toast(`Room code ${currentRoom.code} copied.`, "success");
   } catch (_) {
-    toast(`Room code: ${currentRoom.code}`);
+    toast(`Room code: ${currentRoom.code}`, "success");
   }
+}
+
+function renderLaunchModes(game) {
+  const host = $("#launchModes");
+  if (!host) return;
+  const flags = resolveGameInfo(game).modes;
+  host.innerHTML = flags.map((mode) => {
+    const info = launchModeInfo(mode, flags);
+    if (!info) return "";
+    return `<button class="mode-option" data-launch-mode="${info.value}" type="button">
+      <span class="mode-icon mode-icon-${mode} icon">${iconSVG(info.icon)}</span>
+      <span>
+        <strong>${escapeHTML(info.title)}</strong>
+        <small>${escapeHTML(info.description)}</small>
+      </span>
+      <span class="mode-arrow icon">${iconSVG("arrowRight")}</span>
+    </button>`;
+  }).join("");
+  const footnote = $("#launchFootnote");
+  if (footnote) footnote.hidden = !flags.some((mode) => mode === "online" || mode === "coop");
 }
 
 function selectGame(gameId) {
   const game = gameById(gameId);
   selectedGameId = game ? gameId : (GAMES[0]?.id || "");
-  renderGameOptions();
   const selected = gameById(selectedGameId);
   if (!selected) return;
+  const modes = gameModeCategories(selected).map((mode) => MODE_LABELS[mode] || mode);
   $("#launchTitle").textContent = `Play ${selected.name}`;
   $("#launchSubtitle").textContent = selected.kind === "esm"
-    ? "Choose an opponent or create a private room."
-    : "Play solo, or open this game in a room on another device (this title runs locally per player).";
+    ? `Mode tersedia: ${modes.join(" · ")}.`
+    : `Mode tersedia: ${modes.join(" · ")}. Game ini berjalan lokal di setiap perangkat.`;
+  renderLaunchModes(selected);
   openDialog("launchDialog");
 }
 
@@ -500,42 +533,33 @@ function renderOverviewStats() {
   $("#gameCount").textContent = String(GAME_TOTAL).padStart(2, "0");
 }
 
-function renderGameOptions() {
-  const select = $("#launchGameSelect");
-  const groups = new Map();
-  for (const game of GAMES) {
-    if (!groups.has(game.category)) groups.set(game.category, []);
-    groups.get(game.category).push(game);
-  }
-  select.innerHTML = [...groups.entries()].map(([category, list]) => {
-    const label = CATEGORY_LABELS.get(category) || category;
-    return `<optgroup label="${escapeHTML(label)}">${list
-      .map((game) => `<option value="${game.id}">${escapeHTML(game.name)}</option>`)
-      .join("")}</optgroup>`;
-  }).join("");
-  select.value = selectedGameId;
-}
-
 function gameCardHTML(game, favorites) {
   const isFavorite = favorites.has(game.id);
   const artA = safeColor(game.bg?.[0], "#253a50");
   const artB = safeColor(game.bg?.[1], "#536f91");
   const index = gameIndex(game);
+  const modeTags = gameModeCategories(game)
+    .map((mode) => `<span class="game-tag game-tag-mode">${escapeHTML(MODE_LABELS[mode] || mode)}</span>`)
+    .join("");
+  const best = bestTag(game);
   return `
     <article class="game-card" data-game-card="${game.id}">
       <div class="game-art" style="--art-a:${artA};--art-b:${artB}">
         <span class="game-art-label">${escapeHTML(game.catLabel || game.category)}</span>
         <span class="art-orbit" aria-hidden="true"></span>
         <span class="art-glyph" aria-hidden="true">${gameArt(game)}</span>
-        <span class="art-index">${index} / ${GAME_TOTAL}</span>
+        <span class="art-index">${index}</span>
       </div>
       <div class="game-body">
         <div class="game-title-row"><h3>${escapeHTML(game.name)}</h3>
           <button class="favorite-button" type="button" data-favorite="${game.id}" aria-label="${isFavorite ? "Remove" : "Add"} ${escapeHTML(game.name)} ${isFavorite ? "from" : "to"} favorites" aria-pressed="${isFavorite}">${iconSVG("heart")}</button>
         </div>
         <p class="game-description">${escapeHTML(game.description)}</p>
-        <div class="game-card-footer"><div class="game-tags"><span class="game-tag">${escapeHTML(game.catLabel || game.category)}</span><span class="game-tag">${escapeHTML(bestTag(game))}</span></div>
-          <button class="play-button" type="button" data-play="${game.id}">Play ${iconSVG("arrowUpRight")}</button>
+        <div class="game-card-footer"><div class="game-tags"><span class="game-tag">${escapeHTML(game.catLabel || game.category)}</span>${modeTags}${best ? `<span class="game-tag game-tag-best">${escapeHTML(best)}</span>` : ""}</div>
+          <div class="game-card-actions">
+            <button class="info-button" type="button" data-game-info="${game.id}" aria-label="Detail ${escapeHTML(game.name)}">${iconSVG("info")}</button>
+            <button class="play-button" type="button" data-play="${game.id}">Play ${iconSVG("arrowUpRight")}</button>
+          </div>
         </div>
       </div>
     </article>`;
@@ -558,11 +582,14 @@ function pickerCardHTML(game) {
 function filterGames(query) {
   const favorites = favoriteSet();
   return GAMES.filter((game) => {
-    const haystack = `${game.name} ${game.description} ${game.catLabel} ${game.category}`.toLowerCase();
+    const categories = gameModeCategories(game);
+    const modeLabels = categories.map((mode) => MODE_LABELS[mode] || mode);
+    const haystack = `${game.name} ${game.description} ${game.catLabel} ${game.category} ${modeLabels.join(" ")}`.toLowerCase();
     const textMatch = !query || haystack.includes(query);
-    const filterMatch = activeFilter === "all"
+    const genreMatch = activeFilter === "all"
       || (activeFilter === "favorites" ? favorites.has(game.id) : game.category === activeFilter);
-    return textMatch && filterMatch;
+    const modeMatch = activeMode === "all" || categories.includes(activeMode);
+    return textMatch && genreMatch && modeMatch;
   });
 }
 
@@ -585,6 +612,18 @@ function renderFilterChips() {
   }).join("");
 }
 
+function renderModeFilter() {
+  const select = $("#modeFilter");
+  if (!select) return;
+  select.innerHTML = MODE_OPTIONS.map((option) => {
+    const count = option.value === "all"
+      ? GAME_TOTAL
+      : GAMES.filter((game) => gameModeCategories(game).includes(option.value)).length;
+    return `<option value="${option.value}">${escapeHTML(option.label)} (${count})</option>`;
+  }).join("");
+  select.value = activeMode;
+}
+
 function renderLibrary() {
   const favorites = favoriteSet();
   const query = $("#gameSearch").value.trim().toLowerCase();
@@ -592,19 +631,6 @@ function renderLibrary() {
   $("#gameGrid").innerHTML = filtered.map((game) => gameCardHTML(game, favorites)).join("");
   $("#shownCount").textContent = `${filtered.length} ${filtered.length === 1 ? "game" : "games"}`;
   $("#emptyState").hidden = filtered.length > 0;
-}
-
-function renderPickerPage(gridId, searchId, emptyId) {
-  const grid = document.getElementById(gridId);
-  if (!grid) return;
-  const query = (document.getElementById(searchId)?.value || "").trim().toLowerCase();
-  const filtered = GAMES.filter((game) => {
-    if (!query) return true;
-    return `${game.name} ${game.description} ${game.catLabel}`.toLowerCase().includes(query);
-  });
-  grid.innerHTML = filtered.map(pickerCardHTML).join("");
-  const empty = document.getElementById(emptyId);
-  if (empty) empty.hidden = filtered.length > 0;
 }
 
 /** Compact recent list used by the combined Play page. */
@@ -731,7 +757,6 @@ const PAGE_META = {
 function renderDynamicPage(page) {
   if (page === "library") { renderFilterChips(); renderLibrary(); }
   else if (page === "play") {
-    renderPickerPage("playGrid", "playSearch", "playEmpty");
     renderCompactCollection("playRecentGrid", readJSON(STORAGE.recent, []), "playRecentEmpty");
     renderCompactCollection("playFavoritesGrid", readJSON(STORAGE.favorites, []), "playFavoritesEmpty");
   }
@@ -796,6 +821,43 @@ function showInfo(title, html) {
   openDialog("infoDialog");
 }
 
+function infoSection(title, items) {
+  if (!items.length) return "";
+  return `<h3 class="info-section-title">${title}</h3><ul class="info-list">${items.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>`;
+}
+
+function renderGameInfo(id) {
+  const game = gameById(id);
+  if (!game) return;
+  const detail = resolveGameInfo(game);
+  const best = Number(statsFor(id).best || 0);
+  const html = [
+    `<div class="info-badges"><span class="game-tag">${escapeHTML(game.catLabel || game.category)}</span>${best > 0 ? `<span class="game-tag">Best ${best.toLocaleString("en-US")}</span>` : ""}</div>`,
+    `<h3 class="info-section-title">Deskripsi lengkap</h3><p>${escapeHTML(detail.overview)}</p>`,
+    infoSection("Musuh / rintangan", detail.obstacles),
+    infoSection("Mode", gameModeCategories(game).map((mode) => MODE_LABELS[mode] || mode)),
+    `<h3 class="info-section-title">Kontrol</h3><p>${escapeHTML(detail.controls)}</p>`,
+    `<p class="info-footnote">Detail ini tersimpan lokal di browser ini.</p>`,
+  ].join("");
+  showInfo(game.name, html);
+}
+
+function showGameHowTo() {
+  const game = currentGameModule;
+  if (!game) return;
+  const detail = resolveGameInfo(game);
+  $("#howToTitle").textContent = `How to play · ${game.name}`;
+  $("#howToSubtitle").textContent = detail.overview;
+  $("#howToCopy").innerHTML = [
+    infoSection("Tujuan", [detail.goal]),
+    infoSection("Aturan utama", detail.obstacles),
+    infoSection("Kontrol", [detail.controls]),
+    infoSection("Menang / kalah", [detail.win]),
+    infoSection("Mode", gameModeCategories(game).map((mode) => MODE_LABELS[mode] || mode)),
+  ].join("");
+  openDialog("howToDialog");
+}
+
 function handleAction(action) {
   switch (action) {
     case "create-room": closeMoreMenu(); selectGame(selectedGameId); break;
@@ -845,7 +907,7 @@ function submitWelcome() {
   error.hidden = true;
   renderProfile();
   closeDialog("welcomeDialog");
-  toast(`Welcome, ${playerName()}! Your name is saved on this device.`);
+  toast(`Welcome, ${playerName()}! Your name is saved on this device.`, "success");
   const next = safeNextUrl();
   if (next) location.assign(next);
 }
@@ -864,6 +926,12 @@ document.addEventListener("click", (event) => {
   const actionButton = event.target.closest("[data-action]");
   if (actionButton) {
     handleAction(actionButton.dataset.action);
+    return;
+  }
+
+  const infoButton = event.target.closest("[data-game-info]");
+  if (infoButton) {
+    renderGameInfo(infoButton.dataset.gameInfo);
     return;
   }
 
@@ -905,9 +973,9 @@ $("#gameSearch").addEventListener("input", () => {
   window.clearTimeout(searchDebounce);
   searchDebounce = window.setTimeout(renderLibrary, 120);
 });
-$("#playSearch")?.addEventListener("input", () => renderPickerPage("playGrid", "playSearch", "playEmpty"));
-$("#launchGameSelect").addEventListener("change", (event) => {
-  selectedGameId = event.target.value;
+$("#modeFilter")?.addEventListener("change", (event) => {
+  activeMode = event.target.value;
+  renderLibrary();
 });
 $("#joinRoomSubmit").addEventListener("click", submitJoinRoom);
 $("#joinRoomCode").addEventListener("keydown", (event) => {
@@ -940,7 +1008,7 @@ $("#saveProfile").addEventListener("click", () => {
   if (error) error.hidden = true;
   renderProfile();
   closeDialog("profileDialog");
-  toast("Player name saved on this device.");
+  toast("Player name saved on this device.", "success");
 });
 $("#closeGameButton").addEventListener("click", closeGame);
 $("#shareRoomButton").addEventListener("click", copyRoomCode);
@@ -992,7 +1060,7 @@ applyAppearance();
 hydrateIcons();
 renderProfile();
 renderOverviewStats();
-renderGameOptions();
+renderModeFilter();
 $("#currentYear").textContent = new Date().getFullYear();
 navigate(location.hash.slice(1) || "overview", false);
 maybeShowWelcome();

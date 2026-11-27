@@ -9,6 +9,8 @@
   After editing META run: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "ship-combat",
     name: "Ship Combat",
@@ -533,16 +535,25 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.sc-app{--sc-line:#ffffff14;--sc-ink:#e2e8f0;--sc-dim:#8fa3b8;--sc-acc:#22d3ee;color:var(--sc-ink)}
+.sc-app{--sc-line:#ffffff14;--sc-ink:#e2e8f0;--sc-dim:#8fa3b8;--sc-acc:#22d3ee;color:var(--sc-ink);display:flex;flex-direction:column}
 .sc-app [hidden]{display:none!important}
-.sc-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
-.sc-chip{font-size:12px;letter-spacing:.03em;padding:5px 11px;border:1px solid var(--sc-line);border-radius:999px;background:#ffffff07;color:var(--sc-dim);white-space:nowrap}
-.sc-chip b{color:var(--sc-ink);font-weight:600}
-.sc-spacer{flex:1}
-.sc-ico{width:32px;height:32px;border-radius:10px;border:1px solid var(--sc-line);background:#ffffff07;color:var(--sc-dim);cursor:pointer;font-size:14px;line-height:1;display:grid;place-items:center;padding:0}
-.sc-ico:hover{color:var(--sc-ink);background:#ffffff12}
-.sc-panel{position:relative;padding:0;background:none;border:none}
-.sc-board{display:block;width:100%;max-width:820px;margin:0 auto;border-radius:16px;border:1px solid var(--sc-line);background:#0a1420;touch-action:none;cursor:crosshair}
+.sc-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 8px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sc-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.03em;padding:5px 10px;border:1px solid var(--sc-line);border-radius:999px;background:#ffffff07;color:var(--sc-dim);white-space:nowrap}
+.sc-chip b{color:var(--sc-ink);font-weight:600;font-variant-numeric:tabular-nums}
+.sc-bar{display:inline-block;width:46px;height:4px;border-radius:2px;background:#ffffff1a;overflow:hidden}
+.sc-bar i{display:block;height:100%;width:100%;background:var(--sc-acc);transition:width .12s linear}
+.sc-spacer{flex:1 1 auto}
+.sc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sc-icon-btn svg{flex:none;display:block}
+.sc-btn{min-height:32px;padding:6px 10px;border-radius:10px;border:1px solid var(--sc-line);background:#ffffff07;color:var(--sc-dim);cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.04em;line-height:1}
+.sc-btn:hover{color:var(--sc-ink);background:#ffffff12}
+.sc-btn.primary{border-color:#22d3ee55;background:#22d3ee1a;color:#a5f3fc}
+.sc-btn.primary:hover{background:#22d3ee2e}
+.sc-btn.ghost{border-color:var(--sc-line);background:#ffffff07;color:var(--sc-dim)}
+.sc-btn.ghost:hover{color:var(--sc-ink)}
+.sc-btn-label{white-space:nowrap}
+.sc-panel{position:relative;padding:0;border:1px solid var(--sc-line);border-radius:16px;background:#0a1420;overflow:hidden}
+.sc-board{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .sc-touch{display:none;gap:10px;justify-content:center;padding:12px 0 2px;flex-wrap:wrap}
 @media (pointer:coarse),(max-width:760px){.sc-touch{display:flex}}
 .sc-tbtn{width:56px;height:48px;border-radius:14px;border:1px solid var(--sc-line);background:#ffffff0a;color:var(--sc-ink);display:grid;place-items:center;user-select:none;-webkit-user-select:none;touch-action:none;cursor:pointer;padding:0}
@@ -551,16 +562,14 @@ export function mount(root, context = {}) {
 .sc-tbtn.fire{width:72px;background:#7f1d1d4d;border-color:#f8717144}
 .sc-tbtn.spec{width:72px;background:#1e3a5f4d;border-color:#38bdf844}
 .sc-ov{position:absolute;inset:0;display:grid;place-items:center;background:#0b1220d9;backdrop-filter:blur(5px);z-index:10;padding:14px;border-radius:16px}
-.sc-card{width:min(100%,560px);max-height:100%;overflow:auto;background:#0f172a;border:1px solid var(--sc-line);border-radius:18px;padding:22px;text-align:center}
-.sc-card h3{margin:0 0 6px;font-size:20px;font-weight:700;letter-spacing:.02em}
+.sc-card{display:flex;flex-direction:column;width:min(100%,560px);max-height:100%;overflow:hidden;background:#0f172a;border:1px solid var(--sc-line);border-radius:18px;padding:20px;text-align:center}
+.sc-head{flex:none;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px}
+.sc-head h3{margin:0;font-size:20px;font-weight:700;letter-spacing:.02em}
+.sc-body{flex:1 1 auto;min-height:0;overflow:auto}
+.sc-foot{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px}
 .sc-card p{margin:6px 0;color:var(--sc-dim);font-size:13px;line-height:1.55}
-.sc-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px}
-.sc-btn{border:1px solid #22d3ee55;background:#22d3ee1a;color:#a5f3fc;border-radius:12px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.02em}
-.sc-btn:hover{background:#22d3ee2e}
-.sc-btn.ghost{border-color:var(--sc-line);background:#ffffff07;color:var(--sc-dim)}
-.sc-btn.ghost:hover{color:var(--sc-ink)}
 .sc-ships{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:14px 0 4px}
-.sc-ship{border:1px solid var(--sc-line);background:#ffffff06;border-radius:12px;padding:10px 12px;color:var(--sc-ink);cursor:pointer;text-align:left;font:inherit}
+.sc-ship{border:1px solid var(--sc-line);background:#ffffff06;border-radius:12px;padding:10px 12px;color:var(--sc-ink);cursor:pointer;text-align:left;font:inherit;min-height:44px}
 .sc-ship.on{border-color:var(--sc-acc);background:#22d3ee14}
 .sc-ship b{display:block;font-size:13px}
 .sc-ship small{display:block;color:var(--sc-dim);font-size:11px;margin-top:3px;line-height:1.4}
@@ -571,55 +580,72 @@ export function mount(root, context = {}) {
 .sc-cheatrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--sc-line);border-radius:10px;margin:6px 0;font-size:12.5px;color:var(--sc-dim);text-align:left}
 .sc-switch{min-width:52px;border:1px solid var(--sc-line);background:#ffffff07;color:var(--sc-dim);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer}
 .sc-switch.on{border-color:#4ade8066;background:#4ade801a;color:#86efac}
-.sc-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.sc-hint{color:var(--sc-dim);font-size:12px}
+.sc-note{color:var(--sc-dim);font-size:11px}
+
+/* --- Batch 02 design polish --- */
+.sc-app :focus-visible,.sc-app button:focus-visible{outline:2px solid var(--sc-acc);outline-offset:2px}
+.sc-hud{gap:12px;margin:12px 0 8px}
+.sc-chip{padding:6px 12px}
+.sc-btn,.sc-ship,.sc-switch{min-height:44px}
+.sc-card{box-shadow:none}
+@media (pointer:coarse){.sc-app button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.sc-app *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (keep last) --- */
+.sc-app.game-fill > .sc-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.sc-app.game-fill > .sc-panel:not(:has(.sc-ov:not([hidden]))){aspect-ratio:8/5;flex:0 0 auto}
+.sc-app.game-fill > .sc-panel:has(.sc-ov:not([hidden])){aspect-ratio:auto;flex:0 0 auto;min-height:min(70dvh,620px)}
+.sc-app .sc-hud{gap:5px;margin-bottom:8px}
+.sc-app .sc-hud .sc-chip{padding:4px 6px;font-size:9px}
+.sc-app .sc-hud .sc-chip[data-hud="ship"]{max-width:104px;overflow:hidden;text-overflow:ellipsis}
+.sc-app .sc-hud .sc-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.sc-app .sc-hud .sc-btn-label,.sc-app .sc-hud .sc-spacer{display:none}
+.sc-app .sc-ov{padding:8px}
+.sc-app .sc-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sc-app .sc-body{scrollbar-width:none}
+.sc-app .sc-body::-webkit-scrollbar{display:none}
+.sc-app .sc-note{display:none}
+}
 </style>
-<div class="game-app sc-app">
-  <div class="game-intro">
-    <div><h2>Ship Combat</h2><p>Arcade naval warfare - set sail from port, sink the raider waves, stay afloat.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
+<div class="game-app sc-app game-fill" data-sc>
   <div class="sc-hud">
     <span class="sc-chip">Wave <b data-hud="wave">-</b></span>
     <span class="sc-chip" data-hud="ship">Frigate</span>
-    <span class="sc-chip">HP <b data-hud="hp">-</b></span>
+    <span class="sc-chip">Hull <b data-hud="hp">-</b><span class="sc-bar"><i data-hud="hpbar"></i></span></span>
     <span class="sc-chip" data-hud="spec">Special ready</span>
     <span class="sc-chip">Score <b data-hud="score">0</b></span>
     <span class="sc-chip" data-chip="best">Best <b data-hud="best">0</b></span>
+    <span class="sc-chip" data-hud="mode">Solo vs bot</span>
     <span class="sc-spacer"></span>
-    <button class="sc-ico" type="button" data-act="help" title="How to play (H)" aria-label="How to play">?</button>
-    <button class="sc-ico" type="button" data-act="cheat" data-btn="cheat" title="Cheats (C)" aria-label="Cheats">&#9881;</button>
-    <button class="sc-ico" type="button" data-act="pause" data-btn="pause" title="Pause (P)" aria-label="Pause">&#10074;&#10074;</button>
-    <button class="sc-ico" type="button" data-act="restart" title="Restart" aria-label="Restart">&#8635;</button>
+    <button class="sc-btn sc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sc-btn-label">Help</span></button>
+    <button class="sc-btn sc-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sc-btn-label">Cheats</span></button>
+    <button class="sc-btn sc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sc-btn-label">Pause</span></button>
+    <button class="sc-btn sc-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sc-btn-label">Restart</span></button>
+    <button class="sc-btn sc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sc-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel sc-panel" data-board>
     <svg class="sc-board" viewBox="0 0 640 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Naval battle theater">
       <g data-g="static"></g><g data-g="world"></g><g data-g="screen"></g>
     </svg>
-    <div class="sc-touch">
-      <button class="sc-tbtn" type="button" data-k="l" aria-label="Sail left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
-      <button class="sc-tbtn" type="button" data-k="r" aria-label="Sail right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
-      <button class="sc-tbtn" type="button" data-k="u" aria-label="Aim up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg></button>
-      <button class="sc-tbtn" type="button" data-k="d" aria-label="Aim down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6"/></svg></button>
-      <button class="sc-tbtn fire" type="button" data-k="f" aria-label="Fire"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#fde047"/></svg></button>
-      <button class="sc-tbtn spec" type="button" data-k="s" aria-label="Special"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 13h5l-2 8 9-11h-5l3-7z"/></svg></button>
-    </div>
     <div class="sc-ov" data-ov="lobby">
       <div class="sc-card">
-        <h3>Choose your ship</h3>
-        <p data-lobby-sub>Arcade mode - endless raider waves, each one generated to be beatable.</p>
-        <div class="sc-ships" data-ships></div>
-        <p data-duel-info hidden></p>
-        <div class="sc-row">
-          <button class="sc-btn" type="button" data-act="start" data-start>Set sail</button>
-          <button class="sc-btn ghost" type="button" data-act="help">How to play</button>
+        <div class="sc-head"><h3>Choose your ship</h3></div>
+        <div class="sc-body">
+          <p data-lobby-sub>Arcade mode - endless raider waves, each one generated to be beatable.</p>
+          <div class="sc-ships" data-ships></div>
+          <p data-duel-info hidden></p>
+        </div>
+        <div class="sc-foot">
+          <button class="sc-btn primary" type="button" data-act="start" data-start>Set sail</button>
+          <button class="sc-btn ghost" type="button" data-help>How to play</button>
         </div>
       </div>
     </div>
     <div class="sc-ov" data-ov="help" hidden>
       <div class="sc-card">
-        <h3>How to play</h3>
-        <div class="sc-cols">
+        <div class="sc-head"><h3>How to play</h3><button class="sc-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="sc-body sc-cols">
           <div>
             <b>Desktop</b>
             <ul>
@@ -628,7 +654,7 @@ export function mount(root, context = {}) {
               <li><span class="sc-kbd">Space</span> (hold) - fire</li>
               <li><span class="sc-kbd">X</span> - special weapon</li>
               <li>Mouse move - aim, hold click - fire, right-click - special</li>
-              <li><span class="sc-kbd">P</span> pause, <span class="sc-kbd">H</span> help, <span class="sc-kbd">C</span> cheats (solo)</li>
+              <li><span class="sc-kbd">H</span> help · <span class="sc-kbd">C</span> cheats · <span class="sc-kbd">P</span> pause · <span class="sc-kbd">R</span> restart</li>
             </ul>
             <b>Mobile</b>
             <ul>
@@ -648,46 +674,59 @@ export function mount(root, context = {}) {
             </ul>
           </div>
         </div>
-        <div class="sc-row"><button class="sc-btn" type="button" data-act="closehelp">Got it</button></div>
+        <div class="sc-foot"><span class="sc-note">Press H to reopen this guide</span><button class="sc-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
     <div class="sc-ov" data-ov="cheat" hidden>
       <div class="sc-card">
-        <h3>Cheats</h3>
-        <p>Solo only. Any cheat disables best-score saving for this run.</p>
-        <div data-cheats></div>
-        <div class="sc-row">
+        <div class="sc-head"><h3>Cheats</h3><button class="sc-btn" type="button" data-cheats-close aria-label="Close cheats">Close</button></div>
+        <div class="sc-body">
+          <p>Solo only. Any cheat disables best-score saving for this run.</p>
+          <div data-cheats></div>
+        </div>
+        <div class="sc-foot">
           <button class="sc-btn ghost" type="button" data-cheat="heal">Full repair</button>
           <button class="sc-btn ghost" type="button" data-cheat="skip">Clear wave</button>
-          <button class="sc-btn" type="button" data-act="closecheat">Close</button>
+          <button class="sc-btn primary" type="button" data-cheats-close>Close</button>
         </div>
       </div>
     </div>
     <div class="sc-ov" data-ov="clear" hidden>
       <div class="sc-card">
-        <h3 data-clear-title>Wave cleared</h3>
-        <p data-clear-sub></p>
-        <div class="sc-row">
-          <button class="sc-btn" type="button" data-act="next">Next wave</button>
+        <div class="sc-head"><h3 data-clear-title>Wave cleared</h3></div>
+        <div class="sc-body"><p data-clear-sub></p></div>
+        <div class="sc-foot">
+          <button class="sc-btn primary" type="button" data-act="next">Next wave</button>
           <button class="sc-btn ghost" type="button" data-act="lobby">Change ship</button>
         </div>
       </div>
     </div>
     <div class="sc-ov" data-ov="over" hidden>
       <div class="sc-card">
-        <h3 data-over-title>Sunk</h3>
-        <p data-over-sub></p>
-        <div class="sc-row">
-          <button class="sc-btn" type="button" data-act="retry" data-retry>Retry</button>
-          <button class="sc-btn" type="button" data-act="rematch" data-rematch hidden>Rematch</button>
+        <div class="sc-head"><h3 data-over-title>Sunk</h3></div>
+        <div class="sc-body"><p data-over-sub></p></div>
+        <div class="sc-foot">
+          <button class="sc-btn primary" type="button" data-act="retry" data-retry>Retry</button>
+          <button class="sc-btn primary" type="button" data-act="rematch" data-rematch hidden>Rematch</button>
           <button class="sc-btn ghost" type="button" data-act="lobby">Change ship</button>
         </div>
       </div>
     </div>
+    <div class="sc-ov" data-ov="pause" hidden>
+      <div class="sc-card">
+        <div class="sc-head"><h3>Paused</h3></div>
+        <div class="sc-body"><p>Raiders, shells and timers are frozen. Press <span class="sc-kbd">P</span> or <span class="sc-kbd">Esc</span> to resume.</p></div>
+        <div class="sc-foot"><button class="sc-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
   </section>
-  <div class="game-actions sc-actions">
-    <span class="sc-hint">A/D sail - W/S aim - Space fire - X special - mouse aim &amp; click - right-click special</span>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="sc-touch">
+    <button class="sc-tbtn" type="button" data-k="l" aria-label="Sail left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
+    <button class="sc-tbtn" type="button" data-k="r" aria-label="Sail right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
+    <button class="sc-tbtn" type="button" data-k="u" aria-label="Aim up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg></button>
+    <button class="sc-tbtn" type="button" data-k="d" aria-label="Aim down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6"/></svg></button>
+    <button class="sc-tbtn fire" type="button" data-k="f" aria-label="Fire"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#fde047"/></svg></button>
+    <button class="sc-tbtn spec" type="button" data-k="s" aria-label="Special"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 13h5l-2 8 9-11h-5l3-7z"/></svg></button>
   </div>
 </div>`;
 
@@ -696,12 +735,12 @@ export function mount(root, context = {}) {
     const staticG = $('[data-g="static"]');
     const worldG = $('[data-g="world"]');
     const screenG = $('[data-g="screen"]');
-    const statusEl = $("[data-status]");
     const ovLobby = $('[data-ov="lobby"]');
     const ovHelp = $('[data-ov="help"]');
     const ovCheat = $('[data-ov="cheat"]');
     const ovClear = $('[data-ov="clear"]');
     const ovOver = $('[data-ov="over"]');
+    const ovPause = $('[data-ov="pause"]');
     const lobbySub = $("[data-lobby-sub]");
     const shipsHost = $("[data-ships]");
     const duelInfo = $("[data-duel-info]");
@@ -713,12 +752,13 @@ export function mount(root, context = {}) {
     const overSub = $("[data-over-sub]");
     const retryBtn = $("[data-retry]");
     const rematchBtn = $("[data-rematch]");
-    const cheatBtn = $('[data-btn="cheat"]');
-    const pauseBtn = $('[data-btn="pause"]');
+    const cheatsBtn = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
     const bestChip = $('[data-chip="best"]');
     const hud = {
         wave: $('[data-hud="wave"]'), ship: $('[data-hud="ship"]'), hp: $('[data-hud="hp"]'),
-        spec: $('[data-hud="spec"]'), score: $('[data-hud="score"]'), best: $('[data-hud="best"]'),
+        hpbar: $('[data-hud="hpbar"]'), spec: $('[data-hud="spec"]'),
+        score: $('[data-hud="score"]'), best: $('[data-hud="best"]'), mode: $('[data-hud="mode"]'),
     };
 
     /* ---------- local (non-serializable) runtime ---------- */
@@ -728,13 +768,53 @@ export function mount(root, context = {}) {
     let inp = { l: false, r: false, u: false, d: false, f: false };
     const rngBattle = rng((Math.random() * 1e9) | 0);
     let raf = null, lastT = 0, lastPub = 0, T = 0;
-    let paused = false, showHelp = false, showCheat = false;
+    let paused = false, pausedAt = 0, helpOpen = false, cheatsOpen = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("shipCombatHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("shipCombatHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     let boardFireId = null;
     const touchPts = new Map();
     const posCache = new Map();
     let lastViewAt = 0, myAim = 0.5, myAimAt = 0, lastAimSent = -9, lastAimSentAt = 0;
     let pickSig = "", cheatSig = "", ovSig = "";
     const unsubs = [];
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        renderNow();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !cheatsOpen;
+        if (next && paused) return;
+        cheatsOpen = next;
+        if (cheatsOpen) helpOpen = false;
+        renderNow();
+    }
+    /* Wall-clock anchors (network interpolation, aim hold, publish cadence) are
+       shifted on resume so a pause never jumps the simulation forward. */
+    function shiftAnchors(d) {
+        if (!(d > 0)) return;
+        netAt += d; lastViewAt += d; lastPub += d; myAimAt += d; lastAimSentAt += d;
+    }
+    function togglePause(on) {
+        if (online) return;
+        const now = performance.now();
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { pausedAt = now; cheatsOpen = false; resetInp(); }
+        else if (pausedAt) { shiftAnchors(now - pausedAt); pausedAt = 0; }
+        renderNow();
+    }
+    function restartGame() {
+        if (paused) togglePause(false);
+        helpOpen = false; cheatsOpen = false;
+        submitAction({ type: online ? "lobby" : "retry" });
+        renderNow();
+    }
 
     function loadBest() { try { return parseInt(localStorage.getItem(META.bestKey), 10) || 0; } catch (e) { return 0; } }
     function saveBest() {
@@ -951,10 +1031,16 @@ export function mount(root, context = {}) {
         const solo = !ds || ds.mode === "solo";
         hud.wave.textContent = solo ? (ds && ds.wave > 0 ? String(ds.wave) : "-") : "duel";
         hud.ship.textContent = me && me.ship ? SHIPS[me.ship].label + (me.dived ? " (dived)" : "") : "-";
-        hud.hp.textContent = me && typeof me.hp === "number" ? Math.max(0, Math.ceil(me.hp)) + "/" + me.maxHp : "-";
+        const hp = me && typeof me.hp === "number" ? Math.max(0, Math.ceil(me.hp)) : null;
+        hud.hp.textContent = hp === null ? "-" : hp + "/" + me.maxHp;
+        hud.hpbar.style.width = (hp === null ? 0 : clamp(hp / me.maxHp, 0, 1) * 100).toFixed(1) + "%";
         hud.spec.textContent = specText(me);
         hud.score.textContent = ds ? String(ds.score) : "0";
         hud.best.textContent = ds && typeof ds.best === "number" ? String(ds.best) : String(loadBest());
+        const label = pauseBtn.querySelector(".sc-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
     }
     function updateStatus(ds) {
         let txt;
@@ -962,10 +1048,10 @@ export function mount(root, context = {}) {
         else if (!ds) txt = "Connecting to room...";
         else {
             const side = ds.sides ? (ds.sides[myIdx] === 0 ? "left" : "right") : "lobby";
-            txt = "Online duel - P" + (myIdx + 1) + " - " + side + " side";
+            txt = "Online duel - P" + (myIdx + 1) + " - " + side;
         }
         if (!online && paused) txt += " - paused";
-        statusEl.textContent = txt;
+        hud.mode.textContent = txt;
     }
     function renderPickers(ds) {
         const myShip = ds && ds.players[myIdx] ? ds.players[myIdx].ship : null;
@@ -1006,12 +1092,14 @@ export function mount(root, context = {}) {
     function syncOverlays(ds) {
         const phase = ds ? ds.phase : "lobby";
         const solo = !ds || ds.mode === "solo";
-        ovLobby.hidden = phase !== "lobby";
-        ovClear.hidden = !(solo && phase === "cleared");
-        ovOver.hidden = phase !== "over";
-        ovHelp.hidden = !showHelp;
-        ovCheat.hidden = !showCheat || online;
-        cheatBtn.hidden = online;
+        const blocked = helpOpen || cheatsOpen || paused;
+        ovLobby.hidden = phase !== "lobby" || blocked;
+        ovClear.hidden = !(solo && phase === "cleared") || blocked;
+        ovOver.hidden = phase !== "over" || blocked;
+        ovPause.hidden = !paused || helpOpen || cheatsOpen;
+        ovHelp.hidden = !helpOpen;
+        ovCheat.hidden = !cheatsOpen || online || helpOpen || paused;
+        cheatsBtn.hidden = online;
         pauseBtn.hidden = online;
         bestChip.hidden = !solo;
         if (phase === "lobby") renderPickers(ds);
@@ -1182,12 +1270,18 @@ export function mount(root, context = {}) {
         if (c === "KeyX" || c === "KeyK") return "s";
         return null;
     }
+    function uiBlocked() { return helpOpen || cheatsOpen || paused; }
     function onKeyDown(e) {
         const c = e.code;
-        if (c === "KeyH") { e.preventDefault(); showHelp = !showHelp; renderNow(); return; }
-        if (c === "KeyC" && !online) { e.preventDefault(); showCheat = !showCheat; renderNow(); return; }
-        if (c === "KeyP" && !online) { e.preventDefault(); paused = !paused; renderNow(); return; }
-        if (c === "Escape") { if (showHelp || showCheat) { showHelp = false; showCheat = false; renderNow(); } return; }
+        /* priority: help -> cheats -> pause/escape -> game actions */
+        if (c === "KeyH") { e.preventDefault(); toggleHelp(); return; }
+        if (helpOpen) { if (c === "Escape") { e.preventDefault(); toggleHelp(false); } return; }
+        if (c === "KeyC" && !online) { e.preventDefault(); toggleCheats(); return; }
+        if (cheatsOpen) { if (c === "Escape") { e.preventDefault(); toggleCheats(false); } return; }
+        if (c === "KeyP" && !online) { e.preventDefault(); togglePause(); return; }
+        if (c === "Escape") { if (paused) { e.preventDefault(); togglePause(false); } return; }
+        if (paused) return;
+        if (c === "KeyR") { e.preventDefault(); restartGame(); return; }
         if (c === "Enter") {
             const ds = curState(), ph = ds ? ds.phase : "lobby";
             if (ph === "lobby" && !online) submitAction({ type: "start" });
@@ -1206,14 +1300,18 @@ export function mount(root, context = {}) {
         if (k && k !== "s") setInp(k, false);
     }
     function onBoardMove(e) {
+        if (uiBlocked()) return;
         const ds = curState();
         if (!ds || ds.phase !== "battle") return;
         const p = ds.players[myIdx];
         if (!p || typeof p.x !== "number" || p.dived) return;
         const r = svgEl.getBoundingClientRect();
         if (!(r.width > 0)) return;
-        const vx = (e.clientX - r.left) * (W / r.width);
-        const vy = (e.clientY - r.top) * (H / r.height);
+        /* SVG keeps its 8:5 viewBox centered (xMidYMid meet) inside a stretched board. */
+        const scale = Math.min(r.width / W, r.height / H);
+        const ox = (r.width - W * scale) / 2, oy = (r.height - H * scale) / 2;
+        const vx = (e.clientX - r.left - ox) / scale;
+        const vy = (e.clientY - r.top - oy) / scale;
         const wx = vx + (ds.camX || 0);
         const a = Math.atan2(WATER - 18 - vy, p.side === 1 ? p.x - wx : wx - p.x);
         if (a > 0.05) {
@@ -1226,6 +1324,7 @@ export function mount(root, context = {}) {
         }
     }
     function onBoardDown(e) {
+        if (uiBlocked()) return;
         const ds = curState();
         if (!ds) return;
         e.preventDefault();
@@ -1236,6 +1335,7 @@ export function mount(root, context = {}) {
     }
     function onCtx(e) { e.preventDefault(); }
     function onRootDown(e) {
+        if (uiBlocked()) return;
         const b = e.target.closest("[data-k]");
         if (!b) return;
         e.preventDefault();
@@ -1256,21 +1356,23 @@ export function mount(root, context = {}) {
     }
     function onBlur() { resetInp(); }
     function handleClick(e) {
-        if (e.target.closest("[data-exit]")) { onExit(); return; }
-        const sh = e.target.closest("[data-ship]");
+        const t = e.target;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        const sh = t.closest("[data-ship]");
         if (sh) { submitAction({ type: "pick", ship: sh.dataset.ship }); renderNow(); return; }
-        const ch = e.target.closest("[data-cheat]");
+        const ch = t.closest("[data-cheat]");
         if (ch) { submitAction({ type: "cheat", id: ch.dataset.cheat }); renderNow(); return; }
-        const b = e.target.closest("[data-act]");
+        const b = t.closest("[data-act]");
         if (!b) return;
         const a = b.dataset.act;
-        if (a === "help") showHelp = true;
-        else if (a === "closehelp") showHelp = false;
-        else if (a === "cheat") { if (!online) showCheat = true; }
-        else if (a === "closecheat") showCheat = false;
-        else if (a === "pause") { if (!online) paused = !paused; }
-        else if (a === "restart") submitAction({ type: online ? "lobby" : "retry" });
-        else if (a === "start") submitAction({ type: "start" });
+        if (a === "start") submitAction({ type: "start" });
         else if (a === "next") submitAction({ type: "next" });
         else if (a === "retry") submitAction({ type: "retry" });
         else if (a === "rematch") submitAction({ type: "rematch" });
@@ -1287,13 +1389,13 @@ export function mount(root, context = {}) {
         if (isHost) {
             if (state) {
                 const prev = state.phase;
-                const frozen = !online && (paused || showHelp || showCheat);
+                const frozen = !online && (paused || helpOpen || cheatsOpen);
                 if (!frozen) stepWorld(state, inputs, dt, rngBattle);
                 if (prev !== "over" && state.phase === "over") saveBest();
                 render(state);
-                if (online && t - lastPub > 120 && (state.phase === "sailing" || state.phase === "battle")) { lastPub = t; publish(); }
+                if (online && !helpOpen && t - lastPub > 120 && (state.phase === "sailing" || state.phase === "battle")) { lastPub = t; publish(); }
             } else render(null);
-        } else render(guestView());
+        } else render(uiBlocked() ? netState : guestView());
     }
 
     /* ---------- boot ---------- */

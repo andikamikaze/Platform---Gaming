@@ -1,0 +1,95 @@
+/* =============================================================
+ * DESIGN TOKENS — satu sumber warna dinamis (design.md §5)
+ * Dimuat sebelum style.css / community.css.
+ * ============================================================= */
+:root {
+  color-scheme: light;
+
+  /* Kanonik design.md */
+  --color-bg: #F7F8FA;
+  --color-surface: #FFFFFF;
+  --color-surface-muted: #F1F3F5;
+  --color-text: #17191C;
+  --color-text-muted: #667085;
+  --color-border: #E4E7EC;
+  --color-primary: #2563EB;
+  --color-primary-hover: #1D4ED8;
+  --color-success: #16803C;
+  --color-warning: #B7791F;
+  --color-danger: #DC2626;
+  --color-on-primary: #FFFFFF;
+  --color-purple: #8B5CF6;
+  --color-orange: #F97316;
+
+  /* Turunan dinamis — tidak ditulis manual */
+  --color-surface-soft: color-mix(in srgb, var(--color-surface) 96%, var(--color-bg));
+  --color-primary-soft: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  --color-primary-soft-strong: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  --color-success-soft: color-mix(in srgb, var(--color-success) 12%, transparent);
+  --color-warning-soft: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  --color-danger-soft: color-mix(in srgb, var(--color-danger) 10%, transparent);
+
+  /* Radius/spacing/focus/shadow */
+  --radius-panel: 12px;
+  --radius-control: 9px;
+  --radius: var(--radius-panel);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --touch-min: 44px;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+  --shadow: 0 12px 32px rgba(16, 24, 40, .10);
+
+  /* Alias kompatibilitas (legacy) */
+  --page: var(--color-bg);
+  --bg: var(--color-bg);
+  --surface: var(--color-surface);
+  --surface-soft: var(--color-surface-soft);
+  --surface-muted: var(--color-surface-muted);
+  --ink: var(--color-text);
+  --muted: var(--color-text-muted);
+  --muted-2: var(--color-text-muted);
+  --line: var(--color-border);
+  --border: var(--color-border);
+  --line-strong: color-mix(in srgb, var(--color-border) 80%, var(--color-text-muted));
+  --accent: var(--color-primary);
+  --accent-dark: var(--color-primary-hover);
+  --accent-soft: var(--color-primary-soft);
+  --primary: var(--color-primary);
+  --primary-hover: var(--color-primary-hover);
+  --primary-soft: var(--color-primary-soft);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --danger: var(--color-danger);
+  --green: var(--color-success);
+  --amber: var(--color-warning);
+  --red: var(--color-danger);
+  --sidebar: var(--color-surface);
+  --sidebar-muted: var(--color-text-muted);
+  --shadow-legacy: var(--shadow);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #0F1218;
+  --color-surface: #171B23;
+  --color-surface-muted: #222833;
+  --color-text: #E8ECF3;
+  --color-text-muted: #9AA4B5;
+  --color-border: #2B3340;
+  --color-primary: #7AA7FF;
+  --color-primary-hover: #9DBDFF;
+  --color-success: #3ECF8E;
+  --color-warning: #F0B357;
+  --color-danger: #FF6B6B;
+  --color-on-primary: #0F1218;
+
+  --surface-soft: #1B2029;
+  --line-strong: #394252;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  --shadow: 0 12px 32px rgba(0, 0, 0, .28);
+}

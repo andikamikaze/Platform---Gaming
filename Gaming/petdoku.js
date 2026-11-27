@@ -4,6 +4,8 @@
   - Setelah edit: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "petdoku",
     name: "Petdoku",
@@ -188,26 +190,36 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.pd-root{--pd-bg:#fafaf9;--pd-card:#ffffff;--pd-ink:#292524;--pd-mut:#78716c;--pd-line:#e7e5e4;--pd-soft:#f5f5f4;--pd-acc:#6366f1;--pd-acc-soft:#eef2ff;--pd-warn:#dc2626;--pd-amber:#f59e0b;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--pd-ink)}
-.pd-root .game-intro h2{margin:0 0 2px;font-size:18px;letter-spacing:-.01em}
-.pd-root .game-intro p{margin:0;font-size:13px;color:var(--pd-mut)}
-.pd-root .game-status-dot{background:#22c55e}
-.pd-root .game-status-dot.pd-wait{background:var(--pd-amber)}
-.pd-root .game-status-dot.pd-off{background:#a8a29e}
-.pd-root .pd-panel{background:var(--pd-bg);border:1px solid var(--pd-line);border-radius:18px;padding:14px 16px 16px}
-.pd-root .pd-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
-.pd-root .pd-chip{font-size:12px;color:var(--pd-mut);border:1px solid var(--pd-line);border-radius:999px;padding:3px 10px;background:var(--pd-card);white-space:nowrap}
-.pd-root .pd-chip b{color:var(--pd-ink);font-weight:700}
-.pd-root .pd-chip .pd-seat-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:1px}
-.pd-root .pd-spacer{flex:1}
-.pd-root .pd-btn{border:1px solid var(--pd-line);background:var(--pd-card);color:var(--pd-ink);border-radius:10px;padding:7px 13px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;transition:background .12s,opacity .12s}
-.pd-root .pd-btn:hover{background:var(--pd-soft)}
+.pd-root{--pd-bg:#fafaf9;--pd-card:#ffffff;--pd-ink:#292524;--pd-mut:#78716c;--pd-line:#e7e5e4;--pd-soft:#f5f5f4;--pd-acc:#6366f1;--pd-acc-soft:#eef2ff;--pd-warn:#dc2626;--pd-amber:#f59e0b;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--pd-ink);display:flex;flex-direction:column;gap:8px;min-height:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.pd-root *,.pd-root *::before,.pd-root *::after{box-sizing:border-box}
+.pd-root [hidden]{display:none!important}
+.pd-root :where(svg,canvas,img){max-width:100%}
+.pd-root :where(button):focus-visible{outline:2px solid var(--pd-acc);outline-offset:2px}
+
+/* one HUD row: info left, icon controls right */
+.pd-root .pd-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;flex:none;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.pd-root .pd-chip{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:5px 9px;border:1px solid var(--pd-line);border-radius:999px;background:var(--pd-card);color:var(--pd-mut);white-space:nowrap}
+.pd-root .pd-chip b{color:var(--pd-ink);font-weight:700;font-variant-numeric:tabular-nums}
+.pd-root .pd-chip .game-status-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;flex:none}
+.pd-root .pd-chip .game-status-dot.pd-wait{background:var(--pd-amber)}
+.pd-root .pd-chip .game-status-dot.pd-off{background:#a8a29e}
+.pd-root .pd-chip .pd-seat-dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
+.pd-root .pd-spacer{flex:1 1 auto}
+.pd-root .pd-btn{appearance:none;border:1px solid var(--pd-line);background:var(--pd-card);color:var(--pd-ink);border-radius:9px;min-height:32px;padding:6px 11px;font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;cursor:pointer;touch-action:manipulation;user-select:none;transition:background .12s,opacity .12s}
+.pd-root .pd-btn:hover:not(:disabled){background:var(--pd-soft)}
 .pd-root .pd-btn:disabled{opacity:.4;cursor:default}
 .pd-root .pd-btn-primary{background:var(--pd-ink);border-color:var(--pd-ink);color:#fff}
-.pd-root .pd-btn-primary:hover{background:#44403c}
-.pd-root .pd-btn-sm{padding:5px 10px;font-size:12px}
-.pd-root .pd-stage{position:relative;display:flex;flex-direction:column;gap:12px;padding:4px 0 2px}
-.pd-root .pd-board{width:min(100%,420px);margin:0 auto;display:grid;grid-template-columns:16px repeat(6,minmax(0,1fr));gap:5px}
+.pd-root .pd-btn-primary:hover:not(:disabled){background:#44403c}
+.pd-root .pd-btn-sm{padding:5px 10px;font-size:10px}
+.pd-root .pd-btn.on{border-color:var(--pd-acc);color:var(--pd-acc);background:var(--pd-acc-soft)}
+.pd-root .pd-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.pd-root .pd-icon-btn svg{flex:none;display:block}
+
+/* board fills the remaining height; content stays proportional and centered */
+.pd-root.game-fill > .pd-panel[data-board]{position:relative;width:100%;flex:1 1 auto;min-height:0;aspect-ratio:auto;padding:0;border:1px solid var(--pd-line);border-radius:14px;background:var(--pd-bg);overflow:hidden;display:flex;align-items:center;justify-content:center}
+.pd-root .pd-content{width:min(100%,520px);height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;overflow:auto;scrollbar-width:none}
+.pd-root .pd-content::-webkit-scrollbar{display:none}
+.pd-root .pd-board{width:100%;max-width:440px;margin:0 auto;display:grid;grid-template-columns:16px repeat(6,minmax(0,1fr));gap:5px}
 .pd-root .pd-lab{font-size:10px;font-weight:600;color:var(--pd-mut);display:flex;align-items:center;justify-content:center;user-select:none}
 .pd-root .pd-cell{position:relative;aspect-ratio:1;background:var(--pd-card);border:1px solid var(--pd-line);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;touch-action:manipulation;transition:background .12s,border-color .12s}
 .pd-root .pd-cell:hover{background:var(--pd-soft)}
@@ -220,9 +232,9 @@ export function mount(root, context = {}) {
 .pd-root .pd-own{position:absolute;right:4px;bottom:4px;width:7px;height:7px;border-radius:50%}
 @keyframes pd-fl{0%,100%{background:rgba(220,38,38,.28)}50%{background:rgba(220,38,38,.08)}}
 @keyframes pd-pulse{0%,100%{box-shadow:inset 0 0 0 2px var(--pd-amber)}50%{box-shadow:inset 0 0 0 3px var(--pd-amber)}}
-.pd-root .pd-msg{min-height:18px;font-size:13px;color:var(--pd-mut);text-align:center}
+.pd-root .pd-msg{min-height:18px;font-size:12px;color:var(--pd-mut);text-align:center}
 .pd-root .pd-msg.pd-err{color:var(--pd-warn);font-weight:600}
-.pd-root .pd-tray{width:min(100%,420px);margin:0 auto;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.pd-root .pd-tray{width:100%;max-width:440px;margin:0 auto;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
 .pd-root .pd-tile{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 6px;background:var(--pd-card);border:1px solid var(--pd-line);border-radius:12px;cursor:pointer;color:var(--pd-ink);font:inherit;touch-action:manipulation;transition:background .12s,border-color .12s,opacity .12s}
 .pd-root .pd-tile:hover{background:var(--pd-soft)}
 .pd-root .pd-tile.pd-sel{border-color:var(--pd-acc);background:var(--pd-acc-soft)}
@@ -230,60 +242,79 @@ export function mount(root, context = {}) {
 .pd-root .pd-tile svg{width:32px;height:32px}
 .pd-root .pd-name{font-size:11px;font-weight:600}
 .pd-root .pd-kbd{position:absolute;top:3px;left:5px;font-size:9px;color:var(--pd-mut)}
-.pd-root .pd-pad{display:none;width:min(100%,420px);margin:0 auto;justify-content:center;gap:16px;align-items:center}
+.pd-root .pd-pad{display:none;width:100%;max-width:440px;margin:0 auto;justify-content:center;gap:16px;align-items:center}
 .pd-root.pd-show-pad .pd-pad{display:flex}
 .pd-root .pd-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(2,46px);gap:6px}
 .pd-root .pd-dpad .pd-btn{padding:0;font-size:16px}
 .pd-root .pd-pad-acts{display:flex;flex-direction:column;gap:6px}
 .pd-root .pd-pad-acts .pd-btn{height:46px;min-width:96px}
 .pd-root .pd-keys{font-size:11px;color:var(--pd-mut);text-align:center}
-.pd-root .pd-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.9);backdrop-filter:blur(3px);border-radius:14px;padding:12px}
-.pd-root .pd-ov[hidden]{display:none!important}
+
+/* overlays: card = fixed head/foot + scrollable body */
+.pd-root .pd-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.92);backdrop-filter:blur(3px);border-radius:14px;padding:12px}
 .pd-root .pd-ov-top{z-index:7}
-.pd-root .pd-card{background:var(--pd-card);border:1px solid var(--pd-line);border-radius:16px;padding:20px;max-width:340px;width:100%;max-height:100%;overflow:auto;box-shadow:0 10px 30px rgba(28,25,23,.08);text-align:center}
-.pd-root .pd-card h3{margin:0 0 6px;font-size:18px;letter-spacing:-.01em}
-.pd-root .pd-card p{margin:0 0 12px;font-size:13px;color:var(--pd-mut);line-height:1.55}
-.pd-root .pd-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.pd-root .pd-card-help{max-width:400px;text-align:left}
-.pd-root .pd-card-help h4{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--pd-mut)}
-.pd-root .pd-card-help ul{margin:0;padding-left:16px;font-size:13px;line-height:1.6}
+.pd-root .pd-card{display:flex;flex-direction:column;max-width:400px;width:100%;max-height:100%;overflow:hidden;padding:18px;border:1px solid var(--pd-line);border-radius:16px;background:var(--pd-card);box-shadow:none;text-align:center}
+.pd-root .pd-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.pd-root .pd-head h3{margin:0;font-size:17px;letter-spacing:-.01em;line-height:1.25}
+.pd-root .pd-body{flex:1 1 auto;min-height:0;overflow:auto}
+.pd-root .pd-body p{margin:0 0 12px;font-size:13px;color:var(--pd-mut);line-height:1.55}
+.pd-root .pd-foot{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;flex:none;margin-top:12px}
+.pd-root .pd-card-help{max-width:460px;text-align:left}
+.pd-root .pd-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.pd-root .pd-help b{display:block;margin:10px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--pd-mut)}
+.pd-root .pd-help ul{margin:0;padding-left:16px;font-size:13px;line-height:1.6}
 .pd-root .pd-diagram{display:flex;justify-content:center;margin:6px 0}
+.pd-root .pd-cheats{display:grid;gap:8px}
 .pd-root .pd-cheat{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--pd-soft);text-align:left}
 .pd-root .pd-cheat b{font-size:13px;display:block}
 .pd-root .pd-cheat small{font-size:11px;color:var(--pd-mut);line-height:1.4;display:block}
-.pd-root .pd-note{font-size:11px;color:var(--pd-mut);margin-top:10px}
+.pd-root .pd-note{font-size:11px;color:var(--pd-mut);margin-top:10px;line-height:1.45}
 @media (pointer:coarse){.pd-root .pd-keys-desktop{display:none}.pd-root .pd-kbd{display:none}}
 @media (pointer:fine){.pd-root .pd-keys-touch{display:none}}
-@media (max-width:480px){
-.pd-root .pd-panel{padding:10px}
-.pd-root .pd-board{gap:4px}
-.pd-root .pd-cell{border-radius:8px}
-.pd-root .pd-tray{gap:5px}
-.pd-root .pd-tile svg{width:26px;height:26px}
-.pd-root .pd-name{font-size:10px}
+@media (prefers-reduced-motion:reduce){.pd-root *,.pd-root *::before,.pd-root *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- layout overrides (keep last; beat pointer:coarse 44px) --- */
+.pd-root.game-fill > .pd-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.pd-root.game-fill > .pd-panel[data-board]:not(:has(.pd-ov:not([hidden]))){aspect-ratio:auto;flex:0 0 auto;width:100%;min-height:0}
+.pd-root.game-fill > .pd-panel[data-board]:has(.pd-ov:not([hidden])){aspect-ratio:auto;flex:0 0 auto;min-height:min(70dvh,620px)}
+.pd-root .pd-content{height:auto;min-height:0;overflow:visible;justify-content:flex-start;padding:10px}
+.pd-root .pd-hud{gap:5px}
+.pd-root .pd-hud .pd-chip{padding:4px 6px;min-height:0;font-size:9px}
+.pd-root .pd-hud .pd-chip[data-chip="best"]{display:none}
+.pd-root .pd-hud .pd-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.pd-root .pd-hud .pd-btn-label,.pd-root .pd-hud .pd-spacer{display:none}
+.pd-root .pd-ov{padding:8px}
+.pd-root .pd-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.pd-root .pd-body,.pd-root .pd-help,.pd-root .pd-cheats{scrollbar-width:none}
+.pd-root .pd-body::-webkit-scrollbar,.pd-root .pd-help::-webkit-scrollbar,.pd-root .pd-cheats::-webkit-scrollbar{display:none}
+.pd-root .pd-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--pd-line)}
+.pd-root .pd-note{display:none}
+}
+@media (pointer:coarse){
+.pd-root .pd-hud .pd-btn{min-height:32px;padding:5px 9px;font-size:9px}
 }
 </style>
-<div class="game-app pd-root">
-  <div class="game-intro">
-    <div><h2>Petdoku</h2><p>Six pets, one grid — rows, columns and personal space must all agree.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
+<div class="game-app pd-root game-fill" data-pd>
+  <div class="pd-hud">
+    <span class="pd-chip"><i class="game-status-dot" data-dot></i><span data-hud="status">Ready</span></span>
+    <span class="pd-chip"><span data-hud="roundlabel">Level</span> <b data-hud="round">1</b></span>
+    <span class="pd-chip">Placed <b data-hud="placed">0/6</b></span>
+    <span class="pd-chip">Time <b data-hud="time">0:00</b></span>
+    <span class="pd-chip" data-chip="turn" hidden><span class="pd-seat-dot" data-hud="turndot"></span><b data-hud="turn">—</b></span>
+    <span class="pd-chip" data-chip="score" hidden>Score <b data-hud="score">0 · 0</b></span>
+    <span class="pd-chip" data-chip="best" hidden>Best <b data-hud="best">—</b></span>
+    <span class="pd-chip" data-chip="assist" hidden>assisted</span>
+    <span class="pd-spacer"></span>
+    <button class="pd-btn pd-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pd-btn-label">Help</span></button>
+    <button class="pd-btn pd-icon-btn" type="button" data-cheats data-el="cheatbtn" hidden aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="pd-btn-label">Cheats</span></button>
+    <button class="pd-btn pd-icon-btn" type="button" data-pad aria-pressed="false" aria-label="On-screen pad" title="Toggle on-screen pad">${iconSVG("gamepad2", { size: 14 })}<span class="pd-btn-label">Pad</span></button>
+    <button class="pd-btn pd-icon-btn" type="button" data-pause data-el="pausebtn" aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="pd-btn-label" data-label="pause">Pause</span></button>
+    <button class="pd-btn pd-icon-btn" type="button" data-restart data-el="restartbtn" aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="pd-btn-label">Restart</span></button>
+    <button class="pd-btn pd-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pd-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel pd-panel" data-board>
-    <div class="pd-toolbar">
-      <span class="pd-chip"><span data-hud="roundlabel">Level</span> <b data-hud="round">1</b></span>
-      <span class="pd-chip">Placed <b data-hud="placed">0/6</b></span>
-      <span class="pd-chip">Time <b data-hud="time">0:00</b></span>
-      <span class="pd-chip" data-hud="turnchip" hidden><span class="pd-seat-dot" data-hud="turndot"></span><b data-hud="turn">—</b></span>
-      <span class="pd-chip" data-hud="scorechip" hidden>Score <b data-hud="score">0 · 0</b></span>
-      <span class="pd-chip" data-hud="bestchip" hidden>Best <b data-hud="best">—</b></span>
-      <span class="pd-chip" data-hud="assistchip" hidden>assisted</span>
-      <span class="pd-spacer"></span>
-      <button class="pd-btn pd-btn-sm" type="button" data-act="help">How to play</button>
-      <button class="pd-btn pd-btn-sm" type="button" data-act="cheats" data-el="cheatbtn" hidden>Cheats</button>
-      <button class="pd-btn pd-btn-sm" type="button" data-act="pad" aria-pressed="false">Pad</button>
-      <button class="pd-btn pd-btn-sm" type="button" data-act="restart" data-el="restartbtn">Restart</button>
-    </div>
-    <div class="pd-stage">
+    <div class="pd-content">
       <div class="pd-board" data-el="board" role="grid" aria-label="Petdoku 6 by 6 board"></div>
       <div class="pd-msg" data-el="msg" aria-live="polite"></div>
       <div class="pd-tray" data-el="tray"></div>
@@ -300,92 +331,96 @@ export function mount(root, context = {}) {
         </div>
       </div>
       <div class="pd-keys">
-        <span class="pd-keys-desktop">1–6 pick a pet · Arrows/WASD move · Enter place · Backspace remove · C cheats · H help · R restart</span>
+        <span class="pd-keys-desktop">1–6 pick a pet · Arrows/WASD move · Enter place · Backspace remove · C cheats · H help · P pause · R restart</span>
         <span class="pd-keys-touch">Tap a pet below, then tap a cell — or use the on-screen pad.</span>
       </div>
+    </div>
 
-      <div class="pd-ov" data-ov="menu">
-        <div class="pd-card">
-          <h3>Petdoku</h3>
-          <p>The board starts empty. Place all six pets: one per row, one per column, never touching — not even diagonally. Every level is freshly generated and guaranteed solvable.</p>
-          <div class="pd-row">
-            <button class="pd-btn pd-btn-primary" type="button" data-act="solo">Solo puzzle</button>
-            <button class="pd-btn" type="button" data-act="bot">VS Bot</button>
+    <div class="pd-ov" data-ov="menu">
+      <div class="pd-card">
+        <div class="pd-head"><h3>Petdoku</h3><span class="pd-note">6 × 6</span></div>
+        <div class="pd-body"><p>The board starts empty. Place all six pets: one per row, one per column, never touching — not even diagonally. Every level is freshly generated and guaranteed solvable.</p></div>
+        <div class="pd-foot"><button class="pd-btn" type="button" data-help>How to play</button><button class="pd-btn pd-btn-primary" type="button" data-act="solo">Solo puzzle</button><button class="pd-btn" type="button" data-act="bot">VS Bot</button></div>
+        <div class="pd-note" data-el="menubest" hidden></div>
+      </div>
+    </div>
+
+    <div class="pd-ov" data-ov="ready" hidden>
+      <div class="pd-card">
+        <div class="pd-head"><h3>Multiplayer</h3><span class="pd-note">Room</span></div>
+        <div class="pd-body"><p data-el="readyseat">Connecting to room…</p><p data-el="readyfirst"></p></div>
+        <div class="pd-foot"><button class="pd-btn pd-btn-primary" type="button" data-act="begin" data-el="beginbtn" hidden>Start match</button></div>
+        <div class="pd-note">Seats and first move are randomized. Either player can start.</div>
+      </div>
+    </div>
+
+    <div class="pd-ov" data-ov="end" hidden>
+      <div class="pd-card">
+        <div class="pd-head"><h3 data-el="endtitle">Round over</h3><span class="pd-note">Result</span></div>
+        <div class="pd-body"><p data-el="endsub"></p></div>
+        <div class="pd-foot"><button class="pd-btn" type="button" data-act="reset" data-el="resetbtn" hidden>Reset match</button><button class="pd-btn pd-btn-primary" type="button" data-act="next" data-el="nextbtn">Next round</button></div>
+      </div>
+    </div>
+
+    <div class="pd-ov pd-ov-top" data-ov="pause" hidden>
+      <div class="pd-card">
+        <div class="pd-head"><h3>Paused</h3></div>
+        <div class="pd-body"><p>The board, clock and bot are frozen. Resume to continue exactly where you left off.</p></div>
+        <div class="pd-foot"><button class="pd-btn pd-btn-primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+
+    <div class="pd-ov pd-ov-top" data-ov="help" hidden>
+      <div class="pd-card pd-card-help">
+        <div class="pd-head"><h3>How to play</h3><button class="pd-btn pd-btn-sm" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="pd-body pd-help">
+          <div>
+            <b>Goal</b>
+            <ul><li>Place all <b>six pets</b> on the empty 6×6 grid.</li></ul>
+            <b>Rules</b>
+            <ul>
+              <li>Exactly <b>one pet per row</b> and <b>one per column</b>.</li>
+              <li>Pets may <b>never touch</b> — sides or diagonals.</li>
+              <li>Color budgets: Brown ≤2 · Grey ≤1 · White ≤2 · Orange ≤1.</li>
+              <li>Each pet is used once. Every level is generated solvable.</li>
+            </ul>
+            <div class="pd-diagram">${HELP_DIAGRAM}</div>
           </div>
-          <div class="pd-row" style="margin-top:8px">
-            <button class="pd-btn pd-btn-sm" type="button" data-act="help">How to play</button>
-          </div>
-          <div class="pd-note" data-el="menubest" hidden></div>
-        </div>
-      </div>
-
-      <div class="pd-ov" data-ov="ready" hidden>
-        <div class="pd-card">
-          <h3>Multiplayer</h3>
-          <p data-el="readyseat">Connecting to room…</p>
-          <p data-el="readyfirst"></p>
-          <div class="pd-row"><button class="pd-btn pd-btn-primary" type="button" data-act="begin" data-el="beginbtn" hidden>Start match</button></div>
-          <div class="pd-note">Seats and first move are randomized. Either player can start.</div>
-        </div>
-      </div>
-
-      <div class="pd-ov" data-ov="end" hidden>
-        <div class="pd-card">
-          <h3 data-el="endtitle">Round over</h3>
-          <p data-el="endsub"></p>
-          <div class="pd-row">
-            <button class="pd-btn pd-btn-primary" type="button" data-act="next" data-el="nextbtn">Next round</button>
-            <button class="pd-btn" type="button" data-act="reset" data-el="resetbtn" hidden>Reset match</button>
+          <div>
+            <b>VS Bot &amp; Multiplayer</b>
+            <ul>
+              <li>Players <b>alternate turns</b>, one pet per turn. Placed pets are locked.</li>
+              <li>Whoever places the <b>6th pet wins</b>. No legal move on your turn = you lose.</li>
+              <li>First move is a <b>coin flip</b> each round; online seats are randomized too.</li>
+            </ul>
+            <b>Desktop controls</b>
+            <ul>
+              <li><b>1–6</b> pick pet · <b>Arrows/WASD</b> move cursor · <b>Enter/Space</b> place.</li>
+              <li><b>Click</b> place · <b>Right-click / Backspace</b> remove (solo) · <b>Esc</b> deselect.</li>
+              <li><b>H</b> help · <b>C</b> cheats · <b>P</b> pause · <b>R</b> restart round.</li>
+            </ul>
+            <b>Mobile controls</b>
+            <ul><li>Tap a pet, tap a cell. Use the <b>Pad</b> (d-pad + Place/Erase) if you prefer buttons.</li></ul>
           </div>
         </div>
+        <div class="pd-foot"><span class="pd-note">Press H to reopen this guide</span><button class="pd-btn pd-btn-primary" type="button" data-help-close>Got it</button></div>
       </div>
+    </div>
 
-      <div class="pd-ov pd-ov-top" data-ov="help" hidden>
-        <div class="pd-card pd-card-help">
-          <h3>How to play</h3>
-          <h4>Goal</h4>
-          <ul><li>Place all <b>six pets</b> on the empty 6×6 grid.</li></ul>
-          <h4>Rules</h4>
-          <ul>
-            <li>Exactly <b>one pet per row</b> and <b>one per column</b>.</li>
-            <li>Pets may <b>never touch</b> — sides or diagonals.</li>
-            <li>Color budgets: Brown ≤2 · Grey ≤1 · White ≤2 · Orange ≤1.</li>
-            <li>Each pet is used once. Every level is generated solvable.</li>
-          </ul>
-          <div class="pd-diagram">${HELP_DIAGRAM}</div>
-          <h4>VS Bot &amp; Multiplayer</h4>
-          <ul>
-            <li>Players <b>alternate turns</b>, one pet per turn. Placed pets are locked.</li>
-            <li>Whoever places the <b>6th pet wins</b>. No legal move on your turn = you lose.</li>
-            <li>First move is a <b>coin flip</b> each round; online seats are randomized too.</li>
-          </ul>
-          <h4>Desktop controls</h4>
-          <ul>
-            <li><b>1–6</b> pick pet · <b>Arrows/WASD</b> move cursor · <b>Enter/Space</b> place.</li>
-            <li><b>Click</b> place · <b>Right-click / Backspace</b> remove (solo) · <b>Esc</b> deselect.</li>
-            <li><b>C</b> cheats · <b>H</b> help · <b>R</b> restart round.</li>
-          </ul>
-          <h4>Mobile controls</h4>
-          <ul><li>Tap a pet, tap a cell. Use the <b>Pad</b> (d-pad + Place/Erase) if you prefer buttons.</li></ul>
-          <div class="pd-row" style="margin-top:14px"><button class="pd-btn pd-btn-primary" type="button" data-act="help-close">Got it</button></div>
-        </div>
-      </div>
-
-      <div class="pd-ov pd-ov-top" data-ov="cheat" hidden>
-        <div class="pd-card pd-card-help">
-          <h3>Cheats</h3>
+    <div class="pd-ov pd-ov-top" data-ov="cheat" hidden>
+      <div class="pd-card pd-card-help">
+        <div class="pd-head"><h3>Cheats</h3><button class="pd-btn pd-btn-sm" type="button" data-close aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="pd-body pd-cheats">
           <div class="pd-cheat"><span><b>Hint</b><small>Reveal a safe cell for a pet.</small></span><button class="pd-btn pd-btn-sm" type="button" data-cheat="hint">Show</button></div>
           <div class="pd-cheat"><span><b>Safe move</b><small>Auto-place one pet that keeps the puzzle solvable.</small></span><button class="pd-btn pd-btn-sm" type="button" data-cheat="safe">Place</button></div>
           <div class="pd-cheat"><span><b>X-ray</b><small>Highlight every safe cell for the selected pet.</small></span><button class="pd-btn pd-btn-sm" type="button" data-cheat="xray" data-el="xraybtn">ON</button></div>
           <div class="pd-cheat"><span><b>Undo</b><small>Take back your last move (and the bot's reply).</small></span><button class="pd-btn pd-btn-sm" type="button" data-cheat="undo" data-el="undobtn">Undo</button></div>
           <div class="pd-cheat"><span><b>Auto-solve</b><small>Finish the board instantly. Solo only.</small></span><button class="pd-btn pd-btn-sm" type="button" data-cheat="solve" data-el="solvebtn">Solve</button></div>
-          <div class="pd-note">Cheats are offline-only. Assisted rounds don't count for best time.</div>
-          <div class="pd-row" style="margin-top:12px"><button class="pd-btn" type="button" data-act="cheats-close">Close</button></div>
         </div>
+        <div class="pd-foot"><span class="pd-note">Offline only · assisted rounds don't count</span><button class="pd-btn" type="button" data-close>Done</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
@@ -393,28 +428,41 @@ export function mount(root, context = {}) {
     const boardEl = $('[data-el="board"]');
     const trayEl = $('[data-el="tray"]');
     const msgEl = $('[data-el="msg"]');
-    const statusEl = $("[data-status]");
+    const statusEl = $('[data-hud="status"]');
     const dotEl = $("[data-dot]");
     const hud = {
         roundlabel: $('[data-hud="roundlabel"]'), round: $('[data-hud="round"]'),
         placed: $('[data-hud="placed"]'), time: $('[data-hud="time"]'),
-        turnchip: $('[data-hud="turnchip"]'), turndot: $('[data-hud="turndot"]'), turn: $('[data-hud="turn"]'),
-        scorechip: $('[data-hud="scorechip"]'), score: $('[data-hud="score"]'),
-        bestchip: $('[data-hud="bestchip"]'), best: $('[data-hud="best"]'),
-        assistchip: $('[data-hud="assistchip"]'),
+        turnchip: $('[data-chip="turn"]'), turndot: $('[data-hud="turndot"]'), turn: $('[data-hud="turn"]'),
+        scorechip: $('[data-chip="score"]'), score: $('[data-hud="score"]'),
+        bestchip: $('[data-chip="best"]'), best: $('[data-hud="best"]'),
+        assistchip: $('[data-chip="assist"]'),
     };
-    const ov = { menu: $('[data-ov="menu"]'), ready: $('[data-ov="ready"]'), end: $('[data-ov="end"]'), help: $('[data-ov="help"]'), cheat: $('[data-ov="cheat"]') };
+    const ov = {
+        menu: $('[data-ov="menu"]'), ready: $('[data-ov="ready"]'), end: $('[data-ov="end"]'),
+        help: $('[data-ov="help"]'), cheat: $('[data-ov="cheat"]'), pause: $('[data-ov="pause"]'),
+    };
+    const pauseBtn = $("[data-el=\"pausebtn\"]");
+    const pauseLabel = $('[data-label="pause"]');
+    const padBtn = $("[data-pad]");
 
     /* ---------- local UI state ---------- */
     let cursor = 14;
     let selectedPet = -1;
-    let helpOpen = false, cheatOpen = false;
+    let helpOpen = false, cheatOpen = false, paused = false, pauseAt = 0;
     let destroyed = false;
     let botTimer = null, msgTimer = null, flashTimers = [];
     let lastAnnounce = "";
     let xrayKey = "", xraySet = new Set();
     let bestTime = 0;
     try { bestTime = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (e) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("petdokuHelpSeen") === "1"; } catch (e) { }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("petdokuHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+    const frozen = () => helpOpen || cheatOpen || paused;
 
     /* ---------- build board DOM (labels + 36 cells) ---------- */
     const cellEls = [];
@@ -484,9 +532,49 @@ export function mount(root, context = {}) {
     };
     const elapsed = () => {
         if (!state || !state.startedAt) return 0;
-        const end = state.finishedAt || Date.now();
+        /* pause freezes the clock; resume shifts the anchor so time never jumps */
+        const end = state.finishedAt || (paused && pauseAt ? pauseAt : Date.now());
         return Math.max(0, Math.round((end - state.startedAt) / 1000));
     };
+
+    function shiftTimeAnchors() {
+        if (!state || !pauseAt) return;
+        const delta = Date.now() - pauseAt;
+        pauseAt = 0;
+        if (state.startedAt) state.startedAt += delta;
+        if (state.finishedAt) state.finishedAt += delta;
+    }
+    function setPaused(on) {
+        if (on === paused) return;
+        if (on) {
+            if (!state || state.phase !== "playing" || online) return;
+            pauseAt = Date.now();
+            paused = true;
+            helpOpen = false; cheatOpen = false;
+            if (botTimer !== null) { clearTimeout(botTimer); botTimer = null; }
+        } else {
+            paused = false;
+            shiftTimeAnchors();
+            scheduleBot();
+        }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatOpen = false; setPaused(false); }
+        render();
+    }
+    function toggleCheats(on) {
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) {
+            if (online || !state || !state.play) { cheatOpen = false; return; }
+            helpOpen = false; setPaused(false);
+        }
+        render();
+    }
+    function togglePause(on) {
+        setPaused(typeof on === "boolean" ? on : !paused);
+        render();
+    }
 
     /* ---------- messages / flash ---------- */
     function showMsg(text, err) {
@@ -676,13 +764,13 @@ export function mount(root, context = {}) {
     /* ---------- bot ---------- */
     function scheduleBot() {
         if (botTimer !== null) { clearTimeout(botTimer); botTimer = null; }
-        if (destroyed || online || !state) return;
+        if (destroyed || online || !state || frozen()) return;
         if (state.play === "bot" && state.phase === "playing" && state.turn === 1) {
             botTimer = setTimeout(() => { botTimer = null; botPlay(); }, 650 + Math.random() * 750);
         }
     }
     function botPlay() {
-        if (destroyed || !state || state.play !== "bot") return;
+        if (destroyed || !state || state.play !== "bot" || frozen()) return;
         if (state.phase !== "playing" || state.turn !== 1) return;
         const legal = legalMoves(state.board);
         if (!legal.length) return;
@@ -709,7 +797,10 @@ export function mount(root, context = {}) {
             statusEl.textContent = "Connecting…";
             dotEl.className = "game-status-dot pd-wait";
             ov.menu.hidden = true; ov.end.hidden = true;
-            ov.ready.hidden = false;
+            ov.ready.hidden = frozen();
+            ov.help.hidden = !helpOpen;
+            ov.cheat.hidden = true;
+            ov.pause.hidden = true;
             return;
         }
         const play = state.play;
@@ -721,7 +812,8 @@ export function mount(root, context = {}) {
 
         /* status */
         let status = "Ready", dot = "";
-        if (state.phase === "ready") { status = "Waiting to start"; dot = "pd-wait"; }
+        if (paused) { status = "Paused"; dot = "pd-wait"; }
+        else if (state.phase === "ready") { status = "Waiting to start"; dot = "pd-wait"; }
         else if (playing) {
             if (!match || mine) status = "Your move";
             else { status = play === "bot" ? "Bot is thinking…" : "Opponent's move"; dot = "pd-wait"; }
@@ -750,6 +842,10 @@ export function mount(root, context = {}) {
         $('[data-el="cheatbtn"]').hidden = online || !play;
         $('[data-el="restartbtn"]').disabled = !play || state.phase === "ready";
         $('[data-el="erasebtn"]').style.display = play === "solo" ? "" : "none";
+        pauseBtn.disabled = online || !playing;
+        if (pauseLabel) pauseLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("aria-pressed", paused ? "true" : "false");
 
         /* x-ray safe cells (cached) */
         const wantXray = state.xray && playing && selectedPet >= 0 && state.board.indexOf(selectedPet) < 0 && (!match || mine);
@@ -811,14 +907,14 @@ export function mount(root, context = {}) {
             }
         }
 
-        /* overlays */
-        ov.menu.hidden = state.phase !== "menu";
+        /* overlays — help, cheats and pause suppress each other */
+        ov.menu.hidden = state.phase !== "menu" || frozen();
         const menuBest = $('[data-el="menubest"]');
         menuBest.hidden = !bestTime;
         if (bestTime) menuBest.textContent = "Best solo time: " + fmt(bestTime);
 
-        ov.ready.hidden = !(online && state.phase === "ready");
-        if (online && state.phase === "ready") {
+        ov.ready.hidden = !(online && state.phase === "ready") || frozen();
+        if (online && state.phase === "ready" && !frozen()) {
             const ms = mySeat();
             $('[data-el="readyseat"]').innerHTML = 'You are <b style="color:' + SEAT_COLORS[ms] + '">Player ' + (ms + 1) + "</b> (" + playerName + ").";
             $('[data-el="readyfirst"]').textContent = state.first === ms ? "You move first this round." : "Opponent moves first this round.";
@@ -826,8 +922,8 @@ export function mount(root, context = {}) {
         }
 
         const ended = state.phase === "won" || state.phase === "stuck";
-        ov.end.hidden = !ended;
-        if (ended) {
+        ov.end.hidden = !ended || frozen();
+        if (ended && !frozen()) {
             const t = fmt(elapsed());
             let title, sub;
             if (play === "solo") {
@@ -850,8 +946,9 @@ export function mount(root, context = {}) {
         }
 
         ov.help.hidden = !helpOpen;
-        ov.cheat.hidden = !cheatOpen || online;
-        if (cheatOpen && !online) {
+        ov.cheat.hidden = !cheatOpen || online || paused;
+        ov.pause.hidden = !paused || helpOpen || cheatOpen;
+        if (cheatOpen && !online && !paused) {
             const canAct = playing && (!match || mine);
             $('[data-cheat="hint"]').disabled = !canAct;
             $('[data-cheat="safe"]').disabled = !canAct;
@@ -873,14 +970,14 @@ export function mount(root, context = {}) {
 
     /* ---------- UI interactions ---------- */
     function selectPet(a) {
-        if (!state || state.phase !== "playing") return;
+        if (!state || state.phase !== "playing" || frozen()) return;
         if (state.board.indexOf(a) >= 0) { showMsg(PETS[a].name + " is already placed", false); return; }
         selectedPet = selectedPet === a ? -1 : a;
         render();
     }
 
     function activateCell(i) {
-        if (!state || state.phase !== "playing") return;
+        if (!state || state.phase !== "playing" || frozen()) return;
         cursor = i;
         if (state.board[i] >= 0) {
             if (state.play === "solo") submitAction({ type: "remove", cell: i });
@@ -899,6 +996,7 @@ export function mount(root, context = {}) {
     }
 
     function moveCursor(dr, dc) {
+        if (frozen()) return;
         const r = ((cursor / 6) | 0), c = cursor % 6;
         cursor = ((r + dr + 6) % 6) * 6 + ((c + dc + 6) % 6);
         render();
@@ -930,15 +1028,36 @@ export function mount(root, context = {}) {
 
     function startGame(play) {
         state = makeState(play, 1, [0, 0], [0, 1], "playing");
-        selectedPet = -1; cursor = 14; cheatOpen = false;
+        selectedPet = -1; cursor = 14;
+        helpOpen = false; cheatOpen = false;
+        setPaused(false);
         publish();
     }
 
     function handleClick(event) {
-        const t = event.target.closest("[data-exit],[data-act],[data-cheat],[data-pet],[data-cell]");
+        const t = event.target.closest("[data-exit],[data-act],[data-cheat],[data-pet],[data-cell],[data-help],[data-help-close],[data-cheats],[data-close],[data-pause],[data-resume],[data-restart],[data-pad]");
         if (!t || !root.contains(t)) return;
         if (t.hasAttribute("data-exit")) { onExit(); return; }
-        if (t.dataset.cheat) { handleCheat(t.dataset.cheat); return; }
+        if (t.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (t.hasAttribute("data-help-close")) { toggleHelp(false); return; }
+        if (t.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (t.hasAttribute("data-close")) { toggleCheats(false); return; }
+        if (t.hasAttribute("data-pause")) { togglePause(); return; }
+        if (t.hasAttribute("data-resume")) { setPaused(false); render(); return; }
+        if (t.hasAttribute("data-restart")) {
+            helpOpen = false; cheatOpen = false; setPaused(false);
+            submitAction({ type: "restart" }); render(); return;
+        }
+        if (t.hasAttribute("data-pad")) {
+            const on = appEl.classList.toggle("pd-show-pad");
+            padBtn.setAttribute("aria-pressed", on ? "true" : "false");
+            return;
+        }
+        if (t.dataset.cheat) {
+            if (!frozen()) return;
+            handleCheat(t.dataset.cheat); return;
+        }
+        if (frozen()) return;
         if (t.dataset.pet !== undefined) { selectPet(Number(t.dataset.pet)); return; }
         if (t.dataset.cell !== undefined) { activateCell(Number(t.dataset.cell)); return; }
         const act = t.dataset.act;
@@ -946,16 +1065,7 @@ export function mount(root, context = {}) {
         else if (act === "bot") startGame("bot");
         else if (act === "begin") submitAction({ type: "begin" });
         else if (act === "next") submitAction({ type: "next" });
-        else if (act === "restart") { cheatOpen = false; submitAction({ type: "restart" }); }
         else if (act === "reset") { cheatOpen = false; submitAction({ type: "reset" }); }
-        else if (act === "help") { helpOpen = true; render(); }
-        else if (act === "help-close") { helpOpen = false; render(); }
-        else if (act === "cheats") { cheatOpen = !cheatOpen; render(); }
-        else if (act === "cheats-close") { cheatOpen = false; render(); }
-        else if (act === "pad") {
-            const on = appEl.classList.toggle("pd-show-pad");
-            t.setAttribute("aria-pressed", on ? "true" : "false");
-        }
         else if (act === "up") moveCursor(-1, 0);
         else if (act === "down") moveCursor(1, 0);
         else if (act === "left") moveCursor(0, -1);
@@ -971,7 +1081,7 @@ export function mount(root, context = {}) {
 
     function handleContext(event) {
         const t = event.target.closest("[data-cell]");
-        if (!t || !state || state.play !== "solo" || state.phase !== "playing") return;
+        if (!t || !state || state.play !== "solo" || state.phase !== "playing" || frozen()) return;
         const i = Number(t.dataset.cell);
         if (state.board[i] >= 0) {
             event.preventDefault();
@@ -982,7 +1092,7 @@ export function mount(root, context = {}) {
     function handleHover(event) {
         if (event.pointerType === "touch") return;
         const t = event.target.closest("[data-cell]");
-        if (!t || !state || state.phase !== "playing") return;
+        if (!t || !state || state.phase !== "playing" || frozen()) return;
         const i = Number(t.dataset.cell);
         if (i !== cursor) { cursor = i; render(); }
     }
@@ -993,16 +1103,32 @@ export function mount(root, context = {}) {
         const tag = document.activeElement && document.activeElement.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const k = event.key;
-        if (k === "Escape") {
-            if (helpOpen) helpOpen = false;
-            else if (cheatOpen) cheatOpen = false;
-            else selectedPet = -1;
-            render(); return;
+        const lower = k.length === 1 ? k.toLowerCase() : k;
+        const hit = (code, letter) => event.code === code || lower === letter;
+        /* priority: help -> cheats -> pause/escape -> restart -> game actions */
+        if (hit("KeyH", "h") || k === "?") { event.preventDefault(); toggleHelp(); return; }
+        if (hit("KeyC", "c")) {
+            if (!helpOpen && !paused && !online && state && state.play) toggleCheats();
+            event.preventDefault(); return;
         }
-        if (k === "h" || k === "H" || k === "?") { event.preventDefault(); helpOpen = !helpOpen; render(); return; }
-        if ((k === "c" || k === "C") && !online && state && state.play) { event.preventDefault(); cheatOpen = !cheatOpen; render(); return; }
-        if ((k === "r" || k === "R") && state && state.play && state.phase !== "ready") { event.preventDefault(); submitAction({ type: "restart" }); return; }
-        if (!state) return;
+        if (hit("KeyP", "p") || k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (paused) { setPaused(false); render(); }
+            else if (k !== "Escape") togglePause(true);
+            else selectedPet = -1;
+            event.preventDefault(); return;
+        }
+        if (hit("KeyR", "r") && state && state.play && state.phase !== "ready") {
+            helpOpen = false; cheatOpen = false; setPaused(false);
+            submitAction({ type: "restart" }); event.preventDefault(); return;
+        }
+        if (k === "Enter" || k === " ") {
+            if (helpOpen) { toggleHelp(false); event.preventDefault(); return; }
+            if (cheatOpen) { toggleCheats(false); event.preventDefault(); return; }
+            if (paused) { setPaused(false); render(); event.preventDefault(); return; }
+        }
+        if (!state || frozen()) return;
         if ((state.phase === "won" || state.phase === "stuck") && (k === "Enter" || k === " ")) { event.preventDefault(); submitAction({ type: "next" }); return; }
         if (state.phase !== "playing") return;
         if (k >= "1" && k <= "6") { event.preventDefault(); selectPet(Number(k) - 1); return; }
@@ -1029,7 +1155,7 @@ export function mount(root, context = {}) {
     document.addEventListener("keydown", handleKey);
 
     const clockId = setInterval(() => {
-        if (!destroyed && state && state.phase === "playing") updateClock();
+        if (!destroyed && !paused && state && state.phase === "playing") updateClock();
     }, 500);
 
     /* ---------- boot: online (host/guest) vs local ---------- */

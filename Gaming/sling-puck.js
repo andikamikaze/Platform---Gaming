@@ -6,6 +6,8 @@
  * Mode: "ai" (lokal vs bot) dan "room" (online, host-authoritative).
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "sling-puck",
     name: "Sling Puck",
@@ -64,6 +66,17 @@ export function mount(root, context = {}) {
 
     let best = null;
     try { const v = parseFloat(localStorage.getItem(META.bestKey)); if (isFinite(v)) best = v; } catch { }
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("slingPuckHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    const firstHelp = !seenHelp;
+    if (firstHelp) { try { localStorage.setItem("slingPuckHelpSeen", "1"); } catch (_) { /* storage blocked */ } }
+
+    /* Pause: geser anchor waktu saat resume agar tidak ada lompatan timer/bot. */
+    let clockShift = 0, perfShift = 0;
+    let pauseWallAt = 0, pausePerfAt = 0;
+    const clockNow = () => Date.now() - clockShift;
+    const perfNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now()) - perfShift;
 
     /* ================= generator level acak (dijamin solvable) =================
        - Celah >= 92px (>= 3,8x diameter puck), posisi & lebar diacak.
@@ -187,22 +200,30 @@ export function mount(root, context = {}) {
     /* ================= DOM (minimalis, border tegas, arena lebih besar) ================= */
     root.innerHTML = `
 <style>
-.sp-game{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--blue:#2563eb;--red:#ef4444;--ok:#10b981;--bg:#f8fafc;--card:#fff;color:var(--ink);display:flex;flex-direction:column;gap:10px}
-.sp-game .game-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:2px 2px 0}
-.sp-game .game-intro h2{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em}
-.sp-game .game-intro p{margin:2px 0 0;font-size:12.5px;color:var(--mut);max-width:52ch;line-height:1.5}
-.sp-game .game-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 11px;white-space:nowrap}
-.sp-game .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
-.sp-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.sp-chip{font-size:11.5px;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px;display:inline-flex;gap:5px;align-items:center}
+/* Sling Puck — HUD bar + fill-height board + modal overlays. */
+.sp-game{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--blue:#2563eb;--red:#ef4444;--ok:#10b981;--bg:#f8fafc;--card:#fff;width:100%;max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:10px;min-height:0;color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.sp-game *{box-sizing:border-box}
+.sp-game [hidden]{display:none!important}
+.sp-game :is(button,select,input):focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.sp-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sp-chip{font-size:10px;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 9px;display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
 .sp-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
-.sp-chip.sp-you b{color:var(--blue)}.sp-chip.sp-foe b{color:var(--red)}
-.sp-chip[hidden]{display:none}
-.sp-game .game-panel{position:relative;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px}
-.sp-board-wrap{width:min(100%,54vh,520px);width:min(100%,54dvh,520px);aspect-ratio:400/560}
-.sp-board{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
-.sp-msg{min-height:17px;font-size:12px;color:var(--mut);text-align:center}
-.sp-pad{display:none;width:100%;max-width:520px;gap:10px;align-items:flex-end;justify-content:center;flex-wrap:wrap}
+.sp-chip.sp-you b{color:var(--blue)}
+.sp-chip.sp-foe b{color:var(--red)}
+.sp-chip.sp-status{max-width:26ch;overflow:hidden;text-overflow:ellipsis}
+.sp-spacer{flex:1 1 auto}
+.sp-btn{border:1px solid var(--blue);background:var(--blue);color:#fff;border-radius:9px;padding:9px 14px;min-height:38px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.sp-btn:active{background:#1d4ed8}
+.sp-btn.ghost{background:var(--card);color:var(--ink);border-color:var(--line)}
+.sp-btn.ghost:active{background:#eef2f7}
+.sp-btn.on{border-color:var(--blue);color:var(--blue);background:#eff6ff}
+.sp-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sp-icon-btn svg{flex:none;display:block}
+.sp-game .game-panel{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-width:0;min-height:0;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.sp-board{display:block;height:100%;max-height:100%;width:auto;max-width:100%;aspect-ratio:400/560;margin:0 auto;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+.sp-msg{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;max-width:90%;background:rgba(15,23,42,.88);color:#fff;border-radius:999px;padding:6px 12px;font-size:11px;font-weight:600;line-height:1.3;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.sp-msg:empty{display:none}
+.sp-pad{display:none;width:100%;max-width:520px;gap:10px;align-items:flex-end;justify-content:center;flex-wrap:wrap;margin:0 auto}
 .sp-pad.on{display:flex}
 .sp-pad-group{display:flex;flex-direction:column;gap:4px;align-items:center}
 .sp-pad-group>span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
@@ -211,127 +232,156 @@ export function mount(root, context = {}) {
 .sp-pad button:active{background:#eef2f7}
 .sp-pad .sp-fire{min-width:88px;background:var(--blue);border-color:var(--blue);color:#fff;letter-spacing:.08em;font-size:13px}
 .sp-pad .sp-fire:active{background:#1d4ed8}
-.sp-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.92);backdrop-filter:blur(3px);padding:14px;border-radius:16px}
-.sp-ov[hidden]{display:none}
-.sp-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;max-width:360px;width:100%;box-shadow:0 14px 40px rgba(15,23,42,.10);max-height:100%;overflow:auto}
-.sp-card h3{margin:0 0 6px;font-size:17px}
+.sp-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.92);backdrop-filter:blur(3px);padding:12px;border-radius:12px}
+.sp-card{display:flex;flex-direction:column;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;max-width:360px;width:100%;box-shadow:0 8px 24px rgba(15,23,42,.08);max-height:100%;overflow:hidden}
+.sp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.sp-head h3{margin:0;font-size:17px}
+.sp-body{flex:1 1 auto;min-height:0;overflow:auto}
+.sp-foot{display:flex;gap:8px;flex-wrap:wrap;flex:none;margin-top:2px}
 .sp-card p{margin:0 0 10px;font-size:12.5px;color:var(--mut);line-height:1.55}
-.sp-card .sp-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.sp-btn{border:1px solid var(--blue);background:var(--blue);color:#fff;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer}
-.sp-btn:active{background:#1d4ed8}
-.sp-btn.ghost{background:var(--card);color:var(--ink);border-color:var(--line)}
-.sp-btn.ghost:active{background:#eef2f7}
+.sp-note{font-size:11px;color:var(--mut);align-self:center}
 .sp-help h4{margin:12px 0 4px;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink)}
 .sp-help ul{margin:0;padding-left:16px;font-size:12.5px;color:var(--mut);line-height:1.7}
 .sp-help kbd{background:#f1f5f9;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;font-size:11px;font-family:inherit;color:var(--ink)}
-.sp-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer}
-.sp-switch{position:relative;width:38px;height:22px;flex:none}
+.sp-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;min-height:44px;border-bottom:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer}
+.sp-switch{position:relative;width:44px;height:26px;flex:none}
 .sp-switch input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
 .sp-switch i{position:absolute;inset:0;background:#e2e8f0;border-radius:999px;transition:background .15s;pointer-events:none}
-.sp-switch i::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sp-switch i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
 .sp-switch input:checked+i{background:var(--blue)}
-.sp-switch input:checked+i::after{left:19px}
-.sp-game .game-actions{display:flex;flex-wrap:wrap;gap:8px}
-.sp-game .game-action-button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer}
-.sp-game .game-action-button:active{background:#eef2f7}
-.sp-game .game-action-button[hidden]{display:none}
-.sp-win{color:var(--ok)}.sp-lose{color:var(--red)}
-@media (max-width:480px){.sp-game .game-intro{flex-direction:column}}
-@media (prefers-reduced-motion:reduce){.sp-switch i,.sp-switch i::after{transition:none}}
+.sp-switch input:checked+i::after{left:21px}
+.sp-win{color:var(--ok)}
+.sp-lose{color:var(--red)}
+@media (prefers-reduced-motion:reduce){.sp-game *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* ==== layout contract — letaknya PALING AKHIR (override pointer:coarse) ==== */
+.sp-game.game-fill{display:flex;flex-direction:column;gap:10px;min-height:0}
+.sp-game.game-fill > .game-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.sp-game .sp-hud .sp-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sp-game .sp-hud .sp-icon-btn svg{flex:none;display:block}
+.sp-game .sp-hud .sp-btn{min-height:32px;padding:5px 9px;font-size:10px}
+.sp-game .sp-head,.sp-game .sp-foot{flex:none}
+.sp-game .sp-body{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+  .sp-game.game-fill > .game-panel[data-board]:not(:has(.sp-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+  .sp-game.game-fill > .game-panel[data-board]:has(.sp-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .sp-game.game-fill > .game-panel[data-board]:has(.sp-ov:not([hidden])) .sp-board{height:auto;width:100%;max-height:100%}
+  .sp-game .sp-hud{gap:5px;margin-bottom:2px}
+  .sp-game .sp-hud .sp-chip{padding:4px 6px;font-size:9px}
+  .sp-game .sp-hud .sp-chip.sp-status,
+  .sp-game .sp-hud .sp-chip[data-hud="bestWrap"],
+  .sp-game .sp-hud .sp-chip[data-hud="shots"]{display:none}
+  .sp-game .sp-hud .sp-btn{min-height:32px;padding:5px 8px;font-size:9px}
+  .sp-game .sp-hud .sp-btn-label,
+  .sp-game .sp-hud .sp-spacer{display:none}
+  .sp-game .sp-ov{padding:8px}
+  .sp-game .sp-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .sp-game .sp-body{scrollbar-width:none}
+  .sp-game .sp-body::-webkit-scrollbar{display:none}
+  .sp-game .sp-foot{margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+  .sp-game .sp-note{display:none}
+}
 </style>
-<div class="game-app sp-game">
-  <div class="game-intro">
-    <div><h2>Sling Puck</h2><p>Tarik puck di areamu ke belakang, lepas untuk melontar melewati celah tengah. Area pertama yang kosong menang.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
-  </div>
+<div class="game-app sp-game game-fill" data-sp>
   <div class="sp-hud">
     <span class="sp-chip sp-you">Kamu <b data-hud="you">5</b></span>
     <span class="sp-chip sp-foe"><span data-hud="foeLabel">AI</span> <b data-hud="foe">5</b></span>
-    <span class="sp-chip">Level <b data-hud="level">1</b></span>
-    <span class="sp-chip">Lontaran <b data-hud="shots">0</b></span>
-    <span class="sp-chip">Waktu <b data-hud="time">0:00</b></span>
-    <span class="sp-chip" data-hud="bestWrap">Terbaik <b data-hud="best">–</b></span>
+    <span class="sp-chip">LV <b data-hud="level">1</b></span>
+    <span class="sp-chip">LONTAR <b data-hud="shots">0</b></span>
+    <span class="sp-chip">WAKTU <b data-hud="time">0:00</b></span>
+    <span class="sp-chip" data-hud="bestWrap">TERBAIK <b data-hud="best">–</b></span>
+    <span class="sp-chip sp-status"><span data-status>Siap</span></span>
+    <span class="sp-spacer"></span>
+    <button class="sp-btn sp-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sp-btn-label">Help</span></button>
+    <button class="sp-btn sp-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sp-btn-label">Cheats</span></button>
+    <button class="sp-btn sp-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sp-btn-label">Pause</span></button>
+    <button class="sp-btn sp-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sp-btn-label">Restart</span></button>
+    <button class="sp-btn sp-icon-btn" type="button" data-ui="pad" aria-label="Toggle control pad" title="Control pad (B)">${iconSVG("gamepad2", { size: 14 })}<span class="sp-btn-label">Pad</span></button>
+    <button class="sp-btn sp-icon-btn" type="button" data-ui="new" aria-label="New random level" title="New random level (L)">${iconSVG("spark", { size: 14 })}<span class="sp-btn-label">New</span></button>
+    <button class="sp-btn sp-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sp-btn-label">Exit</span></button>
   </div>
   <section class="game-panel" data-board>
-    <div class="sp-board-wrap">
-      <svg class="sp-board" viewBox="0 0 400 560" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Papan Sling Puck">
-        <g data-g="board"></g><g data-g="pucks"></g><g data-g="aim"></g>
-      </svg>
-    </div>
+    <svg class="sp-board" viewBox="0 0 400 560" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Papan Sling Puck">
+      <g data-g="board"></g><g data-g="pucks"></g><g data-g="aim"></g>
+    </svg>
     <div class="sp-msg" data-msg></div>
-    <div class="sp-pad" data-pad>
-      <div class="sp-pad-group"><span>Puck</span><div class="sp-pad-row">
-        <button type="button" data-pad="prev" aria-label="Puck sebelumnya"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
-        <button type="button" data-pad="next" aria-label="Puck berikutnya"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
-      </div></div>
-      <div class="sp-pad-group"><span>Bidik</span><div class="sp-pad-row">
-        <button type="button" data-pad="rotl" aria-label="Putar bidikan ke kiri"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
-        <button type="button" data-pad="rotr" aria-label="Putar bidikan ke kanan"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
-      </div></div>
-      <div class="sp-pad-group"><span>Tenaga <b data-pad-power>65%</b></span><div class="sp-pad-row">
-        <button type="button" data-pad="pwdn" aria-label="Kurangi tenaga">−</button>
-        <button type="button" data-pad="pwup" aria-label="Tambah tenaga">+</button>
-      </div></div>
-      <button type="button" class="sp-fire" data-pad="fire" aria-label="Tembak">TEMBAK</button>
-    </div>
-
     <div class="sp-ov" data-ov="start">
       <div class="sp-card" role="dialog" aria-modal="true" aria-label="Mulai">
-        <h3>Sling Puck</h3>
-        <p>Tekan puck di areamu, tarik ke belakang untuk merentangkan karet, lalu lepas untuk melontar melewati celah tengah. Area pertama yang kosong menang — puck lawan yang mendarat di areamu boleh dilontarkan balik!</p>
-        <p>Setiap ronde: level acak dan undian jalan duluan. Di room online, posisi pemain juga diundi. Tampilanmu selalu di bawah.</p>
-        <div class="sp-row"><button type="button" class="sp-btn" data-act="start">Mulai</button><button type="button" class="sp-btn ghost" data-ui="help">Cara main</button></div>
+        <div class="sp-head"><h3>Sling Puck</h3></div>
+        <div class="sp-body">
+          <p>Tekan puck di areamu, tarik ke belakang untuk merentangkan karet, lalu lepas untuk melontar melewati celah tengah. Area pertama yang kosong menang — puck lawan yang mendarat di areamu boleh dilontarkan balik!</p>
+          <p>Setiap ronde: level acak dan undian jalan duluan. Di room online, posisi pemain juga diundi. Tampilanmu selalu di bawah.</p>
+        </div>
+        <div class="sp-foot"><button type="button" class="sp-btn" data-act="start">Mulai</button><button type="button" class="sp-btn ghost" data-help>Cara main</button></div>
       </div>
     </div>
     <div class="sp-ov" data-ov="over" hidden>
       <div class="sp-card" role="dialog" aria-modal="true" aria-label="Hasil">
-        <h3 data-ov-title>Selesai</h3>
-        <p data-ov-reason></p>
-        <div class="sp-row"><button type="button" class="sp-btn" data-act="retry">Main lagi</button><button type="button" class="sp-btn ghost" data-act="next">Level berikutnya</button></div>
+        <div class="sp-head"><h3 data-ov-title>Selesai</h3></div>
+        <div class="sp-body"><p data-ov-reason></p></div>
+        <div class="sp-foot"><button type="button" class="sp-btn" data-act="retry">Main lagi</button><button type="button" class="sp-btn ghost" data-act="next">Level berikutnya</button></div>
+      </div>
+    </div>
+    <div class="sp-ov" data-ov="pause" hidden>
+      <div class="sp-card" role="dialog" aria-modal="true" aria-label="Jeda">
+        <div class="sp-head"><h3>Dijeda</h3></div>
+        <div class="sp-body"><p>Papan, bot, dan timer dibekukan. Tekan P / Esc atau Lanjutkan untuk melanjutkan.</p></div>
+        <div class="sp-foot"><button type="button" class="sp-btn" data-resume>Lanjutkan</button></div>
       </div>
     </div>
     <div class="sp-ov sp-help" data-ov="help" hidden>
       <div class="sp-card" role="dialog" aria-modal="true" aria-label="Cara main">
-        <h3>Cara main</h3>
-        <h4>Tujuan</h4>
-        <ul><li>Kosongkan areamu (bawah) dengan melontarkan semua puck lewat celah tengah. Puck lawan yang masuk ke areamu harus dilontarkan balik. Area pertama yang kosong menang.</li></ul>
-        <h4>Sentuh &amp; mouse</h4>
-        <ul><li>Tekan puck di areamu, tarik ke belakang, lepas. Arah lontaran berlawanan dengan tarikan; makin jauh tarikan, makin kencang.</li><li>Ketuk singkat = pilih puck untuk pad/keyboard. Roda mouse mengatur tenaga saat membidik. Klik kanan / Esc membatalkan tarikan.</li></ul>
-        <h4>Keyboard</h4>
-        <ul>
-          <li><kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd> putar bidikan · <kbd>↑</kbd><kbd>↓</kbd> / <kbd>W</kbd><kbd>S</kbd> tenaga</li>
-          <li><kbd>Q</kbd><kbd>E</kbd> ganti puck · <kbd>Spasi</kbd>/<kbd>Enter</kbd> tembak / mulai</li>
-          <li><kbd>R</kbd> ulangi · <kbd>L</kbd> level acak · <kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> pad · <kbd>Esc</kbd> tutup/batal</li>
-        </ul>
-        <h4>Pad virtual</h4>
-        <ul><li>Muncul otomatis di perangkat sentuh (atau tekan P / tombol "Pad kontrol"). Tahan tombol untuk mengulang.</li></ul>
-        <h4>Level &amp; giliran</h4>
-        <ul><li>Posisi/lebar celah, bumper, dan susunan puck diacak tiap ronde dan dijamin bisa diselesaikan. Level naik = celah menyempit + bumper bertambah.</li><li>Jalan duluan diundi; pihak yang kalah undian terkunci 1,5 detik. Di room online posisi pemain juga diundi. Saat online, permainan tetap berjalan ketika panel ini terbuka.</li></ul>
-        <div class="sp-row"><button type="button" class="sp-btn" data-ui="close">Tutup</button></div>
+        <div class="sp-head"><h3>Cara main</h3><button type="button" class="sp-btn ghost" data-help-close aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="sp-body sp-help">
+          <h4>Tujuan</h4>
+          <ul><li>Kosongkan areamu (bawah) dengan melontarkan semua puck lewat celah tengah. Puck lawan yang masuk ke areamu harus dilontarkan balik. Area pertama yang kosong menang.</li></ul>
+          <h4>Sentuh &amp; mouse</h4>
+          <ul><li>Tekan puck di areamu, tarik ke belakang, lepas. Arah lontaran berlawanan dengan tarikan; makin jauh tarikan, makin kencang.</li><li>Ketuk singkat = pilih puck untuk pad/keyboard. Roda mouse mengatur tenaga saat membidik. Klik kanan / Esc membatalkan tarikan.</li></ul>
+          <h4>Keyboard</h4>
+          <ul>
+            <li><kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd> putar bidikan · <kbd>↑</kbd><kbd>↓</kbd> / <kbd>W</kbd><kbd>S</kbd> tenaga</li>
+            <li><kbd>Q</kbd><kbd>E</kbd> ganti puck · <kbd>Spasi</kbd>/<kbd>Enter</kbd> tembak / mulai</li>
+            <li><kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> jeda · <kbd>R</kbd> ulangi · <kbd>L</kbd> level acak · <kbd>B</kbd> pad · <kbd>Esc</kbd> tutup/batal</li>
+          </ul>
+          <h4>Pad virtual</h4>
+          <ul><li>Muncul otomatis di perangkat sentuh (atau tekan B / tombol Pad di HUD). Tahan tombol untuk mengulang.</li></ul>
+          <h4>Level &amp; giliran</h4>
+          <ul><li>Posisi/lebar celah, bumper, dan susunan puck diacak tiap ronde dan dijamin bisa diselesaikan. Level naik = celah menyempit + bumper bertambah.</li><li>Jalan duluan diundi; pihak yang kalah undian terkunci 1,5 detik. Di room online posisi pemain juga diundi. Saat online, permainan tetap berjalan ketika panel ini terbuka.</li></ul>
+        </div>
+        <div class="sp-foot"><span class="sp-note">Tekan H untuk membuka lagi</span><button type="button" class="sp-btn" data-help-close>Mengerti</button></div>
       </div>
     </div>
     <div class="sp-ov" data-ov="cheats" hidden>
       <div class="sp-card" role="dialog" aria-modal="true" aria-label="Cheat">
-        <h3>Cheat (mode AI)</h3>
-        <p>Hanya tersedia saat bermain melawan AI. Memakai cheat membuat waktu terbaik tidak dicatat untuk ronde ini.</p>
-        <label class="sp-cheat-row">Gerak lambat <span class="sp-switch"><input type="checkbox" data-cheat-toggle="slow"><i></i></span></label>
-        <label class="sp-cheat-row">Bekukan AI <span class="sp-switch"><input type="checkbox" data-cheat-toggle="freeze"><i></i></span></label>
-        <label class="sp-cheat-row">Bidik sempurna <span class="sp-switch"><input type="checkbox" data-cheat-toggle="aim"><i></i></span></label>
-        <div class="sp-row">
+        <div class="sp-head"><h3>Cheat (mode AI)</h3><button type="button" class="sp-btn ghost" data-close aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="sp-body">
+          <p>Hanya tersedia saat bermain melawan AI. Memakai cheat membuat waktu terbaik tidak dicatat untuk ronde ini.</p>
+          <label class="sp-cheat-row">Gerak lambat <span class="sp-switch"><input type="checkbox" data-cheat-toggle="slow"><i></i></span></label>
+          <label class="sp-cheat-row">Bekukan AI <span class="sp-switch"><input type="checkbox" data-cheat-toggle="freeze"><i></i></span></label>
+          <label class="sp-cheat-row">Bidik sempurna <span class="sp-switch"><input type="checkbox" data-cheat-toggle="aim"><i></i></span></label>
+        </div>
+        <div class="sp-foot">
           <button type="button" class="sp-btn ghost" data-cheat="sling1">Lontarkan 1 puck</button>
           <button type="button" class="sp-btn ghost" data-cheat="clear">Kosongkan areamu</button>
-          <button type="button" class="sp-btn" data-ui="close">Tutup</button>
+          <button type="button" class="sp-btn" data-close>Tutup</button>
         </div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-exit>Keluar</button>
-    <button class="game-action-button" type="button" data-ui="help">Cara main</button>
-    <button class="game-action-button" type="button" data-ui="pad">Pad kontrol</button>
-    <button class="game-action-button" type="button" data-ui="cheats" data-btn="cheats">Cheat</button>
-    <button class="game-action-button" type="button" data-act="retry">Ulangi</button>
-    <button class="game-action-button" type="button" data-act="new">Level acak</button>
+  <div class="sp-pad" data-pad-root>
+    <div class="sp-pad-group"><span>Puck</span><div class="sp-pad-row">
+      <button type="button" data-pad="prev" aria-label="Puck sebelumnya"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button type="button" data-pad="next" aria-label="Puck berikutnya"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    </div></div>
+    <div class="sp-pad-group"><span>Bidik</span><div class="sp-pad-row">
+      <button type="button" data-pad="rotl" aria-label="Putar bidikan ke kiri"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button type="button" data-pad="rotr" aria-label="Putar bidikan ke kanan"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    </div></div>
+    <div class="sp-pad-group"><span>Tenaga <b data-pad-power>65%</b></span><div class="sp-pad-row">
+      <button type="button" data-pad="pwdn" aria-label="Kurangi tenaga">−</button>
+      <button type="button" data-pad="pwup" aria-label="Tambah tenaga">+</button>
+    </div></div>
+    <button type="button" class="sp-fire" data-pad="fire" aria-label="Tembak">TEMBAK</button>
   </div>
 </div>`;
 
@@ -345,14 +395,15 @@ export function mount(root, context = {}) {
         best: $('[data-hud="best"]'), bestWrap: $('[data-hud="bestWrap"]'),
     };
     const ovStart = $('[data-ov="start"]'), ovOver = $('[data-ov="over"]');
-    const ovHelp = $('[data-ov="help"]'), ovCheats = $('[data-ov="cheats"]');
+    const ovHelp = $('[data-ov="help"]'), ovCheats = $('[data-ov="cheats"]'), ovPause = $('[data-ov="pause"]');
     const ovTitle = $("[data-ov-title]"), ovReason = $("[data-ov-reason]");
-    const padEl = $("[data-pad]"), padPower = $("[data-pad-power]"), cheatBtn = $('[data-btn="cheats"]');
+    const padEl = $(".sp-pad"), padPower = $("[data-pad-power]");
+    const cheatBtn = $('[data-cheats]'), pauseBtn = $('[data-pause]'), padBtn = $('[data-ui="pad"]');
 
     let drag = null;        // {i, ox, oy, id, cx, cy}
     let aimMode = null;     // {i, angle, power} untuk keyboard/pad
     let acc = 0, lastT = 0, raf = null, snapAt = 0, lastPub = 0, staticKey = "";
-    let helpOpen = false, cheatsOpen = false, padOn = false, paused = false;
+    let helpOpen = firstHelp, cheatsOpen = false, padOn = false, paused = false;
     const cheats = { slow: false, freeze: false, aim: false };
     let cheated = false;
     const cheatUsed = () => cheated || cheats.slow || cheats.freeze || cheats.aim;
@@ -410,7 +461,7 @@ export function mount(root, context = {}) {
     // Guest: ekstrapolasi posisi dari snapshot terakhir (dead reckoning ringan).
     function dispPuck(b) {
         if (online && !room.isHost && state.phase === "playing") {
-            const dt = Math.min(0.2, (performance.now() - snapAt) / 1000);
+            const dt = Math.min(0.2, (perfNow() - snapAt) / 1000);
             let x = clamp(b.x + b.vx * dt, RX1 + b.r, RX2 - b.r);
             let y = clamp(b.y + b.vy * dt, RY1 + b.r, RY2 - b.r);
             const inGap = x > state.gap[0] + b.r && x < state.gap[1] - b.r;
@@ -474,13 +525,24 @@ export function mount(root, context = {}) {
         const local = localSide(), foeLabel = oppName();
         const key = `${state ? state.seed : "x"}|${state ? state.level : 0}|${flip()}|${foeLabel}`;
         if (key !== staticKey) { staticKey = key; buildStatic(foeLabel); }
+        const modal = helpOpen || cheatsOpen || paused;
         hud.foeLabel.textContent = foeLabel;
         hud.bestWrap.hidden = online;
         cheatBtn.hidden = online;
+        pauseBtn.hidden = online;
+        padBtn.classList.toggle("on", padOn);
+        const plabel = pauseBtn.querySelector(".sp-btn-label");
+        if (plabel) plabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", (paused ? "Resume" : "Pause") + " (P)");
+        cheatBtn.classList.toggle("on", cheated || cheats.slow || cheats.freeze || cheats.aim);
+        ovHelp.hidden = !helpOpen;
+        ovCheats.hidden = !cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || helpOpen || cheatsOpen;
         if (!state) {
             pucksG.innerHTML = ""; aimG.innerHTML = "";
             statusEl.textContent = "Menunggu host…";
-            ovStart.hidden = false; ovOver.hidden = true;
+            ovStart.hidden = modal; ovOver.hidden = true;
             return;
         }
         renderPucks(); renderAim();
@@ -488,7 +550,7 @@ export function mount(root, context = {}) {
         hud.you.textContent = c[local]; hud.foe.textContent = c[1 - local];
         hud.level.textContent = state.level; hud.shots.textContent = state.shots[local];
         let el = state.elapsed;
-        if (online && !room.isHost && state.phase === "playing") el += Math.min(0.25, (performance.now() - snapAt) / 1000);
+        if (online && !room.isHost && state.phase === "playing") el += Math.min(0.25, (perfNow() - snapAt) / 1000);
         hud.time.textContent = fmt(el);
         hud.best.textContent = best == null ? "–" : fmt(best);
         if (state.phase === "ready") statusEl.textContent = `Siap${playerName ? ", " + playerName : ""} — tekan Mulai`;
@@ -500,8 +562,9 @@ export function mount(root, context = {}) {
                 statusEl.textContent = `Undian: ${firstTxt} · giliranmu ${rem.toFixed(1)} dtk`;
             } else statusEl.textContent = state.msg || "Lontarkan puckmu!";
         }
-        ovStart.hidden = state.phase !== "ready";
-        ovOver.hidden = state.phase !== "over";
+        statusEl.title = statusEl.textContent;
+        ovStart.hidden = state.phase !== "ready" || modal;
+        ovOver.hidden = state.phase !== "over" || modal;
         if (state.phase === "over") {
             const win = state.winner === local;
             ovTitle.textContent = win ? "Kamu menang!" : foeLabel + " menang";
@@ -648,7 +711,7 @@ export function mount(root, context = {}) {
         return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
     }
     function onDown(e) {
-        if (!state || state.phase !== "playing") return;
+        if (!state || state.phase !== "playing" || paused || helpOpen || cheatsOpen) return;
         if (e.button === 2) { cancelDrag(); return; }
         const p = toWorld(toBoard(e));
         let bi = -1, bd = GRAB_R;
@@ -710,7 +773,7 @@ export function mount(root, context = {}) {
         drag = null; svgEl.style.cursor = "default"; render();
     }
     function onWheel(e) {
-        if (!aimMode || !state || state.phase !== "playing") return;
+        if (!aimMode || !state || state.phase !== "playing" || paused || helpOpen || cheatsOpen) return;
         e.preventDefault();
         powerAim(e.deltaY < 0 ? 1 : -1);
     }
@@ -745,30 +808,51 @@ export function mount(root, context = {}) {
         submitAction({ type: "sling", i: aimMode.i, vx: Math.cos(aimMode.angle) * sp, vy: Math.sin(aimMode.angle) * sp });
         aimMode = null; msg("Lontar!"); render();
     }
+    /* Prioritas keyboard: help → cheats → pause/Escape → aksi permainan. */
     function onKey(e) {
         const t = e.target, k = e.code;
         if (t && t.closest && t.closest('input,textarea,select,[contenteditable="true"]')) return;
-        if (t && t.closest && t.closest(".sp-card") && (k === "Space" || k === "Enter")) return;
-        if (k === "Escape") {
-            if (helpOpen || cheatsOpen) closePanels();
-            else if (drag) cancelDrag();
-            else if (aimMode) { aimMode = null; render(); }
+        if (k === "KeyH") { e.preventDefault(); toggleHelp(); return; }
+        if (k === "KeyC") { if (!online && !helpOpen) { e.preventDefault(); toggleCheats(); } return; }
+        if (k === "KeyP") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else setPause(!paused);
             return;
         }
-        if (k === "KeyH") { e.preventDefault(); toggleHelp(); return; }
-        if (k === "KeyP") { e.preventDefault(); togglePad(); return; }
-        if (k === "KeyC") { if (!online) { e.preventDefault(); toggleCheats(); } return; }
-        if (k === "KeyR") { e.preventDefault(); submitAction({ type: "retry" }); return; }
-        if (k === "KeyL") { e.preventDefault(); submitAction({ type: "new" }); return; }
-        if (!state) return;
-        if (k === "Space" || k === "Enter") {
+        if (k === "Escape") {
             e.preventDefault();
+            if (helpOpen) { toggleHelp(false); return; }
+            if (cheatsOpen) { toggleCheats(false); return; }
+            if (paused) { setPause(false); return; }
+            if (drag) { cancelDrag(); return; }
+            if (aimMode) { aimMode = null; render(); }
+            return;
+        }
+        if (k === "KeyR") {
+            e.preventDefault();
+            if (paused) setPause(false);
+            else if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            submitAction({ type: "retry" });
+            return;
+        }
+        if (k === "KeyL") { if (helpOpen || cheatsOpen || paused) return; e.preventDefault(); submitAction({ type: "new" }); return; }
+        if (k === "KeyB") { e.preventDefault(); togglePad(); return; }
+        if (k === "Space" || k === "Enter") {
+            if (t && t.closest && t.closest("button")) return; // biarkan tombol overlay menangani
+            e.preventDefault();
+            if (helpOpen) { toggleHelp(false); return; }
+            if (cheatsOpen) { toggleCheats(false); return; }
+            if (paused) { setPause(false); return; }
+            if (!state) return;
             if (state.phase === "ready") submitAction({ type: "start" });
             else if (state.phase === "over") submitAction({ type: "retry" });
             else fire();
             return;
         }
-        if (state.phase !== "playing") return;
+        if (helpOpen || cheatsOpen || paused || !state || state.phase !== "playing") return;
         switch (k) {
             case "ArrowLeft": case "KeyA": e.preventDefault(); rotateAim(-1); break;
             case "ArrowRight": case "KeyD": e.preventDefault(); rotateAim(1); break;
@@ -803,22 +887,68 @@ export function mount(root, context = {}) {
     });
 
     /* ================= panel & klik ================= */
-    const setPaused = () => { paused = !online && (helpOpen || cheatsOpen); };
-    function toggleHelp() { helpOpen = !helpOpen; cheatsOpen = false; ovHelp.hidden = !helpOpen; ovCheats.hidden = true; setPaused(); }
-    function toggleCheats() { if (online) return; cheatsOpen = !cheatsOpen; helpOpen = false; ovCheats.hidden = !cheatsOpen; ovHelp.hidden = true; setPaused(); }
-    function togglePad() { padOn = !padOn; padEl.classList.toggle("on", padOn); }
-    function closePanels() { helpOpen = false; cheatsOpen = false; ovHelp.hidden = true; ovCheats.hidden = true; setPaused(); }
+    function setPause(on) {
+        on = Boolean(on) && !online;
+        if (paused === on) return;
+        paused = on;
+        if (paused) {
+            helpOpen = false; cheatsOpen = false;
+            if (drag) cancelDrag(); else aimMode = null;
+            pauseWallAt = Date.now(); pausePerfAt = perfNow();
+        } else {
+            const wallHeld = Math.max(0, Date.now() - pauseWallAt);
+            const perfHeld = Math.max(0, perfNow() - pausePerfAt);
+            clockShift += wallHeld;   // geser anchor Date.now()
+            perfShift += perfHeld;    // geser anchor performance.now()
+            pauseWallAt = pausePerfAt = 0;
+            lastT = performance.now();
+            acc = 0;
+        }
+        render();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatsOpen = false; if (paused) setPause(false); }
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; if (paused) setPause(false); }
+        render();
+    }
+    function togglePad() { padOn = !padOn; padEl.classList.toggle("on", padOn); if (padBtn) padBtn.classList.toggle("on", padOn); }
+    function closePanels() {
+        helpOpen = false; cheatsOpen = false;
+        if (paused) setPause(false); else render();
+    }
 
     function handleClick(event) {
-        const el = event.target.closest("[data-exit],[data-act],[data-ui],[data-cheat]");
+        const el = event.target.closest("[data-exit],[data-act],[data-ui],[data-cheat],[data-help],[data-help-close],[data-cheats],[data-pause],[data-resume],[data-restart],[data-close]");
         if (!el) return;
         if (el.hasAttribute("data-exit")) { onExit(); return; }
-        if (el.dataset.act) { submitAction({ type: el.dataset.act }); el.blur(); return; }
+        if (el.hasAttribute("data-help-close")) { toggleHelp(false); return; }
+        if (el.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (el.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (el.hasAttribute("data-pause")) { setPause(!paused); return; }
+        if (el.hasAttribute("data-resume")) { setPause(false); return; }
+        if (el.hasAttribute("data-restart")) {
+            if (paused) setPause(false);
+            else if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            submitAction({ type: "retry" }); el.blur(); return;
+        }
+        if (el.hasAttribute("data-close")) { closePanels(); return; }
+        if (el.dataset.act) {
+            if (paused && (el.dataset.act === "retry" || el.dataset.act === "next")) setPause(false);
+            submitAction({ type: el.dataset.act }); el.blur(); return;
+        }
         if (el.dataset.ui) {
             const u = el.dataset.ui;
             if (u === "help") toggleHelp();
             else if (u === "cheats") toggleCheats();
             else if (u === "pad") togglePad();
+            else if (u === "new") { if (paused) setPause(false); submitAction({ type: "new" }); }
             else if (u === "close") closePanels();
             return;
         }
@@ -848,7 +978,7 @@ export function mount(root, context = {}) {
             if (g >= 6) acc = 0;
             if (!online) aiTick();
             if (!drag && allStopped(state.pucks)) checkWin();
-            if (online && t - lastPub >= PUB_MS) { lastPub = t; room.publishState(state).catch(console.warn); }
+            if (online && clockNow() - lastPub >= PUB_MS) { lastPub = clockNow(); room.publishState(state).catch(console.warn); }
         }
         render();
     }
@@ -879,7 +1009,7 @@ export function mount(root, context = {}) {
             keep(room.onState((nextState) => {
                 const prev = state?.phase;
                 state = nextState;
-                snapAt = performance.now();
+                snapAt = perfNow();
                 if (state && drag && state.pucks[drag.i]) {
                     const b = state.pucks[drag.i];
                     b.x = drag.cx; b.y = drag.cy; b.vx = 0; b.vy = 0;

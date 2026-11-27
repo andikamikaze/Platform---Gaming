@@ -10,6 +10,8 @@
  *   4. mount()         : UI, mode Solo, mode VS (Bot / Online), input, cheat
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "border-desk",
     name: "Border Desk",
@@ -367,21 +369,25 @@ function faceSVG(f, size = 64) {
 
 const CSS = `
 .bd{--ink:#16202a;--mute:#64748b;--line:#d8dee6;--bg:#eef1f4;--surf:#fff;--acc:#0f766e;--ok:#1f7a4d;--bad:#b3402f;--warn:#a16207;
- position:relative;min-height:480px;color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);
+ position:relative;display:flex;flex-direction:column;min-height:0;color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);
  border:1px solid var(--line);border-radius:12px;overflow:hidden;-webkit-user-select:none;user-select:none}
+.bd [hidden]{display:none!important}
 .bd *{box-sizing:border-box}
 .bd button{font:inherit;color:inherit;cursor:pointer}
 .bd h3,.bd h4,.bd p{margin:0}
-.bd-top{display:flex;align-items:center;gap:14px;padding:10px 14px;background:var(--surf);border-bottom:1px solid var(--line);flex-wrap:wrap}
-.bd-brand{font-weight:700}
-.bd-stats{display:flex;gap:14px;flex:1;flex-wrap:wrap;color:var(--mute)}
-.bd-stats b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
-.bd-tools{display:flex;gap:6px}
+.bd-hud{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap;padding:8px 10px;background:var(--surf);border-bottom:1px solid var(--line);font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.bd-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;color:var(--mute);white-space:nowrap}
+.bd-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.bd-chip.warn{color:var(--warn);border-color:var(--warn)}
+.bd-tbar{width:56px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.bd-tbar i{display:block;height:100%;width:100%;background:var(--acc)}
+.bd-tbar.low i{background:var(--bad)}
+.bd-spacer{flex:1 1 auto}
+.bd-hbtn{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surf);color:var(--ink);font:600 10px/1 ui-monospace,Menlo,monospace;cursor:pointer}
+.bd-hbtn svg{flex:none;display:block}
+.bd-hbtn:hover,.bd-hbtn.on{border-color:var(--acc);color:var(--acc);background:#e6f4f1}
 .bd-ghost{background:transparent;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
 .bd-ghost:hover,.bd-ghost.on{border-color:var(--acc);color:var(--acc)}
-.bd-timer{height:6px;background:var(--line)}
-.bd-timer i{display:block;height:100%;width:100%;background:var(--acc)}
-.bd-timer.low i{background:var(--bad)}
 .bd-main{display:grid;grid-template-columns:230px 1fr;min-height:390px}
 .bd-rules{background:var(--surf);border-right:1px solid var(--line);padding:14px;overflow:auto}
 .bd-rules h4{margin:12px 0 6px}
@@ -453,10 +459,17 @@ const CSS = `
 .bd-feed li{display:grid;grid-template-columns:34px 1fr auto 40px;gap:8px;padding:8px 10px;background:var(--surf);border:1px solid var(--line);border-radius:8px;align-items:center}
 .bd-feed li.ok{border-left:3px solid var(--ok)}.bd-feed li.bad{border-left:3px solid var(--bad)}
 .bd-feed em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
+.bd-board{position:relative;width:100%;flex:1 1 auto;min-height:0;overflow:auto;border:0;background:var(--bg)}
+.bd-surface{min-height:100%;display:flex;flex-direction:column}
+.bd-surface>*{flex:1 1 auto}
 .bd-ov{position:absolute;inset:0;background:rgba(22,32,42,.45);display:flex;align-items:center;justify-content:center;padding:14px;z-index:40}
-.bd-panel{background:var(--surf);border-radius:12px;max-width:580px;width:100%;max-height:92%;overflow:auto;padding:18px;display:grid;gap:10px;border:1px solid var(--line)}
+.bd-panel{background:var(--surf);border-radius:12px;max-width:580px;width:100%;max-height:100%;padding:18px;display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);overflow:hidden}
+.bd-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.bd-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;padding-top:10px;border-top:1px solid var(--line)}
+.bd-help,.bd-cheats,.bd-banner{flex:1 1 auto;min-height:0;overflow:auto}
 .bd-panel h3{font-size:18px}.bd-panel h4{margin-top:6px}
 .bd-panel ul{margin:0;padding-left:18px;display:grid;gap:3px}
+.bd-note{color:var(--mute);font-size:12px}
 .bd-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .bd-cheats .bd-ghost{text-align:left;padding:9px 10px}
 @media (max-width:760px){
@@ -476,7 +489,55 @@ const CSS = `
 }
 @media (hover:none){.bd kbd{display:none}}
 @media (prefers-reduced-motion:reduce){.bd *{transition:none!important}}
-`;
+
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.bd{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.bd *,.bd *::before,.bd *::after{box-sizing:border-box}
+.bd :where(svg,canvas,img){max-width:100%;height:auto}
+.bd :where(button,[role="button"],select,input){touch-action:manipulation}
+.bd :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* 4px spacing grid: HUD/control rows wrap instead of overflowing on narrow screens. */
+.bd :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+/* Thin borders and calm surfaces instead of heavy elevation. */
+.bd :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+/* Clear type hierarchy: 12px metadata, compact headings. */
+.bd :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.bd :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .bd :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .bd :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .bd :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .bd :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .bd *,.bd *::before,.bd *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* ==== layout system — fill board + mobile HUD/overlays (keep last) ==== */
+.bd.game-fill{flex:1 1 auto;height:100%;min-height:0}
+.bd.game-fill > .bd-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.bd .bd-hud .bd-hbtn{min-height:32px;padding:5px 9px;font-size:9px}
+@media (max-width:640px){
+ .bd.game-fill > .bd-board:not(:has(.bd-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+ .bd.game-fill > .bd-board:has(.bd-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+ .bd .bd-hud{gap:5px;margin-bottom:0}
+ .bd .bd-hud .bd-chip{padding:4px 6px;font-size:9px}
+ .bd .bd-hud .bd-chip[data-hud="status"],.bd .bd-hud .bd-chip[data-hud="role"],
+ .bd .bd-hud .bd-chip[data-hud="opp"],.bd .bd-hud .bd-chip[data-hud="cheatflag"]{display:none}
+ .bd .bd-hud .bd-hbtn{min-height:32px;min-width:28px;padding:5px 9px;font-size:9px}
+ .bd .bd-hud .bd-hlabel,.bd .bd-hud .bd-spacer{display:none}
+ .bd .bd-ov{padding:8px}
+ .bd .bd-panel{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+ .bd .bd-help,.bd .bd-cheats,.bd .bd-banner{scrollbar-width:none}
+ .bd .bd-help::-webkit-scrollbar,.bd .bd-cheats::-webkit-scrollbar,.bd .bd-banner::-webkit-scrollbar{display:none}
+ .bd .bd-foot{position:static;margin:0;padding:10px 0 0}
+ .bd .bd-note{display:none}
+ .bd .bd-center{min-height:min(70dvh,620px)}
+ .bd .bd-pad{position:static}
+}`;
 
 /* ========================================================================== */
 /* MOUNT                                                                      */
@@ -498,26 +559,143 @@ export function mount(root, context = {}) {
     let drag = null;
 
     const ui = {
-        docs: {}, marks: {}, z: 1, rulesOpen: false, help: !lsGet(SEEN_KEY), cheat: false, cheated: false,
+        docs: {}, marks: {}, z: 1, rulesOpen: false, cheated: false,
         hint: false, advice: false, freeze: false, noPenalty: false,
         remaining: 0, total: 1, timeoutFired: false, timerKey: null, lock: 0, justDragged: 0, last: Date.now(),
         bannerSeen: false, matchId: null, roundKey: null, planDraft: Array(MATCH.count).fill(""), myPlan: null, planSent: false, planMsg: "",
     };
 
+    /* Bantuan internal: flag sudah ada di game ini, dibaca sekali saat mount. */
+    let seenHelp = true;
+    try { seenHelp = lsGet(SEEN_KEY) === "1"; } catch (_) { seenHelp = true; }
+    let helpOpen = !seenHelp;
+    let cheatsOpen = false;
+    let paused = false;
+    let pauseStarted = 0;
+    if (!seenHelp) lsSet(SEEN_KEY, "1");
+
     root.innerHTML = `
-    <div class="game-app">
-      <div class="game-intro">
-        <div><h2>Border Desk</h2><p>Periksa dokumen di gerbang, atau selundupkan yang palsu.</p></div>
-        <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+    <style>${CSS}</style>
+    <div class="game-app bd game-fill" data-bd>
+      <div class="bd-hud" role="toolbar" aria-label="Border Desk controls">
+        <span class="bd-chip" data-hud="status">Siap</span>
+        <span class="bd-chip" data-hud="day">Hari <b>1</b></span>
+        <span class="bd-chip" data-hud="money">Kredit <b>0</b></span>
+        <span class="bd-chip" data-hud="score">Skor <b>0</b></span>
+        <span class="bd-chip" data-hud="round">Ronde <b>1/4</b></span>
+        <span class="bd-chip" data-hud="role">Peran <b>—</b></span>
+        <span class="bd-chip" data-hud="me">Kamu <b>0</b></span>
+        <span class="bd-chip" data-hud="opp">Lawan <b>0</b></span>
+        <span class="bd-chip" data-hud="timer" hidden>Waktu <b data-hud="time">--</b><span class="bd-tbar"><i data-hud="timer-bar"></i></span></span>
+        <span class="bd-chip warn" data-hud="cheatflag" hidden>cheat aktif</span>
+        <span class="bd-spacer"></span>
+        <button class="bd-hbtn" type="button" data-rules aria-label="Rules" title="Rules (B)">${iconSVG("bookOpen", { size: 14 })}<span class="bd-hlabel">Aturan</span></button>
+        <button class="bd-hbtn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="bd-hlabel">Bantuan</span></button>
+        <button class="bd-hbtn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="bd-hlabel">Cheat</span></button>
+        <button class="bd-hbtn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="bd-hlabel">Jeda</span></button>
+        <button class="bd-hbtn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="bd-hlabel">Ulangi</span></button>
+        <button class="bd-hbtn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="bd-hlabel">Keluar</span></button>
       </div>
-      <style>${CSS}</style>
-      <section class="game-panel" data-board></section>
-      <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar</button></div>
+      <section class="game-panel bd-board" data-board>
+        <div class="bd-surface" data-surface></div>
+        <div class="bd-ov" data-ov="banner" hidden><div class="bd-panel" role="dialog" aria-label="Undian peran"><div class="bd-banner" data-banner-body></div></div></div>
+        <div class="bd-ov" data-ov="pause" hidden>
+          <div class="bd-panel" role="dialog" aria-label="Dijeda">
+            <div class="bd-head"><h3>Dijeda</h3></div>
+            <div class="bd-banner"><p class="bd-muted">Timer dan bot dihentikan sementara.</p></div>
+            <div class="bd-foot"><span class="bd-note">Tekan P atau Esc untuk lanjut</span><button class="bd-primary" type="button" data-pause>Lanjutkan</button></div>
+          </div>
+        </div>
+        <div class="bd-ov" data-ov="cheat" hidden>
+          <div class="bd-panel" role="dialog" aria-label="Cheat">
+            <div class="bd-head"><h3>Cheat</h3><button class="bd-ghost" type="button" data-cheats>Tutup</button></div>
+            <div class="bd-cheats" data-cheat-body></div>
+            <div class="bd-foot"><span class="bd-note">Skor terbaik tidak disimpan saat cheat aktif</span><button class="bd-primary" type="button" data-cheats>Tutup</button></div>
+          </div>
+        </div>
+        <div class="bd-ov" data-ov="help" hidden>
+          <div class="bd-panel" role="dialog" aria-label="Cara bermain">
+            <div class="bd-head"><h3>Cara bermain</h3><button class="bd-ghost" type="button" data-help-close>Tutup</button></div>
+            <div class="bd-help">
+              <div><h4>Tujuan</h4><p>Kamu penjaga gerbang negara Brevia. Putuskan siapa boleh masuk berdasarkan buku aturan hari ini.</p>
+              <h4>Sebagai Inspektur</h4>
+              <ul><li>Seret dokumen dari rak kiri ke meja agar terbuka. Seret keluar meja untuk menutupnya.</li>
+                <li>Klik kolom dokumen atau foto untuk menandainya saat membandingkan.</li>
+                <li><b>Setujui</b> hanya bila semua aturan terpenuhi. Jika ada satu saja pelanggaran, <b>Tolak</b>.</li>
+                <li>Perhatikan tanggal hari ini, wajah pemohon, dan dokumen yang tidak ada.</li></ul></div>
+              <div><h4>Mode Shift harian</h4>
+              <p>Tiap keputusan benar menambah upah, tiap kesalahan didenda, dan biaya hidup dipotong di akhir hari. Kredit di bawah 0 berarti permainan berakhir. Aturan bertambah dan waktu makin ketat setiap hari.</p>
+              <h4>Mode VS (Bot atau Online)</h4>
+              <ul><li>Peran bertukar tiap ronde; siapa yang mulai lebih dulu diundi.</li>
+                <li><b>Penyelundup</b> memilih 1–3 dari 5 pelamar untuk dipalsukan. Lolos +20, tertangkap −5.</li>
+                <li><b>Inspektur</b>: benar menolak +10, benar menyetujui +5, meloloskan pemalsu −20, salah menolak −10.</li></ul></div>
+              <div><h4>Kontrol</h4>
+              <ul><li>Mouse: seret dokumen, klik tombol dan kolom.</li>
+                <li>Keyboard: <kbd>A</kbd> setujui · <kbd>D</kbd> tolak · <kbd>1</kbd>–<kbd>4</kbd> buka/tutup dokumen · <kbd>B</kbd> aturan · <kbd>S</kbd> kirim rencana · <kbd>G</kbd> acak · <kbd>Spasi</kbd> lanjut.</li>
+                <li><kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> jeda · <kbd>R</kbd> ulangi · <kbd>Esc</kbd> tutup.</li>
+                <li>Layar sentuh: seret dokumen atau pakai tombol di bawah meja.</li></ul></div>
+            </div>
+            <div class="bd-foot"><span class="bd-note">Tekan H untuk membuka lagi</span><button class="bd-primary" type="button" data-help-close>Mengerti</button></div>
+          </div>
+        </div>
+      </section>
+      <div class="bd-pad" data-pad></div>
     </div>`;
+
+    const app = root.querySelector("[data-bd]");
     const board = root.querySelector("[data-board]");
-    const statusEl = root.querySelector("[data-status]");
+    const surface = root.querySelector("[data-surface]");
+    const padHost = root.querySelector("[data-pad]");
+    const ov = {
+        banner: root.querySelector('[data-ov="banner"]'),
+        pause: root.querySelector('[data-ov="pause"]'),
+        cheat: root.querySelector('[data-ov="cheat"]'),
+        help: root.querySelector('[data-ov="help"]'),
+    };
+    const hud = {};
+    root.querySelectorAll("[data-hud]").forEach((el) => { hud[el.dataset.hud] = el; });
 
     const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; };
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatsOpen = false; paused = false; }
+        lsSet(SEEN_KEY, "1");
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; paused = false; }
+        render();
+    }
+    function togglePause(on) {
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        if (next) {
+            pauseStarted = Date.now();
+            timers.forEach(clearTimeout); timers.clear();
+            botKey = null;
+            helpOpen = false; cheatsOpen = false;
+        } else {
+            const shift = Date.now() - pauseStarted;
+            ui.last = Date.now();
+            ui.lock = Math.max(0, ui.lock - shift);
+            ui.justDragged = Math.max(0, ui.justDragged - shift);
+            if (!online && view === "match") botAct();
+        }
+        paused = next;
+        render();
+    }
+    function restartGame() {
+        helpOpen = false; cheatsOpen = false; paused = false; ui.rulesOpen = false;
+        timers.forEach(clearTimeout); timers.clear(); botKey = null;
+        if (view === "solo") startSolo();
+        else if (view === "match" && state && (!online || room.isHost)) {
+            state = newMatch({ rounds: state.rounds, diff: state.diff });
+            bot.thorough = BOT_LEVELS[state.diff]; bot.seen = bot.caught = bot.missed = 0;
+            publish();
+        } else render();
+    }
 
     /* ---------- role & helper match ---------- */
     const inspectorOf = (s) => (s.firstInspector + s.round) % 2;
@@ -547,28 +725,28 @@ export function mount(root, context = {}) {
         return c;
     }
 
-    /* ---------- status & timer ---------- */
-    function updateStatus() {
-        let t = "Siap";
-        if (view === "solo" && solo) t = `Hari ${solo.day} · ${solo.phase === "work" ? `Pelamar ${solo.idx + 1}/${solo.plan.apps.length}` : "Jeda"}`;
-        else if (view === "match") t = state ? `Ronde ${Math.min(state.round + 1, state.rounds)}/${state.rounds} · ${state.phase === "final" ? "Selesai" : inspectorOf(state) === me ? "Inspektur" : "Penyelundup"}` : "Menghubungkan";
-        statusEl.textContent = t;
+    /* ---------- status & timer (semua info tampil di HUD) ---------- */
+    function statusText() {
+        if (view === "solo" && solo) return `Hari ${solo.day} · ${solo.phase === "work" ? `Pelamar ${solo.idx + 1}/${solo.plan.apps.length}` : "Jeda"}`;
+        if (view === "match") return state ? `Ronde ${Math.min(state.round + 1, state.rounds)}/${state.rounds} · ${state.phase === "final" ? "Selesai" : inspectorOf(state) === me ? "Inspektur" : "Penyelundup"}` : "Menghubungkan";
+        return "Siap";
     }
+    function updateStatus() { if (hud.status) hud.status.textContent = statusText(); }
     function resetTimer(ms) { ui.total = ui.remaining = ms; ui.timeoutFired = false; }
     function timerActive() {
         return (view === "solo" && solo?.phase === "work") || (view === "match" && state?.phase === "inspect");
     }
     function paintTimer() {
-        const bar = board.querySelector("[data-timer-bar]");
-        const txt = board.querySelector("[data-timer-txt]");
         const f = ui.total ? clamp(ui.remaining / ui.total, 0, 1) : 0;
-        if (bar) { bar.style.width = f * 100 + "%"; bar.parentElement.classList.toggle("low", f < 0.25); }
-        if (txt) txt.textContent = Math.max(0, Math.ceil(ui.remaining / 1000)) + " dtk";
+        if (hud["timer-bar"]) { hud["timer-bar"].style.width = f * 100 + "%"; hud["timer-bar"].parentElement.classList.toggle("low", f < 0.25); }
+        if (hud.time) hud.time.textContent = Math.max(0, Math.ceil(ui.remaining / 1000)) + " dtk";
+        if (hud.timer) hud.timer.hidden = !timerActive();
     }
     function tick() {
         const now = Date.now();
         const dt = Math.min(250, now - ui.last);
         ui.last = now;
+        if (paused) return; // jeda: timer dan bot tidak berjalan
         if (!timerActive()) return;
         if (!ui.freeze) ui.remaining -= dt;
         paintTimer();
@@ -597,8 +775,11 @@ export function mount(root, context = {}) {
     /* ---------- render ---------- */
     function render() {
         if (view === "match") syncLocal();
-        board.innerHTML = view === "menu" ? menuView() : view === "solo" ? soloView() : matchView();
-        updateStatus();
+        surface.innerHTML = view === "menu" ? menuView() : view === "solo" ? soloView() : matchView();
+        const a = currentApp();
+        padHost.innerHTML = a ? padHTML(a) : "";
+        app.classList.toggle("show-rules", ui.rulesOpen);
+        syncHUD();
         paintTimer();
     }
     function publish() {
@@ -607,21 +788,53 @@ export function mount(root, context = {}) {
         botAct();
     }
 
-    const stat = (l, v) => `<span>${l} <b>${v}</b></span>`;
-    const timerStat = '<span>Waktu <b data-timer-txt>--</b></span>';
-    function shell(stats, body, withTimer) {
-        return `<div class="bd${ui.rulesOpen ? " show-rules" : ""}">
-      <div class="bd-top"><span class="bd-brand">Border Desk</span><div class="bd-stats">${stats}${ui.cheated ? '<span style="color:var(--warn)">cheat aktif</span>' : ""}</div>
-        <div class="bd-tools"><button class="bd-ghost" data-act="help" title="Cara bermain (H)">Bantuan</button><button class="bd-ghost${ui.cheat ? " on" : ""}" data-act="cheat" title="Cheat (C)">Cheat</button></div></div>
-      ${withTimer ? '<div class="bd-timer"><i data-timer-bar></i></div>' : ""}
-      ${body}${ui.help ? helpOverlay() : ""}${ui.cheat ? cheatOverlay() : ""}</div>`;
+    function syncHUD() {
+        updateStatus();
+        const soloMode = view === "solo" && !!solo;
+        const matchMode = view === "match" && !!state;
+        const chip = (key, on, html) => {
+            const el = hud[key];
+            if (!el) return;
+            el.hidden = !on;
+            if (html !== undefined) el.innerHTML = html;
+        };
+        chip("day", soloMode, soloMode ? `Hari <b>${solo.day}</b>` : "");
+        chip("money", soloMode, soloMode ? `Kredit <b>${solo.money}</b>` : "");
+        chip("score", soloMode, soloMode ? `Skor <b>${solo.score}</b>` : "");
+        chip("round", matchMode, matchMode ? `Ronde <b>${Math.min(state.round + 1, state.rounds)}/${state.rounds}</b>` : "");
+        chip("role", matchMode && state.phase !== "final", matchMode ? `Peran <b>${inspectorOf(state) === me ? "Inspektur" : "Penyelundup"}</b>` : "");
+        chip("me", matchMode, matchMode ? `Kamu <b>${state.scores[me]}</b>` : "");
+        chip("opp", matchMode, matchMode ? `${esc(opName())} <b>${state.scores[1 - me]}</b>` : "");
+        chip("cheatflag", ui.cheated, "cheat aktif");
+
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) {
+            cbtn.classList.toggle("on", cheatsOpen || ui.cheated);
+            const label = cbtn.querySelector(".bd-hlabel");
+            if (label) label.textContent = cheatsOpen ? "Tutup" : "Cheat";
+        }
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".bd-hlabel");
+            if (label) label.textContent = paused ? "Lanjut" : "Jeda";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        }
+        const rbtn = root.querySelector("[data-rules]");
+        if (rbtn) rbtn.classList.toggle("on", ui.rulesOpen);
+
+        ov.banner.hidden = !bannerOpen() || helpOpen || cheatsOpen || paused;
+        ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen || paused;
+        ov.help.hidden = !helpOpen;
+        if (!ov.banner.hidden) ov.banner.querySelector("[data-banner-body]").innerHTML = bannerHTML(state);
+        if (!ov.cheat.hidden) ov.cheat.querySelector("[data-cheat-body]").innerHTML = cheatBodyHTML();
     }
 
     /* ---------- menu ---------- */
     function menuView() {
         const best = lsGet(META.bestKey);
         const seg = (act, items, cur) => items.map(([v, l]) => `<button class="bd-ghost${String(cur) === String(v) ? " on" : ""}" data-act="${act}" data-v="${v}">${l}</button>`).join("");
-        return shell("", `<div class="bd-center"><div class="bd-sheet">
+        return `<div class="bd-center"><div class="bd-sheet">
       <h3>Pilih mode</h3>
       <div class="bd-cards">
         <button class="bd-mode" data-act="start-solo"><b>Shift harian</b><span>Periksa pelamar, bayar biaya hidup, bertahan hari demi hari.${best ? ` Skor terbaik: ${esc(best)}.` : ""}</span></button>
@@ -629,8 +842,8 @@ export function mount(root, context = {}) {
       </div>
       <div class="bd-seg"><span class="bd-muted">Ketelitian bot</span>${seg("set-diff", [["easy", "Rendah"], ["normal", "Sedang"], ["hard", "Tinggi"]], settings.diff)}</div>
       <div class="bd-seg"><span class="bd-muted">Jumlah ronde</span>${seg("set-rounds", [[2, "2"], [4, "4"], [6, "6"]], settings.rounds)}</div>
-      <button class="bd-link" data-act="help">Cara bermain</button>
-    </div></div>`);
+      <button class="bd-link" data-help>Cara bermain</button>
+    </div></div>`;
     }
 
     /* ---------- komponen bersama ---------- */
@@ -660,8 +873,8 @@ export function mount(root, context = {}) {
     }
     function padHTML(app) {
         const docs = Object.keys(app.docs).map((k, i) => `<button class="bd-ghost${ui.docs[k] ? " on" : ""}" data-act="toggle-doc" data-doc="${k}">${DOC_TYPES[k].title} <kbd>${i + 1}</kbd></button>`).join("");
-        return `<div class="bd-pad"><div class="bd-pad-docs">${docs}<button class="bd-ghost" data-act="rules">Aturan <kbd>R</kbd></button></div>
-      <div class="bd-pad-main"><button class="bd-btn deny" data-act="decide" data-d="deny">Tolak <kbd>D</kbd></button><button class="bd-btn approve" data-act="decide" data-d="approve">Setujui <kbd>A</kbd></button></div></div>`;
+        return `<div class="bd-pad-docs">${docs}<button class="bd-ghost" data-rules>Aturan <kbd>B</kbd></button></div>
+      <div class="bd-pad-main"><button class="bd-btn deny" data-act="decide" data-d="deny">Tolak <kbd>D</kbd></button><button class="bd-btn approve" data-act="decide" data-d="approve">Setujui <kbd>A</kbd></button></div>`;
     }
     const fbHTML = (fb) => `<div class="bd-fb${fb ? (fb.ok ? " ok" : " bad") : ""}" role="status" aria-live="polite">${fb ? esc(fb.text) : "Periksa dokumen, cocokkan dengan aturan, lalu putuskan."}</div>`;
     function adviceHTML(app) {
@@ -723,12 +936,10 @@ export function mount(root, context = {}) {
     }
     function soloView() {
         const s = solo, p = s.plan;
-        let stats = stat("Hari", s.day) + stat("Kredit", s.money) + stat("Skor", s.score);
         let body = "";
         if (s.phase === "work") {
-            stats += stat("Salah", s.mistakes) + timerStat;
             const app = p.apps[s.idx];
-            body = `<div class="bd-main">${rulesAside(p.rules, p.today, s.day)}${deskHTML(app, `Pelamar ${s.idx + 1}/${p.apps.length}`)}</div>${padHTML(app)}${fbHTML(s.fb)}${adviceHTML(app)}`;
+            body = `<div class="bd-main">${rulesAside(p.rules, p.today, s.day)}${deskHTML(app, `Pelamar ${s.idx + 1}/${p.apps.length}`)}</div>${fbHTML(s.fb)}${adviceHTML(app)}`;
         } else if (s.phase === "brief") {
             body = `<div class="bd-center"><div class="bd-sheet"><h3>Hari ${s.day}</h3><p class="bd-muted">${p.today}</p>
         <h4>Aturan hari ini</h4><ul style="margin:0;padding-left:18px">${p.rules.map((r) => `<li>${esc(r.textResolved)}${r.minDay === s.day && s.day > 1 ? ' <em class="bd-new">baru</em>' : ""}</li>`).join("")}</ul>
@@ -742,7 +953,7 @@ export function mount(root, context = {}) {
         ${over ? '<div class="bd-seg"><button class="bd-primary" data-act="start-solo">Main lagi</button><button class="bd-ghost" data-act="to-menu">Menu</button></div>'
                     : '<button class="bd-primary" data-act="next-day">Hari berikutnya <kbd>Spasi</kbd></button>'}</div></div>`;
         }
-        return shell(stats, body, s.phase === "work");
+        return body;
     }
 
     /* ---------- MATCH (VS Bot & Online) ---------- */
@@ -903,56 +1114,31 @@ export function mount(root, context = {}) {
     const bannerOpen = () => view === "match" && state && state.round === 0 && state.phase === "plan" && !ui.bannerSeen;
     function bannerHTML(s) {
         const mineIns = inspectorOf(s) === me;
-        return `<div class="bd-ov"><div class="bd-panel"><h3>Undian peran</h3>
-      <p>Ronde 1: kamu menjadi <b>${mineIns ? "Inspektur" : "Penyelundup"}</b>. ${mineIns ? `${esc(opName())} jalan duluan menyiapkan pelamar, lalu kamu memeriksanya.` : "Kamu jalan duluan: siapkan pelamar, lalu Inspektur memeriksanya."}</p>
-      <p class="bd-muted">Peran bertukar setiap ronde. Skor tertinggi setelah ${s.rounds} ronde menang.</p>
-      <button class="bd-primary" data-act="banner-ok">Mulai <kbd>Spasi</kbd></button></div></div>`;
+        return `<div class="bd-head"><h3>Undian peran</h3></div>
+      <div class="bd-banner"><p>Ronde 1: kamu menjadi <b>${mineIns ? "Inspektur" : "Penyelundup"}</b>. ${mineIns ? `${esc(opName())} jalan duluan menyiapkan pelamar, lalu kamu memeriksanya.` : "Kamu jalan duluan: siapkan pelamar, lalu Inspektur memeriksanya."}</p>
+      <p class="bd-muted">Peran bertukar setiap ronde. Skor tertinggi setelah ${s.rounds} ronde menang.</p></div>
+      <div class="bd-foot"><button class="bd-primary" data-act="banner-ok">Mulai <kbd>Spasi</kbd></button></div>`;
     }
     function matchView() {
         const s = state;
-        if (!s) return shell("", '<div class="bd-center"><div class="bd-sheet"><p>Menunggu host menyiapkan pertandingan…</p></div></div>');
+        if (!s) return '<div class="bd-center"><div class="bd-sheet"><p>Menunggu host menyiapkan pertandingan…</p></div></div>';
         const meIns = inspectorOf(s) === me;
-        let stats = stat("Ronde", `${Math.min(s.round + 1, s.rounds)}/${s.rounds}`) + stat("Peran", s.phase === "final" ? "-" : meIns ? "Inspektur" : "Penyelundup") + stat("Kamu", s.scores[me]) + stat(esc(opName()), s.scores[1 - me]);
         const aside = rulesAside(s.rules, s.today, null);
         let body = "";
-        const withTimer = s.phase === "inspect" && meIns;
         if (s.phase === "plan") body = !meIns ? planHTML(s, aside) : waitHTML("Penyelundup sedang menyiapkan pelamar…", aside);
         else if (s.phase === "inspect") {
             if (meIns) {
-                stats += timerStat;
                 const app = s.apps[s.idx];
-                body = `<div class="bd-main">${aside}${deskHTML(app, `Pelamar ${s.idx + 1}/${s.apps.length}`)}</div>${padHTML(app)}${fbHTML(lastFb(s.last))}${adviceHTML(app)}`;
+                body = `<div class="bd-main">${aside}${deskHTML(app, `Pelamar ${s.idx + 1}/${s.apps.length}`)}</div>${fbHTML(lastFb(s.last))}${adviceHTML(app)}`;
             } else body = feedHTML(s, aside);
         } else if (s.phase === "roundEnd") body = roundEndHTML(s);
         else body = finalHTML(s);
-        if (bannerOpen()) body += bannerHTML(s);
-        return shell(stats, body, withTimer);
+        return body;
     }
 
-    /* ---------- overlay bantuan & cheat ---------- */
-    function helpOverlay() {
-        return `<div class="bd-ov"><div class="bd-panel" role="dialog" aria-label="Cara bermain"><h3>Cara bermain</h3>
-      <h4>Tujuan</h4><p>Kamu penjaga gerbang negara Brevia. Putuskan siapa boleh masuk berdasarkan buku aturan hari ini.</p>
-      <h4>Sebagai Inspektur</h4>
-      <ul><li>Seret dokumen dari rak kiri ke meja agar terbuka. Seret keluar meja untuk menutupnya.</li>
-        <li>Klik kolom dokumen atau foto untuk menandainya saat membandingkan.</li>
-        <li><b>Setujui</b> hanya bila semua aturan terpenuhi. Jika ada satu saja pelanggaran, <b>Tolak</b>.</li>
-        <li>Perhatikan tanggal hari ini, wajah pemohon, dan dokumen yang tidak ada.</li></ul>
-      <h4>Mode Shift harian</h4>
-      <p>Tiap keputusan benar menambah upah, tiap kesalahan didenda, dan biaya hidup dipotong di akhir hari. Kredit di bawah 0 berarti permainan berakhir. Aturan bertambah dan waktu makin ketat setiap hari. Level dibuat acak tetapi selalu bisa diselesaikan.</p>
-      <h4>Mode VS (Bot atau Online)</h4>
-      <ul><li>Peran bertukar tiap ronde; siapa yang mulai lebih dulu diundi.</li>
-        <li><b>Penyelundup</b> memilih 1–3 dari 5 pelamar untuk dipalsukan. Lolos +20, tertangkap −5.</li>
-        <li><b>Inspektur</b>: benar menolak +10, benar menyetujui +5, meloloskan pemalsu −20, salah menolak −10.</li></ul>
-      <h4>Kontrol</h4>
-      <ul><li>Mouse: seret dokumen, klik tombol dan kolom.</li>
-        <li>Keyboard: <kbd>A</kbd> setujui · <kbd>D</kbd> tolak · <kbd>1</kbd>–<kbd>4</kbd> buka/tutup dokumen · <kbd>R</kbd> aturan · <kbd>S</kbd> kirim rencana · <kbd>G</kbd> acak · <kbd>Spasi</kbd> lanjut · <kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>Esc</kbd> tutup.</li>
-        <li>Layar sentuh: seret dokumen atau pakai tombol besar di bagian bawah.</li></ul>
-      <button class="bd-primary" data-act="help-close">Mengerti</button></div></div>`;
-    }
-    function cheatOverlay() {
-        const close = '<button class="bd-primary" data-act="cheat">Tutup</button>';
-        if (online) return `<div class="bd-ov"><div class="bd-panel"><h3>Cheat</h3><p class="bd-muted">Cheat dinonaktifkan di multiplayer agar adil.</p>${close}</div></div>`;
+    /* ---------- isi overlay cheat (panel overlay statis di shell) ---------- */
+    function cheatBodyHTML() {
+        if (online) return '<p class="bd-muted">Cheat dinonaktifkan di multiplayer agar adil.</p>';
         const t = (act, label, on) => `<button class="bd-ghost${on ? " on" : ""}" data-act="${act}">${label}</button>`;
         const inSolo = view === "solo" && solo?.phase === "work";
         const inInspect = view === "match" && state?.phase === "inspect" && inspectorOf(state) === me;
@@ -968,7 +1154,7 @@ export function mount(root, context = {}) {
         }
         if (!list) list = '<p class="bd-muted">Tidak ada cheat untuk layar ini.</p>';
         const info = ui.botInfo && view === "match" ? `<p class="bd-muted">Ketelitian bot ${Math.round(bot.thorough * 100)}% · tertangkap ${bot.caught}, lolos ${bot.missed}.</p>` : "";
-        return `<div class="bd-ov"><div class="bd-panel" role="dialog" aria-label="Cheat"><h3>Cheat</h3><p class="bd-muted">Dipakai untuk mencoba permainan. Skor terbaik tidak disimpan saat cheat aktif.</p><div class="bd-cheats">${list}</div>${info}${close}</div></div>`;
+        return `<div class="bd-cheats">${list}</div>${info}`;
     }
 
     /* ---------- aksi ---------- */
@@ -1019,7 +1205,9 @@ export function mount(root, context = {}) {
     }
 
     function primaryAction() {
-        if (ui.help) return () => doAct("help-close", {});
+        if (helpOpen) return () => toggleHelp(false);
+        if (cheatsOpen) return () => toggleCheats(false);
+        if (paused) return () => togglePause(false);
         if (bannerOpen()) return () => doAct("banner-ok", {});
         if (view === "solo") {
             if (solo.phase === "brief") return beginDay;
@@ -1033,9 +1221,6 @@ export function mount(root, context = {}) {
 
     function doAct(act, d) {
         switch (act) {
-            case "help": ui.help = !ui.help; ui.cheat = false; if (!ui.help) lsSet(SEEN_KEY, "1"); return render();
-            case "help-close": ui.help = false; lsSet(SEEN_KEY, "1"); return render();
-            case "cheat": ui.cheat = !ui.cheat; ui.help = false; return render();
             case "banner-ok": ui.bannerSeen = true; return render();
             case "start-solo": ui.cheated = false; ui.hint = ui.advice = ui.freeze = ui.noPenalty = false; return startSolo();
             case "start-bot": ui.cheated = false; ui.hint = ui.advice = ui.freeze = false; return startBot();
@@ -1046,7 +1231,6 @@ export function mount(root, context = {}) {
             case "next-day": solo.day++; prepDay(); solo.phase = "brief"; return render();
             case "decide": return decide(d.d);
             case "toggle-doc": return toggleDoc(d.doc);
-            case "rules": ui.rulesOpen = !ui.rulesOpen; return render();
             case "plan-send": return sendPlan();
             case "plan-random": return randomPlan();
             case "ack": return submitAction({ t: "ack" });
@@ -1064,11 +1248,11 @@ export function mount(root, context = {}) {
             case "c-freeze": ui.freeze = !ui.freeze; break;
             case "c-hint": ui.hint = !ui.hint; break;
             case "c-advice": ui.advice = !ui.advice; break;
-            case "c-auto": { const a = currentApp(); if (a?.truth) { ui.cheat = false; return decideNow(a.truth.bad ? "deny" : "approve"); } break; }
+            case "c-auto": { const a = currentApp(); if (a?.truth) { cheatsOpen = false; return decideNow(a.truth.bad ? "deny" : "approve"); } break; }
             case "c-money": if (solo) solo.money += 100; break;
             case "c-nopen": ui.noPenalty = !ui.noPenalty; break;
             case "c-skip":
-                if (solo?.phase === "work") { const rem = solo.plan.apps.length - solo.idx; solo.correct += rem; solo.score += rem * 10; solo.idx = solo.plan.apps.length; ui.cheat = false; return endDay(); }
+                if (solo?.phase === "work") { const rem = solo.plan.apps.length - solo.idx; solo.correct += rem; solo.score += rem * 10; solo.idx = solo.plan.apps.length; cheatsOpen = false; return endDay(); }
                 break;
             case "c-points": if (state) { state.scores[me] += 50; return publish(); } break;
             case "c-weakbot": bot.thorough = 0.25; break;
@@ -1087,11 +1271,19 @@ export function mount(root, context = {}) {
 
     /* ---------- event: klik, ganti pilihan, keyboard, drag ---------- */
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        if (t.closest("[data-rules]")) { ui.rulesOpen = !ui.rulesOpen; render(); return; }
         if (Date.now() < ui.justDragged) return;
-        const actEl = event.target.closest("[data-act]");
+        const actEl = t.closest("[data-act]");
         if (actEl) { doAct(actEl.dataset.act, actEl.dataset); return; }
-        const f = event.target.closest("[data-field]");
+        const f = t.closest("[data-field]");
         if (f) {
             const k = f.dataset.field;
             ui.marks[k] = !ui.marks[k];
@@ -1114,17 +1306,27 @@ export function mount(root, context = {}) {
         const t = e.target;
         const tag = t?.tagName || "";
         const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-        if (k === "Escape") { if (ui.help || ui.cheat || ui.rulesOpen) { ui.help = ui.cheat = ui.rulesOpen = false; render(); } return; }
+        /* prioritas: help → cheats → pause → Escape → aksi game (H/C/P/R) */
+        if (k === "h" || k === "?") { e.preventDefault(); toggleHelp(); return; }
+        if (k === "c") { e.preventDefault(); if (!helpOpen && !paused) toggleCheats(); return; }
+        if (k === "p") { e.preventDefault(); if (!helpOpen && !cheatsOpen) togglePause(); return; }
+        if (k === "Escape") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            else if (ui.rulesOpen) { ui.rulesOpen = false; render(); }
+            return;
+        }
         if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+        if (k === "r") { e.preventDefault(); if (!helpOpen && !cheatsOpen && !paused) restartGame(); return; }
+        if (helpOpen || cheatsOpen || paused || bannerOpen()) return;
         if (t?.dataset?.card !== undefined && (k === "Enter" || k === " ")) { e.preventDefault(); toggleDoc(t.dataset.card); return; }
-        if (k === "h" || k === "?") { doAct("help", {}); return; }
-        if (k === "c") { doAct("cheat", {}); return; }
         if ((k === " " || k === "Enter") && tag !== "BUTTON") {
             const p = primaryAction();
             if (p) { e.preventDefault(); p(); return; }
         }
-        if (ui.help || ui.cheat || bannerOpen()) return;
-        if (k === "r") { ui.rulesOpen = !ui.rulesOpen; render(); return; }
+        if (k === "b") { ui.rulesOpen = !ui.rulesOpen; render(); return; }
         if (canInspect()) {
             if (k === "a") decide("approve");
             else if (k === "d") decide("deny");
@@ -1137,7 +1339,7 @@ export function mount(root, context = {}) {
 
     const inside = (x, y, r) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
     function onPointerDown(e) {
-        if ((e.button !== undefined && e.button > 0) || ui.help || ui.cheat) return;
+        if ((e.button !== undefined && e.button > 0) || helpOpen || cheatsOpen || paused) return;
         const table = board.querySelector("[data-table]");
         if (!table) return;
         const open = e.target.closest("[data-doc]");
@@ -1163,7 +1365,7 @@ export function mount(root, context = {}) {
                 tmp.innerHTML = docHTML(app, drag.key, null, true);
                 drag.el = tmp.firstElementChild;
                 drag.el.classList.add("bd-ghostdoc");
-                board.querySelector(".bd").appendChild(drag.el);
+                board.appendChild(drag.el);
             }
         }
         if (drag.fromCard) {

@@ -26,8 +26,6 @@ JS/
 tools/
   build-games-manifest.mjs    # Regenerates JS/games-manifest.js from Gaming/
   capture-pages.mjs           # Screenshots every page at 390/768/1440px for visual QA
-  check-bot-play.mjs          # Interactive vs-AI smoke test on representative games
-  seed-community.mjs          # One-time seed for initial communities/events
 ```
 
 ## How the game list works
@@ -39,7 +37,6 @@ All SVG icons come from `JS/icons.js` (`paths`, 290 icons, `viewBox 0 0 24 24`, 
 - UI icons in HTML use `<span class="icon" data-icon="nama"></span>`; `hydrateIcons()` fills them at boot (including `<template>` content). Dynamic icons use `iconSVG(name)` / `setIcon(el, name)` directly.
 - Every game cover art is generated from `JS/game-icons.js` (`GAME_ICON` maps each game id to an icon name, with a category fallback). The old `META.art` / `art` field is ignored by the manifest generator.
 - Never inline a new SVG or use Unicode glyphs for UI icons. Add a path to `JS/icons.js` and a mapping to `JS/game-icons.js` instead.
-- Run `npm run check:icons` to validate names, cover-art generation, placeholders, and absence of legacy glyphs.
 
 The browser cannot list files in a folder on static hosting, so the library is generated ahead of time:
 
@@ -63,7 +60,7 @@ The legacy `art` metadata field is still accepted but ignored: cover art always 
 - **Identity is shared.** Both pages read `localStorage.gamespace_player_name` through `JS/identity.js`. If you open Community before setting a name, you are sent to `index.html?next=community.html` for the existing onboarding, then returned automatically.
 - **Data lives in Firebase Realtime Database** under `community/` (see `JS/community-client.js`): `users` (presence), `communities` + `members`, `posts` + `likes` + `comments`, `events` + `rsvps`. All lists are live subscriptions, so another browser sees changes without a reload.
 - **User ID** is the Firebase Anonymous Auth `uid`, the same sign-in used by private rooms. No new login flow was added.
-- Run `npm run seed:community` once to create the first communities/events. It signs in anonymously over REST and writes records owned by that account, then the data is shared by everyone.
+- Initial communities/events must be created directly in the Firebase Realtime Database console; once written, the data is shared by everyone.
 
 The sample `community` rules allow each signed-in user to manage only their own name/membership/likes/RSVPs and only their own posts/comments/events. They are prototype-grade (the same caveat as `rooms` below), not production authorization.
 
@@ -106,7 +103,7 @@ Solo vs AI works without Firebase. Room multiplayer needs a small Firebase proje
 3. Create a **Realtime Database** and copy its database URL.
 4. Copy the Web app config into `JS/firebase-config.js`.
 5. In Realtime Database → Rules, start with the rules in `firebase.database.rules.json` for a private, small-group prototype using anonymous sign-in. `firebase.json` points the Firebase CLI at that file, so `firebase deploy --only database` publishes both the `rooms` and `community` rules.
-6. Deploy the rules and test with two different browsers/devices. One browser creates a room from **Create Room**; the other opens **Rooms** (`#rooms`) and joins with the six-character code. Then run `npm run seed:community` once and open Community from the dashboard.
+6. Deploy the rules and test with two different browsers/devices. One browser creates a room from **Create Room**; the other opens **Rooms** (`#rooms`) and joins with the six-character code. Then open Community from the dashboard.
 
 > The dashboard has a single **Rooms** page (`#rooms`) that combines invite-code joining and the private-room information panel. The old `#join-room` and `#browse-rooms` pages were removed; there is no public room list.
 
@@ -136,11 +133,8 @@ Fase yang dijalankan berurutan:
 
 | Fase | Script | Yang dicek |
 | --- | --- | --- |
-| Static | `npm run check:static` | Syntax semua `.js`, integritas + freshness `JS/games-manifest.js`, kontrak modul tiap game |
-| Icons | `npm run check:icons` | NAMA ikon valid, 155 cover art persis dari `iconSVG()`, placeholder HTML valid, tidak ada glyph lama atau workaround CSS |
 | Mount | `npm run check:mount` | `mount()`/`build()` + `destroy()`/`close()` untuk semua game dalam mode `ai`, `room-host`, `room-guest` (tiap skenario di proses terisolasi) |
 | Browser | `npm run check:browser` | Fungsi dashboard (search, filter, favorit, navigasi, pengaturan, reset data) + buka/tutup 154 game di Chromium dengan penangkapan `pageerror`/`console.error` |
-| Community | `npm run check:community` | Dua browser: nama terbawa dari dashboard, presence, join, post, like, komentar, RSVP tersinkron; data uji dibersihkan |
 | Room | `npm run check:rooms` | Room Firebase live dengan dua browser: host membuat room, guest join, tukar action, lalu room uji dihapus |
 
 Hasil ditulis ke `reports/check-report.json` dan `reports/check-report.md`. Screenshot kegagalan ada di `reports/screenshots/`. Exit code `1` jika ada kegagalan, sehingga bisa dipakai sebagai gate sebelum publish/CI.
@@ -150,18 +144,16 @@ Opsi:
 ```bash
 npm run check -- --filter snake            # hanya game tertentu
 npm run check -- --skip-rooms              # lewati tes Firebase (offline)
-npm run check -- --skip-community          # lewati tes komunitas
 npm run check:browser -- --skip-dashboard  # hanya cek game
 npm run check -- --jobs 4                  # atur paralelisme mount test
 ```
 
 > Catatan: `npm run check:rooms` memakai proyek Firebase yang terkonfigurasi di `JS/firebase-config.js`, memerlukan internet, Anonymous sign-in aktif, dan rules terdeploy. Room uji dibuat dengan kode acak lalu dihapus otomatis di akhir tes. Untuk menjalankan seluruh pengecekan tanpa tes online: `SKIP_ROOM_TEST=1 npm run check`.
 
-### Visual QA dan bot interaktif
+### Visual QA
 
 ```bash
 npm run capture:pages -- --label=final     # screenshot semua halaman ke reports/screenshots/final/
-npm run check:bot                          # main vs AI pada 6 game representatif
 ```
 
-`capture-pages` menghasilkan screenshot desktop/tablet/mobile sekaligus ringkasan error console. `check:bot` memakai hook `__MGP_TEST__` yang sama dengan `check:browser`, melakukan klik/langkah nyata pada game representatif, lalu menulis `reports/bot-play-report.md`. Keduanya hanya alat verifikasi dan tidak mengubah logika game atau kode backend.
+`capture-pages` menghasilkan screenshot desktop/tablet/mobile sekaligus ringkasan error console. Alat ini hanya verifikasi dan tidak mengubah logika game atau kode backend.

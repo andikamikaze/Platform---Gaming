@@ -1,3 +1,5 @@
+import { iconSVG } from "../JS/icons.js";
+
 /* ==== GAME: tetris.js ==== */
 /* ============================================================= */
 /* TETRIS — template mount()/META (host-authoritative online).    */
@@ -154,15 +156,57 @@ export function mount(root, context = {}) {
     let state = null;
 
     /* ---------- UI state (lokal, tidak diserialisasi) ---------- */
-    const ui = { howto: false, cheatsOpen: false, cheat: { slow: false, freeze: false, easy: false, guard: false } };
+    const ui = { cheatsOpen: false, cheat: { slow: false, freeze: false, easy: false, guard: false } };
+    let helpOpen = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("tetrisHelpSeen") === "1"; } catch (_) { }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("tetrisHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
     const anyCheatOn = () => Object.values(ui.cheat).some(Boolean);
     let best = 0;
     try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch (_) { }
 
-    /* ---------- timers terlacak (dibersihkan saat destroy) ---------- */
+    /* ---------- timers terlacak (dibekukan saat pause, dibersihkan saat destroy) ---------- */
     const T = { grav: [null, null], bot: null, misc: new Set(), hello: null, pub: null, toast: null, repeats: new Map() };
     const offs = [];
-    function after(ms, fn) { const id = setTimeout(() => { T.misc.delete(id); fn(); }, ms); T.misc.add(id); return id; }
+    const nowMs = () => Date.now();
+    let pausedAt = 0, toastLeft = 0, toastAt = 0;
+    function after(ms, fn) {
+        const rec = { fn, left: ms, at: 0, id: null };
+        rec.arm = () => {
+            rec.at = nowMs();
+            rec.id = setTimeout(() => { T.misc.delete(rec); rec.id = null; fn(); }, Math.max(0, rec.left));
+        };
+        rec.arm();
+        T.misc.add(rec);
+        return rec;
+    }
+    function freezeTimers() {
+        const t = nowMs();
+        for (const rec of T.misc) {
+            if (rec.id == null) continue;
+            rec.left = Math.max(0, rec.left - (t - rec.at));
+            clearTimeout(rec.id); rec.id = null;
+        }
+        if (T.pub) { clearTimeout(T.pub); T.pub = null; }
+        if (T.toast) { toastLeft = Math.max(0, toastLeft - (t - toastAt)); clearTimeout(T.toast); T.toast = null; }
+    }
+    function thawTimers() {
+        for (const rec of T.misc) if (rec.id == null) rec.arm();
+        if (!T.toast && toastLeft > 0) armToast();
+    }
+    function shiftAnchors(delta) {
+        if (typeof publish._last === "number") publish._last += delta;
+        views.forEach((v) => { if (v.lastWheel) v.lastWheel += delta; });
+    }
+    function resetPauseState() {
+        if (!pausedAt) return;
+        pausedAt = 0;
+        for (const rec of [...T.misc]) if (rec.id == null) T.misc.delete(rec);
+        if (!T.toast && toastLeft > 0) { toastLeft = 0; toastEl.classList.remove("show"); }
+    }
     function stopGrav(i) { clearTimeout(T.grav[i]); T.grav[i] = null; }
     function stopBot() { clearInterval(T.bot); T.bot = null; }
     function stopAll() { stopGrav(0); stopGrav(1); stopBot(); }
@@ -172,27 +216,35 @@ export function mount(root, context = {}) {
     /* ============================================================= */
     root.innerHTML = `
 <style>
-.tx-app{color:#e8ebf1;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;user-select:none;-webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;gap:10px}
+.tx-app{color:#e8ebf1;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;user-select:none;-webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;gap:10px;min-height:100%}
 .tx-app *{box-sizing:border-box}
 .tx-app [hidden]{display:none!important}
 .tx-app button{font:inherit;color:inherit}
 .tx-panel{position:relative;background:#10131a;border:1px solid #ffffff12;border-radius:16px;padding:14px;max-width:960px;margin:0 auto;width:100%}
-.tx-toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.tx-chips{display:flex;gap:6px;flex-wrap:wrap}
-.tx-chip{font-size:11px;font-weight:600;letter-spacing:.05em;color:#9aa3b5;border:1px solid #ffffff14;border-radius:999px;padding:4px 10px}
+.tx-app.game-fill>.tx-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;display:flex;flex-direction:column}
+
+/* HUD bar — semua info + kontrol di satu baris di atas papan */
+.tx-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-height:38px}
+.tx-chip{font-size:11px;font-weight:600;letter-spacing:.05em;color:#9aa3b5;border:1px solid #ffffff14;border-radius:999px;padding:5px 10px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
 .tx-chip b{color:#e8ebf1;font-variant-numeric:tabular-nums}
 .tx-chip.warn{color:#fca5a5;border-color:#fca5a544}
-.tx-tools{display:flex;gap:6px;flex-wrap:wrap}
+.tx-dot{width:6px;height:6px;border-radius:50%;background:#86efac;display:inline-block;flex:none}
+.tx-spacer{flex:1 1 auto}
 .tx-btn{background:transparent;border:1px solid #ffffff1c;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
 .tx-btn:hover{background:#ffffff0d;border-color:#ffffff30}
+.tx-btn:disabled{opacity:.4;cursor:not-allowed}
 .tx-btn.pri{background:#8ab4ff;border-color:#8ab4ff;color:#0b1220}
 .tx-btn.pri:hover{background:#a5c6ff}
 .tx-btn.sm{padding:5px 10px;font-size:11.5px}
-.tx-main{position:relative}
-.tx-stage{display:flex;gap:14px;justify-content:center;align-items:flex-start}
-.tx-col{display:flex;flex-direction:column;gap:6px;min-width:0}
-.tx-stage.solo .tx-col{width:min(30vh,310px,calc(94vw - 160px))}
-.tx-stage.battle .tx-col{width:min(26vh,250px,calc(47vw - 14px))}
+.tx-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.tx-icon-btn svg{flex:none;display:block}
+.tx-btn.on{border-color:#8ab4ff;color:#8ab4ff;background:#8ab4ff14}
+
+/* Arena — board SVG langsung di dalam panel, rasio 1:2 dipertahankan */
+.tx-arena{display:flex;gap:14px;align-items:center;justify-content:center;width:100%;height:100%;min-height:0}
+.tx-col{display:flex;flex-direction:column;gap:6px;min-width:0;justify-content:center;max-height:100%}
+.tx-arena.solo .tx-col{width:var(--tx-colw,min(30vh,310px,calc(94vw - 160px)))}
+.tx-arena.battle .tx-col{width:var(--tx-colw,min(26vh,250px,calc(47vw - 14px)))}
 .tx-colhead{display:flex;justify-content:space-between;align-items:center;min-height:20px}
 .tx-pname{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#9aa3b5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tx-pname.me{color:#8ab4ff}
@@ -200,8 +252,8 @@ export function mount(root, context = {}) {
 .tx-nextrow{display:flex;gap:5px;align-items:center;min-height:30px}
 .tx-nextlabel{font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#6b7385;text-transform:uppercase;margin-right:2px}
 .tx-mini{width:44px;height:28px;background:#0c0f16;border:1px solid #ffffff10;border-radius:7px;display:block}
-.tx-bwrap{position:relative;background:#0b0e15;border:1px solid #ffffff14;border-radius:12px;padding:4px}
-.tx-board{width:100%;height:auto;display:block;border-radius:8px}
+.tx-bwrap{position:relative;background:#0b0e15;border:1px solid #ffffff14;border-radius:12px;padding:4px;width:100%;aspect-ratio:1/2;max-height:100%;margin:0 auto}
+.tx-board{width:100%;height:100%;display:block;border-radius:8px}
 .tx-aim{fill:#ffffff;opacity:.045;pointer-events:none}
 .tx-cell{transition:transform .2s cubic-bezier(.3,.7,.3,1)}
 .tx-cell rect,.tx-pieceg rect{transform-box:fill-box;transform-origin:center}
@@ -211,39 +263,32 @@ export function mount(root, context = {}) {
 .tx-dead{position:absolute;inset:0;display:grid;place-items:center;background:#0b0e15cc;border-radius:12px;font-size:12px;font-weight:800;letter-spacing:.15em;color:#fca5a5}
 .tx-colstats{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:#9aa3b5;font-weight:600}
 .tx-colstats b{color:#e8ebf1;font-variant-numeric:tabular-nums}
-.tx-info{width:140px;display:flex;flex-direction:column;gap:10px;padding-top:26px}
-.tx-infolevel{font-size:12px;color:#9aa3b5;font-weight:600}
-.tx-infolevel b{display:block;font-size:30px;color:#e8ebf1;font-weight:800;line-height:1.1}
-.tx-progress{height:5px;background:#ffffff10;border-radius:99px;overflow:hidden}
-.tx-progress i{display:block;height:100%;width:0%;background:#8ab4ff;border-radius:99px;transition:width .3s}
-.tx-infogoal{font-size:11.5px;color:#9aa3b5}
-.tx-infogoal b{color:#e8ebf1}
-.tx-best{font-size:11.5px;color:#9aa3b5;border-top:1px solid #ffffff10;padding-top:10px}
-.tx-best b{color:#fde68a}
-.tx-infotip{font-size:10.5px;color:#6b7385;line-height:1.5;margin:0}
-.tx-pad{display:flex;gap:8px;justify-content:center;margin-top:12px;touch-action:none}
+.tx-pad{display:flex;gap:8px;justify-content:center;margin-top:2px;touch-action:none;flex:none}
 .tx-padbtn{width:52px;height:44px;display:grid;place-items:center;background:#ffffff08;border:1px solid #ffffff16;border-radius:11px;cursor:pointer;touch-action:none}
 .tx-padbtn:active{background:#8ab4ff2b;border-color:#8ab4ff66}
 .tx-padbtn svg{width:20px;height:20px}
-.tx-hint{text-align:center;font-size:10.5px;color:#6b7385;margin-top:8px}
+.tx-hint{text-align:center;font-size:10.5px;color:#6b7385;margin-top:4px;flex:none}
+
+/* Overlays — card flex column: head/foot fix, isi bisa scroll */
 .tx-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:#0a0d13c9;backdrop-filter:blur(5px);border-radius:12px;padding:14px}
 .tx-ov.top{z-index:7}
-.tx-card{background:#141824;border:1px solid #ffffff16;border-radius:14px;padding:22px;max-width:440px;width:100%;text-align:center;max-height:100%;overflow:auto}
+.tx-card{background:#141824;border:1px solid #ffffff16;border-radius:14px;padding:22px;max-width:440px;width:100%;text-align:center;max-height:100%;overflow:hidden;display:flex;flex-direction:column}
 .tx-card.wide{max-width:560px;text-align:left}
-.tx-ovtitle{margin:0 0 6px;font-size:20px;font-weight:800;letter-spacing:-.01em}
+.tx-ovtitle{margin:0 0 6px;font-size:20px;font-weight:800;letter-spacing:-.01em;flex:none}
 .tx-ovtitle.win{color:#86efac}.tx-ovtitle.lose{color:#fca5a5}
-.tx-ovsub{margin:0 0 14px;font-size:12.5px;color:#9aa3b5;line-height:1.55}
-.tx-stats{font-size:13px;font-weight:700;color:#e8ebf1;margin:0 0 14px;font-variant-numeric:tabular-nums}
-.tx-cardbtns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.tx-modecards{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:14px 0}
+.tx-ovsub{margin:0 0 14px;font-size:12.5px;color:#9aa3b5;line-height:1.55;flex:none}
+.tx-stats{font-size:13px;font-weight:700;color:#e8ebf1;margin:0 0 14px;font-variant-numeric:tabular-nums;flex:none}
+.tx-cardbtns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;flex:none}
+.tx-help,.tx-cheatbody{flex:1 1 auto;min-height:0;overflow:auto}
+.tx-modecards{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:14px 0;min-height:0;overflow:auto}
 .tx-modecard{flex:1;min-width:150px;max-width:200px;background:#ffffff06;border:1px solid #ffffff16;border-radius:12px;padding:14px;cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
 .tx-modecard:hover{border-color:#8ab4ff88;background:#8ab4ff12}
 .tx-modecard b{display:block;font-size:14px;margin-bottom:4px}
 .tx-modecard span{font-size:11px;color:#9aa3b5;line-height:1.4;display:block}
 .tx-count{font-size:64px;font-weight:800;line-height:1;color:#8ab4ff;font-variant-numeric:tabular-nums}
 .tx-countsub{font-size:12.5px;color:#9aa3b5;margin-top:10px;line-height:1.6}
-.tx-howto h4{margin:14px 0 5px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8ab4ff}
-.tx-howto ul{margin:0;padding-left:18px;font-size:12.5px;color:#c3cad6;line-height:1.7}
+.tx-help h4{margin:14px 0 5px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8ab4ff}
+.tx-help ul{margin:0;padding-left:18px;font-size:12.5px;color:#c3cad6;line-height:1.7}
 .tx-kbd{display:inline-block;border:1px solid #ffffff2a;border-bottom-width:2px;border-radius:5px;padding:0 6px;font-size:11px;font-weight:700;background:#ffffff0a;color:#e8ebf1}
 .tx-cheatrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #ffffff0d;font-size:12.5px}
 .tx-cheatrow small{display:block;color:#6b7385;font-size:10.5px}
@@ -259,86 +304,116 @@ export function mount(root, context = {}) {
 @keyframes txPop{0%{transform:scale(1.22);filter:brightness(1.6)}100%{transform:scale(1);filter:brightness(1)}}
 @keyframes txClear{0%{filter:brightness(2.4);opacity:1}55%{filter:brightness(2.4);opacity:1}100%{transform:scale(.15);opacity:0}}
 @keyframes txSpin{to{transform:rotate(360deg)}}
-@media (pointer:coarse){.tx-padbtn{width:58px;height:54px}.tx-hint{display:none}}
-@media (max-width:620px){
-  .tx-info{display:none}
-  .tx-stage.solo .tx-col{width:min(32vh,330px,88vw)}
-  .tx-panel{padding:10px}
+
+/* --- Batch 02 design polish --- */
+.tx-app :focus-visible,.tx-app button:focus-visible{outline:2px solid #8ab4ff;outline-offset:2px}
+.tx-chip{padding:6px 12px}
+.tx-btn{min-height:44px;padding:10px 16px}
+.tx-padbtn{min-height:44px;min-width:44px}
+.tx-modecard{min-height:44px}
+@media (pointer:coarse){.tx-app button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.tx-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- Layout overrides (paling akhir, spesifisitas lebih tinggi dari pointer:coarse) --- */
+.tx-app .tx-hud .tx-btn{min-height:34px;padding:6px 10px;font-size:10.5px}
+.tx-app .tx-hud .tx-chip{padding:5px 9px}
+@media (max-width:640px){
+  .tx-app.game-fill>.tx-board:has(.tx-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .tx-app .tx-hud{gap:5px;margin-bottom:6px}
+  .tx-app .tx-hud .tx-chip{padding:4px 6px;font-size:9px}
+  .tx-app .tx-hud .tx-chip[data-hud="status"],
+  .tx-app .tx-hud .tx-chip[data-hud="goal"],
+  .tx-app .tx-hud .tx-chip[data-hud="first"],
+  .tx-app .tx-hud .tx-chip[data-hud="best"]{display:none}
+  .tx-app .tx-hud .tx-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .tx-app .tx-hud .tx-btn-label,
+  .tx-app .tx-hud .tx-spacer{display:none}
+  .tx-ov{padding:8px}
+  .tx-card{width:100%;height:100%;max-height:100%;padding:14px;border-radius:12px}
+  .tx-help,.tx-cheatbody,.tx-modecards{scrollbar-width:none}
+  .tx-help::-webkit-scrollbar,.tx-cheatbody::-webkit-scrollbar,.tx-modecards::-webkit-scrollbar{display:none}
+  .tx-pad{margin-top:6px;gap:5px}
+  .tx-padbtn{width:46px;height:44px}
+  .tx-hint{display:none}
 }
 </style>
-<div class="game-app tx-app">
-  <div class="game-intro">
-    <div><h2>Tetris</h2><p>Susun balok, bersihkan baris — solo berlevel, lawan bot, atau duel online.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+<div class="game-app tx-app game-fill">
+  <div class="tx-hud">
+    <span class="tx-chip" data-hud="status"><i class="tx-dot"></i><b data-hud-status>Siap</b></span>
+    <span class="tx-chip" data-hud="mode">Pilih mode</span>
+    <span class="tx-chip" data-hud="lv">LV <b data-hud-lv>1</b></span>
+    <span class="tx-chip">SCORE <b data-hud-score>0</b></span>
+    <span class="tx-chip">LINE <b data-hud-lines>0</b></span>
+    <span class="tx-chip" data-hud="goal"></span>
+    <span class="tx-chip" data-hud="first" hidden>FIRST —</span>
+    <span class="tx-chip">BEST <b data-hud-best>0</b></span>
+    <span class="tx-chip warn" data-hud="cheat" hidden>CHEAT AKTIF</span>
+    <span class="tx-spacer"></span>
+    <button class="tx-btn tx-icon-btn" type="button" data-help aria-label="Help" title="How to play (H)">
+      ${iconSVG("helpCircle", { size: 14 })}<span class="tx-btn-label">Help</span>
+    </button>
+    <button class="tx-btn tx-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">
+      ${iconSVG("wrench", { size: 14 })}<span class="tx-btn-label">Cheats</span>
+    </button>
+    <button class="tx-btn tx-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">
+      ${iconSVG("pause", { size: 14 })}<span class="tx-btn-label">Pause</span>
+    </button>
+    <button class="tx-btn tx-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">
+      ${iconSVG("refresh", { size: 14 })}<span class="tx-btn-label">Restart</span>
+    </button>
+    <button class="tx-btn tx-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">
+      ${iconSVG("logOut", { size: 14 })}<span class="tx-btn-label">Exit game</span>
+    </button>
   </div>
-  <section class="game-panel tx-panel" data-board>
-    <div class="tx-toolbar">
-      <div class="tx-chips">
-        <span class="tx-chip" data-chip-mode>—</span>
-        <span class="tx-chip" data-chip-goal></span>
-        <span class="tx-chip warn" data-chip-cheat hidden>CHEAT AKTIF</span>
-      </div>
-      <div class="tx-tools">
-        <button class="tx-btn sm" type="button" data-act="howto">? Cara main</button>
-        <button class="tx-btn sm" type="button" data-act="cheats" data-btn-cheats>Cheat</button>
-        <button class="tx-btn sm" type="button" data-act="pause" data-btn-pause>Jeda</button>
-        <button class="tx-btn sm" type="button" data-act="restart" data-btn-restart>Ulang</button>
+
+  <section class="game-panel tx-panel tx-board" data-board>
+    <div class="tx-arena solo" data-arena>
+      ${boardColHTML(0)}
+      ${boardColHTML(1)}
+    </div>
+
+    <div class="tx-ov" data-ov="intro">
+      <div class="tx-card">
+        <h3 class="tx-ovtitle">Tetris</h3>
+        <p class="tx-ovsub">Pilih mode permainan. Skor terbaik: <b data-intro-best>0</b></p>
+        <div class="tx-modecards">
+          <button class="tx-modecard" type="button" data-act="solo"><b>Solo · Level</b><span>Level acak yang pasti bisa diselesaikan. Kejar target line &amp; skor terbaik.</span></button>
+          <button class="tx-modecard" type="button" data-act="bot"><b>Vs Bot</b><span>Balapan ${BATTLE_TARGET} line melawan bot. Siapa yang mulai duluan diacak 🎲.</span></button>
+        </div>
+        <div class="tx-cardbtns"><button class="tx-btn" type="button" data-help>Cara bermain</button></div>
       </div>
     </div>
-    <div class="tx-main">
-      <div class="tx-stage solo" data-stage>
-        ${boardColHTML(0)}
-        ${boardColHTML(1)}
-        <aside class="tx-info" data-info>
-          <div class="tx-infolevel">Level <b data-info-level>1</b></div>
-          <div class="tx-progress"><i data-info-bar></i></div>
-          <div class="tx-infogoal"><b data-info-lines>0</b> / <span data-info-goal>6</span> line</div>
-          <div class="tx-best">Skor terbaik <b data-info-best>0</b></div>
-          <p class="tx-infotip">Level dibangkitkan acak &amp; dijamin bisa diselesaikan. Tekan <b>H</b> untuk bantuan, <b>C</b> untuk cheat.</p>
-        </aside>
+
+    <div class="tx-ov" data-ov="lobby" hidden>
+      <div class="tx-card">
+        <h3 class="tx-ovtitle">Multiplayer</h3>
+        <p class="tx-ovsub"><span class="tx-spin"></span><span data-lobby-text>Menunggu lawan…</span></p>
+        <p class="tx-ovsub">Posisi pemain (P1 kiri / P2 kanan) akan diacak saat pertandingan dimulai.</p>
       </div>
+    </div>
 
-      <div class="tx-ov" data-ov="intro">
-        <div class="tx-card">
-          <h3 class="tx-ovtitle">Tetris</h3>
-          <p class="tx-ovsub">Pilih mode permainan. Skor terbaik: <b data-intro-best>0</b></p>
-          <div class="tx-modecards">
-            <button class="tx-modecard" type="button" data-act="solo"><b>Solo · Level</b><span>Level acak yang pasti bisa diselesaikan. Kejar target line &amp; skor terbaik.</span></button>
-            <button class="tx-modecard" type="button" data-act="bot"><b>Vs Bot</b><span>Balapan ${BATTLE_TARGET} line melawan bot. Siapa yang mulai duluan diacak 🎲.</span></button>
-          </div>
-          <div class="tx-cardbtns"><button class="tx-btn" type="button" data-act="howto">Cara bermain</button></div>
-        </div>
+    <div class="tx-ov" data-ov="count" hidden>
+      <div class="tx-card">
+        <div class="tx-count" data-count>3</div>
+        <div class="tx-countsub" data-count-sub></div>
       </div>
+    </div>
 
-      <div class="tx-ov" data-ov="lobby" hidden>
-        <div class="tx-card">
-          <h3 class="tx-ovtitle">Multiplayer</h3>
-          <p class="tx-ovsub"><span class="tx-spin"></span><span data-lobby-text>Menunggu lawan…</span></p>
-          <p class="tx-ovsub">Posisi pemain (P1 kiri / P2 kanan) akan diacak saat pertandingan dimulai.</p>
-        </div>
+    <div class="tx-ov" data-ov="pause" hidden>
+      <div class="tx-card">
+        <h3 class="tx-ovtitle">Jeda</h3>
+        <p class="tx-ovsub">Tekan <span class="tx-kbd">P</span> atau tombol di bawah untuk lanjut.</p>
+        <div class="tx-cardbtns"><button class="tx-btn pri" type="button" data-pause>Lanjutkan</button></div>
       </div>
+    </div>
 
-      <div class="tx-ov" data-ov="count" hidden>
-        <div class="tx-card">
-          <div class="tx-count" data-count>3</div>
-          <div class="tx-countsub" data-count-sub></div>
-        </div>
-      </div>
+    <div class="tx-ov" data-ov="levelup" hidden><div class="tx-card" data-levelup-card></div></div>
+    <div class="tx-ov" data-ov="over" hidden><div class="tx-card" data-over-card></div></div>
 
-      <div class="tx-ov" data-ov="pause" hidden>
-        <div class="tx-card">
-          <h3 class="tx-ovtitle">Jeda</h3>
-          <p class="tx-ovsub">Tekan <span class="tx-kbd">P</span> atau tombol di bawah untuk lanjut.</p>
-          <div class="tx-cardbtns"><button class="tx-btn pri" type="button" data-act="pause">Lanjutkan</button></div>
-        </div>
-      </div>
-
-      <div class="tx-ov" data-ov="levelup" hidden><div class="tx-card" data-levelup-card></div></div>
-      <div class="tx-ov" data-ov="over" hidden><div class="tx-card" data-over-card></div></div>
-
-      <div class="tx-ov top" data-ov="howto" hidden>
-        <div class="tx-card wide tx-howto">
-          <h3 class="tx-ovtitle">Cara bermain</h3>
+    <div class="tx-ov top" data-ov="help" hidden>
+      <div class="tx-card wide">
+        <h3 class="tx-ovtitle">Cara bermain</h3>
+        <div class="tx-help">
           <h4>Tujuan</h4>
           <ul>
             <li><b>Solo:</b> capai target line tiap level. Level dibangkitkan acak (terrain + kecepatan), tapi <b>dijamin bisa diselesaikan</b> — terrain hanya punya sumur terbuka, tanpa lubang tertutup.</li>
@@ -364,13 +439,15 @@ export function mount(root, context = {}) {
           <ul><li>Clear 1/2/3/4 baris = 100/300/500/800 × level. Kecepatan naik seiring progres.</li></ul>
           <h4>Catatan</h4>
           <ul><li>Cheat menandai permainan (skor tidak dicatat sebagai terbaik) dan dinonaktifkan saat online. Input online diproses host, sedikit delay itu wajar.</li></ul>
-          <div class="tx-cardbtns" style="margin-top:16px"><button class="tx-btn pri" type="button" data-act="howto-close">Mengerti</button></div>
         </div>
+        <div class="tx-cardbtns" style="margin-top:12px"><button class="tx-btn pri" type="button" data-help-close>Mengerti</button></div>
       </div>
+    </div>
 
-      <div class="tx-ov top" data-ov="cheats" hidden>
-        <div class="tx-card wide">
-          <h3 class="tx-ovtitle">Cheat</h3>
+    <div class="tx-ov top" data-ov="cheats" hidden>
+      <div class="tx-card wide">
+        <h3 class="tx-ovtitle">Cheat</h3>
+        <div class="tx-cheatbody">
           <p class="tx-ovsub">Untuk santai / latihan. Tidak tersedia saat online.</p>
           <label class="tx-cheatrow"><span>Gravitasi lambat ×2.5<small>Balok jatuh lebih pelan.</small></span><input class="tx-switch" type="checkbox" data-cheat-toggle="slow"></label>
           <label class="tx-cheatrow"><span>Bekukan gravitasi<small>Balok tidak jatuh sendiri; kamu yang mengatur drop.</small></span><input class="tx-switch" type="checkbox" data-cheat-toggle="freeze"></label>
@@ -382,23 +459,22 @@ export function mount(root, context = {}) {
             <button class="tx-btn sm" type="button" data-cheat="garbage" data-cheat-battle>Kirim 2 garbage ke lawan</button>
           </div>
           <p class="tx-cheatnote">⚠ Memakai cheat menandai run ini — skor tidak disimpan sebagai terbaik.</p>
-          <div class="tx-cardbtns" style="margin-top:14px"><button class="tx-btn pri" type="button" data-act="cheats-close">Tutup</button></div>
         </div>
+        <div class="tx-cardbtns" style="margin-top:12px"><button class="tx-btn pri" type="button" data-cheats-close>Tutup</button></div>
       </div>
-
-      <div class="tx-toast" role="status" data-toast></div>
     </div>
 
-    <div class="tx-pad" data-pad>
-      <button class="tx-padbtn" type="button" data-mv="left" aria-label="Geser kiri" title="Geser kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
-      <button class="tx-padbtn" type="button" data-mv="rotate" aria-label="Putar" title="Putar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
-      <button class="tx-padbtn" type="button" data-mv="right" aria-label="Geser kanan" title="Geser kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
-      <button class="tx-padbtn" type="button" data-mv="down" aria-label="Soft drop" title="Soft drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
-      <button class="tx-padbtn" type="button" data-mv="drop" aria-label="Hard drop" title="Hard drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5l6 6 6-6"/><path d="M6 12l6 6 6-6"/></svg></button>
-    </div>
-    <div class="tx-hint">← → geser · ↓ soft drop · ↑/X putar · Z putar balik · Space hard drop · klik papan = geser ke kolom · klik kanan/scroll = putar</div>
+    <div class="tx-toast" role="status" data-toast></div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+
+  <div class="tx-pad" data-pad>
+    <button class="tx-padbtn" type="button" data-mv="left" aria-label="Geser kiri" title="Geser kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button class="tx-padbtn" type="button" data-mv="rotate" aria-label="Putar" title="Putar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+    <button class="tx-padbtn" type="button" data-mv="right" aria-label="Geser kanan" title="Geser kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+    <button class="tx-padbtn" type="button" data-mv="down" aria-label="Soft drop" title="Soft drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+    <button class="tx-padbtn" type="button" data-mv="drop" aria-label="Hard drop" title="Hard drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5l6 6 6-6"/><path d="M6 12l6 6 6-6"/></svg></button>
+  </div>
+  <div class="tx-hint">← → geser · ↓ soft drop · ↑/X putar · Z putar balik · Space hard drop · klik papan = geser ke kolom · klik kanan/scroll = putar</div>
 </div>`;
 
     function boardColHTML(slot) {
@@ -419,21 +495,28 @@ export function mount(root, context = {}) {
 
     /* ---------- refs & views ---------- */
     const $ = (s) => root.querySelector(s);
-    const statusEl = $("[data-status]");
-    const stage = $("[data-stage]");
-    const info = $("[data-info]");
-    const chipMode = $("[data-chip-mode]");
-    const chipGoal = $("[data-chip-goal]");
-    const chipCheat = $("[data-chip-cheat]");
-    const btnCheats = $("[data-btn-cheats]");
-    const btnPause = $("[data-btn-pause]");
-    const btnRestart = $("[data-btn-restart]");
+    const board = $("[data-board]");
+    const arena = $("[data-arena]");
     const toastEl = $("[data-toast]");
+    const hud = {
+        status: $("[data-hud-status]"), mode: $('[data-hud="mode"]'), lv: $("[data-hud-lv]"),
+        chipLv: $('[data-hud="lv"]'), score: $("[data-hud-score]"), lines: $("[data-hud-lines]"),
+        goal: $('[data-hud="goal"]'), first: $('[data-hud="first"]'), best: $("[data-hud-best]"),
+        cheat: $('[data-hud="cheat"]'),
+    };
+    const btnCheats = $(".tx-hud [data-cheats]");
+    const btnPause = $(".tx-hud [data-pause]");
+    const btnRestart = $(".tx-hud [data-restart]");
     const ov = {
         intro: $('[data-ov="intro"]'), lobby: $('[data-ov="lobby"]'), count: $('[data-ov="count"]'),
         pause: $('[data-ov="pause"]'), levelup: $('[data-ov="levelup"]'), over: $('[data-ov="over"]'),
-        howto: $('[data-ov="howto"]'), cheats: $('[data-ov="cheats"]'),
+        help: $('[data-ov="help"]'), cheats: $('[data-ov="cheats"]'),
     };
+    function armToast() {
+        if (!toastEl || toastLeft <= 0) return;
+        toastAt = nowMs();
+        T.toast = setTimeout(() => { T.toast = null; toastEl.classList.remove("show"); }, toastLeft);
+    }
 
     const views = [0, 1].map((slot) => {
         const col = root.querySelector(`[data-col="${slot}"]`);
@@ -452,6 +535,21 @@ export function mount(root, context = {}) {
             nextrow: col.querySelector("[data-nextrow]"), dead: col.querySelector("[data-dead]"),
         };
     });
+
+    let ro = null;
+    function fitBoards() {
+        if (!board || !arena) return;
+        const h = board.clientHeight - 30, w = board.clientWidth - 30;
+        if (h <= 0 || w <= 0) return;
+        const battle = Boolean(state && (state.mode === "bot" || state.mode === "online"));
+        const vw = (typeof window !== "undefined" && window.innerWidth) || 800;
+        const vh = (typeof window !== "undefined" && window.innerHeight) || 600;
+        const capW = battle ? Math.min(250, vw * 0.46) : Math.min(310, vw * 0.88);
+        const capH = vh * (battle ? 0.26 : 0.30);
+        const maxByH = Math.max(90, (h - 78) / 2);
+        const maxByW = battle ? Math.max(90, (w - 14) / 2) : w;
+        arena.style.setProperty("--tx-colw", Math.round(Math.max(110, Math.min(capW, capH, maxByH, maxByW))) + "px");
+    }
 
     const mySlot = () => (online && state ? state.actorSlot[myActor] : 0);
 
@@ -541,49 +639,55 @@ export function mount(root, context = {}) {
     let overKey = "", levelKey = "", countKey = "";
     function render() {
         if (!state) {
-            statusEl.textContent = "Menghubungkan…";
-            stage.style.visibility = "hidden";
+            hud.status.textContent = "Menghubungkan…";
+            arena.style.visibility = "hidden";
             ov.lobby.hidden = false; ov.intro.hidden = true;
             return;
         }
-        stage.style.visibility = "";
+        arena.style.visibility = "";
         const ph = state.phase, md = state.mode, p0 = state.players[0], p1 = state.players[1];
         const battle = md === "bot" || md === "online";
+        const me = state.players[mySlot()] || p0;
 
-        statusEl.textContent = { intro: "Siap", lobby: "Menunggu lawan", countdown: "Bersiap…", playing: "Bermain", paused: "Jeda", levelup: "Level selesai", over: "Selesai" }[ph] || "Siap";
-        chipMode.textContent = md === "solo" ? `Solo · Level ${state.level}` : md === "bot" ? "Vs Bot" : md === "online" ? "Online" : "Pilih mode";
-        chipGoal.textContent = battle ? `Target ${state.target} line` : md === "solo" ? `${p0.linesLevel}/${state.goal} line` : `Terbaik ${best}`;
-        chipCheat.hidden = !p0.cheated || online;
+        hud.status.textContent = { intro: "Siap", lobby: "Menunggu lawan", countdown: "Bersiap…", playing: "Bermain", paused: "Jeda", levelup: "Level selesai", over: "Selesai" }[ph] || "Siap";
+        hud.mode.textContent = md === "solo" ? `Solo · Level ${state.level}` : md === "bot" ? "Vs Bot" : md === "online" ? "Online" : "Pilih mode";
+        hud.lv.textContent = state.level;
+        hud.chipLv.hidden = battle;
+        hud.score.textContent = me.score;
+        hud.lines.textContent = battle ? `${me.lines}/${state.target}` : `${p0.linesLevel}/${state.goal}`;
+        hud.goal.hidden = battle;
+        hud.goal.textContent = `TARGET ${state.goal} LINE`;
+        hud.first.hidden = !battle || ph === "intro";
+        hud.first.textContent = `FIRST P${(state.first || 0) + 1}`;
+        hud.best.textContent = best;
+        hud.cheat.hidden = !p0.cheated || online;
 
-        stage.classList.toggle("solo", !battle);
-        stage.classList.toggle("battle", battle);
+        arena.classList.toggle("solo", !battle);
+        arena.classList.toggle("battle", battle);
         views[1].col.hidden = !battle;
-        info.hidden = battle;
         syncBoard(views[0], p0, 0);
         if (battle) syncBoard(views[1], p1, 1);
-
-        if (!battle) {
-            $("[data-info-level]").textContent = state.level;
-            $("[data-info-lines]").textContent = p0.linesLevel;
-            $("[data-info-goal]").textContent = state.goal;
-            $("[data-info-bar]").style.width = Math.min(100, (p0.linesLevel / state.goal) * 100) + "%";
-            $("[data-info-best]").textContent = best;
-        }
+        fitBoards();
         $("[data-intro-best]").textContent = best;
 
         btnCheats.hidden = online;
-        btnPause.hidden = online || !battle && md !== "solo" || (ph !== "playing" && ph !== "paused");
-        btnPause.textContent = ph === "paused" ? "Lanjut" : "Jeda";
+        btnCheats.classList.toggle("on", anyCheatOn());
+        btnPause.hidden = online || (ph !== "playing" && ph !== "paused");
+        const pLabel = btnPause.querySelector(".tx-btn-label");
+        if (pLabel) pLabel.textContent = ph === "paused" ? "Resume" : "Pause";
+        btnPause.setAttribute("aria-label", ph === "paused" ? "Resume" : "Pause");
+        btnPause.title = ph === "paused" ? "Resume (P)" : "Pause (P)";
         btnRestart.hidden = online ? !(isHost && ph === "over") : !(md && ph !== "intro" && ph !== "countdown");
 
-        ov.intro.hidden = ph !== "intro";
-        ov.lobby.hidden = ph !== "lobby";
-        ov.count.hidden = ph !== "countdown";
-        ov.pause.hidden = ph !== "paused";
-        ov.levelup.hidden = ph !== "levelup";
-        ov.over.hidden = ph !== "over";
-        ov.howto.hidden = !ui.howto;
-        ov.cheats.hidden = !ui.cheatsOpen || online;
+        const quiet = helpOpen || ui.cheatsOpen;
+        ov.intro.hidden = ph !== "intro" || quiet;
+        ov.lobby.hidden = ph !== "lobby" || quiet;
+        ov.count.hidden = ph !== "countdown" || quiet;
+        ov.pause.hidden = ph !== "paused" || quiet;
+        ov.levelup.hidden = ph !== "levelup" || quiet;
+        ov.over.hidden = ph !== "over" || quiet;
+        ov.help.hidden = !helpOpen;
+        ov.cheats.hidden = !ui.cheatsOpen || online || helpOpen;
         $("[data-lobby-text]").textContent = isHost ? "Menunggu lawan bergabung…" : "Menunggu host memulai…";
 
         if (ph === "countdown") {
@@ -639,8 +743,8 @@ export function mount(root, context = {}) {
     function publish() {
         render();
         if (!(online && isHost)) return;
-        const now = Date.now();
-        const send = () => { T.pub = null; publish._last = Date.now(); room.publishState(state).catch(console.warn); };
+        const now = nowMs();
+        const send = () => { T.pub = null; publish._last = nowMs(); room.publishState(state).catch(console.warn); };
         if (now - (publish._last || 0) >= 90) send();
         else if (!T.pub) T.pub = setTimeout(send, 90 - (now - publish._last));
     }
@@ -648,8 +752,8 @@ export function mount(root, context = {}) {
     function toast(msg) {
         toastEl.textContent = msg;
         toastEl.classList.add("show");
-        clearTimeout(T.toast);
-        T.toast = setTimeout(() => toastEl.classList.remove("show"), 2400);
+        if (T.toast) { clearTimeout(T.toast); T.toast = null; }
+        toastLeft = 2400; armToast();
     }
 
     /* ============================================================= */
@@ -726,6 +830,7 @@ export function mount(root, context = {}) {
     }
 
     function startSolo(level, carry) {
+        resetPauseState();
         stopAll();
         state.gid++;
         state.mode = "solo"; state.level = level; state.goal = goalFor(level);
@@ -747,6 +852,7 @@ export function mount(root, context = {}) {
     }
 
     function resetBattle(md) {
+        resetPauseState();
         stopAll();
         state.gid++;
         state.mode = md; state.target = BATTLE_TARGET;
@@ -911,6 +1017,7 @@ export function mount(root, context = {}) {
         }
     }
     function backToMenu() {
+        resetPauseState();
         stopAll();
         state.gid++;
         state.mode = null; state.phase = "intro";
@@ -919,8 +1026,16 @@ export function mount(root, context = {}) {
     }
     function togglePause() {
         if (online || !state) return;
-        if (state.phase === "playing") { state.phase = "paused"; stopAll(); publish(); }
-        else if (state.phase === "paused") {
+        if (state.phase === "playing") {
+            pausedAt = nowMs();
+            freezeTimers();
+            stopAll();
+            state.phase = "paused"; publish();
+        } else if (state.phase === "paused") {
+            const delta = Math.max(0, nowMs() - pausedAt);
+            shiftAnchors(delta);   // Date.now()-anchor tidak "loncat" setelah jeda
+            thawTimers();
+            pausedAt = 0;
             state.phase = "playing"; publish();
             scheduleGrav(0); scheduleGrav(1);
             if (state.mode === "bot") startBotLoop();
@@ -1040,24 +1155,35 @@ export function mount(root, context = {}) {
     /* ============================================================= */
     /* INPUT                                                          */
     /* ============================================================= */
+    function restartGame() {
+        if (online) { if (isHost && state.phase === "over") resetBattle("online"); return; }
+        if (state.mode === "solo") startSolo(1, false);
+        else if (state.mode === "bot") resetBattle("bot");
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) ui.cheatsOpen = false;
+        render();
+    }
     function handleClick(event) {
-        const b = event.target.closest("[data-act],[data-cheat]");
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) {
+            if (!online) { ui.cheatsOpen = !ui.cheatsOpen; if (ui.cheatsOpen) helpOpen = false; render(); }
+            return;
+        }
+        if (t.closest("[data-cheats-close]")) { ui.cheatsOpen = false; render(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        const b = t.closest("[data-act],[data-cheat]");
         if (!b) return;
         if (b.dataset.cheat) { cheatAction(b.dataset.cheat); return; }
         const act = b.dataset.act;
         if (act === "solo") startSolo(1, false);
         else if (act === "bot") resetBattle("bot");
-        else if (act === "howto") { ui.howto = true; render(); }
-        else if (act === "howto-close") { ui.howto = false; render(); }
-        else if (act === "cheats" && !online) { ui.cheatsOpen = true; render(); }
-        else if (act === "cheats-close") { ui.cheatsOpen = false; render(); }
-        else if (act === "pause") togglePause();
-        else if (act === "restart") {
-            if (online) { if (isHost && state.phase === "over") resetBattle("online"); }
-            else if (state.mode === "solo") startSolo(1, false);
-            else if (state.mode === "bot") resetBattle("bot");
-        }
         else if (act === "next-level") startSolo(state.level + 1, true);
         else if (act === "again") { state.mode === "solo" ? startSolo(1, false) : resetBattle(state.mode); }
         else if (act === "menu") backToMenu();
@@ -1077,20 +1203,35 @@ export function mount(root, context = {}) {
         publish();
     }
 
-    /* keyboard (desktop) */
+    /* keyboard (desktop): help → cheats → pause → Escape → aksi game */
     function onKey(e) {
         if (!root.isConnected || !state) return;
         const c = e.code;
-        if (c === "Escape") { ui.howto = false; ui.cheatsOpen = false; render(); return; }
-        if (c === "KeyH") { ui.howto = !ui.howto; render(); return; }
-        if (c === "KeyC" && !online) { ui.cheatsOpen = !ui.cheatsOpen; render(); return; }
-        if (ui.howto || ui.cheatsOpen) return;
-        if (c === "KeyP") { togglePause(); return; }
-        if (c === "KeyR" && !online) {
-            if (state.mode === "solo") startSolo(1, false);
-            else if (state.mode === "bot") resetBattle("bot");
-            return;
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") {
+            if (!helpOpen && !online) { ui.cheatsOpen = !ui.cheatsOpen; render(); }
+            e.preventDefault(); return;
         }
+        if (c === "KeyP") {
+            if (!helpOpen && !ui.cheatsOpen) togglePause();
+            e.preventDefault(); return;
+        }
+        if (c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (ui.cheatsOpen) { ui.cheatsOpen = false; render(); }
+            else if (state.phase === "paused") togglePause();
+            e.preventDefault(); return;
+        }
+        if (c === "Enter") {
+            if (helpOpen) toggleHelp(false);
+            else if (ui.cheatsOpen) { ui.cheatsOpen = false; render(); }
+            e.preventDefault(); return;
+        }
+        if (c === "KeyR" && !online) {
+            if (!helpOpen && !ui.cheatsOpen) restartGame();
+            e.preventDefault(); return;
+        }
+        if (helpOpen || ui.cheatsOpen) return;
         const gameKeys = ["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp", "Space"];
         if (gameKeys.includes(c)) e.preventDefault();
         if (state.phase !== "playing") return;
@@ -1144,7 +1285,7 @@ export function mount(root, context = {}) {
         view.svg.addEventListener("wheel", (e) => {
             if (slot !== mySlot() || !state || state.phase !== "playing") return;
             e.preventDefault();
-            const now = Date.now();
+            const now = nowMs();
             if (now - view.lastWheel < 90) return;
             view.lastWheel = now;
             submitAction({ type: "rot", dir: e.deltaY > 0 ? 1 : -1 });
@@ -1195,6 +1336,8 @@ export function mount(root, context = {}) {
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerup", onPadUp);
     document.addEventListener("pointercancel", onPadUp);
+    if (typeof ResizeObserver !== "undefined" && board) { ro = new ResizeObserver(fitBoards); ro.observe(board); }
+    if (typeof window !== "undefined") window.addEventListener("resize", fitBoards);
 
     /* ============================================================= */
     /* INIT sesuai template (struktur if/else dirapikan)              */
@@ -1235,12 +1378,14 @@ export function mount(root, context = {}) {
     return {
         destroy() {
             stopAll();
-            for (const id of T.misc) clearTimeout(id);
+            for (const rec of T.misc) if (rec.id != null) clearTimeout(rec.id);
             T.misc.clear();
             for (const pid of [...T.repeats.keys()]) stopRepeat(pid);
             clearInterval(T.hello);
             clearTimeout(T.pub);
             clearTimeout(T.toast);
+            if (ro) { ro.disconnect(); ro = null; }
+            if (typeof window !== "undefined") window.removeEventListener("resize", fitBoards);
             document.removeEventListener("keydown", onKey);
             document.removeEventListener("pointerup", onPadUp);
             document.removeEventListener("pointercancel", onPadUp);

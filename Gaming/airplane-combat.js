@@ -1,9 +1,11 @@
 /* ============================================================
    games/airplane-combat.js  —  SKY ARCADE
-   Neon 2D side-scrolling air combat (arcade, endless generated waves).
+   2D side-scrolling air combat (arcade, endless generated waves).
    Template module:  export function mount(root, context)
    Register metadata + path in GAMES inside app.js.
    ============================================================ */
+
+import { iconSVG } from "../JS/icons.js";
 
 const W = 960, H = 540, GROUND = 470;
 const BOUND = { x0: 30, x1: W - 46, y0: 42, y1: GROUND - 26 };
@@ -11,20 +13,20 @@ const SLOTS = [{ x: 252, y: 300 }, { x: 152, y: 186 }];
 
 export const META = {
     id: "airplane-combat",
-    name: "Sky Arcade",
+    name: "Airplane Combat",
     category: "arcade",
     catLabel: "Arcade",
-    desc: "Neon side-scrolling air combat with generated arcade waves.",
+    desc: "Side-scrolling air combat with generated arcade waves.",
     art: '<svg viewBox="0 0 48 48" width="54" height="54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 24h29l7-4v8l-7-4"/><path d="M26 24L14 12m12 12L14 36"/><path d="M34 24l6-8"/><path d="M8 24l-3-5h6l3 5-3 5H5z"/><circle cx="24" cy="21" r="2.5" fill="#fde047" stroke="none"/></svg>',
-    bg: ["#0369a1", "#082f49"],
+    bg: ["#bae6fd", "#6366f1"],
     bestKey: "sky-arcade-best",
 };
 
 const THEMES = [
-    { sky: "#070b16", far: "#0e1729", near: "#131f36", ground: "#0a1120", edge: "#1f2b45", accent: "#22d3ee", star: 0.35 },
-    { sky: "#0a0713", far: "#170f26", near: "#1e1533", ground: "#0d0a1a", edge: "#2b2145", accent: "#a78bfa", star: 0.50 },
-    { sky: "#050d10", far: "#0b1c22", near: "#0f272e", ground: "#07141a", edge: "#17323b", accent: "#34d399", star: 0.25 },
-    { sky: "#100810", far: "#22101f", near: "#2b1526", ground: "#150a14", edge: "#3a1c33", accent: "#f472b6", star: 0.40 },
+    { sky: "#f8fafc", far: "#e2e8f0", near: "#cbd5e1", ground: "#f1f5f9", edge: "#cbd5e1", accent: "#4f46e5", star: 0 },
+    { sky: "#faf8ff", far: "#e9e2f5", near: "#d5c9ea", ground: "#f1edf8", edge: "#d5c9ea", accent: "#7c3aed", star: 0 },
+    { sky: "#f6faf8", far: "#dceee7", near: "#c3e2d7", ground: "#ebf5f1", edge: "#c3e2d7", accent: "#0f766e", star: 0 },
+    { sky: "#faf8f6", far: "#f0e4dd", near: "#e2cfc5", ground: "#f5eeea", edge: "#e2cfc5", accent: "#b45309", star: 0 },
 ];
 
 const AIRCRAFT = {
@@ -39,16 +41,16 @@ const AIRCRAFT = {
 const CRAFTS = Object.keys(AIRCRAFT);
 
 const ENEMY = {
-    dart: { air: 1, hp: 20, spd: 270, dmg: 4, score: 60, r: 14, col: "#f472b6" },
-    wing: { air: 1, hp: 44, spd: 195, dmg: 5, score: 90, r: 16, col: "#f87171" },
-    gunship: { air: 1, hp: 125, spd: 100, dmg: 6, score: 190, r: 22, col: "#fbbf24" },
-    drone: { air: 1, hp: 12, spd: 255, dmg: 9, score: 45, r: 12, col: "#a78bfa", ram: 1 },
-    seeker: { air: 1, hp: 30, spd: 220, dmg: 13, score: 120, r: 15, col: "#fb7185", ram: 1 },
-    ace: { air: 1, hp: 520, spd: 150, dmg: 8, score: 1500, r: 34, col: "#f0abfc", boss: 1 },
-    flak: { air: 0, hp: 46, spd: 0, dmg: 8, score: 90, r: 18, col: "#facc15" },
-    tank: { air: 0, hp: 76, spd: 0, dmg: 12, score: 130, r: 20, col: "#a3e635" },
-    sam: { air: 0, hp: 58, spd: 0, dmg: 14, score: 160, r: 18, col: "#38bdf8" },
-    core: { air: 0, hp: 430, spd: 0, dmg: 0, score: 700, r: 42, col: "#94a3b8" },
+    dart: { air: 1, hp: 20, spd: 270, dmg: 4, score: 60, r: 14, col: "#db2777" },
+    wing: { air: 1, hp: 44, spd: 195, dmg: 5, score: 90, r: 16, col: "#dc2626" },
+    gunship: { air: 1, hp: 125, spd: 100, dmg: 6, score: 190, r: 22, col: "#b45309" },
+    drone: { air: 1, hp: 12, spd: 255, dmg: 9, score: 45, r: 12, col: "#7c3aed", ram: 1 },
+    seeker: { air: 1, hp: 30, spd: 220, dmg: 13, score: 120, r: 15, col: "#e11d48", ram: 1 },
+    ace: { air: 1, hp: 520, spd: 150, dmg: 8, score: 1500, r: 34, col: "#a21caf", boss: 1 },
+    flak: { air: 0, hp: 46, spd: 0, dmg: 8, score: 90, r: 18, col: "#a16207" },
+    tank: { air: 0, hp: 76, spd: 0, dmg: 12, score: 130, r: 20, col: "#4d7c0f" },
+    sam: { air: 0, hp: 58, spd: 0, dmg: 14, score: 160, r: 18, col: "#0284c7" },
+    core: { air: 0, hp: 430, spd: 0, dmg: 0, score: 700, r: 42, col: "#475569" },
 };
 
 const CHEAT_TOGGLES = [
@@ -285,7 +287,7 @@ function killFoe(s, f, own) {
     const p = s.players[own];
     if (p) { p.score += gain; p.kills++; }
     addFx(s, f.x, foeCY(f), "ring", d.col, d.boss ? 0.9 : 0.45, d.r);
-    addFx(s, f.x, foeCY(f) - 20, "text", "#e2e8f0", 0.8, 0, "+" + gain);
+    addFx(s, f.x, foeCY(f) - 20, "text", "#334155", 0.8, 0, "+" + gain);
     if (rndOf(s) < 0.15) dropPickup(s, f.x, foeCY(f));
 }
 function hurtFoe(s, f, dmg, armor, own) {
@@ -314,7 +316,7 @@ function fireGun(s, p) {
         s.shots.push({ x: p.x + 20, y: p.y + oy, vx: 680, vy: 0, dmg, own: p.i, dead: false });
     }
     p.gunCd = a.rate / (c.rapid ? 3 : 1);
-    addFx(s, p.x + 24, p.y, "muzzle", "#fde68a", 0.1, 3);
+    addFx(s, p.x + 24, p.y, "muzzle", "#f59e0b", 0.1, 3);
 }
 function fireSpecial(s, p) {
     const a = AIRCRAFT[p.veh], c = s.cheats;
@@ -358,7 +360,7 @@ function shellShot(s, f, p, dmg) {
 }
 function samShot(s, f, p, dmg) {
     s.eshots.push({ x: f.x, y: GROUND - 26, vx: -40, vy: -210, dmg, kind: "sam", grav: 0, turn: 2.1, target: p.i, spd: 235, life: 6.5, dead: false });
-    addFx(s, f.x, GROUND - 26, "muzzle", "#38bdf8", 0.2, 5);
+    addFx(s, f.x, GROUND - 26, "muzzle", "#0284c7", 0.2, 5);
 }
 function groundBoom(s, x, dmg, radius, own) {
     addFx(s, x, GROUND - 10, "ring", "#f97316", 0.55, radius * 0.5);
@@ -422,7 +424,7 @@ function stepPlayer(s, p, dt, inp) {
             const a = AIRCRAFT[p.veh];
             p.alive = true; p.hp = Math.round(a.hp * 0.6); p.ammo = a.ammo;
             p.x = 90; p.y = 200; p.flash = 0.6;
-            addFx(s, p.x, p.y, "ring", "#22d3ee", 0.6, 20);
+            addFx(s, p.x, p.y, "ring", "#4f46e5", 0.6, 20);
         }
         return;
     }
@@ -562,7 +564,7 @@ function stepEShots(s, dt) {
         b.vy += num(b.grav, 0) * dt;
         b.x += b.vx * dt; b.y += b.vy * dt;
         if (b.life <= 0 || b.x < -40 || b.x > W + 60 || b.y < -60 || b.y > H + 40) {
-            if (b.kind === "sam" && b.life <= 0) addFx(s, b.x, b.y, "ring", "#38bdf8", 0.35, 8);
+            if (b.kind === "sam" && b.life <= 0) addFx(s, b.x, b.y, "ring", "#0284c7", 0.35, 8);
             b.dead = true;
         }
     }
@@ -588,7 +590,7 @@ function stepSpecials(s, dt) {
                 const d = ENEMY[f.kind];
                 if (Math.hypot(f.x - sp.x, foeCY(f) - sp.y) < d.r + 6) {
                     sp.dead = true;
-                    addFx(s, sp.x, sp.y, "ring", "#f0abfc", 0.4, 12);
+                    addFx(s, sp.x, sp.y, "ring", "#a21caf", 0.4, 12);
                     hurtFoe(s, f, sp.dmg, d.air ? 2 : 4, sp.own);
                     break;
                 }
@@ -600,7 +602,7 @@ function stepSpecials(s, dt) {
                 const d = ENEMY[f.kind];
                 if (Math.hypot(f.x - sp.x, foeCY(f) - sp.y) < d.r + 8) {
                     sp.dead = true;
-                    addFx(s, sp.x, sp.y, "ring", "#f0abfc", 0.4, 14);
+                    addFx(s, sp.x, sp.y, "ring", "#a21caf", 0.4, 14);
                     hurtFoe(s, f, sp.dmg, 3, sp.own);
                     break;
                 }
@@ -638,7 +640,7 @@ function collide(s) {
             const d = ENEMY[f.kind];
             if (Math.hypot(f.x - b.x, foeCY(f) - b.y) < d.r) {
                 b.dead = true;
-                addFx(s, b.x, b.y, "muzzle", "#fde68a", 0.12, 3);
+                addFx(s, b.x, b.y, "muzzle", "#f59e0b", 0.12, 3);
                 hurtFoe(s, f, b.dmg, d.boss ? 6 : d.air ? 2 : 4, b.own);
                 break;
             }
@@ -673,9 +675,9 @@ function collide(s) {
             if (!p.alive) continue;
             if (Math.hypot(p.x - u.x, p.y - u.y) < 26) {
                 u.dead = true;
-                if (u.kind === "hp") { p.hp = Math.min(p.maxHp, p.hp + 25); addFx(s, p.x, p.y, "text", "#34d399", 0.8, 0, "+HULL"); }
-                else if (u.kind === "ammo") { p.ammo = Math.min(p.maxAmmo, p.ammo + Math.ceil(p.maxAmmo * 0.4)); addFx(s, p.x, p.y, "text", "#38bdf8", 0.8, 0, "+AMMO"); }
-                else { s.score += 200; p.score += 200; addFx(s, p.x, p.y, "text", "#fde68a", 0.8, 0, "+200"); }
+                if (u.kind === "hp") { p.hp = Math.min(p.maxHp, p.hp + 25); addFx(s, p.x, p.y, "text", "#047857", 0.8, 0, "+HULL"); }
+                else if (u.kind === "ammo") { p.ammo = Math.min(p.maxAmmo, p.ammo + Math.ceil(p.maxAmmo * 0.4)); addFx(s, p.x, p.y, "text", "#0284c7", 0.8, 0, "+AMMO"); }
+                else { s.score += 200; p.score += 200; addFx(s, p.x, p.y, "text", "#b45309", 0.8, 0, "+200"); }
                 break;
             }
         }
@@ -754,6 +756,7 @@ export function mount(root, context = {}) {
     let state = null;
     let netAt = 0;
     let cheatsOpen = false;
+    let helpOpen = false;
     let raf = null;
     let lastT = 0;
     let lastPub = 0;
@@ -773,160 +776,240 @@ export function mount(root, context = {}) {
     let mouseFire = false;
     let best = 0;
     try { best = Number(localStorage.getItem("sky-arcade-best") || 0) || 0; } catch (err) { best = 0; }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("sky-arcade-help-seen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("sky-arcade-help-seen", "1"); } catch (err) { /* storage blocked */ }
+    }
 
     root.innerHTML = `
 <style>
-.sa{--sa-bg:#070b14;--sa-panel:#0b1120;--sa-line:#1b2437;--sa-txt:#e6edf7;--sa-mut:#8494ad;--sa-acc:#22d3ee;--sa-warn:#f87171;color:var(--sa-txt)}
-.sa .game-intro h2{margin:0;font-size:17px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
-.sa .game-intro p{margin:4px 0 0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sa-mut)}
-.sa .game-panel{padding:0;background:transparent;border:0}
-.sa-stage{position:relative;width:100%;aspect-ratio:16/9;background:var(--sa-bg);border:1px solid var(--sa-line);border-radius:14px;overflow:hidden}
+.sa{--bg:#f8fafc;--surface:#fff;--ink:#334155;--mut:#64748b;--line:#e2e8f0;--acc:#4f46e5;--ok:#0f766e;--warn:#b45309;--danger:#dc2626}
+.sa [hidden]{display:none!important}
+.sa-board{position:relative;width:100%;aspect-ratio:16/9;padding:0;border:0;background:var(--bg);border-radius:12px;overflow:hidden}
 .sa-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
-.sa-hud{position:absolute;left:10px;right:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em}
-.sa-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--sa-line);border-radius:8px;background:#0b1120cc;color:var(--sa-mut);backdrop-filter:blur(6px)}
-.sa-chip b{color:var(--sa-txt);font-weight:700}
-.sa-bar{width:64px;height:4px;border-radius:2px;background:#1b2437;overflow:hidden}
-.sa-bar i{display:block;height:100%;width:100%;background:var(--sa-acc);transition:width .12s linear}
-.sa-ov{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:14px;background:#050810e8;backdrop-filter:blur(8px)}
-.sa-ov[hidden]{display:none}
-.sa-card{width:min(600px,100%);max-height:100%;overflow:auto;padding:16px;border:1px solid var(--sa-line);border-radius:14px;background:var(--sa-panel)}
+.sa-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sa-hud .sa-btn{min-height:32px;padding:6px 10px;font-size:10px}
+.sa-spacer{flex:1 1 auto}
+.sa-btn.on{border-color:var(--acc);color:var(--acc);background:#eef0ff}
+.sa-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--mut);white-space:nowrap}
+.sa-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.sa-bar{width:58px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.sa-bar i{display:block;height:100%;width:100%;background:var(--acc);transition:width .12s linear}
+.sa-ov{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:14px;background:rgba(248,250,252,.9)}
+.sa-card{width:min(600px,100%);max-height:100%;overflow:auto;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 10px 30px rgba(15,23,42,.08)}
 .sa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
-.sa-head h3{margin:0;font-size:13px;font-weight:600;letter-spacing:.2em;text-transform:uppercase}
-.sa-tag{font:600 10px/1 ui-monospace,monospace;letter-spacing:.14em;color:var(--sa-mut);border:1px solid var(--sa-line);border-radius:999px;padding:5px 9px}
-.sa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:8px}
-.sa-craft{display:block;width:100%;text-align:left;padding:10px;border:1px solid var(--sa-line);border-radius:12px;background:#0e1526;color:var(--sa-txt);cursor:pointer;transition:border-color .15s,background .15s}
-.sa-craft:hover{border-color:#2b3a55}
-.sa-craft.on{border-color:var(--sa-acc);background:#0f2430}
-.sa-craft svg{display:block;margin-bottom:6px;color:var(--sa-acc)}
-.sa-craft .n{font-size:12px;font-weight:600;letter-spacing:.06em}
-.sa-craft .s{margin-top:2px;font:600 9px/1.5 ui-monospace,monospace;letter-spacing:.1em;color:var(--sa-mut);text-transform:uppercase}
-.sa-stat{display:flex;align-items:center;gap:6px;margin-top:4px;font:600 9px/1 ui-monospace,monospace;color:var(--sa-mut)}
+.sa-head h3{margin:0;font-size:13px;font-weight:700;color:var(--ink)}
+.sa-tag{font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 9px}
+.sa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.sa-craft{display:block;width:100%;text-align:left;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);cursor:pointer;transition:border-color .15s,background .15s}
+.sa-craft:hover{border-color:var(--acc)}
+.sa-craft.on{border-color:var(--acc);background:#eef0ff}
+.sa-craft svg{display:block;margin-bottom:6px;color:var(--acc)}
+.sa-craft .n{font-size:12px;font-weight:700}
+.sa-craft .s{margin-top:2px;font:600 9px/1.5 ui-monospace,monospace;letter-spacing:.06em;color:var(--mut);text-transform:uppercase}
+.sa-stat{display:flex;align-items:center;gap:6px;margin-top:4px;font:600 9px/1 ui-monospace,monospace;color:var(--mut)}
 .sa-stat span{width:26px}
-.sa-stat i{flex:1;height:3px;border-radius:2px;background:#1b2437;position:relative;overflow:hidden}
-.sa-stat i::after{content:"";position:absolute;inset:0;width:var(--v,50%);background:#3f5878}
-.sa-craft.on .sa-stat i::after{background:var(--sa-acc)}
+.sa-stat i{flex:1;height:3px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+.sa-stat i::after{content:"";position:absolute;inset:0;width:var(--v,50%);background:#cbd5e1}
+.sa-craft.on .sa-stat i::after{background:var(--acc)}
 .sa-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px}
-.sa-note{font:600 10px/1.4 ui-monospace,monospace;letter-spacing:.1em;color:var(--sa-mut);text-transform:uppercase}
-.sa-btn{border:1px solid var(--sa-line);background:#111a2c;color:var(--sa-txt);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
-.sa-btn:hover{border-color:#2b3a55}
-.sa-btn.primary{background:var(--sa-acc);border-color:var(--sa-acc);color:#04121a}
+.sa-note{font:600 10px/1.4 ui-monospace,monospace;color:var(--mut)}
+.sa-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:9px 14px;min-height:38px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.sa-btn:hover{border-color:var(--acc);color:var(--acc)}
+.sa-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.sa-btn.primary:hover{color:#fff;opacity:.92}
 .sa-btn:disabled{opacity:.45;cursor:not-allowed}
 .sa-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:6px 0 4px}
-.sa-stat-box{border:1px solid var(--sa-line);border-radius:10px;padding:10px}
-.sa-stat-box u{display:block;font:600 9px/1 ui-monospace,monospace;letter-spacing:.14em;color:var(--sa-mut);text-decoration:none;text-transform:uppercase}
-.sa-stat-box b{display:block;margin-top:6px;font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.sa-stat-box{border:1px solid var(--line);border-radius:10px;padding:10px}
+.sa-stat-box u{display:block;font:600 9px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--mut);text-decoration:none;text-transform:uppercase}
+.sa-stat-box b{display:block;margin-top:6px;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
 .sa-cheats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-.sa-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:1px solid var(--sa-line);border-radius:10px;background:#0e1526;color:var(--sa-mut);font-size:11px;font-weight:600;letter-spacing:.06em;cursor:pointer}
-.sa-toggle.on{border-color:#f0abfc;color:#f5d0fe;background:#20122a}
-.sa-toggle em{font-style:normal;font:600 9px/1 ui-monospace,monospace;letter-spacing:.1em;opacity:.8}
-.sa-sep{margin:12px 0 8px;font:600 9px/1 ui-monospace,monospace;letter-spacing:.18em;color:var(--sa-mut);text-transform:uppercase}
+.sa-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-size:11px;font-weight:600;text-align:left;cursor:pointer}
+.sa-toggle:hover{border-color:var(--acc)}
+.sa-toggle.on{border-color:var(--acc);color:var(--acc);background:#eef0ff}
+.sa-toggle em{font-style:normal;font:600 9px/1 ui-monospace,monospace;color:var(--mut)}
+.sa-sep{margin:12px 0 8px;font:700 9px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--mut);text-transform:uppercase}
+.sa-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:8px}
+.sa-help b{display:block;margin-bottom:6px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--mut);text-transform:uppercase}
+.sa-help ul{margin:0 0 12px;padding-left:16px;font:600 11px/1.7 ui-monospace,monospace;color:var(--mut)}
+.sa-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--bg);color:var(--ink);font:inherit}
 .sa-pad{display:none;margin-top:10px;justify-content:space-between;align-items:center;gap:12px;user-select:none}
 .sa.touch .sa-pad{display:flex}
-.sa-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,42px);gap:4px}
+.sa-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,44px);gap:4px}
 .sa-dpad [data-pad="u"]{grid-area:1/2}
 .sa-dpad [data-pad="l"]{grid-area:2/1}
 .sa-dpad [data-pad="r"]{grid-area:2/3}
 .sa-dpad [data-pad="d"]{grid-area:3/2}
 .sa-acts{display:flex;gap:8px}
-.sa-key{display:grid;place-items:center;border:1px solid var(--sa-line);border-radius:12px;background:#0e1526;color:var(--sa-txt);font-size:14px;touch-action:none;cursor:pointer}
-.sa-key.on{background:#16233a;border-color:var(--sa-acc)}
-.sa-acts .sa-key{width:64px;height:64px;border-radius:50%;font-size:11px;font-weight:700;letter-spacing:.1em}
-.sa-acts .fire{color:#fde68a;border-color:#3a3320}
-.sa-acts .spec{color:#f0abfc;border-color:#3a2340}
-.sa .game-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.sa .game-action-button{border:1px solid var(--sa-line);background:#0e1526;color:var(--sa-txt);border-radius:10px;padding:9px 14px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
-.sa .game-action-button.on{border-color:#f0abfc;color:#f5d0fe}
-@media (max-width:640px){.sa-hud{font-size:9px}.sa-chip{padding:5px 6px}.sa-bar{width:46px}}
+.sa-key{display:grid;place-items:center;min-width:46px;min-height:44px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-size:13px;font-weight:700;touch-action:none;cursor:pointer}
+.sa-key svg{width:1.15em;height:1.15em;display:block}
+.sa-key.on{background:#eef0ff;border-color:var(--acc);color:var(--acc)}
+.sa-acts .sa-key{width:64px;height:64px;border-radius:50%;font-size:11px;letter-spacing:.06em}
+.sa-acts .fire{color:var(--warn);border-color:#e9d5b7}
+.sa-acts .spec{color:var(--acc);border-color:#c7d2fe}
+@media (max-width:640px){
+.sa-hud{font-size:9px;gap:5px;margin-bottom:8px}
+.sa-chip{padding:4px 7px}
+.sa-bar{width:44px}
+.sa-card{padding:14px}
+.sa-board:has(.sa-ov:not([hidden])){aspect-ratio:auto;min-height:min(62dvh,420px)}
+.sa-board:has(.sa-ov:not([hidden])) .sa-canvas{position:absolute;top:50%;height:auto;aspect-ratio:16/9;transform:translateY(-50%)}
+.sa-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+.sa-craft{padding:8px}
+.sa-craft svg{width:44px;height:21px;margin-bottom:2px}
+.sa-stat{display:none}
+.sa-foot{position:sticky;bottom:-14px;margin:12px -14px -14px;padding:10px 14px;background:var(--surface);border-top:1px solid var(--line);z-index:1}
+}
+@media (prefers-reduced-motion:reduce){.sa *,.sa *::before,.sa *::after{transition:none!important;animation:none!important}}
+
+/* --- Batch 02 design polish --- */
+.sa :focus-visible,.sa button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sa-hud{gap:8px}
+.sa-chip{padding:6px 10px}
+.sa-card{box-shadow:none}
+.sa-btn{min-height:44px;padding:10px 16px}
+.sa-foot{gap:12px;margin-top:16px}
+.sa-key{min-width:44px;border-radius:10px}
+@media (pointer:coarse){.sa button:not(:disabled){min-height:44px}}
+
+/* --- fill height + mobile refinements --- */
+.sa-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sa-icon-btn svg{flex:none;display:block}
+.sa-card{display:flex;flex-direction:column;overflow:hidden}
+.sa-head,.sa-foot{flex:none}
+.sa-grid,.sa-cheats,.sa-stats,.sa-help{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.sa.game-fill > .sa-board:not(:has(.sa-ov:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
+.sa.game-fill > .sa-board:has(.sa-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sa .sa-hud{gap:5px;margin-bottom:8px}
+.sa .sa-hud .sa-chip{padding:4px 6px;font-size:9px}
+.sa .sa-hud .sa-chip[data-hud="init"],.sa .sa-hud .sa-chip[data-hud="combo"]{display:none}
+.sa .sa-hud .sa-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.sa .sa-hud .sa-btn-label,.sa .sa-hud .sa-spacer{display:none}
+.sa .sa-ov{padding:8px}
+.sa .sa-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sa .sa-grid,.sa .sa-cheats,.sa .sa-stats,.sa .sa-help{scrollbar-width:none}
+.sa .sa-grid::-webkit-scrollbar,.sa .sa-cheats::-webkit-scrollbar,.sa .sa-stats::-webkit-scrollbar,.sa .sa-help::-webkit-scrollbar{display:none}
+.sa .sa-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.sa .sa-note{display:none}
+}
 </style>
-<div class="game-app sa" data-sa>
-  <div class="game-intro">
-    <div><h2>Sky Arcade</h2><p data-sub>Neon skies · generated waves</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app sa game-fill" data-sa>
+  <div class="sa-hud">
+    <span class="sa-chip">LV <b data-hud="level">1</b></span>
+    <span class="sa-chip">SCORE <b data-hud="score">0</b></span>
+    <span class="sa-chip">HULL <span class="sa-bar"><i data-hud="hp"></i></span></span>
+    <span class="sa-chip">ORD <b data-hud="ammo">0</b></span>
+    <span class="sa-chip">LEFT <b data-hud="left">0</b></span>
+    <span class="sa-chip" data-hud="init">FIRST —</span>
+    <span class="sa-chip" data-hud="combo" hidden>x1</span>
+    <span class="sa-spacer"></span>
+    <button class="sa-btn sa-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sa-btn-label">Help</span></button>
+    <button class="sa-btn sa-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sa-btn-label">Cheats</span></button>
+    <button class="sa-btn sa-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sa-btn-label">Pause</span></button>
+    <button class="sa-btn sa-icon-btn" type="button" data-restart aria-label="Restart" title="Restart">${iconSVG("refresh", { size: 14 })}<span class="sa-btn-label">Restart</span></button>
+    <button class="sa-btn sa-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sa-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="sa-stage" data-stage>
-      <canvas class="sa-canvas" data-canvas width="960" height="540"></canvas>
-      <div class="sa-hud">
-        <span class="sa-chip">LV <b data-hud="level">1</b></span>
-        <span class="sa-chip">SCORE <b data-hud="score">0</b></span>
-        <span class="sa-chip">HULL <span class="sa-bar"><i data-hud="hp"></i></span></span>
-        <span class="sa-chip">ORD <b data-hud="ammo">0</b></span>
-        <span class="sa-chip">LEFT <b data-hud="left">0</b></span>
-        <span class="sa-chip" data-hud="init">FIRST —</span>
-        <span class="sa-chip" data-hud="combo" hidden>x1</span>
-      </div>
-      <div class="sa-ov" data-ov="select">
-        <div class="sa-card">
-          <div class="sa-head"><h3>Select aircraft</h3><span class="sa-tag" data-tag="mode">Solo</span></div>
-          <div class="sa-grid" data-grid></div>
-          <div class="sa-foot"><span class="sa-note" data-note="ready"></span><button class="sa-btn primary" type="button" data-launch>Launch</button></div>
-        </div>
-      </div>
-      <div class="sa-ov" data-ov="clear" hidden>
-        <div class="sa-card">
-          <div class="sa-head"><h3>Wave clear</h3><span class="sa-tag" data-tag="clearlv">LV 1</span></div>
-          <div class="sa-stats">
-            <div class="sa-stat-box"><u>Bonus</u><b data-out="bonus">0</b></div>
-            <div class="sa-stat-box"><u>Score</u><b data-out="cscore">0</b></div>
-            <div class="sa-stat-box"><u>Kills</u><b data-out="ckills">0</b></div>
-          </div>
-          <div class="sa-foot"><span class="sa-note" data-note="next"></span><button class="sa-btn primary" type="button" data-next>Next wave</button></div>
-        </div>
-      </div>
-      <div class="sa-ov" data-ov="over" hidden>
-        <div class="sa-card">
-          <div class="sa-head"><h3>Game over</h3><span class="sa-tag" data-tag="overlv">LV 1</span></div>
-          <div class="sa-stats">
-            <div class="sa-stat-box"><u>Score</u><b data-out="oscore">0</b></div>
-            <div class="sa-stat-box"><u>Best</u><b data-out="obest">0</b></div>
-            <div class="sa-stat-box"><u>Kills</u><b data-out="okills">0</b></div>
-          </div>
-          <div class="sa-foot"><span class="sa-note" data-note="over"></span><button class="sa-btn primary" type="button" data-retry>Retry</button></div>
-        </div>
-      </div>
-      <div class="sa-ov" data-ov="pause" hidden>
-        <div class="sa-card">
-          <div class="sa-head"><h3>Paused</h3><span class="sa-tag">Sky Arcade</span></div>
-          <div class="sa-foot"><span class="sa-note"></span><button class="sa-btn primary" type="button" data-resume>Resume</button></div>
-        </div>
-      </div>
-      <div class="sa-ov" data-ov="cheat" hidden>
-        <div class="sa-card">
-          <div class="sa-head"><h3>Cheats</h3><button class="sa-btn" type="button" data-close>Close</button></div>
-          <div class="sa-cheats" data-cheatgrid></div>
-          <div class="sa-sep">Quick actions</div>
-          <div class="sa-cheats" data-cheatacts></div>
-        </div>
+  <section class="game-panel sa-board" data-board>
+    <canvas class="sa-canvas" data-canvas width="960" height="540"></canvas>
+    <div class="sa-ov" data-ov="select">
+      <div class="sa-card">
+        <div class="sa-head"><h3>Select aircraft</h3><span class="sa-tag" data-tag="mode">Solo</span></div>
+        <div class="sa-grid" data-grid></div>
+        <div class="sa-foot"><span class="sa-note" data-note="ready"></span><button class="sa-btn primary" type="button" data-launch>Launch</button></div>
       </div>
     </div>
-    <div class="sa-pad">
-      <div class="sa-dpad">
-        <button class="sa-key" type="button" data-pad="u" aria-label="Fly up">&#9650;</button>
-        <button class="sa-key" type="button" data-pad="l" aria-label="Fly left">&#9664;</button>
-        <button class="sa-key" type="button" data-pad="r" aria-label="Fly right">&#9654;</button>
-        <button class="sa-key" type="button" data-pad="d" aria-label="Fly down">&#9660;</button>
+    <div class="sa-ov" data-ov="clear" hidden>
+      <div class="sa-card">
+        <div class="sa-head"><h3>Wave clear</h3><span class="sa-tag" data-tag="clearlv">LV 1</span></div>
+        <div class="sa-stats">
+          <div class="sa-stat-box"><u>Bonus</u><b data-out="bonus">0</b></div>
+          <div class="sa-stat-box"><u>Score</u><b data-out="cscore">0</b></div>
+          <div class="sa-stat-box"><u>Kills</u><b data-out="ckills">0</b></div>
+        </div>
+        <div class="sa-foot"><span class="sa-note" data-note="next"></span><button class="sa-btn primary" type="button" data-next>Next wave</button></div>
       </div>
-      <div class="sa-acts">
-        <button class="sa-key spec" type="button" data-pad="s" aria-label="Special weapon">ORD</button>
-        <button class="sa-key fire" type="button" data-pad="f" aria-label="Fire guns">FIRE</button>
+    </div>
+    <div class="sa-ov" data-ov="over" hidden>
+      <div class="sa-card">
+        <div class="sa-head"><h3>Game over</h3><span class="sa-tag" data-tag="overlv">LV 1</span></div>
+        <div class="sa-stats">
+          <div class="sa-stat-box"><u>Score</u><b data-out="oscore">0</b></div>
+          <div class="sa-stat-box"><u>Best</u><b data-out="obest">0</b></div>
+          <div class="sa-stat-box"><u>Kills</u><b data-out="okills">0</b></div>
+        </div>
+        <div class="sa-foot"><span class="sa-note" data-note="over"></span><button class="sa-btn primary" type="button" data-retry>Retry</button></div>
+      </div>
+    </div>
+    <div class="sa-ov" data-ov="pause" hidden>
+      <div class="sa-card">
+        <div class="sa-head"><h3>Paused</h3></div>
+        <div class="sa-foot"><span class="sa-note"></span><button class="sa-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="sa-ov" data-ov="cheat" hidden>
+      <div class="sa-card">
+        <div class="sa-head"><h3>Cheats</h3><button class="sa-btn" type="button" data-close>Close</button></div>
+        <div class="sa-cheats" data-cheatgrid></div>
+        <div class="sa-sep">Quick actions</div>
+        <div class="sa-cheats" data-cheatacts></div>
+      </div>
+    </div>
+    <div class="sa-ov" data-ov="help" hidden>
+      <div class="sa-card">
+        <div class="sa-head"><h3>How to play</h3><button class="sa-btn" type="button" data-help-close>Close</button></div>
+        <div class="sa-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="sa-kbd">W A S D</span> / arrows — fly</li>
+              <li><span class="sa-kbd">Space</span> — fire (hold)</li>
+              <li><span class="sa-kbd">X</span> / <span class="sa-kbd">Shift</span> — special weapon</li>
+              <li>Mouse — aim · click — fire · right-click — special</li>
+              <li><span class="sa-kbd">P</span> pause · <span class="sa-kbd">H</span> help · <span class="sa-kbd">C</span> cheats</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>On-screen D-pad to fly, FIRE and ORD buttons to attack</li>
+              <li>Drag on the canvas to aim and fire</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Destroy every generated aircraft and ground target to clear the wave.</li>
+              <li>A coin flip decides who launches first; a boss appears every 5th wave.</li>
+              <li>Combos, remaining hull and boss kills grant extra bonus points.</li>
+              <li>Pickups repair the hull, refill ordnance or add score.</li>
+              <li>Cheats are available to the host only.</li>
+            </ul>
+            <div class="sa-foot"><span class="sa-note">Press H to reopen this guide</span><button class="sa-btn primary" type="button" data-help-close>Got it</button></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-cheats>Cheats</button>
-    <button class="game-action-button" type="button" data-pause>Pause</button>
-    <button class="game-action-button" type="button" data-restart>Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="sa-pad">
+    <div class="sa-dpad">
+      <button class="sa-key" type="button" data-pad="u" aria-label="Fly up">${iconSVG("arrowUp", { size: 18 })}</button>
+      <button class="sa-key" type="button" data-pad="l" aria-label="Fly left">${iconSVG("arrowLeft", { size: 18 })}</button>
+      <button class="sa-key" type="button" data-pad="r" aria-label="Fly right">${iconSVG("arrowRight", { size: 18 })}</button>
+      <button class="sa-key" type="button" data-pad="d" aria-label="Fly down">${iconSVG("arrowDown", { size: 18 })}</button>
+    </div>
+    <div class="sa-acts">
+      <button class="sa-key spec" type="button" data-pad="s" aria-label="Special weapon">ORD</button>
+      <button class="sa-key fire" type="button" data-pad="f" aria-label="Fire guns">FIRE</button>
+    </div>
   </div>
 </div>`;
 
     const $ = (sel) => root.querySelector(sel);
     const app = $("[data-sa]");
-    const stage = $("[data-stage]");
+    const board = $("[data-board]");
     const canvas = $("[data-canvas]");
     const ctx = canvas.getContext("2d");
-    const statusEl = $("[data-status]");
-    const subEl = $("[data-sub]");
     const grid = $("[data-grid]");
     const cheatGrid = $("[data-cheatgrid]");
     const cheatActs = $("[data-cheatacts]");
@@ -937,6 +1020,7 @@ export function mount(root, context = {}) {
         over: $('[data-ov="over"]'),
         pause: $('[data-ov="pause"]'),
         cheat: $('[data-ov="cheat"]'),
+        help: $('[data-ov="help"]'),
     };
     const hud = {
         level: $('[data-hud="level"]'),
@@ -968,7 +1052,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- canvas rendering ---------------- */
     function fitCanvas() {
-        const rect = stage.getBoundingClientRect();
+        const rect = board.getBoundingClientRect();
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         const cw = Math.max(320, rect.width || 640);
         const ch = cw * (H / W);
@@ -989,7 +1073,7 @@ export function mount(root, context = {}) {
         if (fill) ctx.fill(); else ctx.stroke();
     }
     function bar(x, y, w, frac, col) {
-        ctx.fillStyle = "#1b2437"; ctx.fillRect(x - w / 2, y, w, 3);
+        ctx.fillStyle = "#cbd5e1"; ctx.fillRect(x - w / 2, y, w, 3);
         ctx.fillStyle = col; ctx.fillRect(x - w / 2, y, w * clamp(frac, 0, 1), 3);
     }
     function craft(g, col, spin) {
@@ -1005,7 +1089,7 @@ export function mount(root, context = {}) {
             ctx.lineWidth = 1.8; seg(-r, -7, r, -7);
             const tr = 3 + Math.abs(Math.cos(spin * 26)) * 3;
             seg(-25, -3 - tr, -25, -3 + tr);
-            ctx.fillStyle = "#04121a"; ctx.beginPath(); ctx.arc(5, -1, 2.2, 0, 6.284); ctx.fill();
+            ctx.fillStyle = "#334155"; ctx.beginPath(); ctx.arc(5, -1, 2.2, 0, 6.284); ctx.fill();
             return;
         }
         if (g === "bomber") {
@@ -1013,7 +1097,7 @@ export function mount(root, context = {}) {
             poly([14, -4, 21, 0, 14, 4], true);
             seg(0, 0, -14, -12); seg(0, 0, -14, 12);
             seg(-22, 0, -28, -7); seg(-22, 0, -28, 7);
-            ctx.fillStyle = "#04121a";
+            ctx.fillStyle = "#334155";
             ctx.beginPath(); ctx.arc(-8, -5, 2, 0, 6.284); ctx.fill();
             ctx.beginPath(); ctx.arc(-8, 5, 2, 0, 6.284); ctx.fill();
             return;
@@ -1023,7 +1107,7 @@ export function mount(root, context = {}) {
             poly([12, -3, 19, 0, 12, 3], true);
             seg(2, 0, -10, -8); seg(2, 0, -10, 8);
             seg(-14, 0, -19, -5); seg(-14, 0, -19, 5);
-            ctx.fillStyle = "#04121a"; ctx.beginPath(); ctx.arc(9, 0, 2.6, 0, 6.284); ctx.fill();
+            ctx.fillStyle = "#334155"; ctx.beginPath(); ctx.arc(9, 0, 2.6, 0, 6.284); ctx.fill();
             return;
         }
         seg(-16, 0, 13, 0);
@@ -1031,25 +1115,25 @@ export function mount(root, context = {}) {
         seg(0, 0, -11, -10); seg(0, 0, -11, 10);
         seg(-16, 0, -22, -6); seg(-16, 0, -22, 6);
         if (g === "attack") { ctx.lineWidth = 2.6; seg(2, 0, -6, -13); seg(2, 0, -6, 13); ctx.lineWidth = 2.2; }
-        ctx.fillStyle = "#04121a"; ctx.beginPath(); ctx.arc(4, -2, 2, 0, 6.284); ctx.fill();
+        ctx.fillStyle = "#334155"; ctx.beginPath(); ctx.arc(4, -2, 2, 0, 6.284); ctx.fill();
     }
     function drawAirport(scroll) {
         const bx = (v) => v - scroll;
         ctx.lineWidth = 1.6;
-        ctx.strokeStyle = "#243350"; ctx.fillStyle = "#0f1729";
+        ctx.strokeStyle = "#94a3b8"; ctx.fillStyle = "#e2e8f0";
         const t1 = bx(70);
         if (t1 > -240 && t1 < W + 40) {
             ctx.fillRect(t1, GROUND - 44, 190, 44); ctx.strokeRect(t1, GROUND - 44, 190, 44);
-            ctx.fillStyle = "#16233a";
+            ctx.fillStyle = "#cbd5e1";
             for (let i = 0; i < 7; i++) ctx.fillRect(t1 + 12 + i * 25, GROUND - 32, 14, 12);
-            ctx.fillStyle = "#0f1729";
+            ctx.fillStyle = "#e2e8f0";
         }
         const t2 = bx(320);
         if (t2 > -80 && t2 < W + 40) {
             ctx.fillRect(t2, GROUND - 92, 24, 92); ctx.strokeRect(t2, GROUND - 92, 24, 92);
             ctx.fillRect(t2 - 9, GROUND - 112, 42, 22); ctx.strokeRect(t2 - 9, GROUND - 112, 42, 22);
-            ctx.strokeStyle = "#22d3ee"; seg(t2 + 12, GROUND - 112, t2 + 12, GROUND - 128);
-            ctx.strokeStyle = "#243350";
+            ctx.strokeStyle = "#4f46e5"; seg(t2 + 12, GROUND - 112, t2 + 12, GROUND - 128);
+            ctx.strokeStyle = "#94a3b8";
         }
         const t3 = bx(430);
         if (t3 > -180 && t3 < W + 40) {
@@ -1062,24 +1146,24 @@ export function mount(root, context = {}) {
         }
         const t4 = bx(640);
         if (t4 > -40 && t4 < W + 40) {
-            ctx.strokeStyle = "#33415c"; seg(t4, GROUND, t4, GROUND - 40);
-            ctx.fillStyle = "#f97316"; poly([t4, GROUND - 40, t4 + 26, GROUND - 34, t4, GROUND - 28], true);
-            ctx.fillStyle = "#0f1729"; ctx.strokeStyle = "#243350";
+            ctx.strokeStyle = "#64748b"; seg(t4, GROUND, t4, GROUND - 40);
+            ctx.fillStyle = "#d97706"; poly([t4, GROUND - 40, t4 + 26, GROUND - 34, t4, GROUND - 28], true);
+            ctx.fillStyle = "#e2e8f0"; ctx.strokeStyle = "#94a3b8";
         }
         for (let i = 0; i < 3; i++) {
             const px2 = bx(760 + i * 90);
             if (px2 < -60 || px2 > W + 60) continue;
             ctx.save(); ctx.translate(px2, GROUND - 10); ctx.scale(0.7, 0.7);
-            ctx.globalAlpha = 0.5; craft("jet", "#3f5878", 0); ctx.globalAlpha = 1;
+            ctx.globalAlpha = 0.5; craft("jet", "#94a3b8", 0); ctx.globalAlpha = 1;
             ctx.restore();
         }
     }
     function drawGroundFoe(f, e) {
         const d = ENEMY[f.kind];
         const x = f.x + f.vx * e, y = GROUND;
-        const col = f.hit > 0 ? "#ffffff" : d.col;
+        const col = f.hit > 0 ? "#0f172a" : d.col;
         ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.lineJoin = "round";
-        ctx.fillStyle = "#0e1526";
+        ctx.fillStyle = "#ffffff";
         if (f.kind === "flak") {
             poly([x - 15, y, x - 11, y - 12, x + 11, y - 12, x + 15, y], true);
             poly([x - 15, y, x - 11, y - 12, x + 11, y - 12, x + 15, y], false);
@@ -1101,23 +1185,23 @@ export function mount(root, context = {}) {
             ctx.fillStyle = col;
             poly([x - 14, y - 30, x - 11, y - 26, x - 17, y - 26], true);
             poly([x - 4, y - 30, x - 1, y - 26, x - 7, y - 26], true);
-            ctx.fillStyle = "#0e1526";
+            ctx.fillStyle = "#ffffff";
             bar(x, y - 38, 30, f.hp / f.maxHp, col);
         } else {
             ctx.fillRect(x - 46, y - 46, 92, 46); ctx.strokeRect(x - 46, y - 46, 92, 46);
-            ctx.fillStyle = "#070b16";
+            ctx.fillStyle = "#cbd5e1";
             ctx.fillRect(x - 32, y - 34, 26, 18); ctx.fillRect(x + 6, y - 34, 26, 18);
-            ctx.fillStyle = "#0e1526";
+            ctx.fillStyle = "#ffffff";
             seg(x, y - 46, x, y - 68);
-            ctx.fillStyle = "#ef4444"; poly([x, y - 68, x + 22, y - 62, x, y - 56], true);
-            ctx.fillStyle = "#0e1526";
+            ctx.fillStyle = "#dc2626"; poly([x, y - 68, x + 22, y - 62, x, y - 56], true);
+            ctx.fillStyle = "#ffffff";
             bar(x, y - 76, 92, f.hp / f.maxHp, col);
         }
     }
     function drawAirFoe(f, e) {
         const d = ENEMY[f.kind];
         const x = f.x + f.vx * e, y = f.y + f.vy * e;
-        const col = f.hit > 0 ? "#ffffff" : d.col;
+        const col = f.hit > 0 ? "#0f172a" : d.col;
         ctx.save();
         ctx.translate(x, y);
         if (f.kind === "drone") {
@@ -1144,7 +1228,7 @@ export function mount(root, context = {}) {
         if (!p.alive) return;
         const x = p.x + p.vx * e, y = p.y + p.vy * e;
         const mine = p.i === myIndex;
-        const col = p.flash > 0 ? "#ffffff" : mine ? th.accent : "#34d399";
+        const col = p.flash > 0 ? "#0f172a" : mine ? th.accent : "#0f766e";
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(p.tilt);
@@ -1155,7 +1239,7 @@ export function mount(root, context = {}) {
         craft(AIRCRAFT[p.veh].glyph, col, p.spin);
         ctx.restore();
         if (online) {
-            ctx.fillStyle = mine ? th.accent : "#34d399";
+            ctx.fillStyle = mine ? th.accent : "#0f766e";
             ctx.font = "600 9px ui-monospace, monospace";
             ctx.textAlign = "center";
             ctx.fillText((p.name || "P" + (p.i + 1)).slice(0, 10).toUpperCase(), x, y - 26);
@@ -1168,25 +1252,19 @@ export function mount(root, context = {}) {
         const scroll = s.scroll + (s.phase === "play" ? s.speed * e : 0);
         const th = THEMES[s.theme % THEMES.length];
         ctx.fillStyle = th.sky; ctx.fillRect(0, 0, W, H);
-        for (let i = 0; i < 64; i++) {
-            const x = wrapX(hash(i * 1.3) * 1200 - scroll * 0.05, 1200) - 120;
-            if (x < -10 || x > W + 10) continue;
-            const y = 16 + hash(i * 2.7) * 280;
-            ctx.globalAlpha = th.star * (0.35 + hash(i * 3.9) * 0.65);
-            ctx.fillStyle = "#e2e8f0";
-            ctx.fillRect(x, y, 1.6, 1.6);
-        }
+        ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1; ctx.globalAlpha = 0.7;
+        for (let y = 88; y < GROUND - 30; y += 86) seg(0, y + 0.5, W, y + 0.5);
         ctx.globalAlpha = 1;
         const layer = (par, step, maxH, col, baseY) => {
             const off = scroll * par;
             const first = Math.floor(off / step) - 1;
-            ctx.fillStyle = col;
+            ctx.fillStyle = col; ctx.strokeStyle = "#94a3b8";
             for (let i = first; i < first + Math.ceil(W / step) + 3; i++) {
                 const x = i * step - off;
                 const h = 24 + hash(i * 1.7 + par * 31) * maxH;
                 const w = step * (0.5 + hash(i * 3.1 + par * 7) * 0.36);
                 ctx.fillRect(x, baseY - h, w, h);
-                if (hash(i * 5.3 + par) > 0.82) ctx.fillRect(x + w * 0.45, baseY - h - 12, 2, 12);
+                if (hash(i * 5.3 + par) > 0.82) seg(x + w * 0.45, baseY - h, x + w * 0.45, baseY - h - 12);
             }
         };
         layer(0.18, 96, 118, th.far, GROUND - 4);
@@ -1201,9 +1279,9 @@ export function mount(root, context = {}) {
         }
         const runway = s.phase === "select" || (s.phase === "takeoff" && s.takeoffMode === "runway");
         if (runway) {
-            ctx.fillStyle = "#0f1729"; ctx.fillRect(0, GROUND, W, 30);
-            ctx.strokeStyle = "#243350"; seg(0, GROUND + 0.5, W, GROUND + 0.5);
-            ctx.fillStyle = "#33415c";
+            ctx.fillStyle = "#e2e8f0"; ctx.fillRect(0, GROUND, W, 30);
+            ctx.strokeStyle = "#94a3b8"; seg(0, GROUND + 0.5, W, GROUND + 0.5);
+            ctx.fillStyle = "#cbd5e1";
             for (let i = 0; i < 22; i++) {
                 const x = wrapX(i * 70 - scroll, 1540) - 200;
                 ctx.fillRect(x, GROUND + 14, 34, 2);
@@ -1213,7 +1291,7 @@ export function mount(root, context = {}) {
         for (const f of s.foes) if (!ENEMY[f.kind].air) drawGroundFoe(f, e);
         for (const u of s.pickups) {
             const x = u.x + u.vx * e, y = u.y + u.vy * e;
-            const col = u.kind === "hp" ? "#34d399" : u.kind === "ammo" ? "#38bdf8" : "#fde68a";
+            const col = u.kind === "hp" ? "#047857" : u.kind === "ammo" ? "#0284c7" : "#b45309";
             ctx.save(); ctx.translate(x, y); ctx.rotate(u.t * 2);
             ctx.strokeStyle = col; ctx.lineWidth = 1.8;
             poly([-7, 0, 0, -7, 7, 0, 0, 7], false);
@@ -1224,7 +1302,7 @@ export function mount(root, context = {}) {
         }
         for (const f of s.foes) if (ENEMY[f.kind].air) drawAirFoe(f, e);
         for (const p of s.players) drawPlayer(p, e, th);
-        ctx.strokeStyle = "#fde68a"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+        ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
         for (const b of s.shots) {
             const x = b.x + b.vx * e, y = b.y + b.vy * e;
             seg(x - b.vx * 0.014, y - b.vy * 0.014, x, y);
@@ -1232,20 +1310,20 @@ export function mount(root, context = {}) {
         for (const b of s.eshots) {
             const x = b.x + b.vx * e, y = b.y + b.vy * e;
             if (b.kind === "sam") {
-                ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 3;
+                ctx.strokeStyle = "#0284c7"; ctx.lineWidth = 3;
                 seg(x - b.vx * 0.03, y - b.vy * 0.03, x, y);
             } else {
-                ctx.fillStyle = b.kind === "shell" ? "#fb923c" : b.kind === "flak" ? "#facc15" : "#f87171";
+                ctx.fillStyle = b.kind === "shell" ? "#ea580c" : b.kind === "flak" ? "#a16207" : "#dc2626";
                 ctx.beginPath(); ctx.arc(x, y, b.kind === "bullet" ? 3 : 4, 0, 6.284); ctx.fill();
             }
         }
         for (const sp of s.specials) {
             const x = sp.x + sp.vx * e, y = sp.y + sp.vy * e;
             if (sp.kind === "bomb") {
-                ctx.fillStyle = "#e2e8f0";
+                ctx.fillStyle = "#475569";
                 ctx.beginPath(); ctx.ellipse(x, y, 4.5, 7.5, 0, 0, 6.284); ctx.fill();
             } else {
-                ctx.strokeStyle = sp.kind === "rocket" ? "#fca5a5" : "#f0abfc";
+                ctx.strokeStyle = sp.kind === "rocket" ? "#dc2626" : "#a21caf";
                 ctx.lineWidth = 3.6;
                 seg(x - sp.vx * 0.03, y - sp.vy * 0.03, x, y);
             }
@@ -1270,14 +1348,14 @@ export function mount(root, context = {}) {
         }
         const boss = s.foes.find((f) => f.kind === "ace");
         if (boss) {
-            ctx.fillStyle = "#0b1120cc"; ctx.fillRect(W / 2 - 150, 44, 300, 16);
-            ctx.strokeStyle = "#3a2340"; ctx.lineWidth = 1; ctx.strokeRect(W / 2 - 150, 44, 300, 16);
-            ctx.fillStyle = "#f0abfc"; ctx.fillRect(W / 2 - 147, 47, 294 * clamp(boss.hp / boss.maxHp, 0, 1), 10);
-            ctx.fillStyle = "#f5d0fe"; ctx.font = "600 9px ui-monospace, monospace"; ctx.textAlign = "center";
+            ctx.fillStyle = "rgba(255,255,255,.94)"; ctx.fillRect(W / 2 - 150, 44, 300, 16);
+            ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1; ctx.strokeRect(W / 2 - 150, 44, 300, 16);
+            ctx.fillStyle = "#a21caf"; ctx.fillRect(W / 2 - 147, 47, 294 * clamp(boss.hp / boss.maxHp, 0, 1), 10);
+            ctx.fillStyle = "#475569"; ctx.font = "600 9px ui-monospace, monospace"; ctx.textAlign = "center";
             ctx.fillText("ACE", W / 2, 72); ctx.textAlign = "left";
         }
         if (s.phase === "takeoff" && s.takeoffMode === "runway") {
-            ctx.fillStyle = "#8494ad"; ctx.font = "600 10px ui-monospace, monospace";
+            ctx.fillStyle = "#64748b"; ctx.font = "600 10px ui-monospace, monospace";
             ctx.fillText("TAKEOFF", 16, H - 18);
         }
     }
@@ -1285,15 +1363,6 @@ export function mount(root, context = {}) {
     /* ---------------- HUD + overlays ---------------- */
     function statRow(label, frac) {
         return '<div class="sa-stat"><span>' + label + '</span><i style="--v:' + Math.round(clamp(frac, 0.08, 1) * 100) + '%"></i></div>';
-    }
-    function statusText(s) {
-        if (!s) return "Linking";
-        if (s.paused) return "Paused";
-        if (s.phase === "select") return "Hangar";
-        if (s.phase === "takeoff") return "Takeoff";
-        if (s.phase === "play") return "Wave " + s.level;
-        if (s.phase === "clear") return "Wave clear";
-        return "Game over";
     }
     function renderGrid(s) {
         const me = s.players[myIndex] || s.players[0];
@@ -1335,15 +1404,12 @@ export function mount(root, context = {}) {
         hud.level.textContent = s.level;
         hud.score.textContent = s.score;
         hud.hp.style.width = Math.round(frac * 100) + "%";
-        hud.hp.style.background = frac < 0.3 ? "#f87171" : "";
+        hud.hp.style.background = frac < 0.3 ? "#dc2626" : "";
         hud.ammo.textContent = s.cheats.ammo ? "INF" : me.ammo;
         hud.left.textContent = s.left;
         hud.init.textContent = "FIRST " + (s.first === 0 ? (online ? "SQUAD" : "YOU") : "BOT");
         hud.combo.hidden = s.combo <= 1;
         hud.combo.textContent = "x" + s.combo;
-        statusEl.textContent = statusText(s);
-        subEl.textContent = (online ? "Co-op" : "Solo vs bot") + " - " +
-            ((s.slots[myIndex] || 0) === 0 ? "Lead" : "Wing") + " - " + AIRCRAFT[me.veh].label;
         tags.mode.textContent = online ? (isHost ? "Host - P1" : "Guest - P2") : "Solo";
         tags.clearlv.textContent = "LV " + s.level;
         tags.overlv.textContent = "LV " + s.level;
@@ -1363,19 +1429,26 @@ export function mount(root, context = {}) {
         }
         notes.over.textContent = "Best " + Math.max(best, s.score);
         launchBtn.textContent = online && me.ready ? "Ready" : "Launch";
-        ov.select.hidden = s.phase !== "select" || cheatsOpen;
-        ov.clear.hidden = s.phase !== "clear" || cheatsOpen;
-        ov.over.hidden = s.phase !== "over" || cheatsOpen;
-        ov.pause.hidden = !s.paused || cheatsOpen;
-        ov.cheat.hidden = !cheatsOpen;
+        ov.select.hidden = s.phase !== "select" || cheatsOpen || helpOpen;
+        ov.clear.hidden = s.phase !== "clear" || cheatsOpen || helpOpen;
+        ov.over.hidden = s.phase !== "over" || cheatsOpen || helpOpen;
+        ov.pause.hidden = !s.paused || cheatsOpen || helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
         const cbtn = root.querySelector("[data-cheats]");
         const active = Object.keys(s.cheats).filter((k) => s.cheats[k]).length;
         if (cbtn) {
             cbtn.classList.toggle("on", active > 0);
-            cbtn.textContent = active > 0 ? "Cheats " + active : "Cheats";
+            const label = cbtn.querySelector(".sa-btn-label");
+            if (label) label.textContent = active > 0 ? "Cheats " + active : "Cheats";
         }
         const pbtn = root.querySelector("[data-pause]");
-        if (pbtn) { pbtn.textContent = s.paused ? "Resume" : "Pause"; pbtn.disabled = online && !isHost; }
+        if (pbtn) {
+            const label = pbtn.querySelector(".sa-btn-label");
+            if (label) label.textContent = s.paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", s.paused ? "Resume" : "Pause");
+            pbtn.disabled = online && !isHost;
+        }
         if (s.score > best) {
             best = s.score;
             try { localStorage.setItem("sky-arcade-best", String(best)); } catch (err) { /* storage blocked */ }
@@ -1385,8 +1458,7 @@ export function mount(root, context = {}) {
     }
     function render() {
         if (!state) {
-            ctx.fillStyle = "#070b16"; ctx.fillRect(0, 0, W, H);
-            statusEl.textContent = "Linking";
+            ctx.fillStyle = "#f8fafc"; ctx.fillRect(0, 0, W, H);
             return;
         }
         drawWorld(state);
@@ -1599,6 +1671,11 @@ export function mount(root, context = {}) {
         const bs = root.querySelectorAll("[data-pad]");
         for (const b of bs) b.classList.remove("on");
     }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
     function onKeyDown(e) {
         const c = e.code;
         if (c === "ArrowLeft" || c === "KeyA") { keys.l = true; aim.active = false; e.preventDefault(); }
@@ -1607,13 +1684,17 @@ export function mount(root, context = {}) {
         else if (c === "ArrowDown" || c === "KeyS") { keys.d = true; aim.active = false; e.preventDefault(); }
         else if (c === "Space") { keys.fire = true; e.preventDefault(); }
         else if (c === "KeyX" || c === "KeyK" || c === "ShiftLeft") { queueSpecial(); e.preventDefault(); }
-        else if (c === "KeyC") { cheatsOpen = !cheatsOpen; render(); e.preventDefault(); }
+        else if (c === "KeyC") { if (!helpOpen) { cheatsOpen = !cheatsOpen; render(); } e.preventDefault(); }
+        else if (c === "KeyH") { toggleHelp(); e.preventDefault(); }
         else if (c === "KeyP" || c === "Escape") {
-            if (cheatsOpen) { cheatsOpen = false; render(); } else submitAction({ type: "pause" });
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else submitAction({ type: "pause" });
             e.preventDefault();
         } else if (c === "Enter") {
             if (!state) return;
-            if (cheatsOpen) { cheatsOpen = false; render(); }
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
             else if (state.phase === "select") { const me = state.players[myIndex]; submitAction({ type: "ready", on: !(me && me.ready) }); }
             else if (state.phase === "clear") submitAction({ type: "next" });
             else if (state.phase === "over") submitAction({ type: "restart" });
@@ -1631,6 +1712,8 @@ export function mount(root, context = {}) {
     function handleClick(event) {
         const t = event.target;
         if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
         if (t.closest("[data-cheats]")) { cheatsOpen = !cheatsOpen; render(); return; }
         if (t.closest("[data-close]")) { cheatsOpen = false; render(); return; }
@@ -1689,7 +1772,7 @@ export function mount(root, context = {}) {
     let ro = null;
     if (typeof ResizeObserver !== "undefined") {
         ro = new ResizeObserver(onResize);
-        ro.observe(stage);
+        ro.observe(board);
     } else {
         window.addEventListener("resize", onResize);
     }

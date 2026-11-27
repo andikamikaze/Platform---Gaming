@@ -33,6 +33,7 @@ export function applyTheme(preference = getThemePreference()) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", theme === "dark" ? DARK_META : LIGHT_META);
   syncThemeButtons(theme);
+  document.dispatchEvent(new CustomEvent("mgp:themechange", { detail: theme }));
   return theme;
 }
 

@@ -2,6 +2,8 @@
 /* Escape Room — balapan keluar ruangan (solo vs bot / online 2 pemain).
    Level dibangkitkan acak & divalidasi selalu bisa diselesaikan.        */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "escape-room", // harus sama dengan nama file (tanpa .js)
     name: "Escape Room",
@@ -139,7 +141,10 @@ export function mount(root, context = {}) {
     let state = null;
 
     /* UI lokal (tidak disinkronkan) */
-    let uiOverlay = null;      // null | "keypad" | "notes" | "cheats"
+    let uiOverlay = null;      // null | "keypad" | "notes"
+    let cheatsOpen = false;
+    let helpOpen = false;
+    let paused = false;
     let uiLevel = 1;
     let padVal = "";
     let armedItem = null;
@@ -147,32 +152,83 @@ export function mount(root, context = {}) {
     let lastFxN = 0;
     let cheatCodeShown = false;
     let destroyed = false;
-    let botTimer = 0, toastTimer = 0;
     let best = readBest();
     const offs = [];
+
+    /* Timer yang ikut dibekukan saat jeda: bot, toast dan efek sementara. */
+    const timers = new Map();
+    let deferredTimers = [];
+    let pauseStart = 0;
+
+    function later(key, fn, ms) {
+        clearTimer(key);
+        if (paused) { deferredTimers.push({ key, fn, wait: Math.max(0, ms) }); return; }
+        const id = setTimeout(() => {
+            timers.delete(key);
+            if (!destroyed && !paused) fn();
+        }, ms);
+        timers.set(key, { id, due: Date.now() + ms, fn });
+    }
+    function clearTimer(key) {
+        const rec = timers.get(key);
+        if (rec) { clearTimeout(rec.id); timers.delete(key); }
+        deferredTimers = deferredTimers.filter((t) => t.key !== key);
+    }
+    function clearTimers() {
+        for (const rec of timers.values()) clearTimeout(rec.id);
+        timers.clear();
+        deferredTimers = [];
+    }
+    function pauseTimers() {
+        const now = Date.now();
+        for (const [key, rec] of timers) {
+            clearTimeout(rec.id);
+            deferredTimers.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        timers.clear();
+    }
+    function resumeTimers() {
+        const queue = deferredTimers;
+        deferredTimers = [];
+        for (const t of queue) later(t.key, t.fn, t.wait);
+    }
+
+    /* Panduan internal sekali per instalasi. */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("escapeRoomHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("escapeRoomHelpSeen", "1"); } catch (_) { /* storage diblokir */ }
+    }
 
     const mySeat = () => (online && state && state.seatMap ? state.seatMap[playerIndex] : 0);
     const seatLabel = (s) => (s === mySeat() ? (online ? playerName : "Kamu") : online ? "Lawan" : "Bot");
 
     /* ---------------- shell (minimalis) ---------------- */
     root.innerHTML = `
-<div class="game-app er-root">
+<div class="game-app er-root game-fill" data-er>
 <style>
-.er-root{--bg:#0f1216;--panel:#14181f;--line:#2a3140;--txt:#e6e9ef;--sub:#8b93a7;--ac:#5eead4;--warn:#f87171;color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.er-root{--bg:#0f1216;--panel:#14181f;--line:#2a3140;--txt:#e6e9ef;--sub:#8b93a7;--ac:#5eead4;--warn:#f87171;color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;gap:12px}
 .er-root [hidden]{display:none!important}
-.er-root .er-intro p{margin:2px 0 0;color:var(--sub);font-size:13px}
-.er-root .er-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
-.er-root .er-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12px;color:var(--sub)}
-.er-root .er-chip b{color:var(--txt);font-weight:600}
+.er-root .er-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0;font-size:11px}
+.er-root .er-chip{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:11px;color:var(--sub);white-space:nowrap}
+.er-root .er-chip b{color:var(--txt);font-weight:700;font-variant-numeric:tabular-nums}
 .er-root .er-ap i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--line);margin-left:3px}
 .er-root .er-ap i.on{background:var(--ac)}
-.er-root .er-spacer{flex:1}
-.er-root .er-items{display:flex;gap:6px;flex-wrap:wrap}
-.er-root .er-item{border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.er-root .er-spacer{flex:1 1 8px}
+.er-root .er-items{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1 1 100%;min-height:30px}
+.er-root .er-item{min-height:32px;border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:9px;padding:5px 10px;font-size:11px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
 .er-root .er-item.armed{border-color:var(--ac);box-shadow:0 0 0 1px var(--ac);color:var(--ac)}
-.er-root .er-none{color:var(--sub);font-size:12px}
-.er-root .er-panel{position:relative;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;min-height:300px}
-.er-root .er-scene{display:block;width:100%;height:auto;max-height:62vh}
+.er-root .er-none{color:var(--sub);font-size:11px}
+.er-root .er-btn{min-height:38px;border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:9px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
+.er-root .er-btn:hover{border-color:var(--ac)}
+.er-root .er-btn.primary{background:var(--ac);border-color:var(--ac);color:#06231f}
+.er-root .er-btn:disabled{opacity:.4;cursor:default}
+.er-root .er-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.er-root .er-icon-btn svg{flex:none;display:block}
+.er-root .er-btn.on{border-color:var(--ac);color:var(--ac)}
+.er-root .er-panel{position:relative;width:100%;padding:0;background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden;min-height:0}
+.er-root .er-scene{display:block;width:100%;height:100%;touch-action:none}
 .er-root .er-obj{cursor:pointer;transform-box:fill-box;transform-origin:center;transition:filter .15s}
 .er-root .er-obj *{transform-box:fill-box;transform-origin:center}
 .er-root .er-obj:hover{filter:brightness(1.3)}
@@ -186,35 +242,42 @@ export function mount(root, context = {}) {
 .er-root .er-open .er-drawer{transform:translateX(16px)}
 .er-root .er-looted .er-cushion{transform:rotate(-9deg) translateY(-3px)}
 .er-root .er-open .er-ventgrid{transform:rotate(-14deg) translate(4px,6px);opacity:.45}
-.er-root .er-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);max-width:88%;background:#111831ee;border:1px solid var(--line);border-radius:999px;padding:6px 16px;font-size:12.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;opacity:0;transition:opacity .35s;z-index:5}
+.er-root .er-toast{position:absolute;top:8px;left:50%;transform:translateX(-50%);max-width:88%;background:#111831ee;border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:12px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;opacity:0;transition:opacity .2s;z-index:5}
 .er-root .er-toast.show{opacity:1}
-.er-root .er-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,12,16,.78);backdrop-filter:blur(3px);z-index:6;animation:erFade .25s ease}
-.er-root .er-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 26px;max-width:400px;width:calc(100% - 40px);text-align:center}
-.er-root .er-card h2{margin:0 0 6px;font-size:20px;font-weight:700}
-.er-root .er-card p{margin:0 0 14px;color:var(--sub);font-size:13px;line-height:1.5}
-.er-root .er-btn,.er-root .er-lv{border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
-.er-root .er-btn:hover,.er-root .er-lv:hover{border-color:var(--ac)}
-.er-root .er-btn.primary{background:var(--ac);border-color:var(--ac);color:#06231f}
-.er-root .er-btn:disabled{opacity:.4;cursor:default}
-.er-root .er-lvrow{display:flex;gap:6px;justify-content:center;margin:0 0 14px}
-.er-root .er-lv{width:38px;padding:8px 0}
+.er-root .er-ov{position:absolute;inset:0;display:grid;place-items:center;padding:12px;overflow:auto;background:rgba(10,12,16,.78);z-index:6;animation:erFade .2s ease}
+.er-root .er-card{width:min(420px,100%);max-height:100%;display:flex;flex-direction:column;gap:10px;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;text-align:center}
+.er-root .er-card h2{margin:0;font-size:20px;font-weight:700}
+.er-root .er-card p{margin:0;color:var(--sub);font-size:13px;line-height:1.55}
+.er-root .er-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+.er-root .er-head h2{font-size:16px}
+.er-root .er-scroll,.er-root .er-help,.er-root .er-cheatgrid,.er-root .er-list{flex:1 1 auto;min-height:0;overflow:auto}
+.er-root .er-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;text-align:left}
+.er-root .er-help b{display:block;margin:0 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--sub)}
+.er-root .er-help ul{margin:0 0 12px;padding-left:16px;font-size:12px;line-height:1.7;color:var(--sub)}
+.er-root .er-kbd{display:inline-block;padding:0 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--bg);color:var(--txt);font:600 11px/1.5 ui-monospace,monospace}
+.er-root .er-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.er-root .er-note{font-size:11px;color:var(--sub)}
+.er-root .er-lvrow{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0}
+.er-root .er-lv{min-height:44px;border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:9px;padding:8px 0;width:44px;font-size:13px;font-weight:600;cursor:pointer}
+.er-root .er-lv:hover{border-color:var(--ac)}
 .er-root .er-lv.on{border-color:var(--ac);color:var(--ac)}
 .er-root .er-win{color:var(--ac)}.er-root .er-lose{color:var(--warn)}
 .er-root .er-digitbar{display:flex;gap:8px;justify-content:center;margin-bottom:4px}
 .er-root .er-digitbar span{width:40px;height:48px;border-radius:10px;background:var(--bg);border:1px solid var(--line);display:grid;place-items:center;font-size:22px;font-weight:700}
-.er-root .er-padgrid{display:grid;grid-template-columns:repeat(3,64px);gap:8px;justify-content:center;margin:12px 0}
-.er-root .er-padgrid button{height:44px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--txt);font-weight:700;font-size:15px;cursor:pointer}
+.er-root .er-padgrid{display:grid;grid-template-columns:repeat(3,minmax(0,64px));gap:8px;justify-content:center;margin:8px 0}
+.er-root .er-padgrid button{min-height:44px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--txt);font-weight:700;font-size:15px;cursor:pointer}
 .er-root .er-padgrid button:hover{border-color:var(--ac)}
-.er-root .er-list{text-align:left;margin:0 0 14px;padding:0;list-style:none;font-size:13px;line-height:1.9;color:var(--txt)}
+.er-root .er-list{text-align:left;margin:0;padding:0 0 0 18px;list-style:none;font-size:13px;line-height:1.8;color:var(--txt)}
 .er-root .er-list b{color:var(--ac);font-weight:600}
 .er-root .er-list .dim{color:var(--sub)}
-.er-root .er-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-.er-root .er-cheatgrid .er-btn{padding:8px 6px;font-size:12px}
-.er-root .er-code{font-size:15px;color:var(--ac);letter-spacing:4px;margin-bottom:12px;font-weight:700}
-.er-root .er-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.er-root .er-touch{display:none;gap:6px;padding:8px;border-top:1px solid var(--line);background:var(--panel);flex-wrap:wrap;justify-content:center}
-.er-root .er-touch button{flex:1;min-width:56px;min-height:44px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--txt);font-size:11px;font-weight:700;cursor:pointer}
+.er-root .er-cheatgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;text-align:left}
+.er-root .er-cheatgrid .er-btn{padding:8px;font-size:12px}
+.er-root .er-code{font-size:15px;color:var(--ac);letter-spacing:4px;margin-bottom:8px;font-weight:700}
+.er-root .er-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.er-root .er-touch{display:none;gap:8px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--panel);flex-wrap:wrap;justify-content:center}
+.er-root .er-touch button{flex:1;min-width:56px;min-height:44px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--txt);font-size:11px;font-weight:700;cursor:pointer}
 .er-root .er-touch button:active{border-color:var(--ac);color:var(--ac)}
+.er-root :is(button,input):focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 @media (pointer:coarse),(max-width:720px){.er-root .er-touch{display:flex}}
 .er-root .er-fx-clue,.er-root .er-fx-item{animation:erPop .55s ease}
 .er-root .er-fx-unlock{animation:erUnlock .6s ease}
@@ -230,19 +293,44 @@ export function mount(root, context = {}) {
 @keyframes erDoor{to{transform:perspective(600px) rotateY(-62deg);opacity:.55}}
 @keyframes erFade{from{opacity:0}to{opacity:1}}
 @keyframes erPulse{0%,100%{opacity:.35}50%{opacity:1}}
+/* --- layout akhir: override mobile + HUD (paling akhir) --- */
+@media (max-width:640px){
+.er-root{gap:6px}
+.er-root.game-fill > .er-panel[data-board]:not(:has(.er-ov:not([hidden]))){aspect-ratio:720/440;flex:0 0 auto}
+.er-root.game-fill > .er-panel[data-board]:has(.er-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.er-root .er-hud{gap:5px}
+.er-root .er-hud .er-chip{padding:4px 6px;font-size:9px;min-height:26px}
+.er-root .er-hud .er-chip[data-el="statusChip"],.er-root .er-hud .er-chip[data-el="bestChip"],.er-root .er-hud .er-chip[data-hud="round"]{display:none}
+.er-root .er-hud .er-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.er-root .er-hud .er-btn-label,.er-root .er-hud .er-spacer{display:none}
+.er-root .er-hud .er-items{min-height:26px}
+.er-root .er-hud .er-item{min-height:30px;padding:4px 8px;font-size:10px}
+.er-root .er-ov{padding:8px}
+.er-root .er-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.er-root .er-help{grid-template-columns:1fr;gap:8px}
+.er-root .er-cheatgrid,.er-root .er-list,.er-root .er-help{scrollbar-width:none}
+.er-root .er-cheatgrid::-webkit-scrollbar,.er-root .er-list::-webkit-scrollbar,.er-root .er-help::-webkit-scrollbar{display:none}
+.er-root .er-note{display:none}
+.er-root .er-card .er-btn{min-height:44px}
+}
+@media (pointer:coarse){.er-root .er-hud .er-btn{min-height:32px;padding:5px 8px;font-size:9px}}
 @media (prefers-reduced-motion:reduce){.er-root *{animation:none!important;transition:none!important}}
 </style>
-<div class="game-intro er-intro">
-  <div><h2>Escape Room</h2><p data-sub>—</p></div>
-  <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
-</div>
 <div class="er-hud">
-  <span class="er-chip">Level <b data-hud="level">–</b></span>
-  <span class="er-chip">Ronde <b data-hud="round">–</b>/${MAX_ROUNDS}</span>
-  <span class="er-chip">Waktu <b data-hud="time">0:00</b></span>
-  <span class="er-chip">Giliran <b data-hud="turn">–</b><span class="er-ap" data-hud="ap"></span></span>
-  <span class="er-chip" data-el="bestChip">Best <b data-hud="best">–</b></span>
+  <span class="er-chip">LV <b data-hud="level">–</b></span>
+  <span class="er-chip">RONDE <b data-hud="round">–</b>/${MAX_ROUNDS}</span>
+  <span class="er-chip">WAKTU <b data-hud="time">0:00</b></span>
+  <span class="er-chip">GILIRAN <b data-hud="turn">–</b><span class="er-ap" data-hud="ap"></span></span>
+  <span class="er-chip" data-el="bestChip">BEST <b data-hud="best">–</b></span>
+  <span class="er-chip" data-el="statusChip"><b data-sub>—</b> · <span data-status>Siap</span></span>
   <span class="er-spacer"></span>
+  <button class="er-btn er-icon-btn" type="button" data-act="notes" aria-label="Catatan" title="Catatan (N)">${iconSVG("notebook", { size: 14 })}<span class="er-btn-label">Catatan</span></button>
+  <button class="er-btn er-icon-btn" type="button" data-act="end" data-el="endBtn" aria-label="Akhiri giliran" title="Akhiri giliran (E)">${iconSVG("next", { size: 14 })}<span class="er-btn-label">Akhiri</span></button>
+  <button class="er-btn er-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="er-btn-label">Help</span></button>
+  <button class="er-btn er-icon-btn" type="button" data-cheats data-el="cheatBtn" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="er-btn-label">Cheats</span></button>
+  <button class="er-btn er-icon-btn" type="button" data-pause data-el="pauseBtn" aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="er-btn-label">Pause</span></button>
+  <button class="er-btn er-icon-btn" type="button" data-restart data-el="restartBtn" aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="er-btn-label">Restart</span></button>
+  <button class="er-btn er-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="er-btn-label">Exit game</span></button>
   <div class="er-items" data-el="items"></div>
 </div>
 <section class="game-panel er-panel" data-board>
@@ -262,7 +350,7 @@ export function mount(root, context = {}) {
     <div class="er-card">
       <h2 data-el="ovTitle"></h2>
       <p data-el="ovSub"></p>
-      <div class="er-actions" style="justify-content:center">
+      <div class="er-actions">
         <button class="er-btn primary" type="button" data-act="next" data-el="nextBtn">Level berikutnya</button>
         <button class="er-btn" type="button" data-act="replay">Ulangi level</button>
       </div>
@@ -270,7 +358,7 @@ export function mount(root, context = {}) {
   </div>
   <div class="er-ov" data-ov="keypad" hidden>
     <div class="er-card" data-el="padCard">
-      <h2>Keypad pintu</h2>
+      <div class="er-head"><h2>Keypad pintu</h2><button class="er-btn" type="button" data-act="close" aria-label="Tutup">Tutup</button></div>
       <p data-el="padMsg">Masukkan 4 digit.</p>
       <div class="er-digitbar"><span data-d="0"></span><span data-d="1"></span><span data-d="2"></span><span data-d="3"></span></div>
       <div class="er-padgrid" data-el="pad">
@@ -279,52 +367,83 @@ export function mount(root, context = {}) {
         <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
         <button type="button" data-k="clr">CLR</button><button type="button" data-k="0">0</button><button type="button" data-k="ok">OK</button>
       </div>
-      <button class="er-btn" type="button" data-act="close">Tutup</button>
     </div>
   </div>
   <div class="er-ov" data-ov="notes" hidden>
     <div class="er-card">
-      <h2>Catatan</h2>
+      <div class="er-head"><h2>Catatan</h2><button class="er-btn" type="button" data-act="close" aria-label="Tutup">Tutup</button></div>
       <ul class="er-list" data-el="noteList"></ul>
-      <button class="er-btn" type="button" data-act="close">Tutup</button>
     </div>
   </div>
   <div class="er-ov" data-ov="cheats" hidden>
     <div class="er-card">
-      <h2>Cheat</h2>
+      <div class="er-head"><h2>Cheat</h2><button class="er-btn" type="button" data-act="close" aria-label="Tutup">Tutup</button></div>
       <p>Hanya tersedia saat bermain melawan bot.</p>
-      <div class="er-cheatgrid">
-        <button class="er-btn" type="button" data-cheat="clues">Semua petunjuk</button>
-        <button class="er-btn" type="button" data-cheat="order">Buka urutan</button>
-        <button class="er-btn" type="button" data-cheat="items">Semua item</button>
-        <button class="er-btn" type="button" data-cheat="unlock">Buka semua wadah</button>
-        <button class="er-btn" type="button" data-cheat="code">Lihat kode</button>
-        <button class="er-btn" type="button" data-cheat="autofill">Isi keypad otomatis</button>
-        <button class="er-btn" type="button" data-cheat="ap">AP penuh</button>
-        <button class="er-btn" type="button" data-cheat="freeze" data-el="freezeBtn">Bekukan bot</button>
-        <button class="er-btn" type="button" data-cheat="win">Menang instan</button>
+      <div class="er-scroll">
+        <div class="er-cheatgrid">
+          <button class="er-btn" type="button" data-cheat="clues">Semua petunjuk</button>
+          <button class="er-btn" type="button" data-cheat="order">Buka urutan</button>
+          <button class="er-btn" type="button" data-cheat="items">Semua item</button>
+          <button class="er-btn" type="button" data-cheat="unlock">Buka semua wadah</button>
+          <button class="er-btn" type="button" data-cheat="code">Lihat kode</button>
+          <button class="er-btn" type="button" data-cheat="autofill">Isi keypad otomatis</button>
+          <button class="er-btn" type="button" data-cheat="ap">AP penuh</button>
+          <button class="er-btn" type="button" data-cheat="freeze" data-el="freezeBtn">Bekukan bot</button>
+          <button class="er-btn" type="button" data-cheat="win">Menang instan</button>
+        </div>
+        <div class="er-code" data-el="cheatCode" hidden></div>
       </div>
-      <div class="er-code" data-el="cheatCode" hidden></div>
-      <button class="er-btn" type="button" data-act="close">Tutup</button>
     </div>
   </div>
-  <div class="er-touch">
-    <button type="button" data-virt="prev">◀</button>
-    <button type="button" data-virt="act">AKSI</button>
-    <button type="button" data-virt="next">▶</button>
-    <button type="button" data-virt="item">ITEM</button>
-    <button type="button" data-virt="pad">PAD</button>
-    <button type="button" data-virt="notes">CAT</button>
-    <button type="button" data-virt="end">GILIRAN</button>
-    <button type="button" data-virt="cheat" data-el="touchCheat">CHEAT</button>
+  <div class="er-ov" data-ov="pause" hidden>
+    <div class="er-card">
+      <div class="er-head"><h2>Dijeda</h2></div>
+      <p>Bot dan penghitung waktu dibekukan.</p>
+      <div class="er-foot"><span class="er-note">P / Esc untuk lanjut</span><button class="er-btn primary" type="button" data-act="resume">Lanjut</button></div>
+    </div>
+  </div>
+  <div class="er-ov" data-ov="help" hidden>
+    <div class="er-card">
+      <div class="er-head"><h2>Cara bermain</h2><button class="er-btn" type="button" data-help-close aria-label="Tutup">Tutup</button></div>
+      <div class="er-help">
+        <div>
+          <b>Desktop</b>
+          <ul>
+            <li>Klik objek atau <span class="er-kbd">←</span> <span class="er-kbd">→</span> untuk memilih, <span class="er-kbd">Enter</span> memeriksa.</li>
+            <li><span class="er-kbd">I</span> paksa periksa · <span class="er-kbd">U</span> pakai item · <span class="er-kbd">K</span> keypad.</li>
+            <li><span class="er-kbd">N</span> catatan · <span class="er-kbd">E</span> akhir giliran · <span class="er-kbd">R</span> ulang.</li>
+            <li><span class="er-kbd">H</span> bantuan · <span class="er-kbd">C</span> cheat · <span class="er-kbd">P</span> jeda · <span class="er-kbd">Esc</span> tutup.</li>
+          </ul>
+          <b>Sentuhan</b>
+          <ul>
+            <li>Gunakan tombol di bawah papan: ◀ ▶ AKSI ITEM PAD CAT GILIRAN.</li>
+            <li>Semua informasi ada di bar atas; ketuk ikon untuk Help, Cheats, Pause, Restart, Exit.</li>
+          </ul>
+        </div>
+        <div>
+          <b>Aturan</b>
+          <ul>
+            <li>Kumpulkan empat digit petunjuk, lalu buka pintu lewat keypad sebelum bot.</li>
+            <li>Petunjuk tersembunyi di jam, buku, bunga, poster dan wadah terkunci; baca di Catatan.</li>
+            <li>Kunci ada di karpet/sofa/sampah. Obeng, linggis dan senter UV dari wadah.</li>
+            <li>Urutan petunjuk tersimpan di lukisan atau wadah tertentu.</li>
+            <li>Setiap aksi memakai 1 AP; salah kode −2 AP. Pemenang memakai giliran paling sedikit.</li>
+          </ul>
+          <div class="er-foot"><span class="er-note">Tekan H untuk membuka panduan ini</span><button class="er-btn primary" type="button" data-help-close>Mengerti</button></div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
-<div class="game-actions er-actions">
-  <button class="er-btn" type="button" data-act="end" data-el="endBtn" title="E">Akhiri giliran</button>
-  <button class="er-btn" type="button" data-act="notes" title="N">Catatan</button>
-  <button class="er-btn" type="button" data-act="cheats" data-el="cheatBtn" title="C">Cheat</button>
-  <button class="er-btn" type="button" data-act="restart" data-el="restartBtn">Ulang</button>
-  <button class="game-action-button" type="button" data-exit>Exit game</button>
+<div class="er-touch">
+  <button type="button" data-virt="prev">◀</button>
+  <button type="button" data-virt="act">AKSI</button>
+  <button type="button" data-virt="next">▶</button>
+  <button type="button" data-virt="item">ITEM</button>
+  <button type="button" data-virt="pad">PAD</button>
+  <button type="button" data-virt="notes">CAT</button>
+  <button type="button" data-virt="end">GILIRAN</button>
+  <button type="button" data-virt="cheat" data-el="touchCheat">CHEAT</button>
 </div>
 </div>`;
 
@@ -340,9 +459,63 @@ export function mount(root, context = {}) {
         turn: $('[data-hud="turn"]'), ap: $('[data-hud="ap"]'), best: $('[data-hud="best"]'),
     };
     const itemsEl = $('[data-el="items"]');
-    const ov = { start: $('[data-ov="start"]'), over: $('[data-ov="over"]'), keypad: $('[data-ov="keypad"]'), notes: $('[data-ov="notes"]'), cheats: $('[data-ov="cheats"]') };
+    const ov = {
+        start: $('[data-ov="start"]'), over: $('[data-ov="over"]'), keypad: $('[data-ov="keypad"]'),
+        notes: $('[data-ov="notes"]'), cheats: $('[data-ov="cheats"]'), pause: $('[data-ov="pause"]'), help: $('[data-ov="help"]'),
+    };
+    const pauseBtn = $('[data-el="pauseBtn"]');
+    const cheatBtn = $('[data-el="cheatBtn"]');
+    const endBtn = $('[data-el="endBtn"]');
+    const restartBtn = $('[data-el="restartBtn"]');
     const show = (el) => el.removeAttribute("hidden");
     const hide = (el) => el.setAttribute("hidden", "");
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) {
+            cheatsOpen = false;
+            uiOverlay = null;
+            if (paused) togglePause(false);
+        }
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !cheatsOpen;
+        if (next === cheatsOpen) return;
+        cheatsOpen = next;
+        if (cheatsOpen) { uiOverlay = null; if (paused) togglePause(false); }
+        render();
+    }
+    function togglePause(on) {
+        if (online || !state || state.phase !== "play") return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) {
+            pauseStart = Date.now();
+            cheatsOpen = false;
+            uiOverlay = null;
+            pauseTimers();
+        } else {
+            /* Geser anchor waktu agar durasi jeda tidak ikut terhitung. */
+            if (pauseStart && state.startedAt) state.startedAt += Date.now() - pauseStart;
+            pauseStart = 0;
+            resumeTimers();
+        }
+        render();
+    }
+    function restartGame() {
+        if (online && !room.isHost) return;
+        helpOpen = false;
+        cheatsOpen = false;
+        uiOverlay = null;
+        padVal = "";
+        armedItem = null;
+        if (paused) togglePause(false);
+        const level = state && state.layout ? state.level : uiLevel;
+        submitAction({ type: "start", level });
+    }
 
     /* ---------------- best score ---------------- */
     function readBest() { try { return parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch { return 0; } }
@@ -383,7 +556,7 @@ export function mount(root, context = {}) {
                 L.containers.forEach((c) => { state.open[c] = true; const it = L.contents[c].item; if (it) state.items[it] = true; });
                 setFx("unlock", null, 0, "Cheat: semua wadah terbuka.", ""); break;
             case "code": cheatCodeShown = true; setFx("look", null, 0, "Cheat: kode ditampilkan.", "Kode: " + L.code); break;
-            case "autofill": padVal = L.code; uiOverlay = "keypad"; setFx("look", null, 0, "Cheat: keypad diisi otomatis.", ""); break;
+            case "autofill": padVal = L.code; cheatsOpen = false; uiOverlay = "keypad"; setFx("look", null, 0, "Cheat: keypad diisi otomatis.", ""); break;
             case "ap": state.ap = 9; setFx("look", null, 0, "Cheat: AP diisi penuh.", ""); break;
             case "freeze": state.cheatFreeze = !state.cheatFreeze; setFx("look", null, 0, state.cheatFreeze ? "Cheat: bot dibekukan." : "Cheat: bot aktif kembali.", ""); break;
             case "win": state.winner = 0; state.phase = "over"; setFx("win", "door", 0, "Cheat: pintu terbuka paksa.", ""); break;
@@ -518,15 +691,15 @@ export function mount(root, context = {}) {
         return { type: "end" };
     }
     function botStep() {
-        if (destroyed || online || !state || state.phase !== "play" || state.turn !== 1) return;
+        if (destroyed || paused || online || !state || state.phase !== "play" || state.turn !== 1) return;
         const hesitate = state.level <= 2 ? 0.25 : 0.15; // bot kadang ragu → bisa dikalahkan
         const a = Math.random() < hesitate ? { type: "end" } : botChoose();
         applyAction(a, 1);
     }
     function scheduleBot() {
-        clearTimeout(botTimer);
+        clearTimer("bot");
         if (!online && state && state.phase === "play" && state.turn === 1)
-            botTimer = setTimeout(botStep, 650 + Math.random() * 700);
+            later("bot", botStep, 650 + Math.random() * 700);
     }
 
     /* ---------------- render ---------------- */
@@ -667,7 +840,8 @@ export function mount(root, context = {}) {
         if (destroyed) return;
         const me = mySeat();
         const phase = state ? state.phase : "ready";
-        if (phase !== "play" && uiOverlay) uiOverlay = null;
+        if (phase !== "play") { uiOverlay = null; cheatsOpen = false; }
+        if (helpOpen || paused) uiOverlay = null;
 
         subEl.textContent = state && state.layout
             ? LEVEL_NAME[state.level - 1] + " · Kamu P" + (me + 1) + (online ? "" : " · vs Bot")
@@ -697,12 +871,15 @@ export function mount(root, context = {}) {
         /* scene */
         world.innerHTML = sceneSVG();
 
-        /* overlay */
-        phase === "ready" || !state ? show(ov.start) : hide(ov.start);
-        phase === "over" ? show(ov.over) : hide(ov.over);
-        uiOverlay === "keypad" ? show(ov.keypad) : hide(ov.keypad);
-        uiOverlay === "notes" ? (renderNotes(), show(ov.notes)) : hide(ov.notes);
-        uiOverlay === "cheats" ? show(ov.cheats) : hide(ov.cheats);
+        /* overlay — help > cheats > pause > result/keypad/notes */
+        const mainModal = helpOpen || cheatsOpen || paused;
+        ((phase === "ready" || !state) && !mainModal) ? show(ov.start) : hide(ov.start);
+        (phase === "over" && !mainModal) ? show(ov.over) : hide(ov.over);
+        (uiOverlay === "keypad" && !mainModal) ? show(ov.keypad) : hide(ov.keypad);
+        (uiOverlay === "notes" && !mainModal) ? (renderNotes(), show(ov.notes)) : hide(ov.notes);
+        (cheatsOpen && !helpOpen) ? show(ov.cheats) : hide(ov.cheats);
+        (paused && !helpOpen && !cheatsOpen) ? show(ov.pause) : hide(ov.pause);
+        helpOpen ? show(ov.help) : hide(ov.help);
 
         if (phase === "ready" || !state) {
             const guestWaiting = online && !room.isHost;
@@ -722,18 +899,25 @@ export function mount(root, context = {}) {
             $('[data-el="ovSub"]').textContent = "Giliranmu: " + state.turnsTaken[me] + " · Waktu: " + fmtTime(secs) + (state.cheated ? " · (cheat aktif)" : "");
             $('[data-el="nextBtn"]').disabled = state.level >= LEVELS;
         }
-        if (uiOverlay === "cheats") {
+        if (cheatsOpen) {
             $('[data-el="freezeBtn"]').textContent = state && state.cheatFreeze ? "Aktifkan bot" : "Bekukan bot";
             const cc = $('[data-el="cheatCode"]');
             cheatCodeShown && state && state.layout ? (cc.textContent = state.layout.code, show(cc)) : hide(cc);
         }
         updatePad();
 
-        /* tombol */
-        $('[data-el="endBtn"]').disabled = !state || phase !== "play" || state.turn !== me;
-        online ? hide($('[data-el="cheatBtn"]')) : show($('[data-el="cheatBtn"]'));
+        /* tombol — label diubah lewat span agar ikon tidak hilang */
+        endBtn.disabled = !state || phase !== "play" || state.turn !== me || Boolean(mainModal);
+        online ? hide(cheatBtn) : show(cheatBtn);
+        cheatBtn.classList.toggle("on", cheatsOpen);
         online ? hide($('[data-el="touchCheat"]')) : show($('[data-el="touchCheat"]'));
-        online && !room.isHost ? hide($('[data-el="restartBtn"]')) : show($('[data-el="restartBtn"]'));
+        online && !room.isHost ? hide(restartBtn) : show(restartBtn);
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".er-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.disabled = online || phase !== "play";
+        }
 
         /* fx + toast (sekali per event) */
         const fx = state && state.fx;
@@ -745,24 +929,24 @@ export function mount(root, context = {}) {
             }
             if (fx.kind === "badcode") {
                 $('[data-el="padCard"]').classList.add("er-fx-badcode");
-                setTimeout(() => $('[data-el="padCard"]')?.classList.remove("er-fx-badcode"), 450);
+                later("fx-badcode", () => $('[data-el="padCard"]')?.classList.remove("er-fx-badcode"), 450);
                 padVal = ""; updatePad();
                 $('[data-el="padMsg"]').textContent = "Kode salah. Coba lagi.";
             }
             if (fx.kind === "win") { padVal = ""; updatePad(); }
-            if (fx.kind === "coin") { statusEl.classList.add("er-fx-coin"); setTimeout(() => statusEl?.classList.remove("er-fx-coin"), 650); }
+            if (fx.kind === "coin") { statusEl.classList.add("er-fx-coin"); later("fx-coin", () => statusEl?.classList.remove("er-fx-coin"), 650); }
             const text = fx.actor === me && fx.priv ? fx.priv : fx.pub;
             if (text) {
                 toast.textContent = text;
                 toast.classList.add("show");
-                clearTimeout(toastTimer);
-                toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
+                later("toast", () => toast.classList.remove("show"), 2800);
             }
         }
     }
 
     /* ---------------- input ---------------- */
     function padPress(k) {
+        if (paused || helpOpen || cheatsOpen) return;
         if (k === "clr") padVal = "";
         else if (k === "ok") {
             if (padVal.length === 4) {
@@ -774,6 +958,7 @@ export function mount(root, context = {}) {
     }
 
     function actOn(id, forceInspect) {
+        if (paused || helpOpen || cheatsOpen) return;
         if (!state || state.phase !== "play") return;
         if (id === "door") { uiOverlay = "keypad"; padVal = ""; $('[data-el="padMsg"]').textContent = "Masukkan 4 digit."; render(); return; }
         if (state.turn !== mySeat()) return;
@@ -786,15 +971,17 @@ export function mount(root, context = {}) {
             case "start": submitAction({ type: "start", level: uiLevel }); break;
             case "replay": submitAction({ type: "start", level: state ? state.level : uiLevel }); break;
             case "next": submitAction({ type: "start", level: Math.min(LEVELS, (state ? state.level : uiLevel) + 1) }); break;
-            case "restart": submitAction({ type: "start", level: state && state.layout ? state.level : uiLevel }); break;
-            case "end": if (state && state.phase === "play" && state.turn === mySeat()) submitAction({ type: "end" }); break;
-            case "notes": uiOverlay = uiOverlay === "notes" ? null : "notes"; render(); break;
-            case "cheats": if (!online) { uiOverlay = uiOverlay === "cheats" ? null : "cheats"; render(); } break;
-            case "close": uiOverlay = null; render(); break;
+            case "restart": restartGame(); break;
+            case "resume": togglePause(false); break;
+            case "end": if (!paused && !helpOpen && !cheatsOpen && state && state.phase === "play" && state.turn === mySeat()) submitAction({ type: "end" }); break;
+            case "notes": if (!paused && !helpOpen && !cheatsOpen) { uiOverlay = uiOverlay === "notes" ? null : "notes"; render(); } break;
+            case "cheats": toggleCheats(); break;
+            case "close": uiOverlay = null; cheatsOpen = false; render(); break;
         }
     }
 
     function handleVirt(v) {
+        if (paused || helpOpen || cheatsOpen) return;
         const ids = presentIds();
         switch (v) {
             case "prev": sel = (sel - 1 + ids.length) % ids.length; render(); break;
@@ -814,13 +1001,16 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
-        const el = event.target.closest("[data-exit],[data-act],[data-obj],[data-k],[data-item],[data-level],[data-cheat],[data-virt]");
+        const el = event.target.closest("[data-exit],[data-help],[data-help-close],[data-pause],[data-act],[data-obj],[data-k],[data-item],[data-level],[data-cheat],[data-virt]");
         if (!el) return;
         if (el.hasAttribute("data-exit")) { onExit(); return; }
+        if (el.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (el.hasAttribute("data-help-close")) { toggleHelp(false); return; }
+        if (el.hasAttribute("data-pause")) { togglePause(); return; }
         if (el.dataset.act) { handleAct(el.dataset.act); return; }
         if (el.dataset.level) { if (!online || room.isHost) { uiLevel = +el.dataset.level; render(); } return; }
         if (el.dataset.k) { padPress(el.dataset.k); return; }
-        if (el.dataset.item) { armedItem = armedItem === el.dataset.item ? null : el.dataset.item; render(); return; }
+        if (el.dataset.item) { if (paused || helpOpen || cheatsOpen) return; armedItem = armedItem === el.dataset.item ? null : el.dataset.item; render(); return; }
         if (el.dataset.cheat) { submitAction({ type: "cheat", key: el.dataset.cheat }); return; }
         if (el.dataset.virt) { handleVirt(el.dataset.virt); return; }
         if (el.dataset.obj) {
@@ -832,16 +1022,33 @@ export function mount(root, context = {}) {
     }
 
     function onKey(e) {
-        if (destroyed || !state || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (destroyed || e.ctrlKey || e.metaKey || e.altKey) return;
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target && e.target.isContentEditable)) return;
+        const code = e.code || "";
         const k = e.key;
+        /* prioritas: help → cheats → pause → Escape → restart → aksi game */
+        if (code === "KeyH" || k === "?") { if (!e.repeat) toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") { if (!e.repeat && !online && !helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (code === "KeyP") { if (!e.repeat && !helpOpen && !cheatsOpen) togglePause(); e.preventDefault(); return; }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            else if (uiOverlay) { uiOverlay = null; render(); }
+            else if (armedItem) { armedItem = null; render(); }
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR") { if (!e.repeat) restartGame(); e.preventDefault(); return; }
+        if (!state) return;
+        if (helpOpen || cheatsOpen || paused) { e.preventDefault(); return; }
         if (uiOverlay === "keypad") {
             if (/^[0-9]$/.test(k)) { e.preventDefault(); padPress(k); }
             else if (k === "Enter") { e.preventDefault(); padPress("ok"); }
             else if (k === "Backspace") { e.preventDefault(); padPress("clr"); }
-            else if (k === "Escape") { e.preventDefault(); uiOverlay = null; render(); }
             return;
         }
-        if (k === "Escape") { if (uiOverlay) uiOverlay = null; else armedItem = null; render(); return; }
+        if (tag === "BUTTON") return; /* biarkan Enter/Space native pada tombol HUD */
         if (state.phase === "ready" && (k === "Enter" || k === " ")) {
             if (!online || room.isHost) { e.preventDefault(); submitAction({ type: "start", level: uiLevel }); }
             return;
@@ -860,17 +1067,17 @@ export function mount(root, context = {}) {
         else if (low === "n") handleAct("notes");
         else if (low === "k") actOn("door");
         else if (low === "e") handleAct("end");
-        else if (low === "c") handleAct("cheats");
     }
 
     function onWheel(e) {
-        if (!state || state.phase !== "play" || uiOverlay) return;
+        if (!state || state.phase !== "play" || uiOverlay || paused || helpOpen || cheatsOpen) return;
         e.preventDefault();
         const ids = presentIds();
         sel = (sel + (e.deltaY > 0 ? 1 : -1) + ids.length) % ids.length;
         render();
     }
     function onHover(e) {
+        if (paused || helpOpen || cheatsOpen || uiOverlay) return;
         const g = e.target.closest ? e.target.closest("[data-obj]") : null;
         if (!g) return;
         const idx = presentIds().indexOf(g.dataset.obj);
@@ -884,7 +1091,8 @@ export function mount(root, context = {}) {
 
     /* jam kosmetik (tidak memengaruhi state) */
     const clockTimer = setInterval(() => {
-        if (state && state.phase === "play") hud.time.textContent = fmtTime((Date.now() - state.startedAt) / 1000);
+        if (paused || !state || state.phase !== "play") return;
+        hud.time.textContent = fmtTime((Date.now() - state.startedAt) / 1000);
     }, 500);
 
     /* ---------------- inisialisasi mode ---------------- */
@@ -912,8 +1120,9 @@ export function mount(root, context = {}) {
             document.removeEventListener("keydown", onKey);
             sceneSvg.removeEventListener("wheel", onWheel);
             sceneSvg.removeEventListener("pointerover", onHover);
-            clearTimeout(botTimer); clearTimeout(toastTimer); clearInterval(clockTimer);
+            clearTimers(); clearInterval(clockTimer);
             offs.forEach((off) => { try { off(); } catch { /* abaikan */ } });
+            root.innerHTML = "";
         },
     };
 }

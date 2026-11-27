@@ -4,6 +4,8 @@
  * Jalankan `node tools/build-games-manifest.mjs` setelah mengubah file ini.
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "pemimpin-nusantara",
     name: "Pemimpin Nusantara",
@@ -448,46 +450,61 @@ function finishLevel(tier, reg, d, deck, term, gov, fin) {
 
 /* ---------- CSS ---------- */
 const CSS = `
-.pn{--l:color-mix(in srgb,currentColor 16%,transparent);--m:color-mix(in srgb,currentColor 58%,transparent);max-width:560px;margin:0 auto;font-size:14px}
+.pn{--l:color-mix(in srgb,currentColor 16%,transparent);--m:color-mix(in srgb,currentColor 58%,transparent);width:100%;max-width:900px;margin:0 auto;padding:0 12px;font-size:14px;line-height:1.5}
 .pn *{box-sizing:border-box}
+.pn [hidden]{display:none!important}
+.pn-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.pn-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--l);border-radius:999px;color:var(--m);white-space:nowrap}
+.pn-chip b{color:CanvasText;font-weight:700;font-variant-numeric:tabular-nums}
+.pn-spacer{flex:1 1 auto}
+.pn-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.pn-icon-btn svg{flex:none;display:block}
+.pn.game-fill > .pn-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;width:100%;padding:12px;border:1px solid var(--l);border-radius:12px;overflow:auto;overscroll-behavior:contain}
 .pn-row{display:flex;justify-content:space-between;gap:8px;color:var(--m);font-size:12px;margin:8px 0}
 .pn-pl{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.pn-p{border:1px solid var(--l);border-radius:10px;padding:10px}
+.pn-p{border:1px solid var(--l);border-radius:10px;padding:12px}
 .pn-p.me{border-color:currentColor}
-.pn-ph{display:flex;justify-content:space-between;gap:6px;margin-bottom:4px}
+.pn-ph{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px}
 .pn-ph span{color:var(--m);font-size:11px;white-space:nowrap}
-.pn-s{display:grid;grid-template-columns:1fr auto;font-size:11px;color:var(--m);margin-top:6px}
-.pn-bar{grid-column:1/3;height:3px;background:var(--l);border-radius:2px;overflow:hidden;margin-top:2px}
-.pn-bar i{display:block;height:100%;background:currentColor;transition:width .3s}
+.pn-s{display:grid;grid-template-columns:1fr auto;font-size:11px;color:var(--m);margin-top:8px}
+.pn-bar{grid-column:1/3;height:4px;background:var(--l);border-radius:2px;overflow:hidden;margin-top:4px}
+.pn-bar i{display:block;height:100%;background:currentColor;transition:width .18s}
 .pn-bar i.lo{background:#e5484d}
-.pn-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:12px 0 8px;position:sticky;top:0;background:Canvas;padding:6px 0;z-index:3}
-.pn-tab{all:unset;box-sizing:border-box;text-align:center;cursor:pointer;border:1px solid var(--l);border-radius:9px;padding:9px 4px;font-size:12px;color:var(--m)}
+.pn-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 8px;position:sticky;top:0;background:Canvas;padding:8px 0;z-index:3}
+.pn-tab{all:unset;box-sizing:border-box;text-align:center;cursor:pointer;border:1px solid var(--l);border-radius:8px;padding:12px 4px;min-height:44px;font-size:12px;color:var(--m)}
 .pn-tab.on{border-color:currentColor;color:CanvasText;font-weight:600}
 .pn-tab b{display:inline-block;min-width:16px;padding:0 4px;margin-left:3px;border-radius:8px;background:#e5484d;color:#fff;font-size:10px}
-.pn-ev{margin-top:6px;border:1px solid var(--l);border-radius:12px;padding:14px}
+.pn-ev{margin-top:8px;border:1px solid var(--l);border-radius:12px;padding:16px}
 .pn-ev small,.pn-m{color:var(--m)}
-.pn-ev h3{margin:6px 0 12px;font-size:16px;line-height:1.35;font-weight:600}
+.pn-ev h3{margin:8px 0 12px;font-size:16px;line-height:1.35;font-weight:600}
 .pn-op{display:grid;gap:8px}
-.pn-o{all:unset;box-sizing:border-box;cursor:pointer;border:1px solid var(--l);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.pn-o{all:unset;box-sizing:border-box;cursor:pointer;border:1px solid var(--l);border-radius:10px;padding:12px;min-height:44px;display:flex;justify-content:space-between;align-items:center;gap:12px}
 .pn-o:hover:not(:disabled),.pn-o.on{border-color:currentColor}
 .pn-o:disabled{opacity:.55;cursor:default}
 .pn-o.hint{box-shadow:inset 3px 0 0 currentColor}
 .pn-o.pk{opacity:1;border-style:dashed;border-color:currentColor}
 .pn-o:focus-visible,.pn-tab:focus-visible,.pn-btn:focus-visible{outline:2px solid currentColor;outline-offset:2px}
-.pn-fx{display:flex;gap:6px;flex-wrap:wrap;font-size:11px;white-space:nowrap}
+.pn-fx{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;white-space:nowrap}
 .pn-fx u{text-decoration:none}.pn-fx .up{color:#2a9d5c}.pn-fx .dn{color:#e5484d}
-.pn-log{list-style:none;margin:10px 0 0;padding:0;color:var(--m);font-size:12px;display:grid;gap:2px}
-.pn-btn{border:1px solid var(--l);border-radius:10px;padding:10px 12px;background:none;color:inherit;font:inherit;cursor:pointer}
+.pn-log{list-style:none;margin:12px 0 0;padding:0;color:var(--m);font-size:12px;display:grid;gap:4px}
+.pn-btn{border:1px solid var(--l);border-radius:8px;padding:10px 12px;min-height:44px;background:none;color:inherit;font:inherit;cursor:pointer;transition:border-color .15s}
 .pn-btn:hover{border-color:currentColor}
 .pn-btn:disabled{opacity:.5;cursor:default}
-.pn-pad{display:none;gap:8px;position:sticky;bottom:8px;margin-top:10px}
+.pn-pad{display:none;gap:8px;position:sticky;bottom:8px;margin-top:12px}
 .pn-pad .pn-btn{flex:1;padding:14px;background:Canvas}
 .pn-pad .pn-btn[data-pad=ok]{flex:2;font-weight:600}
 @media(pointer:coarse){.pn-pad{display:flex}.pn-kb{display:none}}
-.pn-kb{color:var(--m);font-size:11px;margin:10px 0 0}
+.pn-kb{color:var(--m);font-size:11px;margin:12px 0 0}
 .pn-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
 .pn-ov[hidden]{display:none}
-.pn-bx{background:Canvas;color:CanvasText;border-radius:14px;padding:18px;max-width:440px;width:100%;max-height:85vh;overflow:auto;font-size:14px;line-height:1.5}
+.pn-bx{display:flex;flex-direction:column;overflow:hidden;background:Canvas;color:CanvasText;border-radius:14px;padding:16px 20px;max-width:560px;width:100%;max-height:min(85vh,85dvh);font-size:14px;line-height:1.5;box-shadow:0 16px 40px rgba(0,0,0,.25)}
+.pn-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.pn-bx .pn-head h3{margin:0;font-size:15px}
+.pn-bx .pn-head .pn-btn{width:auto;margin:0;text-align:center;min-height:32px;padding:5px 9px;font-size:12px}
+.pn-body{flex:1 1 auto;min-height:0;overflow:auto;padding-right:4px}
+.pn-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--l)}
+.pn-bx .pn-foot .pn-btn{width:auto;margin:0;text-align:center}
+.pn-note{color:var(--m);font-size:11px}
 .pn-sl{display:grid;grid-template-columns:96px 1fr 40px;gap:8px;align-items:center;margin:10px 0 2px;font-size:13px}
 .pn-sl input{accent-color:currentColor;width:100%}.pn-sl b{text-align:right;font-weight:500}
 .pn-bx h3{margin:0 0 8px}.pn-bx ul{padding-left:18px;margin:8px 0}.pn-bx .pn-btn{display:block;width:100%;margin-top:8px;text-align:left}
@@ -505,10 +522,26 @@ const CSS = `
 .pn-stat{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--m);margin:6px 0}
 .pn-vote{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;text-align:center;align-items:center;margin:8px 0}
 .pn-vote b{font-size:22px}
+@media(max-width:420px){.pn-pl{grid-template-columns:1fr}.pn-sl{grid-template-columns:72px 1fr 36px}.pn-bx{padding:16px}}
+@media(prefers-reduced-motion:reduce){.pn *{transition-duration:.01ms!important}}
+/* --- layout refinements: fill board + mobile HUD (must stay last) --- */
+@media(max-width:640px){
+.pn.game-fill > .pn-board{min-height:min(70dvh,620px)}
+.pn .pn-hud{gap:5px;margin-bottom:8px}
+.pn .pn-hud .pn-chip{padding:4px 6px;font-size:9px}
+.pn .pn-hud .pn-chip[data-hud="mission"],.pn .pn-hud .pn-chip[data-hud="sidak"],.pn .pn-hud .pn-chip[data-hud="reg"]{display:none}
+.pn .pn-hud .pn-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.pn .pn-hud .pn-btn-label,.pn .pn-hud .pn-spacer{display:none}
+.pn .pn-ov{padding:8px}
+.pn .pn-bx{width:100%;height:100%;max-width:100%;max-height:100%;padding:12px;border-radius:12px}
+.pn .pn-body{scrollbar-width:none}
+.pn .pn-body::-webkit-scrollbar{display:none}
+.pn .pn-foot{position:static;margin:0;padding:10px 0 0}
+.pn .pn-note{display:none}
+}
 `;
 
-const HELP = `<h3>Cara bermain</h3>
-<p>Kamu memimpin wilayah dari <b>Ketua RT</b> sampai <b>Presiden</b>. Satu jabatan = 24–36 giliran (1 giliran = 1 bulan). 6 giliran terakhir adalah <b>Mode Pemilu</b>.</p>
+const HELP = `<p>Kamu memimpin wilayah dari <b>Ketua RT</b> sampai <b>Presiden</b>. Satu jabatan = 24–36 giliran (1 giliran = 1 bulan). 6 giliran terakhir adalah <b>Mode Pemilu</b>.</p>
 <ul>
 <li><b>3 tab bawah:</b> Meja Kerja (keputusan), Aspirasi & Medsos (keluhan warga), Jajaran Bawahan (delegasi & mutasi).</li>
 <li>Tiap giliran pilih 1 dari 3 kebijakan. Jaga 5 indikator: Kepercayaan, Kas, Stabilitas, Kesejahteraan, Integritas. Salah satu menyentuh 0 = gagal (Integritas 0 = OTT KPK).</li>
@@ -522,8 +555,7 @@ const HELP = `<h3>Cara bermain</h3>
 <li><b>Karier:</b> menang + memenuhi syarat = naik jabatan. Kalah = jeda 1 siklus, tapi Modal Sosial/Jaringan/Logistik tetap terbawa.</li>
 <li>Mode Sandbox: pilih langsung jabatan & wilayah. Format koalisi 3–4 pemain dimainkan dengan mitra AI (room online mendukung 2 pemain).</li>
 </ul>
-<p class="pn-m">Desktop: klik, ← → atau 1–3 lalu Enter, S sidak, A aspirasi, T tim, H bantuan. Mobile: ketuk opsi lalu Pilih.</p>
-<button class="pn-btn" type="button" data-close>Mulai bermain</button>`;
+<p class="pn-m">Desktop: klik, ← → atau 1–3 lalu Enter, S sidak, A aspirasi, T tim. H bantuan, C cheat, P jeda, R restart. Mobile: ketuk opsi lalu Pilih.</p>`;
 
 /* ---------- Game ---------- */
 export function mount(root, context = {}) {
@@ -544,26 +576,31 @@ export function mount(root, context = {}) {
     };
 
     root.innerHTML = `
-    <div class="game-app pn">
+    <div class="game-app pn game-fill" data-pn>
       <style>${CSS}</style>
-      <div class="game-intro">
-        <div><h2>Pemimpin Nusantara</h2><p>Dari RT ke Presiden · ${esc(TIERS[ui.setup.tier])}</p></div>
-        <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+      <div class="pn-hud">
+        <span class="pn-chip">JABATAN <b data-hud="tier">${esc(TIERS[ui.setup.tier])}</b></span>
+        <span class="pn-chip">GILIR <b data-hud="round">—</b></span>
+        <span class="pn-chip">SKOR <b data-hud="score">0</b></span>
+        <span class="pn-chip">MISI <b data-hud="mission">0/0</b></span>
+        <span class="pn-chip">SIDAK <b data-hud="sidak">0</b></span>
+        <span class="pn-chip">DAERAH <b data-hud="reg">—</b></span>
+        <span class="pn-chip">STATUS <b data-hud="status">Ready</b></span>
+        <span class="pn-spacer"></span>
+        <button class="pn-btn pn-icon-btn" type="button" data-help aria-label="Cara bermain" title="Cara bermain (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pn-btn-label">Help</span></button>
+        <button class="pn-btn pn-icon-btn" type="button" data-cheats aria-label="Cheat" title="Cheat (C)">${iconSVG("wrench", { size: 14 })}<span class="pn-btn-label">Cheat</span></button>
+        <button class="pn-btn pn-icon-btn" type="button" data-pause aria-label="Jeda" title="Jeda (P)">${iconSVG("pause", { size: 14 })}<span class="pn-btn-label">Pause</span></button>
+        <button class="pn-btn pn-icon-btn" type="button" data-setup aria-label="Setup" title="Setup">${iconSVG("settings", { size: 14 })}<span class="pn-btn-label">Setup</span></button>
+        <button class="pn-btn pn-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="pn-btn-label">Restart</span></button>
+        <button class="pn-btn pn-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pn-btn-label">Exit game</span></button>
       </div>
-      <section class="game-panel" data-board></section>
+      <section class="game-panel pn-board" data-board></section>
       <div class="pn-pad"><button class="pn-btn" type="button" data-pad="prev">◀</button><button class="pn-btn" type="button" data-pad="ok">Pilih</button><button class="pn-btn" type="button" data-pad="next">▶</button></div>
-      <div class="game-actions">
-        <button class="game-action-button" type="button" data-setup>Setup</button>
-        <button class="game-action-button" type="button" data-help>Cara main</button>
-        <button class="game-action-button" type="button" data-cheat>Cheat</button>
-        ${!online || room.isHost ? '<button class="game-action-button" type="button" data-new>Level baru</button>' : ""}
-        <button class="game-action-button" type="button" data-exit>Exit game</button>
-      </div>
       <div class="pn-ov" data-ov hidden></div>
     </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const stat = (t) => { const n = $("[data-status]"); if (n) n.textContent = t; };
+    const stat = (t) => { const n = $('[data-hud="status"]'); if (n) n.textContent = t; };
     const bestGet = () => { try { return +localStorage.getItem(META.bestKey) || 0; } catch { return 0; } };
 
     /* ---------- model ---------- */
@@ -780,7 +817,7 @@ export function mount(root, context = {}) {
     }
     function botAct() {
         botTimer = 0;
-        if (!state || state.over) return;
+        if (!state || state.over || ui.ov) return;
         const ph = state.phase, p = state.p[1];
         if (ph === "staff") {
             const used = new Set(p.staff.map((g) => g.n));
@@ -1101,7 +1138,73 @@ export function mount(root, context = {}) {
         newState();
         publish();
     }
-    function setOv(v) { ui.ov = v; renderOv(); }
+    /* ---------- overlay & HUD wiring ---------- */
+    function syncHud() {
+        const set = (k, v) => {
+            const n = $(`[data-hud="${k}"]`);
+            if (n && n.textContent !== String(v)) n.textContent = String(v);
+        };
+        set("tier", state ? state.lv.name : TIERS[clamp(ui.setup.tier || 0, 0, TIERS.length - 1)]);
+        set("round", state ? `${Math.min(state.round + 1, state.lv.term)}/${state.lv.term}` : "—");
+        set("score", state ? score(state.p[me]) : 0);
+        const P = state?.p[me];
+        set("mission", state
+            ? `${state.lv.missions.filter((m) => P.s[m.i] >= m.v).length}/${state.lv.missions.length} · ${state.lv.paths} jalur`
+            : "0/0");
+        set("sidak", P ? P.sidak : 0);
+        set("reg", state ? state.lv.reg : "—");
+        const label = $("[data-pause] .pn-btn-label");
+        if (label) label.textContent = ui.ov === "pause" ? "Resume" : "Pause";
+        const pbtn = $("[data-pause]");
+        if (pbtn) {
+            pbtn.setAttribute("aria-label", ui.ov === "pause" ? "Resume" : "Jeda");
+            pbtn.setAttribute("title", ui.ov === "pause" ? "Lanjutkan (P)" : "Jeda (P)");
+        }
+    }
+
+    // Prioritas: help > cheat > pause > setup. Help menutup overlay lain.
+    function setOv(v) {
+        if (v === "help") ui.ov = "help";
+        else if (v === "cheat") { if (ui.ov !== "help") ui.ov = "cheat"; }
+        else if (v === "pause") { if (ui.ov !== "help" && ui.ov !== "cheat") ui.ov = "pause"; }
+        else if (v === "setup") { if (!ui.ov) ui.ov = "setup"; }
+        else ui.ov = null;
+        renderOv();
+    }
+    function toggleHelp(on) {
+        const want = typeof on === "boolean" ? on : ui.ov !== "help";
+        if (want) setOv("help");
+        else { setOv(null); render(); }
+    }
+    function toggleCheat(on) {
+        const want = typeof on === "boolean" ? on : ui.ov !== "cheat";
+        if (want) {
+            if (ui.ov === "help") return;
+            setOv("cheat");
+        } else { setOv(null); render(); }
+    }
+    function togglePause(on) {
+        const want = typeof on === "boolean" ? on : ui.ov !== "pause";
+        if (want) {
+            if (ui.ov === "help" || ui.ov === "cheat") return;
+            clearTimeout(botTimer); botTimer = 0; // hentikan bot; tidak ada anchor Date.now() di game ini
+            setOv("pause");
+        } else {
+            if (ui.ov !== "pause") return;
+            setOv(null); render(); // jadwalkan ulang bot tanpa loncatan waktu
+        }
+    }
+    function closeTop() {
+        if (ui.ov === "help") return toggleHelp(false);
+        if (ui.ov === "cheat") return toggleCheat(false);
+        if (ui.ov === "pause") return togglePause(false);
+        if (ui.ov === "setup") { setOv(null); render(); return; }
+    }
+    function restartGame() {
+        if (online && !room.isHost) return;
+        setOv(null);
+        newGame();
+    }
 
     /* ---------- render ---------- */
     const fx = (e) => e.map((v, j) => v ? `<u class="${v > 0 ? "up" : "dn"}">${ST[j][1]} ${ui.nums ? (v > 0 ? "+" : "") + v : (v > 0 ? "▲" : "▼").repeat(Math.abs(v) >= 8 ? 2 : 1)}</u>` : "").join("");
@@ -1217,9 +1320,10 @@ export function mount(root, context = {}) {
     function render() {
         const b = $("[data-board]");
         if (!b) return;
-        const h2 = root.querySelector(".game-intro p");
-        if (h2) h2.textContent = `Dari RT ke Presiden · ${esc(TIERS[ui.setup.tier])}`;
-        if (!state) { b.innerHTML = '<p class="pn-m">Menunggu host menyiapkan level…</p>'; stat("Menunggu"); return; }
+        if (!state) {
+            b.innerHTML = '<p class="pn-m">Menunggu host menyiapkan level…</p>';
+            stat("Menunggu"); syncHud(); return;
+        }
         const key = state.phase + state.round + ":" + state.step + ":" + state.dq + ":" + state.sub + ":" + ui.tab;
         if (key !== lastKey) { lastKey = key; sel = 0; if (state.phase === "budget") ui.bud = [...state.p[me].alloc]; }
         const L = state.lv, o = state.over, ph = state.phase, P = state.p[me], opp = 1 - me;
@@ -1276,58 +1380,86 @@ export function mount(root, context = {}) {
         }
 
         b.innerHTML = `
-      <div class="pn-row"><span>Giliran ${Math.min(state.round + 1, L.term)}/${L.term} · ${esc(L.name)}${state.career ? ` (karier ${L.tier + 1}/${TIERS.length})` : ""}</span><span>${esc(L.reg)}</span></div>
-      <div class="pn-row"><span>Misi (+20): ${L.missions.map((m) => `${ST[m.i][0]} ≥ ${m.v}`).join(" dan ")}</span><span>${L.paths} jalur</span></div>
       <div class="pn-pl">${pCard(me)}${pCard(opp)}</div>
+      <p class="pn-m" style="margin:6px 0 0">Misi (+20): ${L.missions.map((m) => `${ST[m.i][0]} ≥ ${m.v}`).join(" dan ")} · ${L.paths} jalur</p>
       <div class="pn-tabs">${TAB.map((t, i) => `<button class="pn-tab${ui.tab === t ? " on" : ""}" type="button" data-tab="${t}">${["Meja Kerja", "Aspirasi", "Bawahan"][i]}${t === "aspirasi" ? `<b>${state.reports.filter((r) => r.p[me] == null).length}</b>` : ""}</button>`).join("")}</div>
       ${mid}
       ${state.el.intel.length && ph !== "end" ? `<ul class="pn-log">${state.el.intel.slice(-2).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
       <ul class="pn-log">${state.log.slice(-3).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
-      <p class="pn-kb">Keyboard: ← → pilih, Enter konfirmasi, Tab ganti tab, S sidak, H bantuan.</p>`;
+      <p class="pn-kb">Keyboard: ← → pilih, Enter konfirmasi, Tab ganti tab, S sidak, H bantuan, C cheat, P jeda, R restart.</p>`;
 
         stat(o ? "Selesai" : ph === "staff" ? "Pilih tim" : ph === "janji" ? "Kampanye" : ph === "budget" ? "Musrenbang" : ph === "declare" ? "Deklarasi" : ph === "campaign" ? "Kampanye" : ph === "debat" ? "Debat" : ph === "sengketa" ? "Sengketa" : ph === "play" ? (mover() === me ? "Giliranmu" : "Menunggu lawan") : "Menunggu");
+        syncHud();
         if (ph === "budget" && !o) paintBud();
-        if (!online && !o && !botTimer && botNeeds()) botTimer = setTimeout(botAct, 700);
+        if (!online && !o && !ui.ov && !botTimer && botNeeds()) botTimer = setTimeout(botAct, 700);
     }
 
     function renderOv() {
         const n = $("[data-ov]");
         n.hidden = !ui.ov;
-        if (ui.ov === "help") { n.innerHTML = `<div class="pn-bx">${HELP}</div>`; return; }
+        const closeIcon = (attr) => `<button class="pn-btn pn-icon-btn" type="button" ${attr} aria-label="Tutup" title="Tutup">${iconSVG("x", { size: 14 })}</button>`;
+        if (ui.ov === "help") {
+            n.innerHTML = `<div class="pn-bx">
+      <div class="pn-head"><h3>Cara bermain</h3>${closeIcon("data-help-close")}</div>
+      <div class="pn-body">${HELP}</div>
+      <div class="pn-foot"><span class="pn-note">Tekan H untuk membuka lagi</span><button class="pn-btn primary" type="button" data-help-close>Mulai bermain</button></div>
+    </div>`;
+            return syncHud();
+        }
         if (ui.ov === "cheat") {
-            n.innerHTML = `<div class="pn-bx"><h3>Cheat</h3>
-      <button class="pn-btn" type="button" data-ca="boost">Isi +20 semua indikator</button>
-      <button class="pn-btn" type="button" data-ca="money">Tambah dana logistik +30</button>
-      <button class="pn-btn" type="button" data-ca="shield">Perisai: abaikan efek negatif berikutnya</button>
-      <button class="pn-btn" type="button" data-ca="nums">Tampilkan angka efek: ${ui.nums ? "ON" : "OFF"}</button>
-      <button class="pn-btn" type="button" data-ca="hint">Sorot opsi terbaik: ${ui.hint ? "ON" : "OFF"}</button>
-      <button class="pn-btn" type="button" data-close>Tutup</button></div>`;
-            return;
+            n.innerHTML = `<div class="pn-bx">
+      <div class="pn-head"><h3>Cheat</h3>${closeIcon("data-close")}</div>
+      <div class="pn-body">
+        <button class="pn-btn" type="button" data-ca="boost">Isi +20 semua indikator</button>
+        <button class="pn-btn" type="button" data-ca="money">Tambah dana logistik +30</button>
+        <button class="pn-btn" type="button" data-ca="shield">Perisai: abaikan efek negatif berikutnya</button>
+        <button class="pn-btn" type="button" data-ca="nums">Tampilkan angka efek: ${ui.nums ? "ON" : "OFF"}</button>
+        <button class="pn-btn" type="button" data-ca="hint">Sorot opsi terbaik: ${ui.hint ? "ON" : "OFF"}</button>
+      </div>
+      <div class="pn-foot"><span class="pn-note">Cheat mencatat nama pemain di log</span><button class="pn-btn primary" type="button" data-close>Tutup</button></div>
+    </div>`;
+            return syncHud();
         }
         if (ui.ov === "setup") {
-            n.innerHTML = `<div class="pn-bx"><h3>Setup pertandingan</h3>
-      <p class="pn-m">Mode:</p>
-      ${[["karier", "Karier (RT → Presiden)"], ["sandbox", "Sandbox (pilih jabatan & wilayah)"], ["acak", "Acak (duel seimbang)"]].map(([k, l]) => `<button class="pn-btn" type="button" data-md="${k}">${ui.setup.mode === k ? "● " : "○ "}${l}</button>`).join("")}
-      <p class="pn-m">Jabatan:</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${TIERS.map((t, i) => `<button class="pn-btn" type="button" data-tr="${i}" style="font-size:12px">${ui.setup.tier === i ? "● " : ""}${esc(t)}</button>`).join("")}</div>
-      <p class="pn-m">Wilayah:</p>
-      ${REG.map((r, i) => `<button class="pn-btn" type="button" data-rg="${i}">${ui.setup.reg === i ? "● " : ""}${r[0]}</button>`).join("")}
-      <p class="pn-m">Peringkat: ${rank} · Jabatan tersimpan: ${TIERS[career.tier]} · Siklus tunggu: ${career.cycle}</p>
-      <button class="pn-btn" type="button" data-start>Mulai / ulangi pertandingan</button>
-      <button class="pn-btn" type="button" data-close>Tutup</button></div>`;
-            return;
+            n.innerHTML = `<div class="pn-bx">
+      <div class="pn-head"><h3>Setup pertandingan</h3>${closeIcon("data-close")}</div>
+      <div class="pn-body">
+        <p class="pn-m">Mode:</p>
+        ${[["karier", "Karier (RT → Presiden)"], ["sandbox", "Sandbox (pilih jabatan & wilayah)"], ["acak", "Acak (duel seimbang)"]].map(([k, l]) => `<button class="pn-btn" type="button" data-md="${k}">${ui.setup.mode === k ? "● " : "○ "}${l}</button>`).join("")}
+        <p class="pn-m">Jabatan:</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${TIERS.map((t, i) => `<button class="pn-btn" type="button" data-tr="${i}" style="font-size:12px">${ui.setup.tier === i ? "● " : ""}${esc(t)}</button>`).join("")}</div>
+        <p class="pn-m">Wilayah:</p>
+        ${REG.map((r, i) => `<button class="pn-btn" type="button" data-rg="${i}">${ui.setup.reg === i ? "● " : ""}${r[0]}</button>`).join("")}
+        <p class="pn-m">Peringkat: ${rank} · Jabatan tersimpan: ${TIERS[career.tier]} · Siklus tunggu: ${career.cycle}</p>
+      </div>
+      <div class="pn-foot"><span class="pn-note">Ulangi pertandingan memakai pengaturan ini</span><button class="pn-btn primary" type="button" data-start>Mulai / ulangi</button></div>
+    </div>`;
+            return syncHud();
+        }
+        if (ui.ov === "pause") {
+            n.innerHTML = `<div class="pn-bx">
+      <div class="pn-head"><h3>Dijeda</h3></div>
+      <div class="pn-body"><p class="pn-m">Giliran dan bot dihentikan sementara. Tekan P atau Esc untuk melanjutkan.</p></div>
+      <div class="pn-foot"><span class="pn-note">Tekan R untuk restart</span><button class="pn-btn primary" type="button" data-resume>Lanjutkan</button></div>
+    </div>`;
+            return syncHud();
         }
         n.innerHTML = "";
+        syncHud();
     }
 
     /* ---------- input ---------- */
     function handleClick(event) {
         const t = (s) => event.target.closest(s);
         if (t("[data-exit]")) return onExit();
-        if (t("[data-help]")) return setOv("help");
-        if (t("[data-cheat]")) return setOv("cheat");
+        if (t("[data-help]")) return toggleHelp();
+        if (t("[data-help-close]")) return toggleHelp(false);
+        if (t("[data-cheats]") || t("[data-cheat]")) return toggleCheat();
+        if (t("[data-pause]")) return togglePause();
+        if (t("[data-resume]")) return togglePause(false);
+        if (t("[data-restart]")) return restartGame();
         if (t("[data-setup]")) return setOv("setup");
-        if (t("[data-close]") || event.target.matches(".pn-ov")) return setOv(null);
+        if (t("[data-close]") || event.target.matches(".pn-ov")) return closeTop();
         const ca = t("[data-ca]");
         if (ca) {
             const c = ca.dataset.ca;
@@ -1375,12 +1507,20 @@ export function mount(root, context = {}) {
         if (e.ctrlKey || e.metaKey || e.altKey || !root.isConnected) return;
         if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
         const k = e.key;
+        const code = e.code || "";
+        const isHelp = code === "KeyH" || k === "h" || k === "H" || k === "?";
+        const isCheat = code === "KeyC" || k === "c" || k === "C";
+        const isPause = code === "KeyP" || k === "p" || k === "P";
+        // Prioritas: help → cheat → pause → Escape → aksi game.
+        if (isHelp) { e.preventDefault(); return toggleHelp(); }
+        if (isCheat) { e.preventDefault(); return toggleCheat(); }
+        if (isPause) { e.preventDefault(); return togglePause(); }
+        if (k === "Escape") { e.preventDefault(); return closeTop(); }
         if (ui.ov) {
-            if (k === "Escape" || (k === "Enter" && ui.ov === "help")) { e.preventDefault(); setOv(null); }
+            if (k === "Enter") { e.preventDefault(); return closeTop(); }
             return;
         }
-        if (k === "h" || k === "H" || k === "?") { e.preventDefault(); return setOv("help"); }
-        if (k === "c" || k === "C") { e.preventDefault(); return setOv("cheat"); }
+        if (code === "KeyR" || k === "r" || k === "R") { e.preventDefault(); return restartGame(); }
         if (k === "Tab") {
             e.preventDefault();
             ui.tab = TAB[(TAB.indexOf(ui.tab) + 1) % TAB.length]; sel = 0; return render();

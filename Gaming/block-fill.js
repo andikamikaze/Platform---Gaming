@@ -8,6 +8,8 @@
  * - Jalankan: node tools/build-games-manifest.mjs
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "block-fill", // harus sama dengan nama file (tanpa .js)
     name: "Block Fill",
@@ -127,21 +129,41 @@ export function mount(root, context = {}) {
     let destroyed = false;
     const subs = [];
 
-    /* ---------- scoped styles + shell (minimalis, tanpa tutorial) ---------- */
+    /* ---------- first-run internal help (internal modal) ---------- */
+    let helpOpen = false;
+    try {
+        if (localStorage.getItem("block-fill-help-seen") !== "1") {
+            helpOpen = true;
+            localStorage.setItem("block-fill-help-seen", "1");
+        }
+    } catch (_) { /* storage blocked */ }
+
+    /* ---------- scoped styles + shell ---------- */
     root.innerHTML = `
 <style>
 .bf-app{--ink:#0f172a;--sub:#64748b;--line:#e2e8f0;--accent:#6366f1;--accent-soft:#eef2ff;--foe:#f59e0b;--start:#10b981;--end:#f43f5e;color:var(--ink);font-family:inherit}
 .bf-app [hidden]{display:none!important}
-.bf-app .bf-panel{position:relative;background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.bf-app *,.bf-app *::before,.bf-app *::after{box-sizing:border-box}
+.bf-app :where(svg,canvas,img){max-width:100%;height:auto}
+.bf-app :where(button,[role="button"],select,input){touch-action:manipulation}
+.bf-app :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .bf-app .bf-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;color:var(--sub)}
-.bf-app .bf-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#fff}
-.bf-app .bf-chip b{color:var(--ink);font-weight:600}
+.bf-app .bf-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;white-space:nowrap}
+.bf-app .bf-chip b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .bf-app .bf-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .bf-app .bf-dot-you{background:var(--accent)}
 .bf-app .bf-dot-foe{background:var(--foe)}
-.bf-app .bf-spacer{flex:1}
-.bf-app .bf-boards{display:flex;gap:14px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
-.bf-app .bf-main{flex:1 1 280px;max-width:420px;min-width:240px}
+.bf-app .bf-spacer{flex:1 1 auto}
+.bf-app .bf-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+.bf-app .bf-btn.bf-primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.bf-app .bf-btn:disabled{opacity:.45;cursor:default}
+.bf-app .bf-icon-btn{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:6px 10px;font-size:10px;font-weight:700;letter-spacing:.04em}
+.bf-app .bf-icon-btn svg{flex:none;display:block}
+.bf-app .bf-icon-btn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.bf-app .bf-panel{position:relative;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.bf-app.game-fill > .bf-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.bf-app .bf-boards{display:flex;flex:1 1 auto;min-height:0;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap}
+.bf-app .bf-main{flex:0 1 420px;width:100%;max-width:420px;min-width:200px}
 .bf-app svg.bf-svg{width:100%;height:auto;display:block;touch-action:none;transition:opacity .2s}
 .bf-app svg.bf-svg.bf-wait{opacity:.55}
 .bf-app .bf-side{display:flex;flex-direction:column;align-items:center;gap:8px;width:132px}
@@ -165,7 +187,7 @@ export function mount(root, context = {}) {
 .bf-app .bf-ico-e{fill:var(--end)}
 .bf-app .bf-ico-glyph{fill:#fff;pointer-events:none}
 .bf-app .bf-ico-pole{stroke:#fff;stroke-width:2.6;stroke-linecap:round;fill:none;pointer-events:none}
-.bf-app .bf-pad{display:none;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;justify-content:center;margin-top:2px}
+.bf-app .bf-pad{display:none;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;justify-content:center;margin-top:10px}
 .bf-app .bf-pad button{border:1px solid var(--line);background:#fff;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
 .bf-app .bf-pad button:active{background:var(--accent-soft)}
 .bf-app .bf-pad button:disabled{opacity:.4}
@@ -176,38 +198,64 @@ export function mount(root, context = {}) {
 .bf-app .bf-pad [data-pad="down"]{grid-area:3/2}
 @media (pointer:coarse){.bf-app .bf-pad{display:grid}}
 .bf-app .bf-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;font-size:12px;padding:6px 14px;border-radius:999px;pointer-events:none;z-index:5;white-space:nowrap}
-.bf-app .bf-overlay{position:absolute;inset:0;background:rgba(248,250,252,.88);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:6}
-.bf-app .bf-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;max-width:300px;text-align:center;box-shadow:0 8px 30px rgba(15,23,42,.08)}
-.bf-app .bf-card h3{margin:0 0 6px;font-size:18px}
-.bf-app .bf-card p{margin:0 0 14px;font-size:13px;color:var(--sub)}
+.bf-app .bf-overlay{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(248,250,252,.9);backdrop-filter:blur(3px)}
+.bf-app .bf-card{width:min(420px,100%);max-height:100%;overflow:hidden;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center;box-shadow:0 4px 12px rgba(15,23,42,.08)}
+.bf-app .bf-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:10px}
+.bf-app .bf-head h3{margin:0;font-size:16px}
+.bf-app .bf-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:12px}
+.bf-app .bf-note{font-size:11px;color:var(--sub)}
+.bf-app .bf-card p{margin:0 0 12px;font-size:13px;color:var(--sub)}
+.bf-app .bf-cheats,.bf-app .bf-help,.bf-app .bf-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.bf-app .bf-cheats{display:grid;gap:6px}
+.bf-app .bf-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;text-align:left}
+.bf-app .bf-help b{display:block;margin-bottom:6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--sub)}
+.bf-app .bf-help ul{margin:0 0 12px;padding-left:16px;font-size:12px;line-height:1.7;color:var(--sub)}
+.bf-app .bf-help kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#f8fafc;color:var(--ink);font:inherit}
 .bf-app .bf-card-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.bf-app .bf-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit}
-.bf-app .bf-btn.bf-primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-.bf-app .bf-btn:disabled{opacity:.45;cursor:default}
-.bf-app .bf-cheatwrap{position:absolute;inset:0;pointer-events:none;display:flex;justify-content:flex-end;align-items:flex-start;padding:10px;z-index:7}
-.bf-app .bf-cheatcard{pointer-events:auto;width:236px;text-align:left;padding:14px}
-.bf-app .bf-cheathead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.bf-app .bf-cheathead h3{margin:0;font-size:14px}
-.bf-app .bf-cheathead button{border:none;background:none;font-size:18px;cursor:pointer;color:var(--sub);line-height:1}
-.bf-app .bf-cheatrow{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:6px;text-align:left}
+.bf-app .bf-cheatrow{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:0;text-align:left}
 .bf-app .bf-cheatrow span{color:var(--sub);font-size:12px}
 .bf-app .bf-cheatrow.bf-active{border-color:var(--accent);color:var(--accent)}
 .bf-app .bf-cheatrow.bf-active span{color:var(--accent)}
 @media (max-width:560px){.bf-app .bf-side{flex-direction:row;width:100%;justify-content:center}.bf-app .bf-mini{width:88px}}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.bf-app{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.bf-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"]){flex-wrap:wrap;min-width:0;gap:8px}
+.bf-app :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+.bf-app :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.bf-app :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (prefers-reduced-motion:reduce){.bf-app *,.bf-app *::before,.bf-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+@media (pointer:coarse){.bf-app :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}}
+
+/* --- fill height + mobile refinements (LAST: beat pointer:coarse 44px) --- */
+@media (max-width:640px){
+.bf-app.game-fill > .bf-panel[data-board]:not(:has(.bf-overlay:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.bf-app.game-fill > .bf-panel[data-board]:has(.bf-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.bf-app .bf-hud{gap:5px}
+.bf-app .bf-hud .bf-chip{padding:4px 6px;font-size:9px}
+.bf-app .bf-hud .bf-chip[data-hud-status]{display:none}
+.bf-app .bf-hud .bf-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+.bf-app .bf-hud .bf-btn-label,.bf-app .bf-hud .bf-spacer{display:none}
+.bf-app .bf-overlay{padding:8px}
+.bf-app .bf-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.bf-app .bf-cheats,.bf-app .bf-help,.bf-app .bf-stats{scrollbar-width:none}
+.bf-app .bf-cheats::-webkit-scrollbar,.bf-app .bf-help::-webkit-scrollbar,.bf-app .bf-stats::-webkit-scrollbar{display:none}
+}
 </style>
-<div class="game-app bf-app">
-  <div class="game-intro">
-    <div><h2>Block Fill</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app bf-app game-fill" data-bf>
+  <div class="bf-hud">
+    <span class="bf-chip">LV <b data-hud-level>1</b></span>
+    <span class="bf-chip" title="${playerName}"><i class="bf-dot bf-dot-you"></i>You <b data-hud-you>0/0</b></span>
+    <span class="bf-chip"><i class="bf-dot bf-dot-foe"></i><span data-foe-name>Bot</span> <b data-hud-foe>0/0</b></span>
+    <span class="bf-chip" data-hud-status>Ready</span>
+    <span class="bf-chip">TIME <b data-hud-time>0:00</b></span>
+    <span class="bf-spacer"></span>
+    <button class="bf-btn bf-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="bf-btn-label">Help</span></button>
+    <button class="bf-btn bf-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="bf-btn-label">Cheats</span></button>
+    <button class="bf-btn bf-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="bf-btn-label">Pause</span></button>
+    <button class="bf-btn bf-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="bf-btn-label">Restart</span></button>
+    <button class="bf-btn bf-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="bf-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel bf-panel" data-board>
-    <div class="bf-hud">
-      <span class="bf-chip">Level <b data-hud-level>1</b></span>
-      <span class="bf-chip" title="${playerName}"><i class="bf-dot bf-dot-you"></i>You <b data-hud-you>0/0</b></span>
-      <span class="bf-chip"><i class="bf-dot bf-dot-foe"></i><span data-foe-name>Bot</span> <b data-hud-foe>0/0</b></span>
-      <span class="bf-spacer"></span>
-      <span class="bf-chip"><b data-hud-time>0:00</b></span>
-    </div>
     <div class="bf-boards" data-boards>
       <div class="bf-main"><svg class="bf-svg" data-svg-main role="img" aria-label="Block Fill board"></svg></div>
       <div class="bf-side">
@@ -216,40 +264,72 @@ export function mount(root, context = {}) {
         <div class="bf-turnpill" data-turnpill>—</div>
       </div>
     </div>
-    <div class="bf-pad" data-pad>
-      <button type="button" data-pad="up" aria-label="Up"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg></button>
-      <button type="button" data-pad="left" aria-label="Left"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
-      <button type="button" data-pad="undo" aria-label="Undo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
-      <button type="button" data-pad="right" aria-label="Right"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
-      <button type="button" data-pad="down" aria-label="Down"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6"/></svg></button>
-    </div>
     <div class="bf-toast" data-toast hidden></div>
     <div class="bf-overlay" data-win hidden>
       <div class="bf-card">
-        <h3 data-win-title>Level clear</h3>
+        <div class="bf-head"><h3 data-win-title>Level clear</h3></div>
         <p data-win-sub></p>
-        <div class="bf-card-actions">
-          <button class="bf-btn bf-primary" type="button" data-act="next">Next level</button>
-          <button class="bf-btn" type="button" data-act="replay">Replay</button>
+        <div class="bf-foot bf-card-actions">
+          <button class="bf-btn bf-primary" type="button" data-next>Next level</button>
+          <button class="bf-btn" type="button" data-replay>Replay</button>
         </div>
       </div>
     </div>
-    <div class="bf-cheatwrap" data-cheats hidden>
-      <div class="bf-card bf-cheatcard">
-        <div class="bf-cheathead"><h3>Cheats</h3><button type="button" data-act="cheats-close" aria-label="Close">&times;</button></div>
-        <button class="bf-btn bf-cheatrow" type="button" data-cheat="ghost">Show solution <span data-ch-ghost>Off</span></button>
-        <button class="bf-btn bf-cheatrow" type="button" data-cheat="freeze">Freeze bot <span data-ch-freeze>Off</span></button>
-        <button class="bf-btn bf-cheatrow" type="button" data-cheat="hint">Play best move</button>
-        <button class="bf-btn bf-cheatrow" type="button" data-cheat="solve">Auto-finish level</button>
-        <button class="bf-btn bf-cheatrow" type="button" data-cheat="clear">Clear my path</button>
-        <button class="bf-btn bf-cheatrow" type="button" data-cheat="skip">Skip level</button>
+    <div class="bf-overlay" data-ov="cheat" hidden>
+      <div class="bf-card">
+        <div class="bf-head"><h3>Cheats</h3><button class="bf-btn" type="button" data-cheats-close aria-label="Close">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="bf-cheats">
+          <button class="bf-btn bf-cheatrow" type="button" data-cheat="ghost">Show solution <span data-ch-ghost>Off</span></button>
+          <button class="bf-btn bf-cheatrow" type="button" data-cheat="freeze">Freeze bot <span data-ch-freeze>Off</span></button>
+          <button class="bf-btn bf-cheatrow" type="button" data-cheat="hint">Play best move</button>
+          <button class="bf-btn bf-cheatrow" type="button" data-cheat="solve">Auto-finish level</button>
+          <button class="bf-btn bf-cheatrow" type="button" data-cheat="clear">Clear my path</button>
+          <button class="bf-btn bf-cheatrow" type="button" data-cheat="skip">Skip level</button>
+        </div>
+        <div class="bf-foot"><span class="bf-note">Available vs bot only</span><button class="bf-btn bf-primary" type="button" data-cheats-close>Done</button></div>
+      </div>
+    </div>
+    <div class="bf-overlay" data-ov="pause" hidden>
+      <div class="bf-card">
+        <div class="bf-head"><h3>Paused</h3></div>
+        <div class="bf-help"><p>The timer and the bot are frozen while paused.</p></div>
+        <div class="bf-foot"><span class="bf-note" data-pause-time></span><button class="bf-btn bf-primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="bf-overlay" data-ov="help" hidden>
+      <div class="bf-card">
+        <div class="bf-head"><h3>How to play</h3><button class="bf-btn" type="button" data-help-close aria-label="Close">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="bf-help">
+          <div>
+            <b>Controls</b>
+            <ul>
+              <li><kbd>Click / drag</kbd> cells from START to END</li>
+              <li><kbd>Arrows</kbd> move · <kbd>Backspace</kbd> undo</li>
+              <li><kbd>H</kbd> help · <kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>R</kbd> restart</li>
+              <li>On mobile, use the D-pad below the board</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Fill every unblocked cell in one continuous stroke.</li>
+              <li>Start at the green S and finish at the red E.</li>
+              <li>Step only onto adjacent cells; E opens last.</li>
+              <li>A coin toss decides who moves first; you alternate one cell per turn.</li>
+              <li>First to complete the path wins the level.</li>
+            </ul>
+            <div class="bf-foot"><span class="bf-note">Press H to reopen this guide</span><button class="bf-btn bf-primary" type="button" data-help-close>Got it</button></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="cheats" data-cheats-btn>Cheats</button>
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="bf-pad" data-pad>
+    <button type="button" data-pad="up" aria-label="Up"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg></button>
+    <button type="button" data-pad="left" aria-label="Left"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
+    <button type="button" data-pad="undo" aria-label="Undo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button type="button" data-pad="right" aria-label="Right"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
+    <button type="button" data-pad="down" aria-label="Down"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6"/></svg></button>
   </div>
 </div>`;
 
@@ -264,13 +344,16 @@ export function mount(root, context = {}) {
     };
     const svgMain = $("[data-svg-main]");
     const svgMini = $("[data-svg-mini]");
-    const elStatus = $("[data-status]");
+    const elStatus = $("[data-hud-status]");
     const elBoards = $("[data-boards]");
     const elPad = $("[data-pad]");
     const elTurn = $("[data-turnpill]");
     const elToast = $("[data-toast]");
     const elWin = $("[data-win]");
-    const elCheats = $("[data-cheats]");
+    const elCheats = $("[data-ov='cheat']");
+    const elPause = $("[data-ov='pause']");
+    const elHelp = $("[data-ov='help']");
+    const elPauseTime = $("[data-pause-time]");
     const hud = {
         level: $("[data-hud-level]"), you: $("[data-hud-you]"),
         foe: $("[data-hud-foe]"), time: $("[data-hud-time]"),
@@ -278,11 +361,13 @@ export function mount(root, context = {}) {
         winTitle: $("[data-win-title]"), winSub: $("[data-win-sub]"),
         chGhost: $("[data-ch-ghost]"), chFreeze: $("[data-ch-freeze]"),
     };
-    const cheatsBtn = $("[data-cheats-btn]");
+    const cheatsBtn = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
     if (online) cheatsBtn.hidden = true; // cheat hanya untuk mode vs bot
 
     /* ---------- local (non-synced) flags ---------- */
-    let showGhost = false, botFrozen = false, cheatsOpen = false;
+    let showGhost = false, botFrozen = false;
+    let cheatsOpen = false, paused = false, freezeAt = 0;
     let botTimer = null, toastTimer = null;
     let dragging = false, heldCell = -1;
     let boardKey = "", mainBoard = null, miniBoard = null;
@@ -296,6 +381,7 @@ export function mount(root, context = {}) {
     const foeName = () => (online ? "P" + (2 - mySlot()) : "Bot");
     const myPath = () => state.paths[mySlot()];
     const isMyTurn = () => !!state && state.winner == null && state.turn === mySlot();
+    const isFrozen = () => paused || helpOpen || cheatsOpen;
 
     const fmt = (ms) => {
         const s = Math.max(0, Math.floor(ms / 1000));
@@ -357,6 +443,10 @@ export function mount(root, context = {}) {
             elStatus.textContent = "Waiting for host…";
             elBoards.hidden = true;
             elPad.hidden = true;
+            elWin.hidden = true;
+            elCheats.hidden = true;
+            elPause.hidden = true;
+            elHelp.hidden = !helpOpen;
             return;
         }
         elBoards.hidden = false;
@@ -399,21 +489,33 @@ export function mount(root, context = {}) {
         elStatus.textContent = status;
         elTurn.textContent = pill;
         elTurn.classList.toggle("bf-mine", isMyTurn());
-        /* win overlay */
-        elWin.hidden = state.winner == null;
+        /* overlays: help > pause/cheats > result, mutual suppression */
+        const anyOverlay = helpOpen || cheatsOpen || paused;
+        elWin.hidden = state.winner == null || anyOverlay;
         if (state.winner != null) {
             hud.winTitle.textContent = state.winner === me ? "You win" : (online ? "Player " + (state.winner + 1) + " wins" : "Bot wins");
             hud.winSub.textContent = "Level " + state.levelNo + " · " + L.free + " cells · " + fmt(state.endedAt - state.startedAt);
         }
-        /* cheats */
-        elCheats.hidden = online || !cheatsOpen;
+        elCheats.hidden = online || !cheatsOpen || helpOpen || paused;
+        elPause.hidden = online || !paused || helpOpen || cheatsOpen || state.winner != null;
+        elHelp.hidden = !helpOpen;
         hud.chGhost.textContent = showGhost ? "On" : "Off";
         hud.chFreeze.textContent = botFrozen ? "On" : "Off";
         root.querySelector('[data-cheat="ghost"]').classList.toggle("bf-active", showGhost);
         root.querySelector('[data-cheat="freeze"]').classList.toggle("bf-active", botFrozen);
+        /* HUD button state: update label span, never button textContent */
+        if (cheatsBtn) cheatsBtn.classList.toggle("on", showGhost || botFrozen);
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".bf-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
+            pauseBtn.disabled = online;
+        }
+        if (elPauseTime) elPauseTime.textContent = "Elapsed " + hud.time.textContent;
         /* virtual pad */
         elPad.querySelectorAll("[data-pad]").forEach((b) => {
-            b.disabled = !isMyTurn() || (b.dataset.pad === "undo" && !myPath().length);
+            b.disabled = isFrozen() || !isMyTurn() || (b.dataset.pad === "undo" && !myPath().length);
         });
         /* masih menahan jari saat giliran kembali -> lanjutkan drag */
         if (isMyTurn() && dragging && heldCell >= 0) tryDrag(heldCell);
@@ -424,6 +526,7 @@ export function mount(root, context = {}) {
         const L = LEVELS[(n - 1) % LEVELS.length];
         const first = Math.random() < 0.5 ? 0 : 1; // koin: siapa jalan duluan
         clearTimeout(botTimer); botTimer = null;
+        if (freezeAt) freezeAt = Date.now(); // level baru: anchor freeze di-reset
         state = {
             levelNo: n,
             level: { w: L.w, h: L.h, walls: L.walls.slice(), sol: L.sol.slice(), start: L.start, end: L.end, free: L.free },
@@ -489,15 +592,57 @@ export function mount(root, context = {}) {
 
     /* ---------- bot (mode ai) ---------- */
     function scheduleBot() {
-        if (online || destroyed || botTimer || !state) return;
+        if (isFrozen() || online || destroyed || botTimer || !state) return;
         if (state.winner != null || state.turn !== 1) return;
         botTimer = setTimeout(() => {
             botTimer = null;
-            if (destroyed || !state || state.winner != null || state.turn !== 1) return;
+            if (destroyed || isFrozen() || !state || state.winner != null || state.turn !== 1) return;
             // bot kadang "ragu" supaya koin tidak menentukan pemenang mutlak
             if (botFrozen || Math.random() < 0.15) applyAction({ t: "pass" }, 1);
             else applyAction({ t: "cell", i: state.level.sol[state.paths[1].length] }, 1);
         }, 480 + Math.random() * 420);
+    }
+
+    /* ---------- pause-aware freezing: timer & bot stop, Date.now anchors shift ---------- */
+    function syncFreeze() {
+        const next = isFrozen();
+        if (next === Boolean(freezeAt)) return;
+        if (next) {
+            freezeAt = Date.now();
+            clearTimeout(botTimer); botTimer = null;
+            if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; elToast.hidden = true; }
+        } else {
+            const shift = Date.now() - freezeAt;
+            freezeAt = 0;
+            if (state && !online) {
+                state.startedAt += shift;
+                if (state.endedAt) state.endedAt += shift;
+            }
+            scheduleBot();
+        }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatsOpen = false; paused = false; }
+        syncFreeze(); render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; paused = false; }
+        syncFreeze(); render();
+    }
+    function togglePause(on) {
+        if (online) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { helpOpen = false; cheatsOpen = false; }
+        syncFreeze(); render();
+    }
+    function restart() {
+        if (paused) togglePause(false);
+        else if (cheatsOpen) toggleCheats(false);
+        else if (helpOpen) toggleHelp(false);
+        submitAction({ t: "restart" });
     }
 
     /* ---------- pointer input (mouse + touch, garis selalu mengikuti urutan klik) ---------- */
@@ -515,7 +660,7 @@ export function mount(root, context = {}) {
     }
 
     function tryDrag(i) {
-        if (destroyed || !isMyTurn()) return;
+        if (isFrozen() || destroyed || !isMyTurn()) return;
         const p = myPath(), L = state.level, ws = wsFor(L);
         if (!p.length) { if (i === L.start) submitAction({ t: "cell", i }); return; }
         const head = p[p.length - 1];
@@ -532,7 +677,7 @@ export function mount(root, context = {}) {
     }
 
     function onDown(e) {
-        if (!state || state.winner != null) return;
+        if (isFrozen() || !state || state.winner != null) return;
         const i = pointToCell(e);
         if (i < 0) return;
         e.preventDefault();
@@ -545,7 +690,7 @@ export function mount(root, context = {}) {
         tryDrag(i);
     }
     function onMove(e) {
-        if (!dragging) return;
+        if (isFrozen() || !dragging) return;
         const i = pointToCell(e);
         if (i < 0 || i === heldCell) return;
         heldCell = i;
@@ -559,11 +704,11 @@ export function mount(root, context = {}) {
     svgMain.addEventListener("pointercancel", onUp);
     svgMain.addEventListener("contextmenu", noCtx);
 
-    /* ---------- keyboard + virtual pad ---------- */
+    /* ---------- keyboard + virtual pad: help > cheats > pause > Escape > game actions ---------- */
     const KEYD = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
     const PADDIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
     function dirMove(d) {
-        if (!isMyTurn()) return;
+        if (isFrozen() || !isMyTurn()) return;
         const p = myPath(), L = state.level;
         if (!p.length) { submitAction({ t: "cell", i: L.start }); return; }
         const head = p[p.length - 1];
@@ -577,17 +722,32 @@ export function mount(root, context = {}) {
         if (destroyed || !root.isConnected) return;
         const t = e.target;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-        if (e.key === "Escape") { if (cheatsOpen) { cheatsOpen = false; render(); e.preventDefault(); } return; }
-        if (!state) return;
+        const code = e.code;
         const k = e.key.toLowerCase();
+        /* 1. help */
+        if (code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (helpOpen) {
+            if (code === "Escape" || code === "Enter" || code === "KeyP") { toggleHelp(false); e.preventDefault(); }
+            return;
+        }
+        /* 2. cheats */
+        if (code === "KeyC") { if (!online) toggleCheats(); e.preventDefault(); return; }
+        if (cheatsOpen) {
+            if (code === "Escape" || code === "Enter" || code === "KeyP") { toggleCheats(false); e.preventDefault(); }
+            return;
+        }
+        /* 3. pause */
+        if (code === "KeyP") { if (!online) togglePause(); e.preventDefault(); return; }
+        if (code === "Escape") { if (paused) togglePause(false); e.preventDefault(); return; }
+        /* 4. game actions */
+        if (code === "KeyR" && state) { e.preventDefault(); restart(); return; }
+        if (!state || isFrozen()) return;
         if (state.winner != null) {
             if (e.key === "Enter" || k === "n") { e.preventDefault(); submitAction({ t: "next" }); }
-            else if (k === "r") { e.preventDefault(); submitAction({ t: "restart" }); }
+            else if (k === "r") { e.preventDefault(); restart(); }
             return;
         }
         if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); submitAction({ t: "undo" }); return; }
-        if (k === "r") { e.preventDefault(); submitAction({ t: "restart" }); return; }
-        if (k === "c" && !online) { e.preventDefault(); cheatsOpen = !cheatsOpen; render(); return; }
         const d = KEYD[e.key];
         if (d) { e.preventDefault(); dirMove(d); }
     }
@@ -611,24 +771,31 @@ export function mount(root, context = {}) {
 
     /* ---------- click delegation ---------- */
     function handleClick(event) {
-        const el = event.target.closest("[data-exit],[data-act],[data-cheat],[data-pad]");
-        if (!el || !root.contains(el)) return;
-        if (el.hasAttribute("data-exit")) { onExit(); return; }
-        const act = el.getAttribute("data-act");
-        if (act === "restart" || act === "replay") { submitAction({ t: "restart" }); return; }
-        if (act === "next") { submitAction({ t: "next" }); return; }
-        if (act === "cheats") { cheatsOpen = !cheatsOpen; render(); return; }
-        if (act === "cheats-close") { cheatsOpen = false; render(); return; }
-        const ch = el.getAttribute("data-cheat");
-        if (ch) { doCheat(ch); return; }
-        const pad = el.getAttribute("data-pad");
-        if (pad) { pad === "undo" ? submitAction({ t: "undo" }) : dirMove(PADDIR[pad]); }
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]") || t.closest("[data-replay]")) { restart(); return; }
+        if (t.closest("[data-next]")) { submitAction({ t: "next" }); return; }
+        const ch = t.closest("[data-cheat]");
+        if (ch) { doCheat(ch.getAttribute("data-cheat")); return; }
+        const pad = t.closest("[data-pad]");
+        if (pad) {
+            const p = pad.getAttribute("data-pad");
+            p === "undo" ? submitAction({ t: "undo" }) : dirMove(PADDIR[p]);
+        }
     }
     root.addEventListener("click", handleClick);
 
-    /* ---------- timer display ---------- */
+    /* ---------- timer display (frozen while a modal is open) ---------- */
     const tick = setInterval(() => {
-        if (state && !destroyed) hud.time.textContent = fmt((state.endedAt || Date.now()) - state.startedAt);
+        if (!state || destroyed || isFrozen()) return;
+        hud.time.textContent = fmt((state.endedAt || Date.now()) - state.startedAt);
     }, 500);
 
     /* ---------- init: online (host/guest) vs bot ---------- */
@@ -646,6 +813,7 @@ export function mount(root, context = {}) {
     } else {
         startLevel(1);
     }
+    syncFreeze();
     render();
 
     return {

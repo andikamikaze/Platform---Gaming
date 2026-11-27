@@ -1,4 +1,5 @@
 /* ==== games/monopoly.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /* Monopoly — random city edition.
    Template-compliant: export META + export mount(root, context).
    Host-authoritative state machine: every mutation goes through coreApply(),
@@ -627,20 +628,30 @@ export function mount(root, context = {}) {
     let roomData = room?.room || null;
     let state = lobbyState(online);
 
+    /* UI shell state — kept outside the authoritative, serializable game state. */
+    let selected = null, portOpen = false;
+    let helpOpen = false, cheatOpen = false, paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("monopolyHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("monopolyHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+    const uiBlocked = () => helpOpen || cheatOpen || paused;
+
     root.innerHTML = `
 <style>
-.mo-root{--bg:#0b0f17;--panel:#111726;--line:#232c40;--tx:#e7eaf2;--mut:#8b93a7;--acc:#818cf8;--good:#34d399;--bad:#f87171;--warn:#fbbf24;color:var(--tx);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none}
+/* Monopoly — neon-on-navy identity; one HUD bar, fill-height board, side panel. */
+.mo-root{--bg:#0b0f17;--panel:#111726;--line:#232c40;--tx:#e7eaf2;--mut:#8b93a7;--acc:#818cf8;--good:#34d399;--bad:#f87171;--warn:#fbbf24;width:100%;max-width:1280px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 322px;grid-template-rows:auto minmax(0,1fr);gap:12px;color:var(--tx);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none}
 .mo-root *{box-sizing:border-box}
-.mo-root .game-intro{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-.mo-root .game-intro h2{margin:0;font-size:18px;letter-spacing:.4px}
-.mo-root .game-intro p{margin:2px 0 0;font-size:12px;color:var(--mut)}
-.mo-root .game-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 11px;white-space:nowrap}
-.mo-root .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--good);display:inline-block}
-.mo-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
-.mo-chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--mut);white-space:nowrap}
+.mo-root [hidden]{display:none!important}
+.mo-root :is(button,select,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.mo-hud{grid-column:1/-1;grid-row:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.mo-chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:11px;color:var(--mut);white-space:nowrap;max-width:100%}
 .mo-chip b{color:var(--tx);font-variant-numeric:tabular-nums}
-.mo-spacer{flex:1}
-.mo-btn{appearance:none;border:1px solid var(--line);background:#182034;color:var(--tx);border-radius:10px;padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,transform .05s;touch-action:manipulation;font-family:inherit}
+.mo-statusdot{width:7px;height:7px;border-radius:50%;background:var(--good);flex:none}
+.mo-spacer{flex:1 1 8px}
+.mo-btn{appearance:none;border:1px solid var(--line);background:#182034;color:var(--tx);border-radius:9px;padding:8px 13px;min-height:36px;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,transform .05s;touch-action:manipulation;font-family:inherit}
 .mo-btn:hover:not(:disabled){background:#202a44;border-color:#31406b}
 .mo-btn:active:not(:disabled){transform:translateY(1px)}
 .mo-btn:disabled{opacity:.38;cursor:default}
@@ -648,10 +659,13 @@ export function mount(root, context = {}) {
 .mo-btn.primary:hover:not(:disabled){background:#99a3ff;border-color:#99a3ff}
 .mo-btn.ghost{background:transparent}
 .mo-btn.on{border-color:var(--acc);background:#818cf822}
-.mo-stage{position:relative}
-.mo-main{display:grid;grid-template-columns:minmax(0,1fr) 322px;gap:14px;align-items:start}
-.mo-boardwrap{position:relative;max-width:600px;margin:0 auto;width:100%}
-.mo-boardwrap>svg{display:block;width:100%;height:auto;background:var(--bg);border:1px solid var(--line);border-radius:14px}
+.mo-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.mo-icon-btn svg{flex:none;display:block}
+.mo-hudacts{display:inline-flex;gap:6px;flex-wrap:wrap}
+.mo-hudacts .mo-btn{padding:6px 10px;min-height:32px;font-size:10px}
+.mo-board{grid-column:1;grid-row:2;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:0;border:1px solid var(--line);border-radius:14px;background:var(--bg);overflow:hidden;container-type:size}
+.mo-boardwrap{position:relative;width:min(100%,600px,100cqh);aspect-ratio:1;max-height:100%;margin:auto}
+.mo-boardwrap>svg{display:block;width:100%;height:100%}
 .mo-hit{cursor:pointer;stroke:transparent;stroke-width:2}
 .mo-hit:hover{stroke:#aab4ff;stroke-opacity:.55}
 .mo-tok{transition:transform .15s ease}
@@ -659,27 +673,35 @@ export function mount(root, context = {}) {
 @keyframes moBob{50%{transform:translateY(-3px)}}
 .mo-fx{position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:14px}
 .mo-float{position:absolute;transform:translate(-50%,-50%);font-weight:800;font-size:13px;animation:moFloat 1.3s ease-out forwards;text-shadow:0 1px 5px #000;white-space:nowrap}
-.mo-float.up{color:var(--good)}.mo-float.down{color:var(--bad)}
+.mo-float.up{color:var(--good)}
+.mo-float.down{color:var(--bad)}
 @keyframes moFloat{0%{opacity:0;margin-top:8px}15%{opacity:1}100%{opacity:0;margin-top:-36px}}
-.mo-cardov{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(300px,74%);background:#141c30;border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center;animation:moPop .25s ease;box-shadow:0 18px 50px #000a;z-index:6}
+.mo-cardov{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(300px,calc(100% - 24px));background:#141c30;border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center;animation:moPop .2s ease;box-shadow:0 12px 32px #0008;z-index:6}
 .mo-cardov[hidden]{display:none}
-.mo-cardov.chance{border-color:#b4530988}.mo-cardov.chest{border-color:#2563eb88}
+.mo-cardov.chance{border-color:#b4530988}
+.mo-cardov.chest{border-color:#2563eb88}
 .mo-ctitle{font-size:11px;font-weight:800;letter-spacing:3px;margin-bottom:8px}
-.mo-cardov.chance .mo-ctitle{color:var(--warn)}.mo-cardov.chest .mo-ctitle{color:#60a5fa}
+.mo-cardov.chance .mo-ctitle{color:var(--warn)}
+.mo-cardov.chest .mo-ctitle{color:#60a5fa}
 .mo-ctext{font-size:13.5px;font-weight:600;margin-bottom:10px}
 @keyframes moPop{from{opacity:0;transform:translate(-50%,-46%) scale(.92)}}
-.mo-side{display:flex;flex-direction:column;gap:10px;min-width:0}
-.mo-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.mo-side{grid-column:2;grid-row:2;display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;overflow:auto}
+.mo-side.locked{pointer-events:none;opacity:.7}
+.mo-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
 .mo-boxtitle{font-size:10px;font-weight:800;letter-spacing:2px;color:var(--mut);margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;gap:6px}
-.mo-prow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:9px;font-size:12.5px}
+.mo-prow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:9px;font-size:12.5px;min-width:0}
 .mo-prow.cur{background:#818cf81f;outline:1px solid #818cf855}
 .mo-prow.out{opacity:.4}
 .mo-dot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block}
 .mo-pcash{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
 .mo-tag{font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:99px;background:#ffffff14;color:var(--mut);white-space:nowrap}
-.mo-tag.jail{background:#f59e0b22;color:#fcd34d}.mo-tag.dead{background:#ef444422;color:#fca5a5}.mo-tag.free{background:#34d39922;color:#a7f3d0}
-.pulse-up{animation:moPulseG .7s}.pulse-down{animation:moPulseR .7s}
-@keyframes moPulseG{30%{color:var(--good)}}@keyframes moPulseR{30%{color:var(--bad)}}
+.mo-tag.jail{background:#f59e0b22;color:#fcd34d}
+.mo-tag.dead{background:#ef444422;color:#fca5a5}
+.mo-tag.free{background:#34d39922;color:#a7f3d0}
+.pulse-up{animation:moPulseG .7s}
+.pulse-down{animation:moPulseR .7s}
+@keyframes moPulseG{30%{color:var(--good)}}
+@keyframes moPulseR{30%{color:var(--bad)}}
 .mo-status{font-size:12.5px;color:#c3cde2;text-align:center;margin-bottom:8px;min-height:18px}
 .mo-actbtns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .mo-key{font-size:9.5px;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:5px}
@@ -692,151 +714,200 @@ export function mount(root, context = {}) {
 .mo-deedbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .mo-pips{display:inline-flex;gap:3px;align-items:center}
 .mo-pip{width:10px;height:10px;border-radius:2px;background:#26304a;display:inline-block}
-.mo-pip.h{background:var(--good)}.mo-pip.hotel{background:var(--bad);width:14px}
+.mo-pip.h{background:var(--good)}
+.mo-pip.hotel{background:var(--bad);width:14px}
 .mo-bills{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
 .mo-bill{border-radius:6px;padding:5px 2px;text-align:center;font-size:9.5px;font-weight:800;color:#0b0f17}
 .mo-bill small{display:block;font-size:10px;font-weight:800}
 .mo-bill.zero{opacity:.2}
 .mo-bill.flash{animation:moFlash .8s}
 @keyframes moFlash{30%{transform:scale(1.14)}}
-.mo-port{max-height:190px;overflow:auto}
-.mo-port[hidden]{display:none}
-.mo-prow2{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 4px;cursor:pointer;border-radius:6px}
+.mo-port{max-height:min(190px,24vh);overflow:auto}
+.mo-prow2{display:flex;align-items:center;gap:7px;font-size:12px;padding:4px;cursor:pointer;border-radius:6px}
 .mo-prow2:hover{background:#ffffff08}
-.mo-prow2 .mo-btn{padding:2px 8px;font-size:10.5px;margin-left:auto}
-.mo-log{max-height:150px;overflow:auto;font-size:11.5px;color:var(--mut)}
+.mo-prow2 .mo-btn{padding:3px 8px;font-size:10.5px;margin-left:auto}
+.mo-log{max-height:min(150px,20vh);overflow:auto;font-size:11.5px;color:var(--mut)}
 .mo-log div{padding:3px 0;border-bottom:1px dashed #ffffff0d}
-.mo-log .ev{color:#a7f3d0}.mo-log .bad{color:#fca5a5}.mo-log .ch{color:#fde68a}.mo-log .cc{color:#bfdbfe}
-.mo-vbar{display:none;gap:8px;margin-top:10px;position:sticky;bottom:8px;z-index:10}
-.mo-vbar .mo-btn{flex:1;min-height:50px;font-size:14px;border-radius:12px;box-shadow:0 6px 18px #0008}
-.mo-toasts{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;z-index:15;pointer-events:none;width:max-content;max-width:92%}
+.mo-log .ev{color:#a7f3d0}
+.mo-log .bad{color:#fca5a5}
+.mo-log .ch{color:#fde68a}
+.mo-log .cc{color:#bfdbfe}
+.mo-vbar{display:none;grid-column:1/-1;grid-row:3;gap:8px;margin-top:2px;position:sticky;bottom:max(8px,env(safe-area-inset-bottom));z-index:10}
+.mo-vbar .mo-btn{flex:1;min-height:50px;font-size:14px;border-radius:12px;box-shadow:0 4px 14px #0006}
+.mo-toasts{position:absolute;top:8px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;z-index:15;pointer-events:none;width:max-content;max-width:calc(100% - 16px)}
 .mo-toast{background:#141c30ee;border:1px solid var(--line);padding:6px 14px;border-radius:999px;font-size:12px;font-weight:600;animation:moToast 2.3s forwards;text-align:center}
-.mo-toast.good{border-color:#34d39966;color:#a7f3d0}.mo-toast.bad{border-color:#f8717166;color:#fecaca}.mo-toast.ch{border-color:#fbbf2466;color:#fde68a}
+.mo-toast.good{border-color:#34d39966;color:#a7f3d0}
+.mo-toast.bad{border-color:#f8717166;color:#fecaca}
+.mo-toast.ch{border-color:#fbbf2466;color:#fde68a}
 @keyframes moToast{0%{opacity:0;transform:translateY(-6px)}12%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
-.mo-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0f17d9;backdrop-filter:blur(3px);z-index:20;border-radius:14px;padding:14px}
-.mo-ov[hidden]{display:none}
-.mo-ovcard{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;max-width:540px;width:100%;max-height:94%;overflow:auto}
-.mo-ovcard h2{margin:0 0 6px;font-size:20px}
+.mo-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0f17d9;backdrop-filter:blur(3px);z-index:20;border-radius:14px;padding:12px}
+.mo-ovcard{display:flex;flex-direction:column;overflow:hidden;max-width:540px;width:100%;max-height:100%;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.mo-ovhead{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.mo-ovhead h2{margin:0;font-size:20px}
+.mo-ovbody{flex:1 1 auto;min-height:0;overflow:auto}
+.mo-ovfoot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px}
 .mo-ovcard .sub{font-size:12.5px;color:var(--mut);margin:0 0 10px}
-.mo-diffrow{display:flex;gap:8px;margin:12px 0}
-.mo-diffrow .mo-btn{flex:1}
-.mo-help h3{font-size:11px;letter-spacing:2px;color:var(--acc);margin:14px 0 4px;text-transform:uppercase}
+.mo-diffrow{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+.mo-diffrow .mo-btn{flex:1 1 120px}
+.mo-help h3{font-size:11px;letter-spacing:2px;color:var(--acc);margin:12px 0 4px;text-transform:uppercase}
 .mo-help p,.mo-help li{font-size:12.5px;color:#c3cde2;margin:4px 0}
 .mo-help ul{padding-left:18px;margin:4px 0}
 .mo-help kbd{background:#182034;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11px;font-family:inherit}
 .mo-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .mo-rigrow{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px;color:var(--mut);flex-wrap:wrap}
-.mo-rigrow select{background:#182034;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:6px;font-family:inherit}
+.mo-rigrow select{background:#182034;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:8px;min-height:36px;font-family:inherit}
 .mo-note{font-size:11px;color:var(--mut);margin-top:12px}
 .mo-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .mo-stat{background:#182034;border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
 .mo-stat b{display:block;font-size:16px}
 .mo-stat span{font-size:10px;color:var(--mut);letter-spacing:1px}
-.mo-root .game-actions{margin-top:12px;display:flex;justify-content:flex-end}
-.mo-root .game-action-button{appearance:none;border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:10px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:inherit}
-.mo-root .game-action-button:hover{color:var(--tx);border-color:#31406b}
+.mo-root.frozen .mo-tok,.mo-root.frozen .mo-float,.mo-root.frozen .mo-toast{animation-play-state:paused}
+.mo-root.frozen .mo-tok{transition:none}
 @media(pointer:coarse){.mo-vbar{display:flex}.mo-key{display:none}}
-@media(max-width:920px){.mo-main{grid-template-columns:1fr}.mo-side{max-width:600px;margin:0 auto;width:100%}.mo-stats{grid-template-columns:repeat(2,1fr)}}
-@media(prefers-reduced-motion:reduce){.mo-tok{transition-duration:.01s}.mo-tok.moving circle{animation:none}}
+@media(max-width:1024px){
+.mo-root{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto auto}
+.mo-side{grid-column:1;grid-row:3;max-width:600px;margin:0 auto;width:100%;overflow:visible}
+.mo-vbar{grid-row:4}
+}
+@media(max-width:560px){
+  .mo-stats{grid-template-columns:repeat(2,1fr)}
+  .mo-cheatgrid{grid-template-columns:1fr}
+  .mo-bills{gap:4px}
+}
+@media(pointer:coarse){
+  .mo-btn,.mo-rigrow select{min-height:44px}
+  .mo-chip{min-height:44px;padding:8px 12px}
+}
+@media(prefers-reduced-motion:reduce){.mo-root *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+/* --- fill height + mobile refinements (keep LAST) --- */
+.mo-root.game-fill > .mo-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media(max-width:640px){
+.mo-root.game-fill > .mo-board:not(:has(.mo-ov:not([hidden]))){aspect-ratio:1;flex:0 0 auto}
+.mo-root.game-fill > .mo-board:has(.mo-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.mo-root .mo-hud{gap:5px;margin-bottom:0}
+.mo-root .mo-hud .mo-chip{padding:4px 6px;font-size:9px;min-height:0}
+.mo-root .mo-hud .mo-chip[data-hud-seed],.mo-root .mo-hud .mo-chip[data-hud-dice]{display:none}
+.mo-root .mo-hud .mo-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.mo-root .mo-hud .mo-btn-label,.mo-root .mo-hud .mo-spacer{display:none}
+.mo-root .mo-ov{padding:8px}
+.mo-root .mo-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.mo-root .mo-ovbody,.mo-root .mo-help,.mo-root .mo-log{scrollbar-width:none}
+.mo-root .mo-ovbody::-webkit-scrollbar,.mo-root .mo-help::-webkit-scrollbar,.mo-root .mo-log::-webkit-scrollbar{display:none}
+.mo-root .mo-ovfoot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.mo-root .mo-note{display:none}
+}
 </style>
-<div class="game-app mo-root">
-  <div class="game-intro">
-    <div><h2>Monopoly</h2><p>Random city edition — buy streets, build houses &amp; hotels, bankrupt your rivals.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Ready</span></span>
-  </div>
-  <div class="mo-toolbar">
-    <span class="mo-chip">You <b data-hud-cash>$0</b></span>
+<div class="game-app mo-root game-fill" data-mo>
+  <div class="mo-hud">
+    <span class="mo-chip"><i class="mo-statusdot"></i><span data-status aria-live="polite">Ready</span></span>
+    <span class="mo-chip">Cash <b data-hud-cash>$0</b></span>
     <span class="mo-chip">Pot <b data-hud-pot>$0</b></span>
     <span class="mo-chip">Turn <b data-hud-turn>—</b></span>
+    <span class="mo-chip" data-hud-dice>dice —</span>
     <span class="mo-chip" data-hud-seed>city —</span>
+    <span class="mo-hudacts" data-hudacts></span>
     <span class="mo-spacer"></span>
-    <button class="mo-btn ghost" type="button" data-act="help">How to play</button>
-    <button class="mo-btn ghost" type="button" data-act="cheat" data-cheatbtn>Cheats</button>
-    <button class="mo-btn ghost" type="button" data-act="manage">Portfolio</button>
-    <button class="mo-btn ghost" type="button" data-act="reset" data-hostbtn>Restart</button>
+    <button class="mo-btn mo-icon-btn" type="button" data-act="manage" aria-label="Portfolio" title="Portfolio (M)">${iconSVG("grid", { size: 14 })}<span class="mo-btn-label">Portfolio</span></button>
+    <button class="mo-btn mo-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="mo-btn-label">Help</span></button>
+    <button class="mo-btn mo-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="mo-btn-label">Cheats</span></button>
+    <button class="mo-btn mo-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="mo-btn-label">Pause</span></button>
+    <button class="mo-btn mo-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="mo-btn-label">Restart</span></button>
+    <button class="mo-btn mo-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="mo-btn-label">Exit game</span></button>
   </div>
-  <div class="mo-stage">
-    <section class="game-panel mo-main" data-board>
-      <div class="mo-boardwrap">
-        <svg viewBox="0 0 760 760" role="img" aria-label="Monopoly board" data-svg></svg>
-        <div class="mo-fx" data-fxlayer></div>
-        <div class="mo-cardov" data-cardov hidden></div>
-        <div class="mo-toasts" data-toasts></div>
-      </div>
-      <aside class="mo-side">
-        <div class="mo-box" data-players></div>
-        <div class="mo-box"><div class="mo-status" data-actstatus aria-live="polite"></div><div class="mo-actbtns" data-actbtns></div></div>
-        <div class="mo-box" data-deed></div>
-        <div class="mo-box" data-wallet></div>
-        <div class="mo-box mo-port" data-port hidden></div>
-        <div class="mo-box mo-log" data-log></div>
-      </aside>
-    </section>
-    <div class="mo-vbar" data-vbar></div>
+  <section class="game-panel mo-board" data-board>
+    <div class="mo-boardwrap">
+      <svg viewBox="0 0 760 760" role="img" aria-label="Monopoly board" data-svg></svg>
+      <div class="mo-fx" data-fxlayer></div>
+      <div class="mo-cardov" data-cardov hidden></div>
+      <div class="mo-toasts" data-toasts></div>
+    </div>
     <div class="mo-ov" data-ov-start>
       <div class="mo-ovcard">
-        <h2>Monopoly — random city</h2>
-        <p class="sub">A fresh, seeded city board is generated every game: 40 tiles, 8 color sets, railroads, utilities, Chance &amp; Community Chest. Balanced so every game can be finished.</p>
-        <div class="mo-diffrow" data-diffrow></div>
-        <ul style="font-size:12.5px;color:#c3cde2;padding-left:18px;margin:8px 0">
-          <li>Roll, move, buy streets — complete a color set to double rent and unlock building.</li>
-          <li>Build up to 4 houses, then a hotel. Taxes &amp; fines fill the Free Parking pot.</li>
-          <li>Who goes first is decided by a random opening roll. Online, seats are shuffled too.</li>
-        </ul>
-        <div class="mo-actbtns" style="justify-content:flex-start">
-          <button class="mo-btn primary" type="button" data-act="start" data-startbtn>Start game</button>
-          <button class="mo-btn ghost" type="button" data-act="help">How to play</button>
+        <div class="mo-ovhead"><h2>Monopoly — random city</h2></div>
+        <div class="mo-ovbody">
+          <p class="sub">A fresh, seeded city board is generated every game: 40 tiles, 8 color sets, railroads, utilities, Chance &amp; Community Chest. Balanced so every game can be finished.</p>
+          <div class="mo-diffrow" data-diffrow></div>
+          <ul style="font-size:12.5px;color:#c3cde2;padding-left:18px;margin:8px 0">
+            <li>Roll, move, buy streets — complete a color set to double rent and unlock building.</li>
+            <li>Build up to 4 houses, then a hotel. Taxes &amp; fines fill the Free Parking pot.</li>
+            <li>Who goes first is decided by a random opening roll. Online, seats are shuffled too.</li>
+          </ul>
         </div>
-        <p class="mo-note" data-startnote></p>
+        <div class="mo-ovfoot">
+          <span class="mo-note" data-startnote></span>
+          <span class="mo-actbtns" style="justify-content:flex-end">
+            <button class="mo-btn primary" type="button" data-act="start" data-startbtn>Start game</button>
+            <button class="mo-btn ghost" type="button" data-help>How to play</button>
+          </span>
+        </div>
       </div>
     </div>
     <div class="mo-ov" data-ov-over hidden>
       <div class="mo-ovcard">
-        <h2 data-over-title>Game over</h2>
-        <p class="sub" data-over-reason></p>
-        <div class="mo-stats" data-over-stats></div>
-        <button class="mo-btn primary" type="button" data-act="start" data-startbtn>Play again</button>
-        <p class="mo-note" data-over-note></p>
+        <div class="mo-ovhead"><h2 data-over-title>Game over</h2></div>
+        <div class="mo-ovbody">
+          <p class="sub" data-over-reason></p>
+          <div class="mo-stats" data-over-stats></div>
+        </div>
+        <div class="mo-ovfoot"><span class="mo-note" data-over-note></span><button class="mo-btn primary" type="button" data-act="start" data-startbtn>Play again</button></div>
+      </div>
+    </div>
+    <div class="mo-ov" data-ov-pause hidden>
+      <div class="mo-ovcard">
+        <div class="mo-ovhead"><h2>Paused</h2></div>
+        <div class="mo-ovbody"><p class="sub">Turn timers and rivals are frozen. Press P or Esc to resume.</p></div>
+        <div class="mo-ovfoot"><span class="mo-note">Offline games only</span><button class="mo-btn primary" type="button" data-resume>Resume</button></div>
       </div>
     </div>
     <div class="mo-ov" data-ov-help hidden>
-      <div class="mo-ovcard mo-help">
-        <h2>How to play</h2>
-        <h3>Goal</h3><p>Be the last solvent player. Bankrupt every rival by collecting rent — or be richest when the turn limit hits.</p>
-        <h3>Your turn</h3><ul><li>Roll two dice and move tile by tile. Passing GO pays $200.</li><li>Doubles = roll again. Three doubles in a row = straight to Jail.</li><li>Land on an unowned street / railroad / utility: <b>Buy</b> it or <b>Pass</b>.</li><li>Land on a rival's property: pay rent automatically.</li></ul>
-        <h3>Rent &amp; building</h3><ul><li>Own every street of a color set → base rent doubles and you can build.</li><li>Build evenly across the set: up to 4 houses, then a <b>hotel</b> (level 5). Click a tile to open its title-deed card and build / sell there.</li><li>Sell buildings or streets back to the bank at half price any time on your turn.</li><li>Railroads: $25 / $50 / $100 / $200 by how many you own. Utilities: 4× dice (one) or 10× dice (both).</li></ul>
-        <h3>Cards, taxes &amp; jail</h3><ul><li><b style="color:#fbbf24">Chance</b> (orange ?) moves you around; <b style="color:#60a5fa">Community Chest</b> (blue) is mostly money in / out.</li><li>Taxes and fines go to the Free Parking pot — land on Free Parking to scoop it.</li><li>Jail: roll doubles, pay $50, or use a Jail-free card. After 3 failed tries you must pay and move.</li></ul>
-        <h3>Bankruptcy</h3><p>Can't pay? Your buildings and streets are auto-sold at half price. Still short → bankrupt, and your assets go to the creditor.</p>
-        <h3>Controls</h3><ul><li><kbd>Space</kbd> roll · <kbd>B</kbd> buy · <kbd>P</kbd> pass · <kbd>J</kbd> pay jail / use card · <kbd>K</kbd> continue card</li><li><kbd>M</kbd> portfolio · <kbd>C</kbd> cheats · <kbd>H</kbd> help · <kbd>Esc</kbd> close / deselect</li><li>Mouse: click any tile to inspect its deed card, double-click your street to build. Touch: use the big buttons under the board.</li></ul>
-        <h3>Random city &amp; difficulty</h3><p>Every game generates a seeded board (names, prices, taxes, card order). The generator validates that sets are completable, prices affordable and rents sane — and a turn cap guarantees a winner. Difficulty changes starting cash and how aggressively the AI buys and builds. Cheats are available offline only.</p>
-        <div class="mo-actbtns" style="justify-content:flex-end;margin-top:12px"><button class="mo-btn" type="button" data-act="help">Close</button></div>
+      <div class="mo-ovcard">
+        <div class="mo-ovhead"><h2>How to play</h2><button class="mo-btn" type="button" data-help-close>Close</button></div>
+        <div class="mo-ovbody mo-help">
+          <h3>Goal</h3><p>Be the last solvent player. Bankrupt every rival by collecting rent — or be richest when the turn limit hits.</p>
+          <h3>Your turn</h3><ul><li>Roll two dice and move tile by tile. Passing GO pays $200.</li><li>Doubles = roll again. Three doubles in a row = straight to Jail.</li><li>Land on an unowned street / railroad / utility: <b>Buy</b> it or <b>Pass</b>.</li><li>Land on a rival's property: pay rent automatically.</li></ul>
+          <h3>Rent &amp; building</h3><ul><li>Own every street of a color set → base rent doubles and you can build.</li><li>Build evenly across the set: up to 4 houses, then a <b>hotel</b> (level 5). Click a tile to open its title-deed card and build / sell there.</li><li>Sell buildings or streets back to the bank at half price any time on your turn.</li><li>Railroads: $25 / $50 / $100 / $200 by how many you own. Utilities: 4× dice (one) or 10× dice (both).</li></ul>
+          <h3>Cards, taxes &amp; jail</h3><ul><li><b style="color:#fbbf24">Chance</b> (orange ?) moves you around; <b style="color:#60a5fa">Community Chest</b> (blue) is mostly money in / out.</li><li>Taxes and fines go to the Free Parking pot — land on Free Parking to scoop it.</li><li>Jail: roll doubles, pay $50, or use a Jail-free card. After 3 failed tries you must pay and move.</li></ul>
+          <h3>Bankruptcy</h3><p>Can't pay? Your buildings and streets are auto-sold at half price. Still short → bankrupt, and your assets go to the creditor.</p>
+          <h3>Controls</h3><ul><li><kbd>Space</kbd> roll · <kbd>B</kbd> buy · <kbd>N</kbd> pass · <kbd>J</kbd> pay jail / use card · <kbd>K</kbd> continue card</li><li><kbd>M</kbd> portfolio · <kbd>H</kbd> help · <kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>R</kbd> restart · <kbd>Esc</kbd> close / deselect</li><li>Mouse: click any tile to inspect its deed card, double-click your street to build. Touch: use the buttons in the HUD / beside the board.</li></ul>
+          <h3>Random city &amp; difficulty</h3><p>Every game generates a seeded board (names, prices, taxes, card order). The generator validates that sets are completable, prices affordable and rents sane — and a turn cap guarantees a winner. Difficulty changes starting cash and how aggressively the AI buys and builds. Cheats are available offline only.</p>
+        </div>
+        <div class="mo-ovfoot"><span class="mo-note">Press H to reopen this guide</span><button class="mo-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
     <div class="mo-ov" data-ov-cheat hidden>
       <div class="mo-ovcard">
-        <h2>Cheat console</h2>
-        <p class="sub">Offline sandbox only — disabled in online rooms.</p>
-        <div class="mo-cheatgrid">
-          <button class="mo-btn" type="button" data-act="cheatOp" data-op="cash500">+ $500</button>
-          <button class="mo-btn" type="button" data-act="cheatOp" data-op="cash2000">+ $2000</button>
-          <button class="mo-btn" type="button" data-act="cheatOp" data-op="ownall">Own all properties</button>
-          <button class="mo-btn" type="button" data-act="cheatOp" data-op="free" data-freebtn>Free building: OFF</button>
-          <button class="mo-btn" type="button" data-act="cheatOp" data-op="jail">Leave jail</button>
-          <button class="mo-btn" type="button" data-act="cheatOp" data-op="pot">Pot + $500</button>
-          <button class="mo-btn" type="button" data-act="cheatOp" data-op="win">Bankrupt rivals (win)</button>
-          <button class="mo-btn" type="button" data-act="cheatOp" data-op="clear">Clear toggles</button>
+        <div class="mo-ovhead"><h2>Cheat console</h2><button class="mo-btn" type="button" data-cheats-close>Close</button></div>
+        <div class="mo-ovbody">
+          <p class="sub">Offline sandbox only — disabled in online rooms.</p>
+          <div class="mo-cheatgrid">
+            <button class="mo-btn" type="button" data-act="cheatOp" data-op="cash500">+ $500</button>
+            <button class="mo-btn" type="button" data-act="cheatOp" data-op="cash2000">+ $2000</button>
+            <button class="mo-btn" type="button" data-act="cheatOp" data-op="ownall">Own all properties</button>
+            <button class="mo-btn" type="button" data-act="cheatOp" data-op="free" data-freebtn>Free building: OFF</button>
+            <button class="mo-btn" type="button" data-act="cheatOp" data-op="jail">Leave jail</button>
+            <button class="mo-btn" type="button" data-act="cheatOp" data-op="pot">Pot + $500</button>
+            <button class="mo-btn" type="button" data-act="cheatOp" data-op="win">Bankrupt rivals (win)</button>
+            <button class="mo-btn" type="button" data-act="cheatOp" data-op="clear">Clear toggles</button>
+          </div>
+          <div class="mo-rigrow">Rig next roll:
+            <select data-rig-a><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+            <select data-rig-b><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+            <button class="mo-btn" type="button" data-act="rig">Set</button>
+            <span data-rigstate></span>
+          </div>
         </div>
-        <div class="mo-rigrow">Rig next roll:
-          <select data-rig-a><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
-          <select data-rig-b><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
-          <button class="mo-btn" type="button" data-act="rig">Set</button>
-          <span data-rigstate></span>
-        </div>
-        <div class="mo-actbtns" style="justify-content:flex-end;margin-top:14px"><button class="mo-btn" type="button" data-act="cheat">Close</button></div>
       </div>
     </div>
-  </div>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  </section>
+  <aside class="mo-side" data-side>
+    <div class="mo-box" data-players></div>
+    <div class="mo-box"><div class="mo-status" data-actstatus aria-live="polite"></div><div class="mo-actbtns" data-actbtns></div></div>
+    <div class="mo-box" data-deed></div>
+    <div class="mo-box" data-wallet></div>
+    <div class="mo-box mo-port" data-port hidden></div>
+    <div class="mo-box mo-log" data-log></div>
+  </aside>
+  <div class="mo-vbar" data-vbar></div>
 </div>`;
 
     /* ---------- tiny helpers ---------- */
@@ -1002,7 +1073,6 @@ export function mount(root, context = {}) {
     }
 
     /* ---------- local UI state ---------- */
-    let selected = null, portOpen = false, helpOpen = false, cheatOpen = false;
     let chosenDiff = "normal";
     let lastToast = 0, lastFx = 0, lastRoll = 0, spinning = false;
     let prevBills = null, autoTimer = null, cashRaf = null;
@@ -1037,15 +1107,15 @@ export function mount(root, context = {}) {
         if (!started() || state.phase === "over") return out;
         const me = mySeat(), p = state.players[me], mine = state.turn === me && !p.bankrupt;
         if (state.phase === "roll" && mine) {
-            out.push({ act: "roll", label: "Roll dice", key: "Space", primary: true });
-            if (p.jail > 0) out.push({ act: "jailPay", label: p.free > 0 ? "Use jail card" : "Pay $50", key: "J" });
+            out.push({ act: "roll", label: "Roll dice", short: "Roll", key: "Space", primary: true });
+            if (p.jail > 0) out.push({ act: "jailPay", label: p.free > 0 ? "Use jail card" : "Pay $50", short: p.free > 0 ? "Card" : "$50", key: "J" });
         }
         if (state.phase === "buy" && mine && state.pending != null) {
             const t = state.tiles[state.pending];
-            out.push({ act: "buy", label: "Buy " + fmt$(t.price), key: "B", primary: true, disabled: p.cash < t.price });
-            out.push({ act: "pass", label: "Pass", key: "P" });
+            out.push({ act: "buy", label: "Buy " + fmt$(t.price), short: "Buy", key: "B", primary: true, disabled: p.cash < t.price });
+            out.push({ act: "pass", label: "Pass", short: "Pass", key: "N" });
         }
-        if (state.phase === "card" && mine) out.push({ act: "cardOk", label: "Continue", key: "K", primary: true });
+        if (state.phase === "card" && mine) out.push({ act: "cardOk", label: "Continue", short: "OK", key: "K", primary: true });
         return out;
     }
     function renderActions() {
@@ -1056,6 +1126,7 @@ export function mount(root, context = {}) {
             : big ? `<button class="mo-btn" type="button" disabled>${started() && state.phase !== "over" ? "Waiting…" : "—"}</button>` : "";
         $("[data-actbtns]").innerHTML = html(false);
         $("[data-vbar]").innerHTML = html(true);
+        $("[data-hudacts]").innerHTML = btns.map((b) => `<button class="mo-btn${b.primary ? " primary" : ""}" type="button" data-act="${b.act}"${b.disabled ? " disabled" : ""}>${b.short || b.label}</button>`).join("");
     }
     function renderPlayers() {
         const box = $("[data-players]");
@@ -1084,8 +1155,6 @@ export function mount(root, context = {}) {
         $("[data-hud-pot]").textContent = fmt$(state.pot);
         $("[data-hud-turn]").textContent = started() ? (state.phase === "over" ? "Over" : state.names[state.turn]) : "—";
         $("[data-hud-seed]").textContent = started() ? "city #" + state.seed.toString(36) + " · " + DIFFS[state.difficulty].label : "city —";
-        const cb = $("[data-cheatbtn]"); if (cb) cb.style.display = online ? "none" : "";
-        $$("[data-hostbtn]").forEach((b) => { b.disabled = online && !room.isHost; });
         $$("[data-startbtn]").forEach((b) => { b.disabled = online && !room.isHost; });
         $("[data-startnote]").textContent = online ? (room.isHost ? "You are the host — you control the game flow." : "Only the host can start. Seats are shuffled randomly.") : "Offline vs two AI rivals. Cheats available (C).";
     }
@@ -1094,6 +1163,8 @@ export function mount(root, context = {}) {
         turnTxt.textContent = !started() ? "Press Start" : state.phase === "over" ? (state.winner != null ? state.names[state.winner] + " wins" : "Game over") : state.names[state.turn] + " to play";
         sumTxt.textContent = started() && state.rollId > 0 ? "last roll " + state.dice[0] + " + " + state.dice[1] + " = " + (state.dice[0] + state.dice[1]) : "";
         seedTxt.textContent = started() ? "seed #" + state.seed.toString(36) + " · " + DIFFS[state.difficulty].label.toLowerCase() + (state.cheat.free ? " · free-build" : "") : "a new city every game";
+        const diceEl = $("[data-hud-dice]");
+        if (diceEl) diceEl.textContent = started() && state.rollId > 0 ? "dice " + state.dice[0] + "+" + state.dice[1] + "=" + (state.dice[0] + state.dice[1]) : "dice —";
     }
     function renderDecor() {
         L.decor.innerHTML = "";
@@ -1319,11 +1390,29 @@ export function mount(root, context = {}) {
             box.appendChild(d);
         });
     }
+    function syncControls() {
+        const cb = $("[data-cheats]");
+        if (cb) { cb.disabled = online; cb.classList.toggle("on", cheatOpen); }
+        const pb = $("[data-pause]");
+        if (pb) {
+            const label = pb.querySelector(".mo-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pb.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pb.title = (paused ? "Resume" : "Pause") + " (P)";
+            pb.disabled = online;
+        }
+        const rb = $("[data-restart]"); if (rb) rb.disabled = online && !room.isHost;
+        const mb = root.querySelector('[data-act="manage"]'); if (mb) mb.classList.toggle("on", portOpen);
+        const side = $("[data-side]"); if (side) side.classList.toggle("locked", uiBlocked());
+        const app = $("[data-mo]"); if (app) app.classList.toggle("frozen", paused);
+    }
     function renderOverlays() {
-        $("[data-ov-start]").hidden = state.phase !== "lobby";
+        const block = uiBlocked();
+        $("[data-ov-start]").hidden = state.phase !== "lobby" || block;
+        $("[data-ov-over]").hidden = state.phase !== "over" || block;
+        $("[data-ov-pause]").hidden = !paused || cheatOpen || helpOpen;
+        $("[data-ov-cheat]").hidden = !cheatOpen || online || helpOpen;
         $("[data-ov-help]").hidden = !helpOpen;
-        $("[data-ov-cheat]").hidden = !cheatOpen || online;
-        $("[data-ov-over]").hidden = state.phase !== "over";
         $("[data-diffrow]").innerHTML = Object.keys(DIFFS).map((k) => '<button class="mo-btn' + (chosenDiff === k ? " on" : "") + '" type="button" data-act="diff" data-diff="' + k + '">' + DIFFS[k].label + '<br><small style="color:var(--mut)">' + fmt$(DIFFS[k].cash) + "</small></button>").join("");
         if (state.phase === "over") {
             const me = mySeat();
@@ -1354,7 +1443,7 @@ export function mount(root, context = {}) {
             $("[data-fxlayer]").innerHTML = ""; $("[data-toasts]").innerHTML = "";
             selected = null;
         }
-        renderOverlays(); renderHud(); renderPlayers(); renderDecor(); syncTokens(); syncDice(); renderCenter(); renderCard(); renderActions(); renderDeed(); renderWallet(); renderPortfolio(); renderLog(); syncFx(); syncCash();
+        renderOverlays(); syncControls(); renderHud(); renderPlayers(); renderDecor(); syncTokens(); syncDice(); renderCenter(); renderCard(); renderActions(); renderDeed(); renderWallet(); renderPortfolio(); renderLog(); syncFx(); syncCash();
         $("[data-status]").textContent = statusText();
     }
 
@@ -1365,7 +1454,12 @@ export function mount(root, context = {}) {
     }
     function pump() {
         if (autoTimer != null) { clearTimeout(autoTimer); timers.delete(autoTimer); autoTimer = null; }
-        if (!destroyed && state.auto && (!online || room.isHost)) {
+        /* Help, cheats and pause all freeze the host loop. This module uses
+           relative state.wait deadlines (no Date.now/performance.now anchor),
+           so rescheduling the full wait on resume shifts the deadline past the
+           pause interval instead of firing a backlog of skipped turns. */
+        if (destroyed || uiBlocked()) return;
+        if (state.auto && (!online || room.isHost)) {
             const a = state.auto;
             autoTimer = after(state.wait || 300, () => { autoTimer = null; dispatch(a, "sys"); });
         }
@@ -1393,35 +1487,67 @@ export function mount(root, context = {}) {
     }
 
     /* ---------- input: mouse, touch, keyboard ---------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+        pump();
+    }
+    function setCheatOpen(on) {
+        cheatOpen = Boolean(on) && !online && !helpOpen;
+        render();
+        pump();
+    }
+    function setPaused(on) {
+        paused = Boolean(on) && !online && !helpOpen && !cheatOpen;
+        render();
+        pump();
+    }
+    function restartGame() {
+        paused = false; cheatOpen = false; helpOpen = false; portOpen = false;
+        if (online && !room.isHost) return;
+        submitAction({ type: "reset" });
+        startGame();
+    }
     function handleClick(event) {
         if (event.target.closest("[data-exit]")) { onExit(); return; }
+        if (event.target.closest("[data-help]")) { toggleHelp(); return; }
+        if (event.target.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (event.target.closest("[data-cheats]")) { setCheatOpen(!cheatOpen); return; }
+        if (event.target.closest("[data-cheats-close]")) { setCheatOpen(false); return; }
+        if (event.target.closest("[data-pause]")) { setPaused(!paused); return; }
+        if (event.target.closest("[data-resume]")) { setPaused(false); return; }
+        if (event.target.closest("[data-restart]")) { restartGame(); return; }
         const btn = event.target.closest("[data-act]");
         if (btn) {
             if (btn.disabled) return;
             const act = btn.dataset.act;
+            if (act === "help") { toggleHelp(); return; }
+            if (act === "cheat") { setCheatOpen(!cheatOpen); return; }
+            if (act === "reset") { restartGame(); return; }
+            if (act === "manage") { portOpen = !portOpen; render(); return; }
+            /* Cheat controls stay live while the cheat modal is open. */
+            if (act === "cheatOp") { submitAction({ type: "cheat", op: btn.dataset.op }); return; }
+            if (act === "rig") { submitAction({ type: "cheat", op: "rig", a: +$("[data-rig-a]").value, b: +$("[data-rig-b]").value }); return; }
+            if (uiBlocked()) return;
             if (act === "start") startGame();
-            else if (act === "reset") { if (!online || room.isHost) { helpOpen = cheatOpen = portOpen = false; submitAction({ type: "reset" }); } }
             else if (act === "diff") { chosenDiff = btn.dataset.diff; render(); }
-            else if (act === "help") { helpOpen = !helpOpen; render(); }
-            else if (act === "cheat") { if (!online) { cheatOpen = !cheatOpen; render(); } }
-            else if (act === "manage") { portOpen = !portOpen; render(); }
-            else if (act === "cheatOp") submitAction({ type: "cheat", op: btn.dataset.op });
-            else if (act === "rig") submitAction({ type: "cheat", op: "rig", a: +$("[data-rig-a]").value, b: +$("[data-rig-b]").value });
             else if (act === "build" || act === "sell" || act === "sellProp") submitAction({ type: act, i: +btn.dataset.i });
             else submitAction({ type: act });
             return;
         }
         const tile = event.target.closest("[data-tile]");
-        if (tile && started()) { selected = +tile.dataset.tile; render(); }
+        if (tile && started() && !uiBlocked()) { selected = +tile.dataset.tile; render(); }
     }
     function handleDbl(event) {
         const tile = event.target.closest("[data-tile]");
-        if (tile && started()) {
+        if (tile && started() && !uiBlocked()) {
             const i = +tile.dataset.tile;
             if (canBuild(state, mySeat(), i)) submitAction({ type: "build", i });
         }
     }
     function tryKey(type) {
+        if (uiBlocked()) return;
         const b = actionButtons().find((x) => x.act === type && !x.disabled);
         if (b) submitAction({ type });
     }
@@ -1429,16 +1555,27 @@ export function mount(root, context = {}) {
         if (destroyed) return;
         const tag = (e.target.tagName || "").toLowerCase();
         if (tag === "input" || tag === "select" || tag === "textarea") return;
-        if (e.key === "Escape") { helpOpen = false; cheatOpen = false; selected = null; render(); return; }
         const k = e.key.toLowerCase();
+        /* Priority: help → cheats → pause/Escape → game actions. */
+        if (k === "h" || e.key === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "c") { if (!helpOpen) setCheatOpen(!cheatOpen); e.preventDefault(); return; }
+        if (k === "p" || e.key === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) setCheatOpen(false);
+            else if (k === "p") setPaused(!paused);
+            else if (paused) setPaused(false);
+            else { selected = null; render(); }
+            e.preventDefault();
+            return;
+        }
+        if (helpOpen || cheatOpen || paused) return;
+        if (k === "r") { restartGame(); e.preventDefault(); return; }
         if (e.code === "Space") { e.preventDefault(); if (state.phase === "lobby") startGame(); else tryKey("roll"); }
         else if (k === "b") tryKey("buy");
-        else if (k === "p") tryKey("pass");
+        else if (k === "n") tryKey("pass");
         else if (k === "j") tryKey("jailPay");
         else if (k === "k" || e.key === "Enter") tryKey("cardOk");
         else if (k === "m") { portOpen = !portOpen; render(); }
-        else if (k === "h" || k === "?") { helpOpen = !helpOpen; render(); }
-        else if (k === "c" && !online) { cheatOpen = !cheatOpen; render(); }
     }
 
     root.addEventListener("click", handleClick);

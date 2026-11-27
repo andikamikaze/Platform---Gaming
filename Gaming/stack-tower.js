@@ -8,6 +8,8 @@
   Jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "stack-tower", // harus sama dengan nama file (tanpa .js)
     name: "Stack Tower",
@@ -154,6 +156,8 @@ export function mount(root, context = {}) {
     let raf = 0, destroyed = false;
     let paused = false, pauseAt = 0;
     let uiOverlay = null;            // null | "help" | "cheat"
+    let firstRunHelp = false;        // modal help sekali saat game pertama dibuka
+    let freezeAt = 0;                // penanda waktu saat overlay mengunci board
     let dismissedEnd = false;
     let botPlan = null;
     let pendingDrop = false;         // guest: tunggu state balik dari host
@@ -164,90 +168,138 @@ export function mount(root, context = {}) {
     let frozenAt = 0, cheated = false;
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (_) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("stackTowerHelpSeen") === "1"; } catch (_) { }
+    if (!seenHelp) {
+        uiOverlay = "help";
+        firstRunHelp = true;
+        try { localStorage.setItem("stackTowerHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     const mySeat = () => (online ? (room.isHost ? state.seats.host : state.seats.guest) : 0);
     const botSeat = 1;
     const canManage = () => !online || room.isHost;
     const seatName = (s) => (online ? (s === mySeat() ? "Kamu" : "Lawan") : s === 0 ? "Kamu" : "Bot");
     const slowF = () => (!online && cheats.slow ? 0.5 : 1);
-    const effNow = () => (paused ? pauseAt : !online && cheats.freeze && frozenAt ? frozenAt : Date.now() + clockOffset);
+    const effNow = () => (paused ? pauseAt
+        : (uiOverlay && freezeAt ? freezeAt
+            : (!online && cheats.freeze && frozenAt ? frozenAt : Date.now() + clockOffset)));
 
-    /* ---------------- UI (minimalis, scoped .st-app) ---------------- */
+    /* ---------------- UI: HUD bar + board penuh + overlay ---------------- */
     root.innerHTML = `
-<div class="game-app st-app">
+<div class="game-app st-app game-fill" data-st>
   <style>
-    .st-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--bg:#f8fafc;--acc:#4f46e5;color:var(--ink)}
+    .st-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--bg:#f8fafc;--acc:#4f46e5;color:var(--ink);gap:10px;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
     .st-app [hidden]{display:none!important}
-    .st-app .st-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0}
-    .st-app .st-chip{font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--mut);font-variant-numeric:tabular-nums}
-    .st-app .st-chip b{color:var(--ink)}
+    .st-app .st-hud{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+    .st-app .st-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+    .st-app .st-chip b{color:var(--ink);font-weight:700}
     .st-app .st-chip.warn{border-color:#fecaca;background:#fef2f2;color:#b91c1c;font-weight:700}
-    .st-app .st-spacer{flex:1}
-    .st-app .st-ico{width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font-size:15px;line-height:1;color:var(--ink)}
-    .st-app .st-ico:hover{border-color:var(--acc);color:var(--acc)}
-    .st-app .st-boardwrap{position:relative;max-width:380px;margin:0 auto}
-    .st-app .st-svg{display:block;width:100%;height:auto;background:var(--bg);border:1px solid var(--line);border-radius:16px;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
-    .st-app .st-boardwrap.mine .st-svg{border-color:var(--acc);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
-    .st-app .st-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.88);backdrop-filter:blur(3px);border-radius:16px;padding:14px;overflow:auto}
-    .st-app .st-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;max-width:320px;width:100%;box-shadow:0 8px 24px rgba(15,23,42,.08)}
-    .st-app .st-card h3{margin:0 0 8px;font-size:17px}
-    .st-app .st-card p,.st-app .st-card li{font-size:12.5px;color:var(--mut);line-height:1.55;margin:4px 0}
-    .st-app .st-card ul{margin:6px 0;padding-left:18px}
-    .st-app .st-btn{display:inline-block;margin-top:10px;padding:9px 16px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-weight:600;font-size:13px;cursor:pointer}
-    .st-app .st-btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line);margin-left:6px}
-    .st-app .st-btn.danger{background:#dc2626}
-    .st-app .st-controls{max-width:380px;margin:10px auto 0}
-    .st-app .st-drop{width:100%;padding:14px;font-size:15px;font-weight:700;border-radius:12px;background:var(--acc);color:#fff;border:0;cursor:pointer;touch-action:manipulation}
-    .st-app .st-drop:disabled{background:#e2e8f0;color:#94a3b8;cursor:default}
-    .st-app .st-hint{max-width:380px;margin:8px auto 0;text-align:center;font-size:11.5px;color:var(--mut)}
-    .st-app kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px;background:#fff}
-    .st-app .st-cheatrow{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
-    .st-app .st-cheatrow input{margin-top:2px;accent-color:var(--acc)}
+    .st-app .st-status{gap:6px}
+    .st-app .st-status .game-status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e}
+    .st-app .st-spacer{flex:1 1 auto}
+    .st-app .st-tools{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
+    .st-app .st-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer;white-space:nowrap}
+    .st-app .st-btn:hover{border-color:var(--acc);color:var(--acc)}
+    .st-app .st-btn svg{flex:none;display:block}
+    .st-app .st-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+    .st-app .st-btn.primary:hover{opacity:.92;color:#fff}
+    .st-app .st-btn.ghost{background:#fff;color:var(--ink)}
+    .st-app .st-btn.danger{background:#dc2626;border-color:#dc2626;color:#fff}
+    .st-app .st-btn:disabled{opacity:.45;cursor:not-allowed}
+    .st-app .st-board{position:relative;width:100%;max-width:560px;margin:0 auto;min-width:0;min-height:0;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden;display:flex;align-items:center;justify-content:center}
+    .st-app .st-board.mine{border-color:var(--acc);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+    .st-app .st-svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;touch-action:manipulation;user-select:none;-webkit-user-select:none;cursor:pointer}
     .st-app .st-cut{fill:#fca5a5;animation:stFall .7s ease-in forwards}
     .st-app .st-flash{fill:none;stroke:#eab308;stroke-width:3;animation:stFlash .5s ease-out 2}
     .st-app .st-guide{fill:rgba(34,197,94,.14);stroke:rgba(34,197,94,.55);stroke-dasharray:3 3}
     .st-app .st-target{fill:none;stroke:rgba(148,163,184,.5);stroke-dasharray:4 4}
+    .st-app .st-ov{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto;background:rgba(248,250,252,.9)}
+    .st-app .st-card{display:flex;flex-direction:column;width:min(360px,100%);max-height:100%;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.08);overflow:hidden}
+    .st-app .st-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+    .st-app .st-head h3{margin:0;font-size:15px;font-weight:700}
+    .st-app .st-tag{font:600 10px/1 ui-monospace,monospace;letter-spacing:.06em;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 9px}
+    .st-app .st-body{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 16px;font-size:12.5px;line-height:1.55;color:var(--mut)}
+    .st-app .st-body p,.st-app .st-body li{margin:5px 0}
+    .st-app .st-body ul{margin:6px 0;padding-left:18px}
+    .st-app .st-body b{color:var(--ink)}
+    .st-app .st-foot{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:#fff}
+    .st-app .st-note{margin-right:auto;font:600 10px/1.4 ui-monospace,monospace;color:var(--mut)}
+    .st-app .st-cheatrow{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);font-size:12px}
+    .st-app .st-cheatrow input{margin-top:2px;accent-color:var(--acc);width:18px;height:18px}
+    .st-app .st-controls{flex:none;width:100%;max-width:560px;margin:0 auto}
+    .st-app .st-drop{width:100%;min-height:44px;padding:10px 16px;font-size:14px;font-weight:700;border:0;border-radius:10px;background:var(--acc);color:#fff;cursor:pointer;touch-action:manipulation}
+    .st-app .st-drop:disabled{background:#e2e8f0;color:#94a3b8;cursor:default}
+    .st-app .st-hint{margin:6px auto 0;text-align:center;font-size:11px;line-height:1.5;color:var(--mut)}
+    .st-app kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:10px;background:#fff}
+    .st-app :is(button,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
     @keyframes stFall{to{transform:translateY(160px) rotate(14deg);opacity:0}}
     @keyframes stFlash{0%,100%{opacity:0}50%{opacity:1}}
-    @media (pointer:coarse){.st-app .st-drop{padding:18px;font-size:16px}}
+    @media (prefers-reduced-motion:reduce){.st-app *{animation:none!important;transition:none!important}}
+
+    /* --- final overrides: fill height + mobile refinements (PALING AKHIR) --- */
+    .st-app.game-fill > .st-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;max-height:none}
+    .st-app .st-icon-btn{display:inline-flex;align-items:center;gap:6px}
+    .st-app .st-icon-btn svg{flex:none;display:block}
+    @media (max-width:640px){
+      .st-app{gap:6px}
+      .st-app.game-fill > .st-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;max-height:none}
+      .st-app.game-fill > .st-board:has(.st-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto;max-height:none}
+      .st-app .st-hud{gap:5px}
+      .st-app .st-hud .st-tools{gap:5px}
+      .st-app .st-hud .st-chip{padding:4px 6px;font-size:9px}
+      .st-app .st-hud .st-chip[data-el="bestchip"],.st-app .st-hud .st-chip[data-el="lvlchip"]{display:none}
+      .st-app .st-hud .st-btn{min-height:32px;padding:5px 9px;font-size:9px}
+      .st-app .st-hud .st-btn-label,.st-app .st-hud .st-spacer{display:none}
+      .st-app .st-ov{padding:8px}
+      .st-app .st-card{width:100%;height:100%;max-height:100%}
+      .st-app .st-head,.st-app .st-foot{padding:10px 12px}
+      .st-app .st-body{scrollbar-width:none}
+      .st-app .st-body::-webkit-scrollbar{display:none}
+      .st-app .st-note{display:none}
+      .st-app .st-drop{min-height:44px;font-size:14px}
+    }
+    @media (pointer:coarse){.st-app .st-hud .st-btn:not(:disabled){min-height:32px;padding:5px 9px}}
   </style>
-  <div class="game-intro">
-    <div><h2>Stack Tower</h2><p>Susun menara setinggi target. Presisi = lebar blok utuh, meleset = runtuh.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Siap</span></span>
-  </div>
   <div class="st-hud">
-    <span class="st-chip">Tinggi <b data-hud="height">0</b>/<b data-hud="target">0</b></span>
-    <span class="st-chip">Kamu <b data-hud="me">0</b></span>
-    <span class="st-chip"><span data-el="opplabel">Bot</span> <b data-hud="opp">0</b></span>
-    <span class="st-chip">Perfect <b data-hud="perfect">0</b></span>
-    <span class="st-chip" data-el="bestchip">Best <b data-hud="best">0</b></span>
-    <span class="st-chip">Lv <b data-hud="lvl">–</b></span>
+    <span class="st-chip">TINGGI <b data-hud="height">0</b>/<b data-hud="target">0</b></span>
+    <span class="st-chip">KAMU <b data-hud="me">0</b></span>
+    <span class="st-chip"><span data-el="opplabel">BOT</span> <b data-hud="opp">0</b></span>
+    <span class="st-chip">PERFECT <b data-hud="perfect">0</b></span>
+    <span class="st-chip" data-el="bestchip">BEST <b data-hud="best">0</b></span>
+    <span class="st-chip" data-el="lvlchip">LV <b data-hud="lvl">–</b></span>
+    <span class="st-chip st-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Menghubungkan…</span></span>
     <span class="st-chip warn" data-el="cheatbadge" hidden>CHEAT</span>
     <span class="st-spacer"></span>
-    <button class="st-ico" type="button" data-act="help" title="Panduan (H)" aria-label="Panduan">?</button>
-    <button class="st-ico" type="button" data-act="cheat" data-el="cheatbtn" title="Cheat (C)" aria-label="Cheat">🛠</button>
-    <button class="st-ico" type="button" data-act="pause" data-el="pausebtn" title="Jeda (P)" aria-label="Jeda">⏸</button>
-    <button class="st-ico" type="button" data-act="restart" data-el="restartbtn" title="Level baru (R)" aria-label="Ulang">↻</button>
+    <div class="st-tools">
+      <button class="st-btn st-icon-btn primary" type="button" data-act="drop" data-el="drop" aria-label="Drop block" title="Drop block (Space)">${iconSVG("arrowDown", { size: 14 })}<span class="st-btn-label" data-el="droplabel">Drop</span></button>
+      <button class="st-btn st-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="st-btn-label">Help</span></button>
+      <button class="st-btn st-icon-btn" type="button" data-cheats data-el="cheatbtn" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="st-btn-label">Cheats</span></button>
+      <button class="st-btn st-icon-btn" type="button" data-pause data-el="pausebtn" aria-label="Pause" title="Pause (P)"><span data-el="pauseicon">${iconSVG("pause", { size: 14 })}</span><span class="st-btn-label" data-el="pauselabel">Pause</span></button>
+      <button class="st-btn st-icon-btn" type="button" data-restart data-el="restartbtn" aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="st-btn-label">Restart</span></button>
+      <button class="st-btn st-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="st-btn-label">Exit game</span></button>
+    </div>
   </div>
-  <section class="game-panel" data-board>
-    <div class="st-boardwrap" data-el="wrap">
-      <svg class="st-svg" viewBox="0 0 ${W} ${H}" data-el="svg" role="img" aria-label="Papan Stack Tower">
-        <g data-el="blocks"></g>
-        <g data-el="fx"></g>
-      </svg>
-      <div class="st-ov" data-el="ov" data-ovback hidden></div>
-    </div>
-    <div class="st-controls">
-      <button class="st-drop" type="button" data-act="drop" data-el="drop">⬇ JATUHKAN BLOK</button>
-    </div>
-    <p class="st-hint">Klik papan / tombol, atau <kbd>Space</kbd> · <kbd>P</kbd> jeda · <kbd>R</kbd> level baru · <kbd>H</kbd> panduan · <kbd>C</kbd> cheat</p>
+  <section class="game-panel st-board" data-board data-el="board">
+    <svg class="st-svg" viewBox="0 0 ${W} ${H}" data-el="svg" role="img" aria-label="Papan Stack Tower">
+      <g data-el="blocks"></g>
+      <g data-el="fx"></g>
+    </svg>
+    <div class="st-ov" data-el="ov" data-ovback hidden></div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="st-controls">
+    <button class="st-drop" type="button" data-act="drop" data-el="dropbig" aria-label="Drop block" title="Drop block (Space)"><span data-el="droplabelbig">⬇ JATUHKAN BLOK</span></button>
+    <p class="st-hint">Klik papan / tombol, atau <kbd>Space</kbd> · <kbd>P</kbd> jeda · <kbd>R</kbd> level baru · <kbd>H</kbd> panduan · <kbd>C</kbd> cheat</p>
+  </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const svgEl = $('[data-el="svg"]'), blocksG = $('[data-el="blocks"]'), fxG = $('[data-el="fx"]');
-    const ovEl = $('[data-el="ov"]'), wrapEl = $('[data-el="wrap"]'), dropBtn = $('[data-el="drop"]');
+    const ovEl = $('[data-el="ov"]'), boardEl = $('[data-el="board"]');
+    const dropBtn = $('[data-el="drop"]'), dropBigBtn = $('[data-el="dropbig"]');
+    const dropLabel = $('[data-el="droplabel"]'), dropLabelBig = $('[data-el="droplabelbig"]');
+    const pauseBtn = $('[data-el="pausebtn"]'), pauseIcon = $('[data-el="pauseicon"]');
+    const pauseLabel = $('[data-el="pauselabel"]');
     const statusEl = $('[data-status]');
     const hud = {
         height: $('[data-hud="height"]'), target: $('[data-hud="target"]'),
@@ -312,9 +364,29 @@ export function mount(root, context = {}) {
         fxTimers.add(t);
     }
 
+    /* ---------------- overlay helpers ---------------- */
+    function activeOverlay() {
+        if (uiOverlay) return uiOverlay;
+        if (!state) return "connect";
+        if (paused && !online) return "pause";
+        if (state.phase === "ready") return "ready";
+        if (state.phase === "ended" && !dismissedEnd) return "end";
+        return null;
+    }
+    const card = (title, tag, body, foot) => `<div class="st-card">
+      <div class="st-head"><h3>${title}</h3>${tag ? `<span class="st-tag">${tag}</span>` : ""}</div>
+      <div class="st-body">${body}</div>
+      ${foot ? `<div class="st-foot">${foot}</div>` : ""}
+    </div>`;
+
     /* ---------------- render UI (saat state berubah) ---------------- */
     function renderUi() {
-        if (!state) { statusEl.textContent = "Menghubungkan…"; dropBtn.disabled = true; ovEl.hidden = true; return; }
+        if (!state) {
+            statusEl.textContent = "Menghubungkan…";
+            dropBtn.disabled = true; dropBigBtn.disabled = true;
+            renderOverlay();
+            return;
+        }
         const me = mySeat(), opp = 1 - me, lv = state.level;
         hud.height.textContent = state.drops;
         hud.target.textContent = lv.target;
@@ -323,22 +395,29 @@ export function mount(root, context = {}) {
         hud.perfect.textContent = state.perfects[me];
         hud.best.textContent = best;
         hud.lvl.textContent = (lv.seed % 900) + 100;
-        $('[data-el="opplabel"]').textContent = online ? "Lawan" : "Bot";
+        $('[data-el="opplabel"]').textContent = online ? "LAWAN" : "BOT";
         $('[data-el="bestchip"]').hidden = online;
         $('[data-el="cheatbtn"]').hidden = online;
         $('[data-el="pausebtn"]').hidden = online;
         $('[data-el="restartbtn"]').hidden = !canManage();
         $('[data-el="cheatbadge"]').hidden = !cheated;
-        $('[data-el="pausebtn"]').textContent = paused ? "▶" : "⏸";
+        pauseLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
+        pauseIcon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
 
         const mine = state.phase === "playing" && state.turn === me;
-        wrapEl.classList.toggle("mine", mine && !paused);
-        dropBtn.disabled = !(mine && !paused && !uiOverlay && !pendingDrop);
-        dropBtn.textContent = mine ? "⬇ JATUHKAN BLOK" : state.phase === "playing" ? `Menunggu ${seatName(state.turn)}…` : "⬇ JATUHKAN BLOK";
+        const canDrop = mine && !paused && !activeOverlay() && !pendingDrop;
+        boardEl.classList.toggle("mine", mine && !paused && !uiOverlay);
+        dropBtn.disabled = !canDrop; dropBigBtn.disabled = !canDrop;
+        const dropText = mine ? "⬇ JATUHKAN BLOK" : state.phase === "playing" ? `Menunggu ${seatName(state.turn)}…` : "⬇ JATUHKAN BLOK";
+        dropLabel.textContent = "Drop";
+        dropLabelBig.textContent = dropText;
 
-        if (state.phase === "ready") statusEl.textContent = online && !room.isHost ? "Menunggu host memulai…" : "Siap — tekan Start";
+        if (state.phase === "ready") statusEl.textContent = online && !room.isHost ? "Menunggu host…" : "Siap — tekan Mulai";
         else if (state.phase === "ended") statusEl.textContent = state.result.winner === me ? "🏆 Kamu menang!" : `${seatName(state.result.winner)} menang`;
         else if (paused) statusEl.textContent = "Dijeda";
+        else if (uiOverlay) statusEl.textContent = uiOverlay === "help" ? "Panduan" : "Cheat";
         else statusEl.textContent = mine ? "Giliranmu — jatuhkan!" : `Giliran ${seatName(state.turn)}…`;
 
         renderOverlay();
@@ -351,49 +430,53 @@ export function mount(root, context = {}) {
             : `Undian koin: <b>${f === 0 ? "kamu" : "Bot"}</b> jalan duluan.`;
     }
     function howToHtml() {
+        const tol = state?.level?.tol ?? "±4–6";
+        const target = state?.level?.target ?? "8–14";
+        const regen = state?.level?.regen ? `, dan tiap 3 perfect beruntun lebar +${state.level.regen}px` : "";
         return `<ul>
-      <li>Blok bergerak kiri–kanan. <b>Klik papan</b>, tombol jatuh, atau <kbd>Space</kbd> untuk menjatuhkan.</li>
+      <li>Blok bergerak kiri–kanan. <b>Klik papan</b>, tombol Drop, atau <kbd>Space</kbd> untuk menjatuhkan.</li>
       <li>Bagian yang menggantung <b>terpotong</b> — blok berikutnya makin sempit.</li>
-      <li>Mendarat dalam <b>±${state.level.tol}px</b> = <b>PERFECT</b> (+50, lebar utuh)${state.level.regen ? `, dan tiap 3 perfect beruntun lebar +${state.level.regen}px` : ""}.</li>
-      <li>Tidak ada overlap = <b>runtuh</b> dan kalah. Capai tinggi <b>${state.level.target}</b> untuk menang.</li>
+      <li>Mendarat dalam <b>±${tol}px</b> = <b>PERFECT</b> (+50, lebar utuh)${regen}.</li>
+      <li>Tidak ada overlap = <b>runtuh</b> dan kalah. Capai tinggi <b>${target}</b> untuk menang.</li>
       <li>Giliran bergantian — blok berwarna <b>ungu = P1</b>, <b>kuning = P2</b>.</li>
     </ul>`;
     }
     function renderOverlay() {
         let html = "";
         if (uiOverlay === "help") {
-            html = `<div class="st-card"><h3>Cara Bermain</h3>${howToHtml()}
-        <p><b>Kontrol:</b> <kbd>Space</kbd>/<kbd>Enter</kbd>/<kbd>↓</kbd> jatuh · <kbd>P</kbd> jeda · <kbd>R</kbd> level baru · <kbd>C</kbd> cheat (offline) · <kbd>Esc</kbd> tutup.</p>
-        <p>Level #${(state.level.seed % 900) + 100} dibangkitkan acak dan <b>terverifikasi bisa diselesaikan</b> (simulasi menang ${Math.round(state.level.rate * 100)}%).</p>
-        <button class="st-btn" type="button" data-act="closeov">Tutup</button></div>`;
+            const rate = state?.level ? `<p>Level #${(state.level.seed % 900) + 100} dibangkitkan acak dan <b>terverifikasi bisa diselesaikan</b> (simulasi menang ${Math.round(state.level.rate * 100)}%).</p>` : "";
+            html = card("Cara Bermain", "HELP",
+                howToHtml() +
+                `<p><b>Kontrol:</b> <kbd>Space</kbd>/<kbd>Enter</kbd>/<kbd>↓</kbd> jatuh · <kbd>P</kbd> jeda · <kbd>R</kbd> level baru · <kbd>C</kbd> cheat (offline) · <kbd>Esc</kbd> tutup.</p>${rate}`,
+                `<span class="st-note">Tekan H untuk membuka lagi</span><button class="st-btn primary" type="button" data-act="help-close">Got it</button>`);
         } else if (uiOverlay === "cheat") {
             const row = (k, label, sub) => `<label class="st-cheatrow"><input type="checkbox" data-cheat="${k}" ${cheats[k] ? "checked" : ""}><span><b>${label}</b><br>${sub}</span></label>`;
-            html = `<div class="st-card"><h3>🛠 Cheat (mode offline)</h3>
-        ${row("slow", "Slow motion ×0.5", "Blok bergerak setengah kecepatan.")}
-        ${row("freeze", "Bekukan blok", "Blok berhenti bergerak sampai dimatikan.")}
-        ${row("auto", "Auto perfect", "Drop milikmu selalu mendarat sempurna.")}
-        ${row("wide", "Lebar minimum 60px", "Blok tidak bisa menipis di bawah 60px.")}
-        ${row("guide", "Garis panduan", "Tampilkan zona perfect hijau.")}
-        <p>Skor best <b>tidak disimpan</b> saat cheat aktif. Cheat dinonaktifkan saat online.</p>
-        <button class="st-btn danger" type="button" data-act="cheatwin">Menang instan</button>
-        <button class="st-btn ghost" type="button" data-act="closeov">Tutup</button></div>`;
+            html = card("Cheat (mode offline)", "CHEAT",
+                row("slow", "Slow motion ×0.5", "Blok bergerak setengah kecepatan.") +
+                row("freeze", "Bekukan blok", "Blok berhenti bergerak sampai dimatikan.") +
+                row("auto", "Auto perfect", "Drop milikmu selalu mendarat sempurna.") +
+                row("wide", "Lebar minimum 60px", "Blok tidak bisa menipis di bawah 60px.") +
+                row("guide", "Garis panduan", "Tampilkan zona perfect hijau.") +
+                `<p>Skor best <b>tidak disimpan</b> saat cheat aktif. Cheat dinonaktifkan saat online.</p>`,
+                `<button class="st-btn danger" type="button" data-act="cheatwin">Menang instan</button><button class="st-btn ghost" type="button" data-act="cheat-close">Tutup</button>`);
+        } else if (!state) {
+            html = card("Stack Tower", "ROOM", `<p>Menghubungkan ke sesi…</p>`, "");
         } else if (state.phase === "ready") {
-            html = `<div class="st-card"><h3>Stack Tower</h3>${howToHtml()}<p>${tossText()}</p>
-        ${canManage() ? `<button class="st-btn" type="button" data-act="start">Mulai game</button>` : `<p><i>Menunggu host memulai…</i></p>`}</div>`;
+            html = card("Stack Tower", online ? "ROOM" : "AI", howToHtml() + `<p>${tossText()}</p>`,
+                canManage() ? `<button class="st-btn primary" type="button" data-act="start">Mulai game</button>` : `<span class="st-note">Menunggu host memulai…</span>`);
         } else if (paused && !online) {
-            html = `<div class="st-card"><h3>⏸ Dijeda</h3><p>Tekan <kbd>P</kbd> atau tombol di bawah untuk lanjut.</p>
-        <button class="st-btn" type="button" data-act="pause">Lanjutkan</button></div>`;
+            html = card("Dijeda", "PAUSE", `<p>Tekan <kbd>P</kbd> atau tombol di bawah untuk lanjut.</p>`,
+                `<button class="st-btn primary" type="button" data-act="resume">Lanjutkan</button>`);
         } else if (state.phase === "ended" && !dismissedEnd) {
             const r = state.result, win = r.winner === me;
             const reason = r.reason === "miss" ? `Blok ${seatName(1 - r.winner)} meleset — menara runtuh di tinggi ${state.drops}.`
                 : r.reason === "cheat" ? "Menang lewat cheat 😉"
                     : `Target ${state.level.target} tingkat tercapai!`;
-            html = `<div class="st-card"><h3>${win ? "🏆 Kamu menang!" : "💥 " + seatName(r.winner) + " menang"}</h3>
-        <p>${reason}</p>
-        <p>Skor — Kamu: <b>${state.scores[me]}</b> (${state.perfects[me]} perfect) · ${seatName(1 - me)}: <b>${state.scores[1 - me]}</b> (${state.perfects[1 - me]} perfect).</p>
-        ${!online ? `<p>Best: <b>${best}</b>${cheated ? " (cheat aktif — skor tidak dicatat)" : ""}</p>` : ""}
-        ${canManage() ? `<button class="st-btn" type="button" data-act="restart">Main lagi · level baru</button>` : `<p><i>Menunggu host memulai ulang…</i></p>`}
-        <button class="st-btn ghost" type="button" data-act="closeov">Lihat papan</button></div>`;
+            html = card(win ? "🏆 Kamu menang!" : `💥 ${seatName(r.winner)} menang`, "RESULT",
+                `<p>${reason}</p>
+                 <p>Skor — Kamu: <b>${state.scores[me]}</b> (${state.perfects[me]} perfect) · ${seatName(1 - me)}: <b>${state.scores[1 - me]}</b> (${state.perfects[1 - me]} perfect).</p>
+                 ${!online ? `<p>Best: <b>${best}</b>${cheated ? " (cheat aktif — skor tidak dicatat)" : ""}</p>` : ""}`,
+                `${canManage() ? `<button class="st-btn primary" type="button" data-act="restart">Main lagi · level baru</button>` : `<span class="st-note">Menunggu host…</span>`}<button class="st-btn ghost" type="button" data-act="closeov">Lihat papan</button>`);
         }
         ovEl.hidden = !html;
         ovEl.innerHTML = html;
@@ -413,7 +496,9 @@ export function mount(root, context = {}) {
         }
     }
     function resetLocalRound() {
-        paused = false; pauseAt = 0; botPlan = null; uiOverlay = null;
+        paused = false; pauseAt = 0; freezeAt = 0; botPlan = null;
+        uiOverlay = firstRunHelp ? "help" : null;
+        firstRunHelp = false;
         dismissedEnd = false; pendingDrop = false; fxKey = 0;
         Object.keys(cheats).forEach((k) => (cheats[k] = false));
         frozenAt = 0; cheated = false;
@@ -503,7 +588,7 @@ export function mount(root, context = {}) {
     }
 
     function attemptDrop() {
-        if (!state || state.phase !== "playing" || paused || uiOverlay || pendingDrop) return;
+        if (!state || state.phase !== "playing" || paused || activeOverlay() || pendingDrop) return;
         if (state.turn !== mySeat()) return;
         let x = movingX(state, effNow(), slowF());
         if (!online && cheats.auto) x = state.blocks[state.blocks.length - 1].x;
@@ -560,33 +645,66 @@ export function mount(root, context = {}) {
         state.phase = "ended";
         state.result = { winner: 0, reason: "cheat" };
         state.spawn = null;
-        uiOverlay = null;
+        setOverlay(null);
         publish();
     }
-    function togglePause() {
+
+    /* Overlays saling menekan + kunci waktu while open */
+    function setOverlay(next) {
+        const prev = uiOverlay;
+        uiOverlay = next;
+        const now = Date.now();
+        if (!prev && next && state && state.phase === "playing" && !paused) freezeAt = now;
+        else if (prev && !next && freezeAt) { shiftTime(now - freezeAt); freezeAt = 0; }
+        renderUi();
+    }
+    function toggleHelp(on) {
+        const next = typeof on === "boolean" ? (on ? "help" : null) : (uiOverlay === "help" ? null : "help");
+        setOverlay(next);
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? (on ? "cheat" : null) : (uiOverlay === "cheat" ? null : "cheat");
+        setOverlay(next);
+    }
+    function togglePause(on) {
         if (online || !state || state.phase !== "playing") return;
+        if (typeof on === "boolean" && on === paused) return;
         if (!paused) { paused = true; pauseAt = Date.now(); }
         else { shiftTime(Date.now() - pauseAt); paused = false; pauseAt = 0; }
         renderUi();
+    }
+    function dismissEnd() {
+        if (state?.phase === "ended") { dismissedEnd = true; renderUi(); }
+    }
+    function restart() {
+        if (!canManage()) return;
+        if (paused) { shiftTime(Date.now() - pauseAt); paused = false; pauseAt = 0; }
+        submitAction({ type: "restart" });
     }
 
     /* ---------------- events: mouse / touch / keyboard ---------------- */
     function handleClick(event) {
         const t = event.target;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) { restart(); return; }
         const btn = t.closest("[data-act]");
         if (btn) {
             const a = btn.dataset.act;
             if (a === "drop") attemptDrop();
-            else if (a === "start" || a === "restart") submitAction({ type: a });
-            else if (a === "pause") togglePause();
-            else if (a === "help") { uiOverlay = uiOverlay === "help" ? null : "help"; renderUi(); }
-            else if (a === "cheat") { if (!online) { uiOverlay = uiOverlay === "cheat" ? null : "cheat"; renderUi(); } }
+            else if (a === "start") submitAction({ type: "start" });
+            else if (a === "resume") togglePause(false);
+            else if (a === "help-close") toggleHelp(false);
+            else if (a === "cheat-close") toggleCheats(false);
             else if (a === "cheatwin") cheatWin();
-            else if (a === "closeov") { uiOverlay = null; dismissedEnd = true; renderUi(); }
+            else if (a === "closeov") { if (uiOverlay) setOverlay(null); else dismissEnd(); }
             return;
         }
-        if (t.hasAttribute && t.hasAttribute("data-ovback") && uiOverlay) { uiOverlay = null; renderUi(); }
+        if (t.hasAttribute && t.hasAttribute("data-ovback") && uiOverlay) { setOverlay(null); return; }
+        if (activeOverlay() === "end") dismissEnd();
     }
     function handleChange(event) {
         const cb = event.target.closest("[data-cheat]");
@@ -600,17 +718,34 @@ export function mount(root, context = {}) {
         if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
         if (e.target.closest && e.target.closest("button,input,textarea") && (e.key === " " || e.key === "Enter")) return;
         switch (e.code) {
+            case "KeyH": e.preventDefault(); toggleHelp(); return;
+            case "KeyC": e.preventDefault(); if (!online && uiOverlay !== "help") toggleCheats(); return;
+            case "KeyP":
+                e.preventDefault();
+                if (uiOverlay === "help") { toggleHelp(false); return; }
+                if (uiOverlay === "cheat") { toggleCheats(false); return; }
+                if (paused) { togglePause(false); return; }
+                togglePause(true); return;
+            case "Escape":
+                e.preventDefault();
+                if (uiOverlay === "help") { toggleHelp(false); return; }
+                if (uiOverlay === "cheat") { toggleCheats(false); return; }
+                if (paused) { togglePause(false); return; }
+                dismissEnd(); return;
+            case "KeyR": e.preventDefault(); restart(); return;
             case "Space": case "Enter": case "ArrowDown":
-                e.preventDefault(); attemptDrop(); break;
-            case "KeyP": togglePause(); break;
-            case "KeyR": if (canManage()) submitAction({ type: "restart" }); break;
-            case "KeyH": uiOverlay = uiOverlay === "help" ? null : "help"; renderUi(); break;
-            case "KeyC": if (!online) { uiOverlay = uiOverlay === "cheat" ? null : "cheat"; renderUi(); } break;
-            case "Escape": if (uiOverlay) { uiOverlay = null; renderUi(); } break;
+                e.preventDefault();
+                if (uiOverlay === "help") { toggleHelp(false); return; }
+                if (uiOverlay === "cheat") { toggleCheats(false); return; }
+                if (paused) { togglePause(false); return; }
+                if (!state) return;
+                if (state.phase === "ready") { if (canManage()) submitAction({ type: "start" }); return; }
+                if (state.phase === "ended") { dismissEnd(); return; }
+                attemptDrop(); return;
         }
     }
     function handleVis() {
-        if (document.hidden && !online && state?.phase === "playing" && !paused) togglePause();
+        if (document.hidden && !online && state?.phase === "playing" && !paused) togglePause(true);
     }
 
     root.addEventListener("click", handleClick);
@@ -625,7 +760,7 @@ export function mount(root, context = {}) {
         raf = requestAnimationFrame(frame);
         if (!state) return;
         if (state.phase === "playing" && state.spawn) {
-            if (!online && state.turn === botSeat && !paused && !uiOverlay) {
+            if (!online && state.turn === botSeat && !paused && !activeOverlay()) {
                 botMaybeDrop(movingX(state, effNow(), slowF()), effNow());
             } else if (state.turn !== botSeat) botPlan = null;
         }

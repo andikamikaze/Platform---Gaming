@@ -4,6 +4,8 @@
  * Setelah menyalin file ini, jalankan: node tools/build-games-manifest.mjs
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "color-sort", // harus sama dengan nama file (tanpa .js)
     name: "Color Sort",
@@ -119,8 +121,11 @@ export function mount(root, context = {}) {
 
     let gameMode = online ? "room" : "bot"; // "solo" | "bot" | "room"
     let selected = -1, cursor = -1, bad = -1, hint = null, showCheat = false;
+    let helpOpen = false, paused = false;
     let destroyed = false;
     let botTimer = null, autoTimer = null, hintTimer = null, badTimer = null;
+    const pending = new Set(); // timer yang ikut dibekukan saat pause
+    let pauseAt = 0;
     const unsubs = [];
 
     const HUES = ["#f87171", "#60a5fa", "#fbbf24", "#a78bfa", "#2dd4bf"];
@@ -128,22 +133,43 @@ export function mount(root, context = {}) {
     const tubeX = (i) => X0 + i * (TW + GAP);
     const ballY = (j) => Y0 + TH - 16 - j * 27;
 
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("color-sort-help-seen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("color-sort-help-seen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
     root.innerHTML = `
 <style>
-.cs-app{--cs-accent:#6366f1;--cs-p0:#0ea5e9;--cs-p1:#f472b6;--cs-line:rgba(148,163,184,.4)}
+.cs-app{--cs-accent:#6366f1;--cs-p0:#0ea5e9;--cs-p1:#f472b6;--cs-line:rgba(148,163,184,.4);min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
 .cs-app [hidden]{display:none!important}
-.cs-app .cs-sub{margin:2px 0 0;font-size:12px;opacity:.6}
-.cs-app .cs-panel{position:relative;display:flex;flex-direction:column;gap:10px;padding:12px}
-.cs-app .cs-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center}
-.cs-app .cs-chip{font-size:12px;padding:3px 10px;border:1px solid var(--cs-line);border-radius:999px;display:inline-flex;gap:6px;align-items:center;opacity:.85}
-.cs-app .cs-chip b{font-weight:600}
+.cs-app *,.cs-app *::before,.cs-app *::after{box-sizing:border-box}
+.cs-app :where(svg,canvas,img){max-width:100%;height:auto}
+.cs-app :where(button,[role="button"],select,input){touch-action:manipulation}
+.cs-app :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--cs-accent);outline-offset:2px}
+
+/* HUD bar: semua info + kontrol, satu baris di atas board */
+.cs-app .cs-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;color:#e2e8f0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.cs-app .cs-chip{font-size:11px;padding:5px 9px;border:1px solid var(--cs-line);border-radius:999px;display:inline-flex;gap:6px;align-items:center;opacity:.85;white-space:nowrap}
+.cs-app .cs-chip b{font-weight:700;font-variant-numeric:tabular-nums}
 .cs-app .cs-chip.on{opacity:1;border-color:var(--cs-accent)}
-.cs-app .cs-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.cs-app .cs-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.cs-app .cs-spacer{flex:1 1 auto}
 .cs-app .cs-seg{display:inline-flex;border:1px solid var(--cs-line);border-radius:999px;overflow:hidden}
-.cs-app .cs-seg button{font:inherit;font-size:12px;padding:3px 12px;background:none;border:0;color:inherit;cursor:pointer;opacity:.55}
+.cs-app .cs-seg button{font:inherit;font-size:11px;padding:5px 12px;background:none;border:0;color:inherit;cursor:pointer;opacity:.55}
 .cs-app .cs-seg button.on{background:rgba(99,102,241,.16);opacity:1}
-.cs-app .cs-board{display:flex;justify-content:center}
-.cs-app .cs-svg{width:100%;max-width:560px;height:auto;display:block}
+.cs-app .cs-btn{font:inherit;font-size:11px;padding:7px 10px;border-radius:9px;border:1px solid var(--cs-line);background:none;color:inherit;cursor:pointer}
+.cs-app .cs-btn.primary{background:var(--cs-accent);border-color:transparent;color:#fff}
+.cs-app .cs-btn.on{border-color:var(--cs-accent);color:var(--cs-accent)}
+.cs-app .cs-btn:disabled{opacity:.45;cursor:not-allowed}
+.cs-app .cs-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.cs-app .cs-icon-btn svg{flex:none;display:block}
+
+/* board: mengisi tinggi, SVG tetap proporsional */
+.cs-app .cs-panel{position:relative;display:flex;flex-direction:column;padding:0;border:0;background:transparent;min-height:0}
+.cs-app .cs-board{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center}
+.cs-app .cs-svg{display:block;width:100%;max-width:560px;height:auto;max-height:100%}
 .cs-app .cs-tube{fill:rgba(148,163,184,.08);stroke:rgba(148,163,184,.55);stroke-width:2;cursor:pointer;transition:stroke .15s}
 .cs-app .cs-tube:hover{stroke:rgba(148,163,184,.95)}
 .cs-app .cs-tube.last{stroke:rgba(99,102,241,.5)}
@@ -154,69 +180,173 @@ export function mount(root, context = {}) {
 .cs-app .cs-tube.bad{stroke:#f87171;animation:csShake .3s}
 .cs-app .cs-ball{stroke:rgba(2,6,23,.25);stroke-width:1;pointer-events:none}
 .cs-app .cs-check{fill:#34d399;font-size:11px;text-anchor:middle}
-.cs-app .cs-touch{display:none;gap:8px;justify-content:center}
+
+/* touch pad: sibling setelah board, bukan penutup bidang */
+.cs-app .cs-touch{display:none;gap:8px;justify-content:center;margin-top:8px}
 @media (hover:none) and (pointer:coarse){.cs-app .cs-touch{display:flex}}
-.cs-app .cs-touch button{min-width:54px;padding:10px 14px;font-size:16px;border-radius:12px;border:1px solid var(--cs-line);background:rgba(148,163,184,.08);color:inherit;cursor:pointer}
+.cs-app .cs-touch button{min-width:54px;min-height:44px;padding:10px 14px;font-size:16px;border-radius:12px;border:1px solid var(--cs-line);background:rgba(148,163,184,.08);color:inherit;cursor:pointer}
 .cs-app .cs-touch button:active{background:rgba(99,102,241,.2)}
-.cs-app .cs-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,.35);backdrop-filter:blur(3px);z-index:5;border-radius:inherit}
-.cs-app .cs-card{background:Canvas;color:Text;border:1px solid var(--cs-line);border-radius:16px;padding:18px 20px;max-width:320px;width:calc(100% - 40px);display:flex;flex-direction:column;gap:10px;text-align:center}
-.cs-app .cs-card h3{margin:0;font-size:18px}
-.cs-app .cs-card p{margin:0;font-size:12px;opacity:.65}
-.cs-app .cs-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.cs-app .cs-btn{font:inherit;font-size:13px;padding:7px 14px;border-radius:10px;border:1px solid var(--cs-line);background:none;color:inherit;cursor:pointer}
-.cs-app .cs-btn.primary{background:var(--cs-accent);border-color:transparent;color:#fff}
+
+/* overlay modal: header/footer tetap, isi bisa scroll */
+.cs-app .cs-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(2,6,23,.35);backdrop-filter:blur(3px);border-radius:inherit}
+.cs-app .cs-card{background:Canvas;color:Text;border:1px solid var(--cs-line);border-radius:16px;padding:18px 20px;max-width:420px;width:calc(100% - 24px);max-height:100%;display:flex;flex-direction:column;gap:10px;text-align:center}
+.cs-app .cs-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+.cs-app .cs-head h3{margin:0;font-size:17px}
+.cs-app .cs-body{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto;text-align:left}
+.cs-app .cs-foot{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;flex:none}
+.cs-app .cs-card p{margin:0;font-size:12px;opacity:.65;line-height:1.45}
 .cs-app .cs-cheatlist{display:flex;flex-direction:column;gap:6px}
+.cs-app .cs-help b{display:block;margin-bottom:6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+.cs-app .cs-help ul{margin:0 0 12px;padding-left:18px;font-size:12px;line-height:1.65}
+.cs-app .cs-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--cs-line);border-bottom-width:2px;border-radius:5px;font:inherit}
 @keyframes csShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
 @keyframes csPulse{0%,100%{stroke-opacity:1}50%{stroke-opacity:.35}}
+
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.cs-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"]){flex-wrap:wrap;min-width:0;gap:8px}
+.cs-app :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+.cs-app :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.cs-app :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .cs-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"]){gap:8px}
+}
+@media (max-width:480px){
+  .cs-app :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .cs-app :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .cs-app *,.cs-app *::before,.cs-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+
+/* ==== layout shell: override terakhir (spesifisitas > pointer:coarse) ==== */
+.cs-app.game-fill>.cs-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.cs-app .cs-hud .cs-btn{min-height:32px;min-width:0;padding:6px 9px;font-size:10px}
+.cs-app .cs-card{display:flex;flex-direction:column;overflow:hidden}
+.cs-app .cs-head,.cs-app .cs-foot{flex:none}
+.cs-app .cs-body,.cs-app .cs-cheatlist,.cs-app .cs-help{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+  .cs-app.game-fill>.cs-panel[data-board]:not(:has(.cs-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+  .cs-app.game-fill>.cs-panel[data-board]:has(.cs-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .cs-app .cs-hud{gap:5px;margin-bottom:8px}
+  .cs-app .cs-hud .cs-chip{padding:4px 6px;font-size:9px}
+  .cs-app .cs-hud .cs-chip[data-hud="deal"]{display:none}
+  .cs-app .cs-hud .cs-btn{min-height:30px;min-width:28px;padding:5px 8px;font-size:9px}
+  .cs-app .cs-hud .cs-btn-label,.cs-app .cs-hud .cs-spacer{display:none}
+  .cs-app .cs-hud .cs-seg button{font-size:9px;padding:4px 8px}
+  .cs-app .cs-ov{padding:8px}
+  .cs-app .cs-card{width:100%;height:100%;max-height:100%;padding:12px}
+  .cs-app .cs-body,.cs-app .cs-cheatlist,.cs-app .cs-help{scrollbar-width:none}
+  .cs-app .cs-body::-webkit-scrollbar,.cs-app .cs-cheatlist::-webkit-scrollbar,.cs-app .cs-help::-webkit-scrollbar{display:none}
+  .cs-app .cs-touch button{min-width:44px;min-height:44px;padding:8px 10px;font-size:14px}
+}
 </style>
-<div class="game-app cs-app">
-  <div class="game-intro">
-    <div><h2>Color Sort</h2><p class="cs-sub" data-sub></p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app cs-app game-fill" data-cs>
+  <div class="cs-hud">
+    <span class="cs-chip"><i class="cs-dot" style="background:var(--cs-accent)"></i><b data-hud="status">Ready</b></span>
+    <span class="cs-chip">SORTED <b data-hud="sorted">0</b>/${COLORS_N}</span>
+    <span class="cs-chip">MOVES <b data-hud="moves">0</b></span>
+    <span class="cs-chip" data-hud="deal">DEAL #1</span>
+    <span class="cs-chip" data-hud="p0" hidden><i class="cs-dot" style="background:var(--cs-p0)"></i><span data-hud="p0name">P1</span> <b data-hud="p0score">0</b></span>
+    <span class="cs-chip" data-hud="p1" hidden><i class="cs-dot" style="background:var(--cs-p1)"></i><span data-hud="p1name">Bot</span> <b data-hud="p1score">0</b></span>
+    <span class="cs-spacer"></span>
+    <span class="cs-seg" data-hud="modes">
+      <button type="button" data-mode="solo" aria-label="Solo mode">Solo</button>
+      <button type="button" data-mode="bot" aria-label="Vs bot mode">Bot</button>
+    </span>
+    <button class="cs-btn cs-icon-btn" type="button" data-undo title="Undo (U)" aria-label="Undo">${iconSVG("rotateCcw", { size: 14 })}<span class="cs-btn-label">Undo</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-new title="New deal (N)" aria-label="New deal">${iconSVG("sparkles", { size: 14 })}<span class="cs-btn-label">New deal</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-help title="How to play (H)" aria-label="How to play">${iconSVG("helpCircle", { size: 14 })}<span class="cs-btn-label">Help</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-cheats title="Cheats (C)" aria-label="Cheats">${iconSVG("wrench", { size: 14 })}<span class="cs-btn-label">Cheats</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-pause title="Pause (P)" aria-label="Pause"><span data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="cs-btn-label">Pause</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-restart title="Restart deal (R)" aria-label="Restart">${iconSVG("refresh", { size: 14 })}<span class="cs-btn-label">Restart</span></button>
+    <button class="cs-btn cs-icon-btn" type="button" data-exit title="Exit game" aria-label="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cs-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel cs-panel" data-board>
-    <div class="cs-hud" data-hud></div>
     <div class="cs-board"><svg class="cs-svg" data-svg aria-label="Color Sort board"></svg></div>
-    <div class="cs-touch">
-      <button type="button" data-touch="left" aria-label="Previous tube">&#9664;</button>
-      <button type="button" data-touch="act" aria-label="Pick or drop ball">&#9679;</button>
-      <button type="button" data-touch="right" aria-label="Next tube">&#9654;</button>
-      <button type="button" data-touch="undo" aria-label="Undo" data-vundo>&#8617;</button>
-    </div>
-    <div class="cs-overlay" data-cheatov hidden>
+    <div class="cs-ov" data-ov="cheat" hidden>
       <div class="cs-card">
-        <h3>Cheats</h3>
-        <p>Solo only. Using cheats marks the result as assisted.</p>
-        <div class="cs-cheatlist">
-          <button type="button" class="cs-btn" data-cheat="hint">Hint — highlight best move</button>
-          <button type="button" class="cs-btn" data-cheat="step">Auto-step — play best move</button>
-          <button type="button" class="cs-btn" data-cheat="solve" data-solvelabel>Auto-solve &#9654;</button>
-          <button type="button" class="cs-btn" data-cheat="tube">+1 empty tube (max ${MAX_TUBES})</button>
+        <div class="cs-head"><h3>Cheats</h3><button class="cs-btn" type="button" data-cheat="close" aria-label="Close cheats">Close</button></div>
+        <div class="cs-body">
+          <p>Solo only. Using cheats marks the result as assisted.</p>
+          <div class="cs-cheatlist">
+            <button type="button" class="cs-btn" data-cheat="hint">Hint — highlight best move</button>
+            <button type="button" class="cs-btn" data-cheat="step">Auto-step — play best move</button>
+            <button type="button" class="cs-btn" data-cheat="solve" data-solvelabel>Auto-solve &#9654;</button>
+            <button type="button" class="cs-btn" data-cheat="tube">+1 empty tube (max ${MAX_TUBES})</button>
+          </div>
         </div>
-        <div class="cs-row"><button type="button" class="cs-btn primary" data-cheat="close">Close</button></div>
+        <div class="cs-foot"><button type="button" class="cs-btn primary" data-cheat="close">Done</button></div>
       </div>
     </div>
-    <div class="cs-overlay" data-endov hidden>
+    <div class="cs-ov" data-ov="pause" hidden>
       <div class="cs-card">
-        <h3 data-endtitle></h3>
-        <p data-endsub></p>
-        <div class="cs-row" data-endbtns></div>
+        <div class="cs-head"><h3>Paused</h3></div>
+        <div class="cs-body"><p>Timer dan bot dihentikan. Lanjutkan untuk melanjutkan deal.</p></div>
+        <div class="cs-foot"><button type="button" class="cs-btn primary" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="cs-ov" data-ov="result" hidden>
+      <div class="cs-card">
+        <div class="cs-head"><h3 data-endtitle></h3></div>
+        <div class="cs-body"><p data-endsub></p></div>
+        <div class="cs-foot" data-endbtns></div>
+      </div>
+    </div>
+    <div class="cs-ov" data-ov="help" hidden>
+      <div class="cs-card">
+        <div class="cs-head"><h3>How to play</h3><button class="cs-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="cs-body cs-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="cs-kbd">1</span>–<span class="cs-kbd">9</span> atau klik tabung untuk memilih &amp; menjatuhkan bola.</li>
+              <li><span class="cs-kbd">←</span> <span class="cs-kbd">→</span> pilih tabung, <span class="cs-kbd">Enter</span> / <span class="cs-kbd">Space</span> aksi.</li>
+              <li><span class="cs-kbd">U</span> undo · <span class="cs-kbd">N</span> deal baru · <span class="cs-kbd">R</span> restart deal.</li>
+              <li><span class="cs-kbd">H</span> bantuan · <span class="cs-kbd">C</span> cheats · <span class="cs-kbd">P</span> pause.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap tabung untuk mengambil bola, tap tabung tujuan untuk menjatuhkannya.</li>
+              <li>Gunakan tombol ◀ ● ▶ untuk navigasi &amp; aksi, ↩ untuk undo (solo).</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Pindahkan satu bola ke tabung yang kosong atau bertumpuk dengan warna sama.</li>
+              <li>Tabung penuh dengan empat bola warna sama terkunci dan dihitung selesai.</li>
+              <li>Selesaikan kelima warna untuk menang; tumpukan sama berarti draw (vs bot/rival).</li>
+              <li>Setiap deal dijamin bisa diselesaikan. Mode Solo mengizinkan undo &amp; cheats.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="cs-foot"><span class="cs-note">Press H to reopen this guide</span><button type="button" class="cs-btn primary" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="undo" data-undo title="Undo (U)">Undo</button>
-    <button class="game-action-button" type="button" data-act="retry" title="Retry this deal (R)">Retry</button>
-    <button class="game-action-button" type="button" data-act="new" title="New deal (N)">New deal</button>
-    <button class="game-action-button" type="button" data-act="cheat" data-cheatbtn title="Cheats (C)">Cheats</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="cs-touch">
+    <button type="button" data-touch="left" aria-label="Previous tube">&#9664;</button>
+    <button type="button" data-touch="act" aria-label="Pick or drop ball">&#9679;</button>
+    <button type="button" data-touch="right" aria-label="Next tube">&#9654;</button>
+    <button type="button" data-touch="undo" aria-label="Undo" data-vundo>&#8617;</button>
   </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const svgEl = $('[data-svg]'), hudEl = $('[data-hud]');
-    const subEl = $('[data-sub]'), statusEl = $('[data-status]');
-    const endOv = $('[data-endov]'), cheatOv = $('[data-cheatov]');
+    const svgEl = $('[data-svg]');
+    const ov = {
+        cheat: $('[data-ov="cheat"]'), pause: $('[data-ov="pause"]'),
+        result: $('[data-ov="result"]'), help: $('[data-ov="help"]'),
+    };
+    const hud = {
+        status: $('[data-hud="status"]'), sorted: $('[data-hud="sorted"]'),
+        moves: $('[data-hud="moves"]'), deal: $('[data-hud="deal"]'),
+        modes: $('[data-hud="modes"]'),
+        p0: $('[data-hud="p0"]'), p0name: $('[data-hud="p0name"]'), p0score: $('[data-hud="p0score"]'),
+        p1: $('[data-hud="p1"]'), p1name: $('[data-hud="p1name"]'), p1score: $('[data-hud="p1score"]'),
+    };
 
     /* ---------------- helpers ---------------- */
     const mySeat = () => (state ? state.seatMap[playerIndex] : 0);
@@ -227,6 +357,56 @@ export function mount(root, context = {}) {
         return String(n).slice(0, 14);
     };
     const myTurn = () => state && state.status === "playing" && (state.mode === "solo" || state.turn === mySeat());
+
+    /* ---------------- timer yang ikut pause ----------------
+     * Semua timer disimpan dengan sisa waktu. Saat pause, timer dibekukan;
+     * saat resume, anchor performance.now() digeser sebesar durasi pause
+     * sehingga tidak ada loncatan waktu (bot/hint/auto-solve tetap mulus). */
+    function armTimer(rec) {
+        rec.startedAt = performance.now();
+        rec.id = setTimeout(() => {
+            pending.delete(rec);
+            rec.id = null;
+            rec.fn();
+        }, Math.max(0, rec.left));
+    }
+    function later(fn, ms) {
+        const rec = { fn, ms, left: ms, startedAt: 0, id: null };
+        pending.add(rec);
+        if (!paused) armTimer(rec);
+        return rec;
+    }
+    function cancelTimer(rec) {
+        if (!rec) return;
+        if (rec.id !== null) clearTimeout(rec.id);
+        pending.delete(rec);
+        rec.id = null;
+    }
+    function setPaused(on, doRender = true) {
+        if (paused === on) return;
+        if (on) {
+            pauseAt = performance.now();
+            for (const rec of pending) {
+                if (rec.id !== null) { clearTimeout(rec.id); rec.id = null; }
+                rec.left = Math.max(0, rec.left - (pauseAt - rec.startedAt));
+            }
+        } else {
+            const shift = performance.now() - pauseAt;
+            for (const rec of pending) { rec.startedAt += shift; armTimer(rec); }
+        }
+        paused = on;
+        if (!on) syncBot();
+        if (doRender) render();
+    }
+    function togglePause() {
+        if (!state || state.status !== "playing") return;
+        setPaused(!paused);
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { showCheat = false; if (paused) setPaused(false, false); }
+        render();
+    }
 
     /* ---------------- match lifecycle ---------------- */
     function newMatch(keepDeal) {
@@ -242,7 +422,11 @@ export function mount(root, context = {}) {
             status: "playing", cheated: false, last: null,
             seq: (state?.seq || 0) + 1,
         };
-        selected = -1; hint = null; stopAuto();
+        selected = -1; hint = null; cursor = -1;
+        stopAuto(); cancelTimer(hintTimer); hintTimer = null;
+        cancelTimer(badTimer); badTimer = null;
+        if (paused) setPaused(false, false);
+        showCheat = false;
         publish();
     }
 
@@ -312,30 +496,39 @@ export function mount(root, context = {}) {
         return best;
     }
     function syncBot() {
-        if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (destroyed || online || !state || state.mode !== "bot") return;
+        cancelTimer(botTimer); botTimer = null;
+        if (paused || destroyed || online || !state || state.mode !== "bot") return;
         const botSeat = state.seatMap[1];
         if (state.status !== "playing" || state.turn !== botSeat) return;
         const seq = state.seq;
-        botTimer = setTimeout(() => {
+        botTimer = later(() => {
             botTimer = null;
-            if (destroyed || !state || state.seq !== seq || state.status !== "playing") return;
+            if (destroyed || paused || !state || state.seq !== seq || state.status !== "playing") return;
             const mv = botChoose();
             if (mv) applyAction({ type: "move", s: mv[0], d: mv[1] }, botSeat);
         }, 650 + Math.random() * 600);
     }
 
     /* ---------------- cheats (solo) ---------------- */
-    function stopAuto() { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; } }
+    function stopAuto() { cancelTimer(autoTimer); autoTimer = null; }
+    function autoStep() {
+        autoTimer = null;
+        if (destroyed || paused || !isSolo() || state.status !== "playing") return;
+        const sol = solve(state.tubes);
+        if (!sol || !sol.length) return;
+        applyAction({ type: "move", s: sol[0][0], d: sol[0][1] }, 0);
+        if (!destroyed && !paused && isSolo() && state.status === "playing")
+            autoTimer = later(autoStep, 180);
+    }
     function doCheat(kind) {
         if (kind === "close") { showCheat = false; render(); return; }
-        if (!isSolo()) return;
+        if (!isSolo() || paused) return;
         if (kind === "hint") {
             const sol = solve(state.tubes);
             if (sol && sol.length) {
                 hint = { s: sol[0][0], d: sol[0][1] };
-                if (hintTimer) clearTimeout(hintTimer);
-                hintTimer = setTimeout(() => { hint = null; hintTimer = null; render(); }, 2200);
+                cancelTimer(hintTimer);
+                hintTimer = later(() => { hint = null; hintTimer = null; render(); }, 2200);
             }
             showCheat = false; render(); return;
         }
@@ -350,12 +543,7 @@ export function mount(root, context = {}) {
         if (kind === "solve") {
             if (autoTimer) { stopAuto(); render(); return; }
             state.cheated = true;
-            autoTimer = setInterval(() => {
-                if (destroyed || !isSolo() || state.status !== "playing") { stopAuto(); render(); return; }
-                const sol = solve(state.tubes);
-                if (!sol || !sol.length) { stopAuto(); render(); return; }
-                applyAction({ type: "move", s: sol[0][0], d: sol[0][1] }, 0);
-            }, 180);
+            autoTimer = later(autoStep, 180);
             showCheat = false; render(); return;
         }
         if (kind === "tube") { applyAction({ type: "cheat-tube" }, 0); showCheat = false; render(); }
@@ -364,11 +552,11 @@ export function mount(root, context = {}) {
     /* ---------------- interaksi papan ---------------- */
     function flashBad(i) {
         bad = i; render();
-        if (badTimer) clearTimeout(badTimer);
-        badTimer = setTimeout(() => { bad = -1; badTimer = null; render(); }, 320);
+        cancelTimer(badTimer);
+        badTimer = later(() => { bad = -1; badTimer = null; render(); }, 320);
     }
     function onTube(i) {
-        if (!state || state.status !== "playing" || showCheat) return;
+        if (!state || state.status !== "playing" || showCheat || helpOpen || paused) return;
         if (!myTurn()) { flashBad(i); return; }
         if (!Number.isInteger(i) || i < 0 || i >= state.tubes.length) return;
         cursor = i;
@@ -391,14 +579,94 @@ export function mount(root, context = {}) {
     }
 
     /* ---------------- render ---------------- */
+    function syncUI() {
+        if (!state) {
+            hud.status.textContent = "Waiting for host…";
+            hud.sorted.textContent = "0";
+            hud.moves.textContent = "0";
+            hud.deal.textContent = "DEAL —";
+            hud.modes.hidden = true;
+            hud.p0.hidden = hud.p1.hidden = true;
+        } else {
+            const ts = state.tubes;
+            hud.status.textContent =
+                state.status === "solved" ? "Solved" :
+                    state.status === "stuck" ? "No moves" :
+                        paused ? "Paused" :
+                            state.mode === "solo" ? "Your move" :
+                                state.turn === mySeat() ? "Your turn" :
+                                    state.mode === "bot" ? "Bot thinking…" : "Rival's turn";
+            hud.sorted.textContent = ts.filter(tubeDone).length;
+            hud.moves.textContent = state.moves;
+            hud.deal.textContent = "DEAL #" + state.seq;
+            hud.modes.hidden = online || state.mode !== "bot" && gameMode === "room";
+            for (const b of hud.modes.querySelectorAll("[data-mode]"))
+                b.classList.toggle("on", b.dataset.mode === gameMode);
+            const duo = state.mode !== "solo";
+            hud.p0.hidden = hud.p1.hidden = !duo;
+            if (duo) {
+                hud.p0name.textContent = nameOf(0);
+                hud.p1name.textContent = nameOf(1);
+                hud.p0score.textContent = state.scores[0];
+                hud.p1score.textContent = state.scores[1];
+                hud.p0.classList.toggle("on", state.turn === 0 && state.status === "playing");
+                hud.p1.classList.toggle("on", state.turn === 1 && state.status === "playing");
+            }
+        }
+        const undoBtn = $('[data-undo]');
+        const undoOk = Boolean(state && isSolo() && state.history.length > 0 && state.status !== "solved");
+        undoBtn.hidden = !state || !isSolo() || online;
+        undoBtn.disabled = !undoOk;
+        $('[data-vundo]').hidden = undoBtn.hidden;
+        $('[data-vundo]').disabled = !undoOk;
+        const cheatBtn = root.querySelector("[data-cheats]");
+        cheatBtn.hidden = !state || !isSolo() || online;
+        cheatBtn.classList.toggle("on", Boolean(state && state.cheated));
+        const newBtn = $('[data-new]');
+        newBtn.hidden = !state;
+        const pauseBtn = root.querySelector("[data-pause]");
+        pauseBtn.disabled = !state || state.status !== "playing";
+        const pLabel = pauseBtn.querySelector(".cs-btn-label");
+        if (pLabel) pLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
+        $('[data-pause-icon]').innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+        $('[data-solvelabel]').innerHTML = autoTimer ? "Stop auto-solve &#9632;" : "Auto-solve &#9654;";
+
+        const finished = Boolean(state && state.status !== "playing");
+        ov.result.hidden = !finished || paused || showCheat || helpOpen;
+        ov.pause.hidden = !paused || showCheat || helpOpen;
+        ov.cheat.hidden = !showCheat || helpOpen;
+        ov.help.hidden = !helpOpen;
+
+        if (!finished) return;
+        const scoreLine = nameOf(0) + " " + state.scores[0] + " — " + state.scores[1] + " " + nameOf(1);
+        let title, sub;
+        if (state.mode === "solo") {
+            title = state.status === "solved" ? "Solved!" : "No moves left";
+            sub = state.status === "solved"
+                ? state.moves + " moves" + (state.cheated ? " · assisted" : "")
+                : "Undo a step or deal again.";
+        } else {
+            const [a, b] = state.scores;
+            title = a === b ? "Draw" : nameOf(a > b ? 0 : 1) + " wins!";
+            sub = scoreLine + " · " + state.moves + " moves" + (state.status === "stuck" ? " · board stuck" : "");
+        }
+        $('[data-endtitle]').textContent = title;
+        $('[data-endsub]').textContent = sub;
+        $('[data-endbtns]').innerHTML =
+            (state.mode === "solo" && state.status === "stuck" && state.history.length
+                ? '<button type="button" class="cs-btn" data-act="undo">Undo</button>' : "") +
+            '<button type="button" class="cs-btn primary" data-act="new">New deal</button>' +
+            '<button type="button" class="cs-btn" data-act="retry">Retry</button>';
+    }
+
     function render() {
         if (destroyed) return;
         if (!state) {
             svgEl.setAttribute("viewBox", "0 0 348 186");
             svgEl.innerHTML = "";
-            hudEl.innerHTML = "";
-            subEl.textContent = "";
-            statusEl.textContent = "Waiting for host…";
+            syncUI();
             return;
         }
         const ts = state.tubes, n = ts.length;
@@ -425,75 +693,22 @@ export function mount(root, context = {}) {
             if (tubeDone(t)) html += '<text class="cs-check" x="' + (tubeX(i) + TW / 2) + '" y="' + (Y0 - 8) + '">&#10003;</text>';
         }
         svgEl.innerHTML = html;
-
-        // HUD
-        const sorted = ts.filter(tubeDone).length;
-        let hud = '<span class="cs-chip">Sorted <b>' + sorted + "</b>/" + COLORS_N + "</span>";
-        hud += '<span class="cs-chip">Moves <b>' + state.moves + "</b></span>";
-        if (state.mode !== "solo") {
-            for (let seat = 0; seat < 2; seat++) {
-                const on = state.status === "playing" && state.turn === seat;
-                hud += '<span class="cs-chip' + (on ? " on" : "") + '"><i class="cs-dot" style="background:var(--cs-p' + seat + ')"></i>' +
-                    nameOf(seat) + " <b>" + state.scores[seat] + "</b></span>";
-            }
-        } else if (!online) {
-            hud += '<span class="cs-seg">' +
-                '<button type="button" data-mode="solo" class="' + (gameMode === "solo" ? "on" : "") + '">Solo</button>' +
-                '<button type="button" data-mode="bot" class="' + (gameMode === "bot" ? "on" : "") + '">Bot</button></span>';
-        }
-        hudEl.innerHTML = hud;
-
-        // intro & status (tanpa teks tutorial)
-        subEl.textContent = state.mode === "solo"
-            ? "Solo deal #" + state.seq
-            : "vs " + (state.mode === "bot" ? "Bot" : "Rival") + " · " + nameOf(state.first) + " starts";
-        statusEl.textContent =
-            state.status === "solved" ? "Solved" :
-                state.status === "stuck" ? "No moves" :
-                    state.mode === "solo" ? "Your move" :
-                        state.turn === mySeat() ? "Your turn" :
-                            state.mode === "bot" ? "Bot thinking…" : "Rival's turn";
-
-        // tombol kontekstual
-        const solo = state.mode === "solo";
-        const undoOk = solo && state.history.length > 0 && state.status !== "solved";
-        $('[data-undo]').hidden = !solo;
-        $('[data-undo]').disabled = !undoOk;
-        $('[data-vundo]').hidden = !solo;
-        $('[data-vundo]').disabled = !undoOk;
-        $('[data-cheatbtn]').hidden = !solo;
-        $('[data-solvelabel]').innerHTML = autoTimer ? "Stop auto-solve &#9632;" : "Auto-solve &#9654;";
-        cheatOv.hidden = !showCheat || !solo;
-
-        // overlay hasil
-        if (state.status === "playing") { endOv.setAttribute("hidden", ""); return; }
-        endOv.removeAttribute("hidden");
-        const scoreLine = nameOf(0) + " " + state.scores[0] + " — " + state.scores[1] + " " + nameOf(1);
-        let title, sub;
-        if (state.mode === "solo") {
-            title = state.status === "solved" ? "Solved!" : "No moves left";
-            sub = state.status === "solved"
-                ? state.moves + " moves" + (state.cheated ? " · assisted" : "")
-                : "Undo a step or deal again.";
-        } else {
-            const [a, b] = state.scores;
-            title = a === b ? "Draw" : nameOf(a > b ? 0 : 1) + " wins!";
-            sub = scoreLine + " · " + state.moves + " moves" + (state.status === "stuck" ? " · board stuck" : "");
-        }
-        $('[data-endtitle]').textContent = title;
-        $('[data-endsub]').textContent = sub;
-        $('[data-endbtns]').innerHTML =
-            (state.mode === "solo" && state.status === "stuck" && state.history.length
-                ? '<button type="button" class="cs-btn" data-act="undo">Undo</button>' : "") +
-            '<button type="button" class="cs-btn primary" data-act="new">New deal</button>' +
-            '<button type="button" class="cs-btn" data-act="retry">Retry</button>';
+        syncUI();
     }
 
     /* ---------------- events: mouse / touch / virtual ---------------- */
     function handleClick(event) {
         const el = event.target;
         if (!el.closest) return;
+        if (el.closest("[data-help]")) { toggleHelp(); return; }
+        if (el.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (el.closest("[data-exit]")) { onExit(); return; }
+        if (el.closest("[data-cheats]")) { if (isSolo() && !helpOpen && !paused) { showCheat = !showCheat; render(); } return; }
+        if (el.closest("[data-pause]")) { togglePause(); return; }
+        if (el.closest("[data-resume]")) { if (paused) setPaused(false); return; }
+        if (el.closest("[data-restart]")) { submitAction({ type: "retry" }); return; }
+        if (el.closest("[data-new]")) { submitAction({ type: "new" }); return; }
+        if (el.closest("[data-undo]")) { submitAction({ type: "undo" }); return; }
         const tube = el.closest("[data-tube]");
         if (tube) { onTube(Number(tube.dataset.tube)); return; }
         const modeBtn = el.closest("[data-mode]");
@@ -505,7 +720,7 @@ export function mount(root, context = {}) {
         const cheatBtn = el.closest("[data-cheat]");
         if (cheatBtn) { doCheat(cheatBtn.dataset.cheat); return; }
         const touch = el.closest("[data-touch]");
-        if (touch && state) {
+        if (touch && state && !paused && !helpOpen && !showCheat) {
             const k = touch.dataset.touch, n = state.tubes.length;
             if (k === "left") { cursor = cursor <= 0 ? n - 1 : cursor - 1; render(); }
             else if (k === "right") { cursor = cursor >= n - 1 ? 0 : cursor + 1; render(); }
@@ -519,20 +734,31 @@ export function mount(root, context = {}) {
         if (a === "new") submitAction({ type: "new" });
         else if (a === "retry") submitAction({ type: "retry" });
         else if (a === "undo") submitAction({ type: "undo" });
-        else if (a === "cheat" && isSolo()) { showCheat = !showCheat; render(); }
     }
 
-    /* ---------------- events: keyboard (desktop) ---------------- */
+    /* ---------------- events: keyboard (desktop) ----------------
+     * Prioritas: help → cheats → pause/Escape → aksi game. */
     function handleKey(e) {
         if (destroyed || !root.isConnected || !state) return;
         if (e.metaKey || e.ctrlKey || e.altKey) return;
         const tag = e.target?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        const k = e.key;
-        if (showCheat) {
-            if (k === "Escape" || k === "c" || k === "C") { showCheat = false; render(); e.preventDefault(); }
-            return;
+        const code = e.code, k = e.key;
+        if (code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") {
+            if (!helpOpen && !paused && isSolo()) { showCheat = !showCheat; render(); }
+            e.preventDefault(); return;
         }
+        if (code === "KeyP" || code === "Escape" || k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (showCheat) { showCheat = false; render(); }
+            else togglePause();
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR") { submitAction({ type: "retry" }); e.preventDefault(); return; }
+        if (helpOpen || showCheat || paused) { e.preventDefault(); return; }
+        if (code === "KeyN") { submitAction({ type: "new" }); e.preventDefault(); return; }
+        if (code === "KeyU") { submitAction({ type: "undo" }); e.preventDefault(); return; }
         if (k >= "1" && k <= "9") {
             const i = Number(k) - 1;
             if (i < state.tubes.length) { onTube(i); e.preventDefault(); }
@@ -542,11 +768,6 @@ export function mount(root, context = {}) {
             case "ArrowLeft": cursor = cursor <= 0 ? state.tubes.length - 1 : cursor - 1; render(); e.preventDefault(); break;
             case "ArrowRight": cursor = cursor >= state.tubes.length - 1 ? 0 : cursor + 1; render(); e.preventDefault(); break;
             case "Enter": case " ": if (cursor < 0) cursor = 0; onTube(cursor); e.preventDefault(); break;
-            case "Escape": selected = -1; cursor = -1; render(); break;
-            case "u": case "U": submitAction({ type: "undo" }); break;
-            case "n": case "N": submitAction({ type: "new" }); break;
-            case "r": case "R": submitAction({ type: "retry" }); break;
-            case "c": case "C": if (isSolo()) { showCheat = true; render(); } break;
         }
     }
 
@@ -554,6 +775,7 @@ export function mount(root, context = {}) {
     document.addEventListener("keydown", handleKey);
 
     /* ---------------- init: online (host-authoritative) / lokal ---------------- */
+    render();
     if (online) {
         const u1 = room.onRoom((nextRoom) => { roomData = nextRoom; render(); });
         if (typeof u1 === "function") unsubs.push(u1);
@@ -562,9 +784,8 @@ export function mount(root, context = {}) {
             const u2 = room.onAction((action) => applyAction(action, state ? state.seatMap[1] : 1));
             if (typeof u2 === "function") unsubs.push(u2);
         } else {
-            render();
             const u3 = room.onState((nextState) => {
-                state = nextState; selected = -1; hint = null; render();
+                state = nextState; selected = -1; hint = null; cursor = -1; render();
             });
             if (typeof u3 === "function") unsubs.push(u3);
         }
@@ -577,9 +798,7 @@ export function mount(root, context = {}) {
             destroyed = true;
             root.removeEventListener("click", handleClick);
             document.removeEventListener("keydown", handleKey);
-            if (botTimer) clearTimeout(botTimer);
-            if (hintTimer) clearTimeout(hintTimer);
-            if (badTimer) clearTimeout(badTimer);
+            for (const rec of Array.from(pending)) cancelTimer(rec);
             stopAuto();
             unsubs.forEach((u) => { try { u(); } catch (_) { } });
         },

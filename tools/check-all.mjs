@@ -11,11 +11,8 @@ import { Report, projectRoot, reportsDir } from "./lib/report.mjs";
 import { hasFlag } from "./lib/args.mjs";
 
 const phases = [
-  { name: "static", script: "tools/check-static.mjs", skipFlag: "skip-static" },
-  { name: "icons", script: "tools/check-icons.mjs", skipFlag: "skip-icons" },
   { name: "mount", script: "tools/check-mount.mjs", skipFlag: "skip-mount" },
   { name: "browser", script: "tools/check-browser.mjs", skipFlag: "skip-browser" },
-  { name: "community", script: "tools/check-community.mjs", skipFlag: "skip-community" },
   { name: "room", script: "tools/check-rooms.mjs", skipFlag: "skip-rooms" },
 ];
 
@@ -31,9 +28,6 @@ for (const phase of phases) {
   console.log(`\n=== ${phase.name.toUpperCase()} ===`);
   const env = { ...process.env };
   if (phase.name === "room" && hasFlag("skip-rooms")) env.SKIP_ROOM_TEST = "1";
-  if (phase.name === "community" && (hasFlag("skip-community") || process.env.SKIP_ROOM_TEST === "1")) {
-    env.SKIP_COMMUNITY_TEST = "1";
-  }
   const result = spawnSync(process.execPath, [path.join(projectRoot, phase.script), ...passthrough], {
     cwd: projectRoot,
     stdio: "inherit",

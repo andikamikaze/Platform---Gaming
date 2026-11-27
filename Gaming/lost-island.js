@@ -1,4 +1,6 @@
 /* ==== GAME: lost-island.js ==== */
+import { iconSVG } from "../JS/icons.js";
+
 /*
   - Template-compliant game module (export META + export mount).
   - id MUST equal the filename without .js  ->  "lost-island"
@@ -593,7 +595,15 @@ export function mount(root, context = {}) {
     let clockTimer = 0, botTimer = 0, walkTimer = 0, toastTimer = 0;
     let walkTarget = null, walkStuck = 0, lastWalkFrom = "";
     let lastNoteId = 0, lastGameId = null;
-    const ui = { craft: false, bag: false, cheat: false };
+    const ui = { craft: false, bag: false, cheat: false, pause: false, help: false };
+    let pauseAt = 0, pauseShift = 0, lastTickAt = 0;
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("lostIslandHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        ui.help = true;
+        try { localStorage.setItem("lostIslandHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
 
     const SEAT = ["#3b82f6", "#f59e0b"];
     const oppName = () => (online ? "Rival" : "Bot");
@@ -604,19 +614,21 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.li-wrap{--ink:#1e293b;--mut:#64748b;--line:#e2e8f0;--soft:#f8fafc;--ok:#10b981;--bad:#ef4444;max-width:720px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:10px;color:var(--ink);font-family:inherit}
+.li-wrap{--ink:#1e293b;--mut:#64748b;--line:#e2e8f0;--soft:#f8fafc;--ok:#10b981;--bad:#ef4444;max-width:720px;margin:0 auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px;color:var(--ink);font-family:inherit;width:100%;box-sizing:border-box;min-height:0}
 .li-wrap [hidden]{display:none!important}
 .li-wrap button{font-family:inherit}
-.li-top{display:flex;align-items:center;gap:12px}
-.li-title{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-.li-timer{font-size:13px;font-weight:600;color:var(--mut);font-variant-numeric:tabular-nums;margin-left:auto}
-.li-status{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--mut)}
+.li-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.li-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--mut);white-space:nowrap}
+.li-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+.li-timer b{font-size:13px}
+.li-status{display:inline-flex;align-items:center;gap:6px}
 .li-dot{width:8px;height:8px;border-radius:50%;background:#cbd5e1;display:inline-block;flex:none}
 .li-dot.on{background:var(--ok);animation:li-pulse 1.6s infinite}
 .li-dot.busy{background:#f59e0b}
 @keyframes li-pulse{0%,100%{opacity:1}50%{opacity:.35}}
-.li-hud{display:flex;gap:8px;flex-wrap:wrap}
-.li-pcard{flex:1;min-width:250px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:#fff;font-size:12px}
+.li-spacer{flex:1 1 auto}
+.li-players{flex:1 1 100%;display:flex;gap:8px;flex-wrap:wrap;min-width:0}
+.li-pcard{flex:1 1 210px;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:#fff;font-size:12px}
 .li-pcard.on{border-color:#cbd5e1;background:var(--soft)}
 .li-pcard.dead{opacity:.5}
 .li-pdot{width:10px;height:10px;border-radius:50%;flex:none}
@@ -627,117 +639,177 @@ export function mount(root, context = {}) {
 .li-ap{display:flex;gap:3px;margin-left:2px}
 .li-pip{width:6px;height:6px;border-radius:2px;background:var(--line);display:inline-block}
 .li-pip.on{background:var(--ink)}
-.li-tools{display:flex;gap:5px;margin-left:auto;color:#cbd5e1}
-.li-tool{display:inline-flex;align-items:center;gap:1px}
+.li-tools{display:flex;gap:6px;margin-left:auto;color:#cbd5e1;flex-wrap:wrap}
+.li-tool{display:inline-flex;align-items:center;gap:2px}
 .li-tool.have{color:var(--ink)}
 .li-tool b{font-size:10px}
-.li-stage{position:relative;padding:0;border:none;background:none}
-.li-boardbox{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:8px}
-.li-board{display:block;width:100%;height:auto}
-.li-board [data-tile]{cursor:pointer}
-.li-wait{padding:40px;text-align:center;color:var(--mut);font-size:13px}
-.li-toast{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:#1e293bee;color:#f8fafc;font-size:12px;font-weight:600;padding:6px 14px;border-radius:999px;pointer-events:none;z-index:5;max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.li-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.82);backdrop-filter:blur(3px);z-index:6;border-radius:12px}
-.li-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;width:min(380px,94%);max-height:92%;overflow:auto;display:flex;flex-direction:column;gap:8px}
-.li-cardhead{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
-.li-x{border:none;background:none;font-size:18px;line-height:1;color:var(--mut);cursor:pointer;padding:2px 6px}
-.li-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--soft);font-size:12.5px}
+.li-board{position:relative;width:100%;min-height:0;padding:0;border:1px solid var(--line);background:var(--soft);border-radius:12px;overflow:hidden}
+.li-svg{display:block;width:100%;height:100%;touch-action:manipulation}
+.li-svg [data-tile]{cursor:pointer}
+.li-wait{padding:40px 16px;text-align:center;color:var(--mut);font-size:13px}
+.li-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#1e293bee;color:#f8fafc;font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;pointer-events:none;z-index:5;max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto;background:rgba(248,250,252,.86);border-radius:12px}
+.li-card{display:flex;flex-direction:column;gap:8px;width:min(420px,100%);max-height:100%;padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.li-cardhead,.li-foot{flex:none}
+.li-body{flex:1 1 auto;min-height:0;overflow:auto}
+.li-cardhead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.li-x{min-width:32px;min-height:32px;border:1px solid var(--line);background:#fff;font-size:14px;line-height:1;color:var(--mut);border-radius:8px;cursor:pointer}
+.li-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--soft);font-size:12.5px}
 .li-rowico{color:var(--mut);display:inline-flex;flex:none}
 .li-rowname{font-weight:600}
 .li-costs{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
 .li-cost{font-size:11px;color:var(--bad);font-weight:600}
 .li-cost.ok{color:var(--ok)}
 .li-count{margin-left:auto;color:var(--mut);font-weight:600}
-.li-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.li-btn{min-height:40px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
 .li-btn:hover{background:var(--soft)}
 .li-btn:disabled{opacity:.45;cursor:default}
-.li-btn.sm{padding:5px 9px;font-size:11.5px}
+.li-btn.sm{padding:6px 10px;font-size:11.5px;min-height:32px}
 .li-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
-.li-btn.primary:hover{background:#0f172a}
 .li-btn.warn{color:#b45309;border-color:#fde68a}
-.li-btn.ghost{background:transparent}
+.li-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.li-icon-btn svg{flex:none;display:block}
+.li-hud .li-btn{min-height:30px;padding:5px 8px;font-size:10px;gap:4px}
+.li-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .li-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.li-slot{position:relative;width:38px;height:38px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--mut);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.li-slot{position:relative;width:40px;height:40px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--mut);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .li-slot b{position:absolute;right:3px;bottom:2px;font-size:10px;color:var(--ink)}
 .li-slot.use{border-color:#a7f3d0;color:var(--ok)}
-.li-barsp{flex:1}
-.li-foot{display:flex;align-items:center;gap:12px}
-.li-dpad{display:none;grid-template-columns:repeat(3,42px);grid-template-rows:repeat(2,42px);gap:4px}
+.li-barsp{flex:1 1 8px}
+.li-actions{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.li-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.li-pad{display:none;justify-content:center;user-select:none}
+.li-dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,44px);gap:4px}
 .li-dbtn{border:1px solid var(--line);background:#fff;border-radius:9px;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:none}
 .li-dbtn:active{background:var(--soft)}
 .li-dbtn svg{width:18px;height:18px}
-.li-footbtns{display:flex;gap:8px;margin-left:auto}
-.li-exit{display:flex;justify-content:flex-end}
-.li-overtitle{margin:0;font-size:20px;font-weight:800}
+.li-overtitle{margin:0;font-size:18px;font-weight:800}
 .li-overtitle.win{color:var(--ok)}
 .li-overtitle.lose{color:var(--bad)}
 .li-overtitle.draw{color:var(--mut)}
-.li-oversub{margin:0;font-size:13px;color:var(--mut)}
-.li-overbtns{display:flex;gap:8px;margin-top:6px}
-@media (pointer:coarse){.li-dpad{display:grid}}
-@media (max-width:560px){.li-pcard{min-width:100%}.li-top{flex-wrap:wrap}}
+.li-oversub{margin:0;font-size:13px;line-height:1.5;color:var(--mut)}
+.li-help b{display:block;margin:6px 0;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.li-help ul{margin:0 0 8px;padding-left:16px;font-size:12px;line-height:1.6;color:var(--mut)}
+.li-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--soft);color:var(--ink);font:inherit}
+.li-note{font-size:11px;color:var(--mut)}
+.li-wrap :is(button,input):focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (pointer:coarse){.li-pad{display:flex}}
+@media (prefers-reduced-motion:reduce){.li-wrap *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (keep last) --- */
+.li-wrap.game-fill>.li-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.li-wrap .li-icon-btn svg{flex:none;display:block}
+@media (pointer:coarse){.li-wrap button:not(:disabled){min-height:44px}}
+@media (max-width:640px){
+.li-wrap{padding:10px 8px;gap:8px}
+.li-wrap.game-fill>.li-board:not(:has(.li-ov:not([hidden]))){aspect-ratio:570/418;flex:0 0 auto}
+.li-wrap.game-fill>.li-board:has(.li-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.li-wrap .li-hud{gap:4px}
+.li-wrap .li-hud .li-chip{padding:3px 4px;font-size:9px;gap:4px}
+.li-wrap .li-hud .li-chip[data-hud="turn"],.li-wrap .li-hud .li-timer>span{display:none}
+.li-wrap .li-hud .li-btn{min-width:22px;min-height:30px;padding:3px 5px;font-size:9px;gap:3px}
+.li-wrap .li-hud .li-btn-label,.li-wrap .li-hud .li-spacer{display:none}
+.li-wrap .li-players{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.li-wrap .li-pcard{padding:5px 7px;font-size:10px;gap:5px}
+.li-wrap .li-tools{display:none}
+.li-wrap .li-ov{padding:8px}
+.li-wrap .li-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.li-wrap .li-body{scrollbar-width:none}
+.li-wrap .li-body::-webkit-scrollbar{display:none}
+.li-wrap .li-foot{margin:0;padding-top:8px;border-top:1px solid var(--line)}
+.li-wrap .li-costs{margin-left:0}
+.li-wrap .li-actions{margin-left:0}
+}
 </style>
-<div class="game-app li-wrap">
-  <div class="li-top">
-    <span class="li-title">Lost Island</span>
-    <span class="li-timer" data-timer>--:--</span>
-    <span class="li-status"><i class="li-dot" data-dot></i><span data-status>Ready</span></span>
+<div class="game-app li-wrap game-fill" data-li>
+  <div class="li-hud">
+    <span class="li-chip li-timer"><span>TIME</span> <b data-timer>--:--</b></span>
+    <span class="li-chip li-status"><i class="li-dot" data-dot></i><b data-status>Ready</b></span>
+    <span class="li-chip" data-hud="turn">TURN <b data-turn>0</b></span>
+    <span class="li-spacer"></span>
+    <button class="li-btn li-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="li-btn-label">Help</span></button>
+    <button class="li-btn li-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="li-btn-label">Cheats</span></button>
+    <button class="li-btn li-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="li-btn-label" data-pause-label>Pause</span></button>
+    <button class="li-btn li-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="li-btn-label">Restart</span></button>
+    <button class="li-btn li-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="li-btn-label">Exit</span></button>
+    <div class="li-players" data-players></div>
   </div>
-  <div class="li-hud" data-hud></div>
-  <section class="game-panel li-stage" data-board>
-    <div class="li-boardbox" data-boardbox></div>
+  <section class="game-panel li-board" data-board>
+    <svg class="li-svg" data-svg viewBox="0 0 570 418" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Island map"></svg>
     <div class="li-toast" data-toast hidden></div>
     <div class="li-ov" data-ov="craft" hidden>
       <div class="li-card">
-        <div class="li-cardhead"><span>Craft</span><button type="button" class="li-x" data-act="close" aria-label="Close">&times;</button></div>
-        <div data-craftlist></div>
+        <div class="li-cardhead"><span>Craft</span><button type="button" class="li-x" data-act="close" aria-label="Close">✕</button></div>
+        <div class="li-body" data-craftlist></div>
       </div>
     </div>
     <div class="li-ov" data-ov="bag" hidden>
       <div class="li-card">
-        <div class="li-cardhead"><span>Backpack</span><button type="button" class="li-x" data-act="close" aria-label="Close">&times;</button></div>
-        <div data-baglist></div>
+        <div class="li-cardhead"><span>Backpack</span><button type="button" class="li-x" data-act="close" aria-label="Close">✕</button></div>
+        <div class="li-body" data-baglist></div>
       </div>
     </div>
     <div class="li-ov" data-ov="cheat" hidden>
       <div class="li-card">
-        <div class="li-cardhead"><span>Cheats</span><button type="button" class="li-x" data-act="close" aria-label="Close">&times;</button></div>
-        <div data-cheatlist></div>
+        <div class="li-cardhead"><span>Cheats</span><button type="button" class="li-x" data-act="close" aria-label="Close">✕</button></div>
+        <div class="li-body" data-cheatlist></div>
+      </div>
+    </div>
+    <div class="li-ov" data-ov="pause" hidden>
+      <div class="li-card">
+        <div class="li-cardhead"><span>Paused</span></div>
+        <div class="li-body"><p class="li-oversub">The island is on hold. Your timer, actions and rival are frozen.</p></div>
+        <div class="li-foot"><span class="li-note">Press P or Esc to resume</span><button class="li-btn primary" type="button" data-act="resume">Resume</button></div>
+      </div>
+    </div>
+    <div class="li-ov" data-ov="help" hidden>
+      <div class="li-card">
+        <div class="li-cardhead"><span>How to play</span><button type="button" class="li-x" data-help-close aria-label="Close">✕</button></div>
+        <div class="li-body li-help">
+          <b>Goal</b>
+          <ul><li>Gather resources, craft a bridge and the right barrier tool, cross to the helipad and fire a flare before your rival.</li><li>You have 300 seconds and 3 action points per turn. Swamps cost 1 HP each step.</li></ul>
+          <b>Desktop</b>
+          <ul><li><span class="li-kbd">W A S D</span> / arrows — move one tile (a click on a far tile auto-walks there)</li><li><span class="li-kbd">Space</span> or click your survivor — search / use / fire the flare</li><li><span class="li-kbd">E</span> end turn · <span class="li-kbd">Q</span> use herb · <span class="li-kbd">K</span> craft · <span class="li-kbd">B</span> bag</li><li><span class="li-kbd">H</span> help · <span class="li-kbd">C</span> cheats · <span class="li-kbd">P</span> pause · <span class="li-kbd">R</span> restart</li></ul>
+          <b>Mobile</b>
+          <ul><li>Tap a tile to walk, tap your survivor or press Search to interact.</li><li>Use the D-pad below the map, plus the Search / End turn buttons.</li></ul>
+        </div>
+        <div class="li-foot"><span class="li-note">Press H to reopen this guide</span><button class="li-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
     <div class="li-ov" data-ov="over" hidden>
       <div class="li-card">
-        <h2 class="li-overtitle" data-overtitle></h2>
-        <p class="li-oversub" data-oversub></p>
-        <div class="li-overbtns">
-          <button type="button" class="li-btn primary" data-act="rematch">Play again</button>
-          <button type="button" class="li-btn" data-exit>Exit</button>
-        </div>
+        <div class="li-cardhead"><span>Expedition over</span></div>
+        <div class="li-body"><h2 class="li-overtitle" data-overtitle></h2><p class="li-oversub" data-oversub></p></div>
+        <div class="li-foot"><span class="li-note"></span><button type="button" class="li-btn primary" data-act="rematch">Play again</button><button type="button" class="li-btn" data-exit>Exit</button></div>
       </div>
     </div>
   </section>
-  <div class="li-bar" data-bar></div>
-  <div class="li-foot">
-    <div class="li-dpad" data-dpad>
+  <div class="li-controls">
+    <div class="li-bar" data-bar></div>
+    <div class="li-actions">
+      <button type="button" class="li-btn" data-act="search">${ico("flare", 13)} Search</button>
+      <button type="button" class="li-btn" data-act="end">End turn</button>
+    </div>
+  </div>
+  <div class="li-pad" data-pad>
+    <div class="li-dpad">
       <button type="button" class="li-dbtn" data-dir="up" style="grid-area:1/2" aria-label="Up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg></button>
       <button type="button" class="li-dbtn" data-dir="left" style="grid-area:2/1" aria-label="Left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
       <button type="button" class="li-dbtn" data-dir="down" style="grid-area:2/2" aria-label="Down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10l6 6 6-6"/></svg></button>
       <button type="button" class="li-dbtn" data-dir="right" style="grid-area:2/3" aria-label="Right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg></button>
     </div>
-    <div class="li-footbtns">
-      <button type="button" class="li-btn" data-act="search">Search</button>
-      <button type="button" class="li-btn" data-act="end">End turn</button>
-    </div>
   </div>
-  <div class="game-actions li-exit"><button class="game-action-button li-btn ghost" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const boardBox = $("[data-boardbox]"), hudEl = $("[data-hud]"), barEl = $("[data-bar]"),
+    const svgEl = $("[data-svg]"), playersEl = $("[data-players]"), barEl = $("[data-bar]"),
         timerEl = $("[data-timer]"), statusEl = $("[data-status]"), dotEl = $("[data-dot]"),
-        toastEl = $("[data-toast]"), craftList = $("[data-craftlist]"), bagList = $("[data-baglist]"),
-        cheatList = $("[data-cheatlist]"), ovCraft = $('[data-ov="craft"]'), ovBag = $('[data-ov="bag"]'),
-        ovCheat = $('[data-ov="cheat"]'), ovOver = $('[data-ov="over"]'),
+        turnEl = $("[data-turn]"), toastEl = $("[data-toast]"),
+        craftList = $("[data-craftlist]"), bagList = $("[data-baglist]"),
+        cheatList = $("[data-cheatlist]"), pauseBtn = $("[data-pause]"),
+        ovCraft = $('[data-ov="craft"]'), ovBag = $('[data-ov="bag"]'),
+        ovCheat = $('[data-ov="cheat"]'), ovPause = $('[data-ov="pause"]'),
+        ovHelp = $('[data-ov="help"]'), ovOver = $('[data-ov="over"]'),
         overTitle = $("[data-overtitle]"), overSub = $("[data-oversub]");
 
     function toast(text) {
@@ -780,7 +852,7 @@ export function mount(root, context = {}) {
             s += '<circle cx="' + cx + '" cy="' + cy + '" r="8.5" fill="' + SEAT[i] + '" stroke="#fff" stroke-width="2.5" opacity="' + op + '"/>';
         }
         s += "</g>";
-        return '<svg class="li-board" viewBox="0 0 ' + VW + " " + VH + '" role="img" aria-label="Island map">' + s + "</svg>";
+        return s;
     }
 
     function cardHTML(seat, mine) {
@@ -807,9 +879,64 @@ export function mount(root, context = {}) {
             ico(r, 15) + "<b>" + p.inv[r] + "</b></button>").join("");
         return slots + '<span class="li-barsp"></span>' +
             '<button type="button" class="li-btn sm" data-act="craft-open">' + ico("bridge", 13) + " Craft</button>" +
-            '<button type="button" class="li-btn sm" data-act="bag-open">' + ico("cloth", 13) + " Bag</button>" +
-            '<button type="button" class="li-btn sm warn" data-act="cheat-open">Cheat</button>';
+            '<button type="button" class="li-btn sm" data-act="bag-open">' + ico("cloth", 13) + " Bag</button>";
     }
+    const blockingModal = () => ui.help || ui.pause || ui.cheat;
+    const gameNow = () => Date.now() - pauseShift;
+
+    function syncHudButtons() {
+        const label = pauseBtn.querySelector(".li-btn-label");
+        if (label) label.textContent = ui.pause ? "Resume" : "Pause";
+        const icon = pauseBtn.querySelector("[data-pause-icon]");
+        if (icon) icon.innerHTML = iconSVG(ui.pause ? "play" : "pause", { size: 14 });
+        pauseBtn.setAttribute("aria-label", ui.pause ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", ui.pause ? "Resume (P)" : "Pause (P)");
+    }
+
+    function toggleHelp(on) {
+        ui.help = typeof on === "boolean" ? on : !ui.help;
+        if (ui.help) { ui.cheat = false; ui.pause = false; stopTimers(); }
+        else if (!ui.pause) startTimers();
+        syncHudButtons();
+        render();
+    }
+
+    function togglePause(on) {
+        if (!state || state.phase !== "playing") return;
+        const next = typeof on === "boolean" ? on : !ui.pause;
+        if (next === ui.pause) return;
+        ui.pause = next;
+        ui.craft = ui.bag = ui.cheat = false;
+        ui.help = false;
+        if (ui.pause) { pauseAt = gameNow(); stopTimers(); }
+        else { pauseShift += Math.max(0, gameNow() - pauseAt); startTimers(); }
+        syncHudButtons();
+        render();
+    }
+
+    function stopTimers() {
+        clearInterval(clockTimer); clockTimer = 0;
+        clearTimeout(botTimer); botTimer = 0;
+        clearTimeout(walkTimer); walkTimer = 0;
+    }
+
+    function startTimers() {
+        if (destroyed || !state || ui.pause || ui.help || state.phase !== "playing") return;
+        if (!clockTimer) {
+            lastTickAt = gameNow();
+            clockTimer = setInterval(() => {
+                if (destroyed || !state || state.phase !== "playing" || ui.pause || ui.help) return;
+                if (online && !room.isHost) return;
+                const now = gameNow();
+                if (now - lastTickAt < 900) return;
+                lastTickAt = now;
+                reduce(state, { type: "tick" }, "clock");
+                publish();
+            }, 1000);
+        }
+        queueBot();
+    }
+
     function renderOverlays() {
         const p = state.players[mySeat()];
         const playing = state.phase === "playing";
@@ -843,15 +970,18 @@ export function mount(root, context = {}) {
             (state.bot != null ? tog("botfreeze", "Freeze bot", state.cheats.botFreeze) : "") +
             btn("rich", "+5 all resources") + btn("tools", "+1 all tools") + btn("heal", "Full heal") +
             btn("teleport", "Teleport to helipad") + btn("win", "Instant win") + btn("newmap", "New island");
-        ui.craft ? ovCraft.removeAttribute("hidden") : ovCraft.setAttribute("hidden", "");
-        ui.bag ? ovBag.removeAttribute("hidden") : ovBag.setAttribute("hidden", "");
-        ui.cheat ? ovCheat.removeAttribute("hidden") : ovCheat.setAttribute("hidden", "");
+        const show = (el, on) => on ? el.removeAttribute("hidden") : el.setAttribute("hidden", "");
+        show(ovCraft, ui.craft && !blockingModal());
+        show(ovBag, ui.bag && !blockingModal());
+        show(ovCheat, ui.cheat && !ui.help && !ui.pause);
+        show(ovPause, ui.pause && !ui.help && !ui.cheat);
+        show(ovHelp, ui.help);
     }
 
     function render() {
         if (destroyed) return;
         if (!state) {
-            boardBox.innerHTML = '<div class="li-wait">Waiting for host&hellip;</div>';
+            svgEl.innerHTML = '<text x="285" y="209" text-anchor="middle" font-size="14" fill="#64748b">Waiting for host…</text>';
             statusEl.textContent = "Waiting";
             return;
         }
@@ -859,17 +989,20 @@ export function mount(root, context = {}) {
             lastGameId = state.id;
             lastNoteId = state.note ? state.note.id : 0;
             walkTarget = null;
-            ui.craft = ui.bag = ui.cheat = false;
+            ui.craft = ui.bag = ui.cheat = ui.pause = false;
+            syncHudButtons();
             const seatTxt = online ? "You are P" + (mySeat() + 1) + " · " : "";
             toast(seatTxt + (state.turn === mySeat() ? "You move first" : oppName() + " moves first"));
         }
         const tl = Math.max(0, Math.ceil(state.timeLeft));
         timerEl.textContent = String(Math.floor(tl / 60)).padStart(2, "0") + ":" + String(tl % 60).padStart(2, "0");
+        turnEl.textContent = String(state.turnCount);
         if (state.phase === "over") { statusEl.textContent = "Game over"; dotEl.className = "li-dot"; }
+        else if (ui.pause) { statusEl.textContent = "Paused"; dotEl.className = "li-dot busy"; }
         else if (myTurn()) { statusEl.textContent = "Your turn · " + state.players[mySeat()].ap + " AP"; dotEl.className = "li-dot on"; }
         else { statusEl.textContent = oppName() + (online ? "'s turn" : " is thinking"); dotEl.className = "li-dot busy"; }
-        hudEl.innerHTML = [mySeat(), 1 - mySeat()].map((seat, i) => cardHTML(seat, i === 0)).join("");
-        boardBox.innerHTML = boardSVG();
+        playersEl.innerHTML = [mySeat(), 1 - mySeat()].map((seat, i) => cardHTML(seat, i === 0)).join("");
+        svgEl.innerHTML = boardSVG();
         barEl.innerHTML = barHTML();
         renderOverlays();
         if (state.phase === "over") {
@@ -877,7 +1010,7 @@ export function mount(root, context = {}) {
             overTitle.textContent = w == null ? "Draw" : w === mySeat() ? "You win" : oppName() + " wins";
             overTitle.className = "li-overtitle " + (w == null ? "draw" : w === mySeat() ? "win" : "lose");
             overSub.textContent = state.reason + (state.cheated ? " · cheats used" : "");
-            ovOver.removeAttribute("hidden");
+            ovOver.hidden = blockingModal();
             walkTarget = null;
         } else ovOver.setAttribute("hidden", "");
         if (state.note && state.note.id !== lastNoteId) {
@@ -885,9 +1018,10 @@ export function mount(root, context = {}) {
             if (state.note.to == null || state.note.to === mySeat()) toast(state.note.text);
         }
         clearTimeout(walkTimer);
-        if (walkTarget && myTurn() && state.players[mySeat()].ap > 0) walkTimer = setTimeout(stepWalk, 200);
+        if (walkTarget && !ui.pause && !ui.help && myTurn() && state.players[mySeat()].ap > 0)
+            walkTimer = setTimeout(stepWalk, 200);
         else if (walkTarget && (!myTurn() || state.phase !== "playing")) walkTarget = null;
-        queueBot();
+        startTimers();
     }
 
     function publish() {
@@ -946,19 +1080,39 @@ export function mount(root, context = {}) {
         const t = event.target;
         if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) {
+            if (ui.help || ui.pause) return;
+            ui.cheat = !ui.cheat; ui.craft = ui.bag = false;
+            render(); return;
+        }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) {
+            if (state && state.phase !== "playing" && !blockingModal()) submitAction({ type: "rematch" });
+            else if (state && state.phase === "playing") { togglePause(false); toggleHelp(false); submitAction({ type: "rematch" }); }
+            return;
+        }
         const actB = t.closest("[data-act]");
         if (actB) {
             const a = actB.dataset.act;
             if (a === "rematch") { submitAction({ type: "rematch" }); return; }
-            if (a === "craft-open") { ui.craft = !ui.craft; ui.bag = ui.cheat = false; render(); return; }
-            if (a === "bag-open") { ui.bag = !ui.bag; ui.craft = ui.cheat = false; render(); return; }
-            if (a === "cheat-open") { ui.cheat = !ui.cheat; ui.craft = ui.bag = false; render(); return; }
+            if (a === "resume") { togglePause(false); return; }
+            if (a === "craft-open" || a === "bag-open" || a === "cheat-open") {
+                if (blockingModal()) return;
+                ui.craft = a === "craft-open" && !ui.craft;
+                ui.bag = a === "bag-open" && !ui.bag;
+                ui.cheat = a === "cheat-open" && !ui.cheat;
+                render(); return;
+            }
             if (a === "close") { ui.craft = ui.bag = ui.cheat = false; render(); return; }
+            if (blockingModal()) return;
             if (a === "search") { doSearch(); return; }
             if (a === "end") { if (myTurn()) { walkTarget = null; submitAction({ type: "end" }); } else toast("Not your turn"); return; }
             if (a === "use-herb") { if (myTurn()) submitAction({ type: "use", item: "herb" }); return; }
             return;
         }
+        if (blockingModal()) return;
         const craftB = t.closest("[data-craft]");
         if (craftB) { submitAction({ type: "craft", item: craftB.dataset.craft }); return; }
         const cheatB = t.closest("[data-cheat]");
@@ -997,16 +1151,46 @@ export function mount(root, context = {}) {
         const tag = (e.target && e.target.tagName) || "";
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const key = e.key;
-        if (key === "Escape") {
-            if (ui.craft || ui.bag || ui.cheat) { ui.craft = ui.bag = ui.cheat = false; render(); e.preventDefault(); }
+        /* priority: help -> cheats -> pause / escape -> game actions */
+        if (key === "h" || key === "H") { e.preventDefault(); toggleHelp(); return; }
+        if (ui.help) {
+            if (key === "Escape" || key === "Enter" || key === " " || key === "Spacebar") { e.preventDefault(); toggleHelp(false); }
             return;
         }
-        if (key === "c" || key === "C") { ui.craft = !ui.craft; ui.bag = ui.cheat = false; render(); e.preventDefault(); return; }
-        if (key === "b" || key === "B") { ui.bag = !ui.bag; ui.craft = ui.cheat = false; render(); e.preventDefault(); return; }
+        if (key === "c" || key === "C") {
+            e.preventDefault();
+            if (!ui.pause) { ui.cheat = !ui.cheat; ui.craft = ui.bag = false; render(); }
+            return;
+        }
+        if (ui.cheat) { if (key === "Escape") { e.preventDefault(); ui.cheat = false; render(); } return; }
+        if (key === "p" || key === "P") { e.preventDefault(); togglePause(); return; }
+        if (key === "Escape") {
+            e.preventDefault();
+            if (ui.craft || ui.bag) { ui.craft = ui.bag = false; render(); }
+            else togglePause();
+            return;
+        }
+        if (key === "r" || key === "R") {
+            e.preventDefault();
+            togglePause(false); toggleHelp(false);
+            submitAction({ type: "rematch" });
+            return;
+        }
+        if (ui.pause) return;
+        if (state.phase === "over") {
+            if (key === "Enter") { e.preventDefault(); submitAction({ type: "rematch" }); }
+            return;
+        }
+        if (ui.craft || ui.bag) {
+            if (key === "Escape") { ui.craft = ui.bag = false; render(); }
+            return;
+        }
         if (state.phase !== "playing") return;
-        if (key === " " || key === "Spacebar") { e.preventDefault(); doSearch(); return; }
+        if (key === " " || key === "Spacebar" || key === "Enter") { e.preventDefault(); doSearch(); return; }
         if (key === "e" || key === "E") { e.preventDefault(); if (myTurn()) { walkTarget = null; submitAction({ type: "end" }); } return; }
-        if (key === "h" || key === "H") { e.preventDefault(); if (myTurn()) submitAction({ type: "use", item: "herb" }); return; }
+        if (key === "q" || key === "Q") { e.preventDefault(); if (myTurn()) submitAction({ type: "use", item: "herb" }); return; }
+        if (key === "k" || key === "K") { e.preventDefault(); if (!blockingModal()) { ui.craft = !ui.craft; ui.bag = false; render(); } return; }
+        if (key === "b" || key === "B") { e.preventDefault(); if (!blockingModal()) { ui.bag = !ui.bag; ui.craft = false; render(); } return; }
         const dir = KEYS[key];
         if (!dir) return;
         e.preventDefault();
@@ -1015,14 +1199,15 @@ export function mount(root, context = {}) {
         submitAction({ type: "move", dx: DIRS[dir][0], dy: DIRS[dir][1] });
     }
     function onCtx(e) {
-        if (e.target.closest && e.target.closest("[data-boardbox]")) {
+        if (e.target.closest && e.target.closest("[data-board]")) {
+            if (blockingModal()) return;
             e.preventDefault();
             if (state && state.phase === "playing") doSearch();
         }
     }
     function onPad(e) {
         const b = e.target.closest ? e.target.closest("[data-dir]") : null;
-        if (!b) return;
+        if (!b || blockingModal()) return;
         e.preventDefault();
         if (!myTurn()) { toast("Not your turn"); return; }
         walkTarget = null;
@@ -1035,12 +1220,7 @@ export function mount(root, context = {}) {
     root.addEventListener("pointerdown", onPad);
     document.addEventListener("keydown", onKey);
 
-    clockTimer = setInterval(() => {
-        if (destroyed || !state || state.phase !== "playing") return;
-        if (online && !room.isHost) return;
-        reduce(state, { type: "tick" }, "clock");
-        publish();
-    }, 1000);
+    syncHudButtons();
 
     if (online) {
         room.onRoom((nextRoom) => { if (destroyed) return; roomData = nextRoom; render(); });
@@ -1059,9 +1239,7 @@ export function mount(root, context = {}) {
     return {
         destroy() {
             destroyed = true;
-            clearInterval(clockTimer);
-            clearTimeout(botTimer);
-            clearTimeout(walkTimer);
+            stopTimers();
             clearTimeout(toastTimer);
             root.removeEventListener("click", handleClick);
             root.removeEventListener("contextmenu", onCtx);

@@ -5,6 +5,8 @@
   - Setelah edit: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "war-of-survivors",
     name: "War of Survivors",
@@ -352,7 +354,8 @@ export function mount(root, context = {}) {
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (e) { }
     let helpSeen = false;
     try { helpSeen = localStorage.getItem("wosHelpSeen") === "1"; } catch (e) { }
-    const ui = { help: !helpSeen, cheat: false, vpad: false };
+    const ui = { help: !helpSeen, cheat: false, vpad: false, paused: false };
+    if (!helpSeen) { try { localStorage.setItem("wosHelpSeen", "1"); } catch (e) { /* storage blocked */ } }
 
     const myToken = () => (online ? (room.isHost ? "host" : "guest") : "human");
     const seatLabel = (t) => ({ human: "You", bot: "Bot", host: "Host", guest: "Guest" }[t] || t);
@@ -360,117 +363,165 @@ export function mount(root, context = {}) {
     const authority = () => (online ? room.isHost : true);
     const living = () => (state ? state.party.filter((p) => p.alive) : []);
     const randomSeed = () => ((Math.random() * 0x7fffffff) | 0) >>> 0 || 1;
+    const blocked = () => ui.paused || ui.help || ui.cheat;
 
     /* ---------- skeleton ---------- */
     root.innerHTML = `
 <style>
-.wos{--bg:#0f1317;--panel:#151a21;--line:#242c37;--ink:#e7eaee;--mut:#8b95a3;--acc:#7fb0ff;--ok:#6fd08c;--warn:#e8b45a;--bad:#e46a6a;color:var(--ink);max-width:920px;margin:0 auto;padding:8px 10px;box-sizing:border-box;font-size:13px}
+.wos{--bg:#0f1317;--panel:#151a21;--line:#242c37;--ink:#e7eaee;--mut:#8b95a3;--acc:#7fb0ff;--ok:#6fd08c;--warn:#e8b45a;--bad:#e46a6a;color:var(--ink);display:flex;flex-direction:column;gap:8px;flex:1 1 auto;min-width:0;min-height:0;max-width:920px;margin:0 auto;padding:8px 12px;box-sizing:border-box;font-size:13px}
 .wos *{box-sizing:border-box}
-.wos .game-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px}
-.wos .game-intro h2{margin:0;font-size:16px;font-weight:700;letter-spacing:.2px}
-.wos .game-intro p{margin:2px 0 0;font-size:11.5px;color:var(--mut)}
-.wos .game-status{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:4px 10px;white-space:nowrap}
-.wos .game-status-dot{width:7px;height:7px;border-radius:99px;background:var(--ok);display:inline-block}
-.wos-bar-top{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 8px}
-.wos-btn{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 10px;font:inherit;font-size:11.5px;cursor:pointer}
-.wos-btn:hover:not(:disabled){border-color:var(--acc)}
+.wos [hidden]{display:none!important}
+.wos-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0}
+.wos-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:10.5px;color:var(--mut);background:#12171e;white-space:nowrap}
+.wos-chip b{color:var(--ink)}
+.wos-chip.hot b{color:var(--warn)}
+.wos-chip.cheat{border-color:#57262a;color:var(--bad)}
+.wos-status{gap:6px}
+.wos-status-dot{width:7px;height:7px;border-radius:999px;background:var(--ok);display:inline-block;flex:none}
+.wos-spacer{flex:1 1 auto}
+.wos-btn{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 12px;min-height:40px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
+.wos-btn:hover:not(:disabled),.wos-btn:focus-visible{border-color:var(--acc)}
+.wos-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .wos-btn.on{border-color:var(--acc);color:var(--acc)}
 .wos-btn:disabled{opacity:.35;cursor:default}
-.wos-spacer{flex:1}
-.wos-board{position:relative;display:flex;flex-direction:column;gap:8px}
-.wos-sec{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.wos-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.wos-icon-btn svg{flex:none;display:block}
+.wos-board{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0;align-items:stretch;padding:0;overflow:hidden}
+.wos-scroll{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;overflow:auto;padding:2px}
+.wos-sec{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;flex:none}
 .wos-step{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);margin:0 0 8px;font-weight:700}
 .wos-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
-.wos-card{border:1px solid var(--line);border-radius:10px;padding:8px 9px;cursor:pointer;background:#12171e}
+.wos-card{border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;background:#12171e}
 .wos-card:hover{border-color:#334052}
+.wos-card:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .wos-card.sel{border-color:var(--acc)}
 .wos-card.dead{opacity:.45;cursor:default}
-.wos-cname{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.wos-cname{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .wos-cname b{font-size:12.5px}
 .wos-trait{font-size:9.5px;color:var(--acc);font-weight:700}
-.wos-tags{display:flex;gap:4px;flex-wrap:wrap;min-height:14px;margin:3px 0 5px}
-.wos-tag{font-size:8.5px;font-weight:700;padding:1px 6px;border-radius:99px;background:#ffffff10;color:var(--mut)}
+.wos-tags{display:flex;gap:4px;flex-wrap:wrap;min-height:14px;margin:4px 0 8px}
+.wos-tag{font-size:8.5px;font-weight:700;padding:1px 6px;border-radius:999px;background:#ffffff10;color:var(--mut)}
 .wos-tag.warn{background:#3a2c10;color:var(--warn)}
 .wos-tag.bad{background:#3d1518;color:var(--bad)}
-.wos-g{display:flex;align-items:center;gap:5px;font-size:8px;color:var(--mut);font-weight:700;margin:2px 0}
+.wos-g{display:flex;align-items:center;gap:4px;font-size:8px;color:var(--mut);font-weight:700;margin:2px 0}
 .wos-g .lbl{width:24px;flex:none}
 .wos-g .val{width:18px;flex:none;text-align:right;color:var(--ink)}
 .wos-track{flex:1;height:4px;border-radius:99px;background:#0b0f13;overflow:hidden}
 .wos-track i{display:block;height:100%}
-.wos-act-pill{margin-top:5px;font-size:10.5px;color:var(--ink);font-weight:600;min-height:13px}
-.wos-scene{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px}
+.wos-act-pill{margin-top:8px;font-size:10.5px;color:var(--ink);font-weight:600;min-height:13px}
+.wos-scene{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:8px}
 .wos-scene svg{display:block;width:100%;height:auto}
-.wos-fore{font-size:11.5px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;margin-bottom:8px;color:var(--mut)}
+.wos-fore{font-size:11.5px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;color:var(--mut)}
 .wos-fore.ok{border-color:#2c4a33;color:var(--ok)}
 .wos-fore.bad{border-color:#57262a;color:var(--bad)}
 .wos-turn{font-size:11.5px;color:var(--mut);margin-bottom:8px}
 .wos-turn b{color:var(--ink)}
-.wos-acts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
-.wos-act{flex:1 1 90px;text-align:left;background:#12171e;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:6px 8px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
-.wos-act small{display:block;font-size:8.5px;color:var(--mut);font-weight:500;margin-top:1px}
-.wos-act:hover:not(:disabled){border-color:var(--acc)}
+.wos-acts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.wos-act{flex:1 1 90px;text-align:left;background:#12171e;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;min-height:44px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
+.wos-act small{display:block;font-size:8.5px;color:var(--mut);font-weight:500;margin-top:2px}
+.wos-act:hover:not(:disabled),.wos-act:focus-visible{border-color:var(--acc)}
+.wos-act:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .wos-act.on{border-color:var(--acc);background:#1a2333}
 .wos-act:disabled{opacity:.35;cursor:default}
-.wos-zones{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
-.wos-zone{flex:1 1 110px;display:flex;justify-content:space-between;gap:6px;align-items:center;background:#12171e;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:6px 9px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:left}
+.wos-zones{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.wos-zone{flex:1 1 110px;display:flex;justify-content:space-between;gap:8px;align-items:center;background:#12171e;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;min-height:44px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:left}
 .wos-zone small{display:block;font-size:8.5px;color:var(--mut);font-weight:500}
+.wos-zone:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .wos-zone.on{border-color:var(--acc);background:#1a2333}
 .wos-zone:disabled{opacity:.35;cursor:default}
-.wos-go{width:100%;background:var(--acc);color:#0b1220;border:none;border-radius:10px;padding:10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.wos-go{width:100%;background:var(--acc);color:#0b1220;border:1px solid var(--acc);border-radius:8px;padding:12px;min-height:44px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.wos-go:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .wos-go:disabled{opacity:.35;cursor:default}
 .wos-report{list-style:none;margin:8px 0 0;padding:0;font-size:11px;color:var(--mut);line-height:1.6}
 .wos-check{list-style:none;margin:0;padding:0}
 .wos-check li{display:flex;gap:8px;font-size:11.5px;color:var(--mut);line-height:1.7}
 .wos-check li.done{color:var(--ok)}
 .wos-check .mk{flex:none;width:14px}
-.wos-hud{display:flex;gap:6px;flex-wrap:wrap}
-.wos-chip{border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:10.5px;color:var(--mut);background:#12171e}
-.wos-chip b{color:var(--ink)}
-.wos-chip.hot b{color:var(--warn)}
-.wos-chip.cheat{border-color:#57262a;color:var(--bad)}
-.wos-vpad{position:sticky;bottom:6px;display:grid;grid-template-columns:repeat(8,1fr);gap:6px;background:#12171ef2;border:1px solid var(--line);border-radius:12px;padding:8px;z-index:4}
-.wos-vpad button{min-height:42px;background:#151c26;border:1px solid var(--line);color:var(--ink);border-radius:9px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.wos-hud-note{font-size:10px;color:var(--mut);margin:0}
+.wos-vpad:empty{display:none}
+.wos-vpad{position:sticky;bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(8,1fr);gap:8px;background:#12171ef2;border:1px solid var(--line);border-radius:10px;padding:8px;z-index:4;flex:none}
+.wos-vpad button{min-height:44px;background:#151c26;border:1px solid var(--line);color:var(--ink);border-radius:8px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.wos-vpad button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .wos-vpad button:disabled{opacity:.35}
-.wos-vpad .end{background:var(--acc);color:#0b1220;border:none}
-.wos-ov{position:absolute;inset:0;background:#0b0f13d9;display:flex;align-items:flex-start;justify-content:center;padding:16px;z-index:6}
-.wos-ovcard{max-width:540px;width:100%;max-height:80vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
-.wos-ovcard h3{margin:0 0 8px;font-size:15px}
-.wos-ovcard p,.wos-ovcard li{font-size:12px;color:var(--mut);line-height:1.6}
-.wos-ovcard table{width:100%;border-collapse:collapse;font-size:11.5px;margin:6px 0}
-.wos-ovcard td{padding:3px 5px;border-bottom:1px solid var(--line);color:var(--mut)}
-.wos-ovcard td:first-child{color:var(--ink);white-space:nowrap}
-.wos-ovrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.wos-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
-.wos-seed{display:flex;gap:6px;margin-top:8px}
-.wos-seed input{flex:1;background:#0b0f13;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 8px;font:inherit;font-size:12px}
-.wos-note{font-size:10.5px;color:var(--mut);margin-top:8px}
-.wos .game-actions{margin-top:8px}
+.wos-vpad .end{background:var(--acc);color:#0b1220;border-color:var(--acc)}
+.wos-ov{position:absolute;inset:0;background:#0b0f13d9;display:flex;align-items:flex-start;justify-content:center;padding:16px;z-index:6;overflow:auto}
+.wos-card-modal{display:flex;flex-direction:column;width:min(560px,100%);max-height:100%;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.wos-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 16px 8px}
+.wos-head h3{margin:0;font-size:15px}
+.wos-body,.wos-cheats,.wos-help{flex:1 1 auto;min-height:0;overflow:auto;padding:0 16px}
+.wos-body p,.wos-body li{font-size:12px;color:var(--mut);line-height:1.6}
+.wos-body table{width:100%;border-collapse:collapse;font-size:11.5px;margin:8px 0}
+.wos-body td{padding:4px 6px;border-bottom:1px solid var(--line);color:var(--mut)}
+.wos-body td:first-child{color:var(--ink);white-space:nowrap}
+.wos-foot{flex:none;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;padding:12px 16px 16px;border-top:1px solid var(--line)}
+.wos-note{font-size:10.5px;color:var(--mut);margin-right:auto}
+.wos-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wos-seed{display:flex;gap:8px;margin-top:8px}
+.wos-seed input{flex:1;min-width:0;background:#0b0f13;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;min-height:44px;font:inherit;font-size:12px}
+.wos-seed input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wos-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.wos-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#0b0f13;color:var(--ink);font:inherit;font-size:10px}
+@media (max-width:640px){.wos-vpad{grid-template-columns:repeat(4,1fr)}.wos-cards{grid-template-columns:1fr 1fr}.wos-cheatgrid{grid-template-columns:1fr}}
+@media (max-width:400px){.wos-cheatgrid{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.wos *{animation:none!important;transition:none!important}}
+
+/* --- layout redesign overrides (keep last) --- */
+.wos.game-fill > .wos-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (pointer:coarse){.wos button:not(:disabled){min-height:44px}}
 @media (max-width:640px){
-  .wos-vpad{grid-template-columns:repeat(4,1fr)}
-  .wos-cards{grid-template-columns:1fr 1fr}
+.wos.game-fill > .wos-board:not(:has(.wos-ov)){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.wos.game-fill > .wos-board:has(.wos-ov){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.wos .wos-hud{gap:4px;margin:0}
+.wos .wos-hud .wos-chip{padding:4px 5px;font-size:9px}
+.wos .wos-hud .wos-chip[data-hud="seedchip"],
+.wos .wos-hud .wos-chip[data-hud="scoreschip"],
+.wos .wos-hud .wos-chip[data-hud="bestchip"],
+.wos .wos-hud .wos-chip[data-hud="defchip"]{display:none}
+.wos .wos-hud .wos-btn{min-height:32px;padding:5px 6px;font-size:9px}
+.wos .wos-hud .wos-btn-label,
+.wos .wos-spacer{display:none}
+.wos .wos-ov{padding:8px}
+.wos .wos-card-modal{width:100%;height:100%;max-height:100%;border-radius:10px}
+.wos .wos-head,.wos .wos-foot{padding:12px}
+.wos .wos-body,.wos .wos-cheats,.wos .wos-help{scrollbar-width:none}
+.wos .wos-body::-webkit-scrollbar,
+.wos .wos-cheats::-webkit-scrollbar,
+.wos .wos-help::-webkit-scrollbar{display:none}
+.wos .wos-foot{position:static;margin:0;padding:10px 12px;border-top:1px solid var(--line)}
+.wos .wos-note{display:none}
 }
 </style>
-<div class="game-app wos">
-  <div class="game-intro">
-    <div><h2>War of Survivors</h2><p data-sub>Keep three civilians alive until the ceasefire.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <div class="wos-bar-top">
-    <button class="wos-btn" type="button" data-act="mode-solo" data-mode>Solo</button>
-    <button class="wos-btn" type="button" data-act="mode-bot" data-mode>VS Bot</button>
+<div class="game-app wos game-fill" data-wos>
+  <div class="wos-hud">
+    <span class="wos-chip wos-status"><i class="wos-status-dot"></i><span data-hud="status">Ready</span></span>
+    <span class="wos-chip">📦 <b data-hud="supplies">🍞 0 🪵 0 💊 0</b></span>
+    <span class="wos-chip" data-hud="defchip">🛡 <b data-hud="def">0</b> (<span data-hud="boards">0/3</span>)</span>
+    <span class="wos-chip">👥 <b data-hud="alive">3/3</b></span>
+    <span class="wos-chip hot" data-hud="scoreschip">⭐ <b data-hud="scores">0</b></span>
+    <span class="wos-chip" data-hud="bestchip">🏆 <b data-hud="best">0</b></span>
+    <span class="wos-chip" data-hud="seedchip">🎲 <b data-hud="seed">0</b> · <span data-hud="area">—</span></span>
+    <span class="wos-chip cheat" data-hud="cheatflag" hidden>CHEATS</span>
     <span class="wos-spacer"></span>
-    <button class="wos-btn" type="button" data-ui="help">How to play</button>
-    <button class="wos-btn" type="button" data-ui="cheat">Cheats</button>
-    <button class="wos-btn" type="button" data-ui="vpad" data-vpadbtn>🎮 Pad</button>
-    <button class="wos-btn" type="button" data-act="new" data-new>🎲 New level</button>
+    <button class="wos-btn" type="button" data-act="mode-solo" data-mode aria-label="Solo mode">Solo</button>
+    <button class="wos-btn" type="button" data-act="mode-bot" data-mode aria-label="Vs Bot mode">VS Bot</button>
+    <button class="wos-btn" type="button" data-ui="vpad" data-vpadbtn aria-label="Toggle touch pad" title="Toggle touch pad">🎮 <span class="wos-btn-label">Pad</span></button>
+    <button class="wos-btn" type="button" data-act="new" data-new aria-label="New level" title="New level (R)">🎲 <span class="wos-btn-label">New</span></button>
+    <button class="wos-btn wos-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="wos-btn-label">Help</span></button>
+    <button class="wos-btn wos-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="wos-btn-label">Cheats</span></button>
+    <button class="wos-btn wos-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="wos-btn-label">Pause</span></button>
+    <button class="wos-btn wos-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="wos-btn-label">Restart</span></button>
+    <button class="wos-btn wos-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="wos-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel wos-board" data-board></section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <section class="game-panel wos-board" data-board>
+    <div class="wos-scroll" data-scroll></div>
+  </section>
+  <div class="wos-vpad" data-vpad></div>
 </div>`;
 
-    const board = root.querySelector("[data-board]");
-    const statusEl = root.querySelector("[data-status]");
-    const subEl = root.querySelector("[data-sub]");
+    const board = root.querySelector("[data-scroll]");
+    const vpadEl = root.querySelector("[data-vpad]");
+    const hudRefs = {};
+    root.querySelectorAll("[data-hud]").forEach((el) => { hudRefs[el.dataset.hud] = el; });
 
     /* ---------- small render helpers ---------- */
     const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -537,84 +588,81 @@ export function mount(root, context = {}) {
 
     /* ---------- board render ---------- */
     function buildBoard() {
-        if (!state) return `<div class="wos-sec"><div class="wos-step">Multiplayer</div><p class="wos-turn">Waiting for the host to start the match...</p></div>`;
-        const st = state;
-        const turn = turnToken(st);
-        const mine = myTurn();
-        const raid = raidOn(st.level, st.day);
-        const def = estimateDefense(st);
-        let sel = st.party.find((p) => p.id === selected && p.alive) || living()[0] || null;
-        if (sel) selected = sel.id;
+        let h = "";
+        if (!state) {
+            h += `<div class="wos-sec"><div class="wos-step">Multiplayer</div><p class="wos-hud-note">Waiting for the host to start the match...</p></div>`;
+        } else {
+            const st = state;
+            const turn = turnToken(st);
+            const mine = myTurn();
+            const raid = raidOn(st.level, st.day);
+            const def = estimateDefense(st);
+            let sel = st.party.find((p) => p.id === selected && p.alive) || living()[0] || null;
+            if (sel) selected = sel.id;
 
-        /* 01 — survivors */
-        let h = `<div class="wos-sec"><div class="wos-step">01 · Survivors — tap to select, right-click to cycle action</div><div class="wos-cards">`;
-        for (const p of st.party) {
-            h += `<div class="wos-card${p.alive ? "" : " dead"}${sel && p.id === sel.id ? " sel" : ""}" data-surv="${p.id}" title="${esc(p.traitText)}">
-        <div class="wos-cname"><b>${p.name}</b><span class="wos-trait">${p.trait}</span></div>
-        <div class="wos-tags">${tagsOf(p)}</div>
-        ${gauge("HP", p.hp, "var(--ok)")}
-        ${gauge("HUN", p.hunger, "var(--bad)")}
-        ${gauge("FAT", p.fatigue, "var(--warn)")}
-        <div class="wos-act-pill">${actionText(p)}</div>
-      </div>`;
-        }
-        h += `</div></div>`;
+            /* 01 — survivors */
+            h += `<div class="wos-sec"><div class="wos-step">01 · Survivors — tap to select, right-click to cycle action</div><div class="wos-cards">`;
+            for (const p of st.party) {
+                h += `<div class="wos-card${p.alive ? "" : " dead"}${sel && p.id === sel.id ? " sel" : ""}" data-surv="${p.id}" title="${esc(p.traitText)}">
+          <div class="wos-cname"><b>${p.name}</b><span class="wos-trait">${p.trait}</span></div>
+          <div class="wos-tags">${tagsOf(p)}</div>
+          ${gauge("HP", p.hp, "var(--ok)")}
+          ${gauge("HUN", p.hunger, "var(--bad)")}
+          ${gauge("FAT", p.fatigue, "var(--warn)")}
+          <div class="wos-act-pill">${actionText(p)}</div>
+        </div>`;
+            }
+            h += `</div></div>`;
 
-        /* 02 — gameplay */
-        h += `<div class="wos-sec"><div class="wos-step">02 · Today — one action per survivor, then end the day</div>`;
-        h += `<div class="wos-scene">${sceneSVG(st)}</div>`;
-        h += raid
-            ? `<div class="wos-fore ${def >= raid ? "ok" : "bad"}">🌙 Raid expected tonight (~${raid}) · your defense ${def} ${def >= raid ? "— you can hold the line." : "— too weak! Guard or Board Up."}</div>`
-            : `<div class="wos-fore ok">🌙 Quiet night forecast — safe to send everyone out.</div>`;
-        if (st.phase === "play") {
-            h += mine
-                ? `<div class="wos-turn"><b>Your command.</b> Assigning <b>${sel ? sel.name : ""}</b> — pick an action below.</div>`
-                : `<div class="wos-turn">⏳ <b>${seatLabel(turn)}</b> is commanding day ${st.day}${turn === "bot" ? " — bot is thinking..." : " — waiting for their moves..."}</div>`;
-        }
-        if (sel) {
-            h += `<div class="wos-acts">`;
-            ACTS.forEach((a, i) => {
-                const m = ACT_META[a];
-                h += `<button type="button" class="wos-act${sel.action.type === a ? " on" : ""}" data-act="${a}" ${mine ? "" : "disabled"} title="Key ${i + 1}">${m.icon} ${m.label}<small>${i + 1} · ${m.hint}</small></button>`;
-            });
-            h += `</div><div class="wos-zones">`;
-            for (const z of ZONE_ORDER) {
-                const zo = ZONES[z];
-                const on = sel.action.type === "scavenge" && (sel.action.zone || "market") === z;
-                h += `<button type="button" class="wos-zone${on ? " on" : ""}" data-zone="${z}" ${mine ? "" : "disabled"}><span>${zo.label}<small>${zo.hint}${st.level.boost === z ? " · boosted" : ""}</small></span><span style="color:${zo.risk <= 0.1 ? "var(--ok)" : zo.risk <= 0.3 ? "var(--warn)" : "var(--bad)"}">${Math.round(zo.risk * 100)}%</span></button>`;
+            /* 02 — gameplay */
+            h += `<div class="wos-sec"><div class="wos-step">02 · Today — one action per survivor, then end the day</div>`;
+            h += `<div class="wos-scene">${sceneSVG(st)}</div>`;
+            h += raid
+                ? `<div class="wos-fore ${def >= raid ? "ok" : "bad"}">🌙 Raid expected tonight (~${raid}) · your defense ${def} ${def >= raid ? "— you can hold the line." : "— too weak! Guard or Board Up."}</div>`
+                : `<div class="wos-fore ok">🌙 Quiet night forecast — safe to send everyone out.</div>`;
+            if (st.phase === "play") {
+                h += mine
+                    ? `<div class="wos-turn"><b>Your command.</b> Assigning <b>${sel ? sel.name : ""}</b> — pick an action below.</div>`
+                    : `<div class="wos-turn">⏳ <b>${seatLabel(turn)}</b> is commanding day ${st.day}${turn === "bot" ? " — bot is thinking..." : " — waiting for their moves..."}</div>`;
+            }
+            if (sel) {
+                h += `<div class="wos-acts">`;
+                ACTS.forEach((a, i) => {
+                    const m = ACT_META[a];
+                    h += `<button type="button" class="wos-act${sel.action.type === a ? " on" : ""}" data-act="${a}" ${mine && !blocked() ? "" : "disabled"} title="Key ${i + 1}">${m.icon} ${m.label}<small>${i + 1} · ${m.hint}</small></button>`;
+                });
+                h += `</div><div class="wos-zones">`;
+                for (const z of ZONE_ORDER) {
+                    const zo = ZONES[z];
+                    const on = sel.action.type === "scavenge" && (sel.action.zone || "market") === z;
+                    h += `<button type="button" class="wos-zone${on ? " on" : ""}" data-zone="${z}" ${mine && !blocked() ? "" : "disabled"}><span>${zo.label}<small>${zo.hint}${st.level.boost === z ? " · boosted" : ""}</small></span><span style="color:${zo.risk <= 0.1 ? "var(--ok)" : zo.risk <= 0.3 ? "var(--warn)" : "var(--bad)"}">${Math.round(zo.risk * 100)}%</span></button>`;
+                }
+                h += `</div>`;
+            }
+            h += `<button type="button" class="wos-go" data-act="end" ${mine && !blocked() ? "" : "disabled"}>End Day ${st.day} ⏎</button>`;
+            if (st.report.length) {
+                h += `<ul class="wos-report">` + st.report.map((l) => `<li>${esc(l)}</li>`).join("") + `</ul>`;
             }
             h += `</div>`;
+
+            /* 03 — checklist */
+            h += `<div class="wos-sec"><div class="wos-step">03 · Checklist — the house keeps score of your plan</div><ul class="wos-check">`;
+            for (const it of checklist(st)) h += `<li class="${it.done ? "done" : ""}"><span class="mk">${it.done ? "✓" : "○"}</span><span>${esc(it.text)}</span></li>`;
+            h += `</ul></div>`;
         }
-        h += `<button type="button" class="wos-go" data-act="end" ${mine ? "" : "disabled"}>End Day ${st.day} ⏎</button>`;
-        if (st.report.length) {
-            h += `<ul class="wos-report">` + st.report.map((l) => `<li>${esc(l)}</li>`).join("") + `</ul>`;
-        }
-        h += `</div>`;
 
-        /* 03 — checklist */
-        h += `<div class="wos-sec"><div class="wos-step">03 · Checklist — the house keeps score of your plan</div><ul class="wos-check">`;
-        for (const it of checklist(st)) h += `<li class="${it.done ? "done" : ""}"><span class="mk">${it.done ? "✓" : "○"}</span><span>${esc(it.text)}</span></li>`;
-        h += `</ul></div>`;
+        /* overlays — one at a time, priority: help → cheats → pause → result */
+        if (ui.help) h += helpOverlay();
+        else if (ui.cheat && state) h += cheatOverlay(state);
+        else if (ui.paused) h += pauseOverlay();
+        else if (state && state.phase !== "play") h += endOverlay(state);
+        return h;
+    }
 
-        /* 04 — HUD */
-        const scores = st.seats.map((s) => `${seatLabel(s)} ${st.scores[s] || 0}`).join(" · ");
-        h += `<div class="wos-sec"><div class="wos-step">04 · HUD</div><div class="wos-hud">
-      <span class="wos-chip">Day <b>${Math.min(st.day, st.level.days)}/${st.level.days}</b></span>
-      <span class="wos-chip">🍞 <b>${st.inv.food}</b></span>
-      <span class="wos-chip">🪵 <b>${st.inv.wood}</b></span>
-      <span class="wos-chip">💊 <b>${st.inv.meds}</b></span>
-      <span class="wos-chip">🛡 <b>${def}</b> (${st.security}/${MAX_BOARDS} boards)</span>
-      <span class="wos-chip">👥 <b>${living().length}/3</b></span>
-      <span class="wos-chip hot">⭐ <b>${scores}</b></span>
-      ${!online ? `<span class="wos-chip">🏆 Best <b>${best}</b></span>` : ""}
-      <span class="wos-chip">🎲 <b>${st.seed}</b> · ${esc(st.level.name)}</span>
-      <span class="wos-chip">P1 <b>${seatLabel(st.seats[0])}</b>${st.seats[1] ? ` · P2 <b>${seatLabel(st.seats[1])}</b>` : ""}</span>
-      ${st.cheats.used ? `<span class="wos-chip cheat">CHEATS</span>` : ""}
-    </div></div>`;
-
-        /* virtual pad (mobile) */
-        if (ui.vpad) {
-            h += `<div class="wos-vpad">
+    function buildVpad() {
+        if (!ui.vpad) return "";
+        const mine = myTurn() && !blocked();
+        return `<div class="wos-vpad">
         <button type="button" data-ui="prev" ${mine ? "" : "disabled"}>◀</button>
         <button type="button" data-act="rest" ${mine ? "" : "disabled"}>😴</button>
         <button type="button" data-act="scavenge" ${mine ? "" : "disabled"}>🎒</button>
@@ -625,60 +673,73 @@ export function mount(root, context = {}) {
         <button type="button" class="end" data-act="end" ${mine ? "" : "disabled"}>⏎</button>
         <button type="button" data-zone="ruins" ${mine ? "" : "disabled"}>R</button>
         <button type="button" data-zone="market" ${mine ? "" : "disabled"}>M</button>
-        <button type="button" data-zone="clinic" ${mine ? "" : "disabled"}>C</button>
-        <button type="button" data-ui="help">?</button>
+        <button type="button" data-zone="clinic" ${mine ? "" : "disabled"}>V</button>
+        <button type="button" data-help>?</button>
       </div>`;
-        }
-
-        /* overlays */
-        if (ui.help) h += helpOverlay();
-        if (ui.cheat) h += cheatOverlay(st);
-        if (st.phase !== "play") h += endOverlay(st);
-        return h;
     }
 
     function helpOverlay() {
-        return `<div class="wos-ov"><div class="wos-ovcard">
-      <h3>How to play</h3>
-      <p>Survive until the ceasefire at dawn after the last day. Each day is one turn: give every survivor <b>one action</b>, then press <b>End Day</b>. Everything resolves at once — scavenging, the night raid, and dawn (everyone automatically eats 1 food if hungry).</p>
-      <table>
-        <tr><td>😴 Rest</td><td>fatigue -55. Exhausted survivors (80+) work at half effect and lose 8 hp each dawn.</td></tr>
-        <tr><td>🎒 Scavenge</td><td>pick a zone: Ruins (safe, wood), Market (food), Clinic (meds, risky). Injuries cost hp and half the loot.</td></tr>
-        <tr><td>🛡 Guard</td><td>adds 26 defense tonight (Boris 40). Raids are forecast — match their strength.</td></tr>
-        <tr><td>🔨 Board Up</td><td>spends 4 wood for +12 permanent defense (max 3 boards). Breaches tear one board off.</td></tr>
-        <tr><td>💊 Heal</td><td>spends 1 med, +35 hp to self.</td></tr>
-      </table>
-      <p><b>Traits:</b> Marko's meals restore more hunger · Katia hauls +50% loot with -10% risk · Boris takes -30% injury and guards best.</p>
-      <p><b>Losing:</b> hunger 80+ or exhaustion drains hp every dawn. At 0 hp a survivor falls. If everyone falls, the run ends.</p>
-      <p><b>Match modes:</b> Solo, or take turns commanding the same house against the Bot / a friend. A coin toss decides who commands day 1 and which seat (P1/P2) you get — random every match. Higher score (loot, boards, heals, repelled raids) wins the shift war.</p>
-      <table>
-        <tr><td>1–5</td><td>assign Rest / Scavenge / Guard / Board / Heal</td></tr>
-        <tr><td>Z · X · C</td><td>scavenge Ruins / Market / Clinic</td></tr>
-        <tr><td>← → / Tab</td><td>cycle survivor · right-click a card cycles its action</td></tr>
-        <tr><td>Enter / Space</td><td>End Day</td></tr>
-        <tr><td>H · &#96; · N · Esc</td><td>help · cheats · new level · close overlays</td></tr>
-      </table>
-      <p>Tip: just follow the ✓ checklist under the gameplay area. Every generated level is verified to be winnable.</p>
-      <div class="wos-ovrow"><button type="button" class="wos-btn" data-ui="closehelp">Got it — play</button></div>
+        return `<div class="wos-ov"><div class="wos-card-modal">
+      <div class="wos-head"><h3>How to play</h3><button class="wos-btn" type="button" data-help-close aria-label="Close help">×</button></div>
+      <div class="wos-body wos-help">
+        <div>
+          <b>Goal</b>
+          <p>Survive until the ceasefire at dawn after the last day. Each day is one turn: give every survivor <b>one action</b>, then press <b>End Day</b>. Everything resolves at once — scavenging, the night raid, and dawn (everyone automatically eats 1 food if hungry).</p>
+          <b>Actions</b>
+          <table>
+            <tr><td>😴 Rest</td><td>fatigue -55. Exhausted survivors (80+) work at half effect and lose 8 hp each dawn.</td></tr>
+            <tr><td>🎒 Scavenge</td><td>pick a zone: Ruins (safe, wood), Market (food), Clinic (meds, risky). Injuries cost hp and half the loot.</td></tr>
+            <tr><td>🛡 Guard</td><td>adds 26 defense tonight (Boris 40). Raids are forecast — match their strength.</td></tr>
+            <tr><td>🔨 Board Up</td><td>spends 4 wood for +12 permanent defense (max 3 boards). Breaches tear one board off.</td></tr>
+            <tr><td>💊 Heal</td><td>spends 1 med, +35 hp to self.</td></tr>
+          </table>
+        </div>
+        <div>
+          <b>Traits &amp; losing</b>
+          <p>Marko's meals restore more hunger · Katia hauls +50% loot with -10% risk · Boris takes -30% injury and guards best.</p>
+          <p>Hunger 80+ or exhaustion drains hp every dawn. At 0 hp a survivor falls. If everyone falls, the run ends.</p>
+          <b>Match modes</b>
+          <p>Solo, or take turns commanding the same house against the Bot / a friend. A coin toss decides who commands day 1 and which seat (P1/P2) you get. Higher score wins the shift war.</p>
+          <b>Keys</b>
+          <table>
+            <tr><td><span class="wos-kbd">1</span>–<span class="wos-kbd">5</span></td><td>Rest / Scavenge / Guard / Board / Heal</td></tr>
+            <tr><td><span class="wos-kbd">Z</span> <span class="wos-kbd">X</span> <span class="wos-kbd">V</span></td><td>Ruins / Market / Clinic</td></tr>
+            <tr><td><span class="wos-kbd">←</span> <span class="wos-kbd">→</span></td><td>cycle survivor · right-click a card cycles its action</td></tr>
+            <tr><td><span class="wos-kbd">Enter</span></td><td>End Day</td></tr>
+            <tr><td><span class="wos-kbd">H</span> <span class="wos-kbd">C</span> <span class="wos-kbd">P</span> <span class="wos-kbd">R</span> <span class="wos-kbd">Esc</span></td><td>help · cheats · pause · restart · close overlays</td></tr>
+          </table>
+          <p>Tip: follow the ✓ checklist. Every generated level is verified to be winnable.</p>
+        </div>
+      </div>
+      <div class="wos-foot"><span class="wos-note">Press H to reopen this guide</span><button class="wos-btn" type="button" data-help-close>Got it — play</button></div>
     </div></div>`;
     }
     function cheatOverlay(st) {
         const can = authority();
         const dis = can ? "" : "disabled";
-        return `<div class="wos-ov"><div class="wos-ovcard">
-      <h3>Cheat console</h3>
-      <p>Using any cheat marks the run — best scores are not saved. ${can ? "" : "Only the host can cheat in a room match."}</p>
-      <div class="wos-cheatgrid">
-        <button type="button" class="wos-btn${st.cheats.god ? " on" : ""}" data-cheat="god" ${dis}>${st.cheats.god ? "✓ " : ""}God mode (no deaths)</button>
-        <button type="button" class="wos-btn" data-cheat="supply" ${dis}>📦 Max supplies (30 each)</button>
-        <button type="button" class="wos-btn" data-cheat="heal" ${dis}>💊 Full heal team</button>
-        <button type="button" class="wos-btn" data-cheat="feed" ${dis}>🍞 Feed team (hunger 0)</button>
-        <button type="button" class="wos-btn" data-cheat="rest" ${dis}>😴 Rested team (fatigue 0)</button>
-        <button type="button" class="wos-btn" data-cheat="boards" ${dis}>🛡 Max boards</button>
-        <button type="button" class="wos-btn" data-cheat="win" ${dis}>🕊 Skip to ceasefire</button>
+        return `<div class="wos-ov"><div class="wos-card-modal">
+      <div class="wos-head"><h3>Cheat console</h3><button class="wos-btn" type="button" data-ui="closecheat" aria-label="Close cheats">×</button></div>
+      <div class="wos-body wos-cheats">
+        <p>Using any cheat marks the run — best scores are not saved. ${can ? "" : "Only the host can cheat in a room match."}</p>
+        <div class="wos-cheatgrid">
+          <button type="button" class="wos-btn${st.cheats.god ? " on" : ""}" data-cheat="god" ${dis}>${st.cheats.god ? "✓ " : ""}God mode (no deaths)</button>
+          <button type="button" class="wos-btn" data-cheat="supply" ${dis}>📦 Max supplies (30 each)</button>
+          <button type="button" class="wos-btn" data-cheat="heal" ${dis}>💊 Full heal team</button>
+          <button type="button" class="wos-btn" data-cheat="feed" ${dis}>🍞 Feed team (hunger 0)</button>
+          <button type="button" class="wos-btn" data-cheat="rest" ${dis}>😴 Rested team (fatigue 0)</button>
+          <button type="button" class="wos-btn" data-cheat="boards" ${dis}>🛡 Max boards</button>
+          <button type="button" class="wos-btn" data-cheat="win" ${dis}>🕊 Skip to ceasefire</button>
+        </div>
+        <div class="wos-seed"><input type="number" placeholder="Load a specific seed..." data-seedinp ${dis}><button type="button" class="wos-btn" data-cheat="seed" ${dis}>Load seed</button></div>
       </div>
-      <div class="wos-seed"><input type="number" placeholder="Load a specific seed..." data-seedinp ${dis}><button type="button" class="wos-btn" data-cheat="seed" ${dis}>Load seed</button></div>
-      <div class="wos-ovrow"><button type="button" class="wos-btn" data-ui="closecheat">Close</button></div>
+      <div class="wos-foot"><span class="wos-note">Press C to toggle this panel</span><button class="wos-btn" type="button" data-ui="closecheat">Close</button></div>
+    </div></div>`;
+    }
+    function pauseOverlay() {
+        return `<div class="wos-ov"><div class="wos-card-modal">
+      <div class="wos-head"><h3>Paused</h3></div>
+      <div class="wos-body"><p>The match is frozen. The bot timer is stopped and resumes exactly where it left off when you continue.</p></div>
+      <div class="wos-foot"><span class="wos-note">P / Esc to resume</span><button class="wos-btn" type="button" data-ui="resume">Resume</button></div>
     </div></div>`;
     }
     function endOverlay(st) {
@@ -693,14 +754,16 @@ export function mount(root, context = {}) {
             const other = st.scores[otherTok] || 0;
             verdict = my > other ? `You win the shift war ${my}–${other}!` : my < other ? `${seatLabel(otherTok)} wins the shift war ${other}–${my}.` : `Shared victory — ${my}–${other}.`;
         }
-        return `<div class="wos-ov"><div class="wos-ovcard">
-      <h3>${won ? "🕊 Ceasefire" : "🌑 The house fell silent"}</h3>
-      <p>${won
+        return `<div class="wos-ov"><div class="wos-card-modal">
+      <div class="wos-head"><h3>${won ? "🕊 Ceasefire" : "🌑 The house fell silent"}</h3></div>
+      <div class="wos-body">
+        <p>${won
                 ? `Dawn after day ${st.level.days}. ${alive.length}/3 made it: ${alive.map((p) => p.name).join(", ") || "no one"}. The guns fall silent.`
                 : `The last survivor fell on day ${Math.min(st.day, st.level.days)}. Seed ${st.seed} — ${esc(st.level.name)}.`}</p>
-      <p><b>${verdict}</b></p>
-      ${st.cheats.used ? `<p class="wos-note">Cheat-assisted run — best score not saved.</p>` : !online && won ? `<p class="wos-note">Best score: ${best}</p>` : ""}
-      <div class="wos-ovrow">
+        <p><b>${verdict}</b></p>
+        ${st.cheats.used ? `<p class="wos-note">Cheat-assisted run — best score not saved.</p>` : !online && won ? `<p class="wos-note">Best score: ${best}</p>` : ""}
+      </div>
+      <div class="wos-foot">
         <button type="button" class="wos-btn" data-act="new" ${authority() ? "" : "disabled"}>🎲 New level</button>
         <button type="button" class="wos-btn" data-act="replay" ${authority() ? "" : "disabled"}>↻ Replay seed</button>
         <button type="button" class="wos-btn" data-exit>Exit</button>
@@ -708,28 +771,67 @@ export function mount(root, context = {}) {
     </div></div>`;
     }
 
-    function render() {
-        if (destroyed) return;
-        board.innerHTML = buildBoard();
-        const modeBtns = root.querySelectorAll("[data-mode]");
-        modeBtns.forEach((b) => {
+    function syncUI() {
+        const st = state;
+        const txt = (key, v) => { const el = hudRefs[key]; if (el) el.textContent = v; };
+        if (!st) {
+            txt("status", online ? "Waiting for host..." : "Ready");
+            txt("supplies", "🍞 0 🪵 0 💊 0");
+            txt("scores", "0");
+            const cf = hudRefs.cheatflag;
+            if (cf) cf.hidden = true;
+        } else {
+            txt("status",
+                st.phase === "won" ? "Ceasefire 🕊" :
+                    st.phase === "lost" ? "Fallen" :
+                        ui.paused ? "Paused" :
+                            myTurn() ? `Your turn · Day ${st.day}/${st.level.days}` :
+                                `${seatLabel(turnToken(st))} commands · Day ${st.day}`);
+            txt("supplies", `🍞 ${st.inv.food} 🪵 ${st.inv.wood} 💊 ${st.inv.meds}`);
+            txt("def", estimateDefense(st));
+            txt("boards", `${st.security}/${MAX_BOARDS}`);
+            txt("alive", `${living().length}/3`);
+            txt("scores", st.seats.map((s) => `${seatLabel(s)} ${st.scores[s] || 0}`).join(" · "));
+            txt("seed", st.seed);
+            txt("area", st.level.name);
+            const cf = hudRefs.cheatflag;
+            if (cf) cf.hidden = !st.cheats.used;
+        }
+        txt("best", best);
+
+        root.querySelectorAll("[data-mode]").forEach((b) => {
             b.hidden = online;
             b.classList.toggle("on", !online && ((b.dataset.act === "mode-solo" && matchMode === "solo") || (b.dataset.act === "mode-bot" && matchMode === "bot")));
         });
-        const nb = root.querySelector("[data-new]");
+        const nb = hudRefs.new || root.querySelector("[data-new]");
         if (nb) nb.disabled = online && !room.isHost;
         const vp = root.querySelector("[data-vpadbtn]");
         if (vp) vp.classList.toggle("on", ui.vpad);
-        if (state) {
-            subEl.textContent = `Survive ${state.level.days} days in ${state.level.name} · seed ${state.seed}`;
-            statusEl.textContent =
-                state.phase === "won" ? "Ceasefire 🕊" :
-                    state.phase === "lost" ? "Fallen" :
-                        myTurn() ? `Your turn · Day ${state.day}/${state.level.days}` :
-                            `${seatLabel(turnToken(state))} commands · Day ${state.day}`;
-        } else {
-            statusEl.textContent = "Waiting for host...";
+
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".wos-btn-label");
+            if (label) label.textContent = ui.paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", ui.paused ? "Resume" : "Pause");
+            pbtn.disabled = !st || st.phase !== "play" || (online && !room.isHost);
+            const ic = root.querySelector("[data-pause-icon]");
+            if (ic) ic.innerHTML = iconSVG(ui.paused ? "play" : "pause", { size: 14 });
         }
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) {
+            cbtn.classList.toggle("on", ui.cheat || !!(st && st.cheats.used));
+            const label = cbtn.querySelector(".wos-btn-label");
+            if (label) label.textContent = ui.cheat ? "Close" : "Cheats";
+        }
+        const hbtn = root.querySelector("[data-help]");
+        if (hbtn) hbtn.classList.toggle("on", ui.help);
+    }
+
+    function render() {
+        if (destroyed) return;
+        board.innerHTML = buildBoard();
+        if (vpadEl) vpadEl.innerHTML = buildVpad();
+        syncUI();
     }
 
     function publish() {
@@ -742,6 +844,7 @@ export function mount(root, context = {}) {
     function clearBot() { if (botTimer) { clearTimeout(botTimer); botTimer = null; } }
     function startFresh(seed) {
         clearBot();
+        ui.paused = false;
         const r = rng((seed ^ 0xc0ffee) >>> 0);
         let seats;
         if (online) seats = r() < 0.5 ? ["host", "guest"] : ["guest", "host"];
@@ -752,6 +855,19 @@ export function mount(root, context = {}) {
         selected = (living()[0] || {}).id || "marko";
         ui.cheat = false;
         publish();
+    }
+    /* Pause freezes the only time-based element — the bot's setTimeout chain.
+       There are no Date.now()/performance.now() anchors in this turn-based game,
+       so resuming simply re-arms the bot from the same day/turn instead of
+       jumping forward (clearBot + maybeBot). */
+    function togglePause(on) {
+        if (!state || state.phase !== "play") return;
+        const next = typeof on === "boolean" ? on : !ui.paused;
+        if (next === ui.paused) return;
+        ui.paused = next;
+        if (ui.paused) clearBot();
+        render();
+        if (!ui.paused) maybeBot();
     }
     function saveBest() {
         if (online || !state || state.phase !== "won" || state.cheats.used) return;
@@ -836,9 +952,9 @@ export function mount(root, context = {}) {
     /* Bot commander: plans, shows its picks, then ends the day. */
     function maybeBot() {
         if (online || matchMode !== "bot" || !state || state.phase !== "play") return;
-        if (turnToken(state) !== "bot" || botTimer) return;
+        if (ui.paused || turnToken(state) !== "bot" || botTimer) return;
         const day = state.day;
-        const ok = () => !destroyed && state && state.phase === "play" && state.day === day && turnToken(state) === "bot";
+        const ok = () => !destroyed && !ui.paused && state && state.phase === "play" && state.day === day && turnToken(state) === "bot";
         botTimer = setTimeout(() => {
             botTimer = null;
             if (!ok()) return;
@@ -853,6 +969,7 @@ export function mount(root, context = {}) {
 
     /* ---------- input: mouse / touch / keyboard ---------- */
     function cycleSelection(dir) {
+        if (blocked()) return;
         const l = living();
         if (!l.length) return;
         let i = l.findIndex((p) => p.id === selected);
@@ -861,7 +978,7 @@ export function mount(root, context = {}) {
         render();
     }
     function assignSelected(act) {
-        if (!myTurn()) return;
+        if (!myTurn() || blocked()) return;
         const a = sanitize(act);
         if (a.type === "scavenge") lastZone = a.zone;
         submitAction({ t: "assign", pid: selected, act: a });
@@ -870,21 +987,33 @@ export function mount(root, context = {}) {
         if (l.length > 1) selected = l[(i + 1) % l.length].id;
         render();
     }
+    function toggleHelp(on) {
+        ui.help = typeof on === "boolean" ? on : !ui.help;
+        if (ui.help) ui.cheat = false;
+        render();
+    }
+    function toggleCheats(on) {
+        ui.cheat = typeof on === "boolean" ? on : !ui.cheat;
+        if (ui.cheat) ui.help = false;
+        render();
+    }
     function handleUi(op) {
-        if (op === "help") { ui.help = true; ui.cheat = false; render(); }
-        else if (op === "closehelp") {
+        if (op === "help") { toggleHelp(); return; }
+        if (op === "closehelp") {
             ui.help = false;
             try { localStorage.setItem("wosHelpSeen", "1"); } catch (e) { }
             render();
+            return;
         }
-        else if (op === "cheat") { ui.cheat = !ui.cheat; ui.help = false; render(); }
-        else if (op === "closecheat") { ui.cheat = false; render(); }
-        else if (op === "vpad") { ui.vpad = !ui.vpad; render(); }
-        else if (op === "prev") cycleSelection(-1);
+        if (op === "cheat") { toggleCheats(); return; }
+        if (op === "closecheat") { ui.cheat = false; render(); return; }
+        if (op === "resume") { togglePause(false); return; }
+        if (op === "vpad") { ui.vpad = !ui.vpad; render(); return; }
+        if (op === "prev") cycleSelection(-1);
         else if (op === "next") cycleSelection(1);
     }
     function handleAct(act) {
-        if (act === "end") { if (myTurn()) submitAction({ t: "end" }); return; }
+        if (act === "end") { if (myTurn() && !blocked()) submitAction({ t: "end" }); return; }
         if (act === "new") { submitAction({ t: "new" }); return; }
         if (act === "replay") { submitAction({ t: "replay" }); return; }
         if (act === "mode-solo") { submitAction({ t: "mode", mode: "solo" }); return; }
@@ -895,8 +1024,12 @@ export function mount(root, context = {}) {
         const t = event.target;
         const closest = (sel) => (t && t.closest ? t.closest(sel) : null);
         if (closest("[data-exit]")) { onExit(); return; }
+        if (closest("[data-pause]")) { togglePause(); return; }
+        if (closest("[data-restart]")) { submitAction({ t: "new" }); return; }
         const ub = closest("[data-ui]");
         if (ub) { handleUi(ub.dataset.ui); return; }
+        if (closest("[data-help-close]")) { handleUi("closehelp"); return; }
+        if (closest("[data-help]")) { toggleHelp(); return; }
         const cb = closest("[data-cheat]");
         if (cb) {
             const op = cb.dataset.cheat;
@@ -908,6 +1041,7 @@ export function mount(root, context = {}) {
         }
         const ab = closest("[data-act]");
         if (ab) { handleAct(ab.dataset.act); return; }
+        if (blocked()) return;
         const zb = closest("[data-zone]");
         if (zb) { lastZone = zb.dataset.zone; assignSelected({ type: "scavenge", zone: lastZone }); return; }
         const sb = closest("[data-surv]");
@@ -921,7 +1055,7 @@ export function mount(root, context = {}) {
         const card = t && t.closest ? t.closest("[data-surv]") : null;
         if (!card) return;
         event.preventDefault();
-        if (!myTurn()) return;
+        if (blocked() || !myTurn()) return;
         const p = state.party.find((x) => x.id === card.dataset.surv);
         if (!p || !p.alive) return;
         selected = p.id;
@@ -929,22 +1063,39 @@ export function mount(root, context = {}) {
         assignSelected({ type: next, zone: next === "scavenge" ? lastZone : null });
     }
     function handleKey(event) {
-        if (destroyed || !state || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (destroyed) return;
         const tag = ((event.target && event.target.tagName) || "").toLowerCase();
         if (tag === "input" || tag === "textarea") return;
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
         const k = event.key;
-        if (k === "Escape") { ui.help = false; ui.cheat = false; render(); return; }
-        if (k === "h" || k === "H" || k === "?") { ui.help = !ui.help; ui.cheat = false; render(); event.preventDefault(); return; }
-        if (k === "`") { ui.cheat = !ui.cheat; ui.help = false; render(); event.preventDefault(); return; }
-        if (k === "n" || k === "N") { submitAction({ t: "new" }); return; }
-        if (state.phase !== "play" || !myTurn()) return;
-        if (k === "ArrowLeft") { cycleSelection(-1); event.preventDefault(); return; }
-        if (k === "ArrowRight" || k === "Tab") { cycleSelection(1); event.preventDefault(); return; }
+        /* priority: help → cheats → pause → Escape → game actions */
+        if (k === "h" || k === "H" || k === "?") { toggleHelp(); event.preventDefault(); return; }
+        if (k === "c" || k === "C" || k === "`") {
+            if (!ui.help) toggleCheats();
+            event.preventDefault(); return;
+        }
+        if (k === "p" || k === "P") {
+            if (!ui.help && !ui.cheat) togglePause();
+            event.preventDefault(); return;
+        }
+        if (k === "Escape") {
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheat) toggleCheats(false);
+            else togglePause();
+            event.preventDefault(); return;
+        }
+        if (k === "r" || k === "R" || k === "n" || k === "N") {
+            if (!ui.help && !ui.cheat) { submitAction({ t: "new" }); event.preventDefault(); }
+            return;
+        }
+        if (!state || blocked() || state.phase !== "play" || !myTurn()) return;
         if (k === "Enter" || k === " ") { submitAction({ t: "end" }); event.preventDefault(); return; }
+        if (k === "ArrowLeft") { cycleSelection(-1); event.preventDefault(); return; }
+        if (k === "ArrowRight") { cycleSelection(1); event.preventDefault(); return; }
         if (k >= "1" && k <= "5") { const a = ACTS[+k - 1]; assignSelected({ type: a, zone: a === "scavenge" ? lastZone : null }); return; }
         if (k === "z" || k === "Z") { lastZone = "ruins"; assignSelected({ type: "scavenge", zone: "ruins" }); }
         else if (k === "x" || k === "X") { lastZone = "market"; assignSelected({ type: "scavenge", zone: "market" }); }
-        else if (k === "c" || k === "C") { lastZone = "clinic"; assignSelected({ type: "scavenge", zone: "clinic" }); }
+        else if (k === "v" || k === "V") { lastZone = "clinic"; assignSelected({ type: "scavenge", zone: "clinic" }); }
     }
 
     root.addEventListener("click", handleClick);

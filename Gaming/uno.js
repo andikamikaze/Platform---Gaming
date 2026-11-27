@@ -1,12 +1,14 @@
 /*
-  Uno Style — mengikuti template game module.
+  Uno — mengikuti template game module.
   - id META harus sama dengan nama file tanpa .js  → uno.js
   - Setelah edit: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "uno",
-    name: "Uno Style",
+    name: "Uno",
     category: "cards",
     catLabel: "Cards",
     desc: "Match colors and numbers, play action cards, and empty your hand first. Solvable random levels, cheats, and 2-player rooms.",
@@ -204,219 +206,301 @@ export function mount(root, context = {}) {
     let state = null;
 
     /* UI lokal (tidak ikut dipublish) */
-    let sel = 0, picker = null, overlay = null, scrollSelFlag = false, lastTopSig = "";
-    let botTimer = null, destroyed = false, notedRound = 0;
+    let sel = 0, picker = null, scrollSelFlag = false, lastTopSig = "";
+    let botTimer = null, botDueAt = 0, botRemain = null, destroyed = false, notedRound = 0;
+    let helpOpen = false, cheatsOpen = false, paused = false;
+    let pauseStart = 0, pauseOffset = 0;
     const toastTimers = new Set();
     const offs = [];
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (_) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("uno-help-seen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("uno-help-seen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     root.innerHTML = `
 <style>
-.uno-app{color:#0f172a;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.uno-app{width:100%;height:100%;min-height:0;display:flex;flex-direction:column;gap:10px;color:#0f172a;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;outline:none}
+.uno-app *{box-sizing:border-box}
 .uno-app [hidden]{display:none!important}
-.uno-app .uno-panel{position:relative;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
-.uno-app .uno-chips{display:flex;gap:6px;flex-wrap:wrap}
-.uno-app .uno-chip{background:#f1f5f9;color:#475569;border-radius:99px;padding:3px 10px;font-size:11.5px;font-weight:700}
-.uno-app .uno-zlabel{font-size:10.5px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;display:flex;align-items:center;gap:8px}
-.uno-app .uno-opps{display:flex;gap:8px;flex-wrap:wrap}
-.uno-app .uno-opp{flex:1;min-width:150px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:8px 10px;transition:border-color .15s,box-shadow .15s}
-.uno-app .uno-opp.cur{border-color:#6366f1;box-shadow:0 0 0 3px #6366f122}
-.uno-app .uno-opphead{display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:6px}
-.uno-app .uno-count{margin-left:auto;background:#e2e8f0;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:800;color:#334155}
-.uno-app .uno-badge{background:#fde047;color:#713f12;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:900;letter-spacing:.5px}
-.uno-app .uno-backs{display:flex;gap:3px;flex-wrap:wrap;align-items:center;min-height:30px}
-.uno-app .uno-back{width:20px;height:30px;border-radius:4px;background:#1e293b;flex:none}
-.uno-app .uno-mini svg{width:30px;height:45px;display:block;border-radius:4px}
-.uno-app .uno-more{font-size:11px;font-weight:800;color:#64748b}
-.uno-app .uno-tablezone{background:#f8fafc;border:1px solid #eef2f7;border-radius:12px;padding:12px}
-.uno-app .uno-table{display:flex;align-items:center;justify-content:center;gap:26px;flex-wrap:wrap}
-.uno-app .uno-deck{position:relative;border:none;background:none;padding:0;cursor:pointer;transition:transform .12s}
-.uno-app .uno-deck svg{width:66px;height:99px;display:block;border-radius:10px;box-shadow:0 3px 8px #0f172a1f}
-.uno-app .uno-deck.ready:hover{transform:translateY(-3px)}
-.uno-app .uno-deck.hint svg{box-shadow:0 0 0 3px #6366f155,0 3px 8px #0f172a1f}
-.uno-app .uno-deckcount{position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;font-size:10.5px;font-weight:800;border-radius:99px;padding:1px 8px;pointer-events:none}
-.uno-app .uno-piletag{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#94a3b8;text-align:center;margin-top:12px}
-.uno-app .uno-dir{text-align:center;color:#64748b}
-.uno-app .uno-dir b{font-size:26px;display:block;line-height:1}
-.uno-app .uno-dir small{font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
-.uno-app .uno-discard svg{width:92px;height:138px;display:block;border-radius:12px;box-shadow:0 5px 14px #0f172a26}
-.uno-app .uno-discard.pop svg{animation:unoPop .25s ease}
-.uno-app .uno-colorchip{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:8px;font-size:12px;font-weight:800;color:#334155}
-.uno-app .uno-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none}
-.uno-app .uno-last{text-align:center;font-size:12px;color:#64748b;margin-top:10px;min-height:16px}
-.uno-app .uno-picker{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding:10px;background:#eef2ff;border-radius:10px}
-.uno-app .uno-picker span{font-size:12.5px;font-weight:700;color:#3730a3}
-.uno-app .uno-colorbtn{border:none;border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:800;cursor:pointer;color:#fff;min-height:40px}
-.uno-app .uno-colorbtn small{opacity:.8;font-weight:700}
-.uno-app .uno-hand{display:flex;gap:8px;overflow-x:auto;padding:8px 2px 10px;min-height:120px;align-items:flex-end;scrollbar-width:thin}
-.uno-app .uno-card{border:none;background:none;padding:0;flex:none;cursor:pointer;transition:transform .13s,opacity .13s;border-radius:10px}
-.uno-app .uno-card svg{width:72px;height:108px;display:block;border-radius:10px;box-shadow:0 3px 8px #0f172a1f}
-.uno-app .uno-card.hot svg{box-shadow:0 0 0 2px #6366f1,0 4px 10px #0f172a29}
-.uno-app .uno-card.hot:hover{transform:translateY(-7px)}
-.uno-app .uno-card.off{opacity:.38;filter:saturate(.5)}
-.uno-app .uno-card.idle{opacity:.8}
-.uno-app .uno-card.sel svg{outline:3px solid #0f172a;outline-offset:2px}
-.uno-app .uno-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.uno-app .uno-btn{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;color:#0f172a;cursor:pointer;min-height:40px;transition:background .12s}
-.uno-app .uno-btn:hover{background:#f1f5f9}
-.uno-app .uno-btn:disabled{opacity:.45;cursor:default}
-.uno-app .uno-btn.primary{background:#0f172a;border-color:#0f172a;color:#fff}
-.uno-app .uno-btn.primary:hover{background:#1e293b}
-.uno-app .uno-btn kbd{margin-left:5px}
-.uno-app kbd{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:0 4px;font-size:10px;font-family:inherit;color:#64748b}
-.uno-app .uno-btn.primary kbd{background:#ffffff22;border-color:#ffffff33;color:#fff}
-.uno-app .uno-pad{display:none;gap:6px;margin-left:auto}
-.uno-app .uno-pad .uno-btn{min-width:46px;font-size:15px}
-.uno-app .uno-keys{font-size:11px;color:#94a3b8}
-.uno-app .uno-toasts{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;z-index:6;pointer-events:none;max-width:92%}
-.uno-app .uno-toast{background:#0f172aee;color:#f8fafc;padding:5px 14px;border-radius:99px;font-size:12px;font-weight:700;animation:unoToast 2.2s forwards;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-.uno-app .uno-toast.good{background:#166534ee}
-.uno-app .uno-toast.bad{background:#991b1bee}
-.uno-app .uno-toast.warn{background:#92400eee}
-.uno-app .uno-ov{position:absolute;inset:0;z-index:5;background:#f8fafcee;backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px}
-.uno-app .uno-ovcard{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;max-width:440px;width:100%;max-height:100%;overflow-y:auto;box-shadow:0 12px 32px #0f172a1f}
-.uno-app .uno-ovcard h3{margin:0 0 10px;font-size:19px}
-.uno-app .uno-ovcard p{margin:8px 0;font-size:13px;line-height:1.55;color:#334155}
-.uno-app .uno-ovcard ul{margin:8px 0;padding-left:18px;font-size:13px;line-height:1.7;color:#334155}
-.uno-app .uno-ovsub{font-size:13px;color:#475569;margin:6px 0 14px;line-height:1.5}
-.uno-app .uno-ovbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.uno-app .uno-ovhint{font-size:11.5px;color:#94a3b8}
-.uno-app .uno-cheat{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f1f5f9}
-.uno-app .uno-cheat b{font-size:13px;display:block}
-.uno-app .uno-cheat small{font-size:11.5px;color:#64748b}
-.uno-app .uno-note{font-size:11.5px;color:#92400e;background:#fef3c7;border-radius:8px;padding:7px 10px;margin:10px 0}
 .uno-app button:focus-visible{outline:2px solid #6366f1;outline-offset:2px}
+/* HUD: semua info + kontrol, tanpa intro/footer */
+.uno-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.uno-chip{display:inline-flex;align-items:center;gap:6px;min-height:28px;background:#f1f5f9;color:#475569;border-radius:99px;padding:4px 10px;font-size:11px;font-weight:700;white-space:nowrap}
+.uno-chip b{color:#0f172a;font-variant-numeric:tabular-nums}
+.uno-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none;background:#94a3b8}
+.uno-spacer{flex:1 1 auto;min-width:4px}
+.uno-btn{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;color:#0f172a;cursor:pointer;min-height:36px;transition:background .16s,transform .16s}
+.uno-btn:hover:not(:disabled){background:#f1f5f9}
+.uno-btn:disabled{opacity:.45;cursor:default}
+.uno-btn.primary{background:#0f172a;border-color:#0f172a;color:#fff}
+.uno-btn.primary:hover:not(:disabled){background:#1e293b}
+.uno-btn.on{border-color:#6366f1;color:#4338ca;background:#eef2ff}
+.uno-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.uno-icon-btn svg{flex:none;display:block}
+.uno-btn-label{white-space:nowrap}
+.uno-btn kbd{margin-left:6px}
+.uno-app kbd{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:0 4px;font-size:10px;font-family:inherit;color:#64748b}
+.uno-btn.primary kbd{background:#ffffff22;border-color:#ffffff33;color:#fff}
+/* Board mengisi sisa tinggi; konten proporsional dan ter-tengah */
+.uno-app.game-fill > .uno-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:0;border-radius:14px;overflow:hidden;background:#f8fafc}
+.uno-board{width:100%;max-width:920px;max-height:100%;min-height:0;display:flex;flex-direction:column;gap:10px;margin:auto;padding:14px;overflow:auto}
+.uno-panel{display:flex;flex-direction:column;gap:12px;min-width:0;overflow:hidden}
+.uno-zlabel{font-size:10.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#94a3b8;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.uno-opps{display:flex;gap:8px;flex-wrap:wrap}
+.uno-opp{flex:1 1 150px;min-width:150px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;transition:border-color .16s,box-shadow .16s}
+.uno-opp.cur{border-color:#6366f1;box-shadow:0 0 0 2px #6366f122}
+.uno-opphead{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:8px}
+.uno-count{margin-left:auto;background:#e2e8f0;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:800;color:#334155}
+.uno-badge{background:#fde047;color:#713f12;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:.5px}
+.uno-backs{display:flex;gap:4px;flex-wrap:wrap;align-items:center;min-height:30px}
+.uno-back{width:20px;height:30px;border-radius:4px;background:#1e293b;flex:none}
+.uno-mini svg{width:30px;height:45px;display:block;border-radius:4px}
+.uno-more{font-size:11px;font-weight:800;color:#64748b}
+.uno-tablezone{background:#f8fafc;border:1px solid #eef2f7;border-radius:12px;padding:16px}
+.uno-table{display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap}
+.uno-deck{position:relative;border:none;background:none;padding:0;min-width:44px;min-height:44px;cursor:pointer;transition:transform .16s}
+.uno-deck svg{width:66px;height:99px;display:block;border-radius:10px;box-shadow:0 3px 8px #0f172a1f}
+.uno-deck.ready:hover{transform:translateY(-3px)}
+.uno-deck.hint svg{box-shadow:0 0 0 3px #6366f155,0 3px 8px #0f172a1f}
+.uno-deckcount{position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;font-size:10.5px;font-weight:800;border-radius:99px;padding:1px 8px;pointer-events:none}
+.uno-piletag{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#94a3b8;text-align:center;margin-top:12px}
+.uno-dir{text-align:center;color:#64748b}
+.uno-dir b{font-size:26px;display:block;line-height:1}
+.uno-dir small{font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+.uno-discard svg{width:92px;height:138px;display:block;border-radius:12px;box-shadow:0 5px 14px #0f172a26}
+.uno-discard.pop svg{animation:unoPop .2s ease}
+.uno-colorchip{display:flex;align-items:center;gap:8px;justify-content:center;margin-top:8px;font-size:12px;font-weight:800;color:#334155}
+.uno-dotcard{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none}
+.uno-last{text-align:center;font-size:12px;color:#64748b;margin-top:12px;min-height:16px}
+.uno-picker{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding:12px;background:#eef2ff;border-radius:10px}
+.uno-picker span{font-size:12.5px;font-weight:700;color:#3730a3}
+.uno-colorbtn{border:none;border-radius:9px;padding:10px 16px;font-size:12.5px;font-weight:800;cursor:pointer;color:#fff;min-height:44px}
+.uno-colorbtn small{opacity:.8;font-weight:700}
+.uno-hand{display:flex;gap:8px;overflow-x:auto;padding:8px 2px 12px;min-height:120px;align-items:flex-end;scrollbar-width:thin;overscroll-behavior-x:contain}
+.uno-card{border:none;background:none;padding:0;flex:none;cursor:pointer;transition:transform .16s,opacity .16s;border-radius:10px}
+.uno-card svg{width:72px;height:108px;display:block;border-radius:10px;box-shadow:0 3px 8px #0f172a1f}
+.uno-card.hot svg{box-shadow:0 0 0 2px #6366f1,0 4px 10px #0f172a29}
+.uno-card.hot:hover{transform:translateY(-7px)}
+.uno-card.off{opacity:.38;filter:saturate(.5)}
+.uno-card.idle{opacity:.8}
+.uno-card.sel svg{outline:3px solid #0f172a;outline-offset:2px}
+/* Touch pad adalah sibling board, bukan anak board */
+.uno-pad{display:none;justify-content:center;align-items:center;gap:8px;margin-top:2px}
+.uno-pad .uno-btn{min-width:48px;font-size:15px}
+.uno-toasts{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;z-index:6;pointer-events:none;max-width:92%}
+.uno-toast{background:#0f172aee;color:#f8fafc;padding:6px 14px;border-radius:99px;font-size:12px;font-weight:700;animation:unoToast 2.2s forwards;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.uno-toast.good{background:#166534ee}
+.uno-toast.bad{background:#991b1bee}
+.uno-toast.warn{background:#92400eee}
+/* Overlay modal: head/foot tetap, isi bisa scroll */
+.uno-ov{position:absolute;inset:0;z-index:5;background:#f8fafcee;backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px}
+.uno-ovcard{display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;max-width:560px;width:100%;max-height:100%;box-shadow:0 12px 28px #0f172a18}
+.uno-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.uno-head h3{margin:0;font-size:19px;line-height:1.25}
+.uno-body{flex:1 1 auto;min-height:0;overflow:auto}
+.uno-body p,.uno-ovsub{margin:8px 0;font-size:13px;line-height:1.6;color:#334155}
+.uno-body ul{margin:8px 0;padding-left:18px;font-size:13px;line-height:1.7;color:#334155}
+.uno-foot{flex:none;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0}
+.uno-ovbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.uno-ovhint{font-size:11.5px;color:#94a3b8}
+.uno-note{font-size:11.5px;color:#92400e;background:#fef3c7;border-radius:8px;padding:8px 12px;margin:8px 0}
+.uno-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.uno-help b{display:block;margin:10px 0 4px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#64748b}
+.uno-help p{margin:6px 0;font-size:12.5px;line-height:1.55}
+.uno-help ul{font-size:12.5px}
+.uno-kbd{display:inline-block;padding:1px 5px;border:1px solid #e2e8f0;border-bottom-width:2px;border-radius:5px;background:#f8fafc;font:600 10px/1.4 ui-monospace,monospace;color:#334155}
+.uno-cheats{display:flex;flex-direction:column}
+.uno-cheat{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f1f5f9;min-height:44px}
+.uno-cheat b{font-size:13px;display:block}
+.uno-cheat small{font-size:11.5px;color:#64748b}
 @keyframes unoPop{from{transform:scale(.85);opacity:.4}}
 @keyframes unoToast{0%{opacity:0;transform:translateY(-6px)}10%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
 @media (max-width:700px){
-  .uno-app .uno-card svg{width:58px;height:87px}
-  .uno-app .uno-discard svg{width:78px;height:117px}
-  .uno-app .uno-deck svg{width:56px;height:84px}
-  .uno-app .uno-opp{min-width:120px}
-  .uno-app .uno-table{gap:16px}
-  .uno-app .uno-pad{display:flex}
-  .uno-app .uno-keys{display:none}
-  .uno-app .uno-btn kbd{display:none}
-}
-@media (pointer:coarse){
-  .uno-app .uno-pad{display:flex}
-  .uno-app .uno-keys{display:none}
-  .uno-app .uno-btn kbd{display:none}
+ .uno-app .uno-panel{padding:12px}
 }
 @media (prefers-reduced-motion:reduce){
-  .uno-app *{animation:none!important;transition:none!important}
+ .uno-app *{animation:none!important;transition:none!important}
+}
+/* --- layout final: override pointer:coarse 44px dengan spesifisitas lebih tinggi --- */
+@media (max-width:640px){
+ .uno-app{gap:6px}
+ .uno-app .uno-hud{gap:4px}
+ .uno-app .uno-hud .uno-chip{padding:4px 6px;font-size:9px;min-height:0}
+ .uno-app .uno-hud .uno-chip[data-hud="skill"],
+ .uno-app .uno-hud .uno-chip[data-hud="best"],
+ .uno-app .uno-hud .uno-chip[data-hud="room"]{display:none}
+ .uno-app .uno-hud .uno-btn-label,.uno-app .uno-hud .uno-spacer{display:none}
+ .uno-app .uno-hud .uno-btn{min-height:32px;padding:5px 9px;font-size:9px}
+ .uno-app.game-fill > .uno-panel:has(.uno-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+ .uno-app .uno-board{padding:10px;gap:8px}
+ .uno-app .uno-card svg{width:58px;height:87px}
+ .uno-app .uno-discard svg{width:78px;height:117px}
+ .uno-app .uno-deck svg{width:56px;height:84px}
+ .uno-app .uno-opp{min-width:120px;flex-basis:120px;padding:8px}
+ .uno-app .uno-table{gap:16px}
+ .uno-app .uno-tablezone{padding:12px}
+ .uno-app .uno-ov{padding:8px}
+ .uno-app .uno-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+ .uno-app .uno-body{scrollbar-width:none}
+ .uno-app .uno-body::-webkit-scrollbar{display:none}
+ .uno-app .uno-help{grid-template-columns:1fr;gap:8px}
+ .uno-app .uno-foot{padding-top:8px}
+ .uno-app .uno-note{display:none}
+ .uno-app .uno-pad{display:flex}
+}
+@media (pointer:coarse){
+ .uno-app .uno-hud .uno-btn{min-height:32px;padding:5px 9px;font-size:9px}
+ .uno-app .uno-pad{display:flex}
+ .uno-app .uno-pad .uno-btn{min-width:48px;min-height:44px}
+ .uno-app .uno-ovcard .uno-btn{min-height:44px}
 }
 </style>
-<div class="game-app uno-app">
-  <div class="game-intro">
-    <div><h2>Uno Style</h2><p>Match the color or number and empty your hand first. UNO is called automatically — just play.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app uno-app game-fill" data-uno>
+  <div class="uno-hud">
+    <span class="uno-chip">LV <b data-hud="level">1</b> <span data-hud="skill">Casual bots</span></span>
+    <span class="uno-chip" data-hud="bestchip">BEST <b data-hud="best">—</b></span>
+    <span class="uno-chip"><i class="uno-dot" data-status-dot></i><span data-status>Ready</span></span>
+    <span class="uno-chip">HAND <b data-hud="hand">0</b></span>
+    <span class="uno-chip">DECK <b data-hud="deck">0</b></span>
+    <span class="uno-chip" data-hud="room" hidden>ROOM · P<b data-hud="seat">1</b></span>
+    <span class="uno-chip" data-hud="cheated" hidden>🪄 cheated</span>
+    <span class="uno-spacer"></span>
+    <button class="uno-btn uno-icon-btn" type="button" data-act="draw" data-drawbtn aria-label="Draw a card" title="Draw a card (D)">${iconSVG("layers", { size: 14 })}<span class="uno-btn-label">Draw</span></button>
+    <button class="uno-btn uno-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="uno-btn-label">Help</span></button>
+    <button class="uno-btn uno-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)" ${online ? "disabled" : ""}>${iconSVG("wrench", { size: 14 })}<span class="uno-btn-label">Cheats</span></button>
+    <button class="uno-btn uno-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" ${online ? "disabled" : ""}>${iconSVG("pause", { size: 14 })}<span class="uno-btn-label">Pause</span></button>
+    <button class="uno-btn uno-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="uno-btn-label">Restart</span></button>
+    <button class="uno-btn uno-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="uno-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel uno-panel" data-board>
-    <div class="uno-chips" data-chips></div>
+    <div class="uno-board">
+      <div class="uno-zone">
+        <div class="uno-zlabel">Opponents</div>
+        <div class="uno-opps" data-opps></div>
+      </div>
 
-    <div class="uno-zone">
-      <div class="uno-zlabel">Opponents</div>
-      <div class="uno-opps" data-opps></div>
-    </div>
-
-    <div class="uno-zone uno-tablezone">
-      <div class="uno-zlabel">Table</div>
-      <div class="uno-table">
-        <div>
-          <button type="button" class="uno-deck" data-act="draw" aria-label="Draw a card (D)">${backSvg()}<span class="uno-deckcount" data-deckcount>0</span></button>
-          <div class="uno-piletag">DRAW</div>
+      <div class="uno-zone uno-tablezone">
+        <div class="uno-zlabel">Table</div>
+        <div class="uno-table">
+          <div>
+            <button type="button" class="uno-deck" data-act="draw" aria-label="Draw a card (D)">${backSvg()}<span class="uno-deckcount" data-deckcount>0</span></button>
+            <div class="uno-piletag">DRAW</div>
+          </div>
+          <div class="uno-dir" data-dir><b>↻</b><small>Clockwise</small></div>
+          <div>
+            <div class="uno-discard" data-discard></div>
+            <div class="uno-colorchip"><span class="uno-dotcard" data-colordot></span><span data-colorname>—</span></div>
+          </div>
         </div>
-        <div class="uno-dir" data-dir><b>↻</b><small>Clockwise</small></div>
-        <div>
-          <div class="uno-discard" data-discard></div>
-          <div class="uno-colorchip"><span class="uno-dot" data-colordot></span><span data-colorname>—</span></div>
+        <div class="uno-last" data-last aria-live="polite"></div>
+        <div class="uno-picker" data-picker hidden>
+          <span>Wild! Pick a color:</span>
+          <button type="button" class="uno-colorbtn" data-act="color" data-color="red" style="background:#ef4444">Red <small>1</small></button>
+          <button type="button" class="uno-colorbtn" data-act="color" data-color="yellow" style="background:#f59e0b">Yellow <small>2</small></button>
+          <button type="button" class="uno-colorbtn" data-act="color" data-color="green" style="background:#22c55e">Green <small>3</small></button>
+          <button type="button" class="uno-colorbtn" data-act="color" data-color="blue" style="background:#3b82f6">Blue <small>4</small></button>
+          <button type="button" class="uno-btn" data-act="cancelColor">Cancel</button>
         </div>
       </div>
-      <div class="uno-last" data-last aria-live="polite"></div>
-      <div class="uno-picker" data-picker hidden>
-        <span>Wild! Pick a color:</span>
-        <button type="button" class="uno-colorbtn" data-act="color" data-color="red" style="background:#ef4444">Red <small>1</small></button>
-        <button type="button" class="uno-colorbtn" data-act="color" data-color="yellow" style="background:#f59e0b">Yellow <small>2</small></button>
-        <button type="button" class="uno-colorbtn" data-act="color" data-color="green" style="background:#22c55e">Green <small>3</small></button>
-        <button type="button" class="uno-colorbtn" data-act="color" data-color="blue" style="background:#3b82f6">Blue <small>4</small></button>
-        <button type="button" class="uno-btn" data-act="cancelColor">Cancel</button>
+
+      <div class="uno-zone">
+        <div class="uno-zlabel">Your hand · <span class="uno-badge" data-handuno hidden>UNO!</span></div>
+        <div class="uno-hand" data-hand></div>
       </div>
     </div>
-
-    <div class="uno-zone">
-      <div class="uno-zlabel">Your hand · <span data-handcount>0</span> <span class="uno-badge" data-handuno hidden>UNO!</span></div>
-      <div class="uno-hand" data-hand></div>
-    </div>
-
-    <div class="uno-controls">
-      <button type="button" class="uno-btn primary" data-act="draw" data-drawbtn>Draw card<kbd>D</kbd></button>
-      <button type="button" class="uno-btn" data-act="help">How to play<kbd>H</kbd></button>
-      <button type="button" class="uno-btn" data-act="cheats" data-cheatsbtn>Cheats<kbd>C</kbd></button>
-      <button type="button" class="uno-btn" data-act="restart" data-restartbtn>Retry level<kbd>R</kbd></button>
-      <div class="uno-pad">
-        <button type="button" class="uno-btn" data-act="selPrev" aria-label="Select previous card">◀</button>
-        <button type="button" class="uno-btn primary" data-act="playSel" data-padplay>Play</button>
-        <button type="button" class="uno-btn" data-act="selNext" aria-label="Select next card">▶</button>
-      </div>
-    </div>
-    <div class="uno-keys">← → select · Enter play · D draw · 1–4 pick color · H help · C cheats · R retry · Esc close</div>
 
     <div class="uno-toasts" data-toasts aria-live="polite"></div>
 
     <div class="uno-ov" data-ov="help" hidden>
       <div class="uno-ovcard">
-        <h3>How to play</h3>
-        <p><b>Goal.</b> Be the first to empty your hand.</p>
-        <p><b>Your turn.</b> Tap a glowing card — it matches the table's <b>color</b> or its <b>number / symbol</b>. Wilds always fit; then pick the next color.</p>
-        <p><b>Stuck?</b> Tap the deck or <b>Draw</b>. If the drawn card fits, it is played automatically. If not, your turn passes. That's it — one draw, no chains.</p>
-        <ul>
-          <li><b>Skip</b> — next player loses their turn.</li>
-          <li><b>Reverse</b> — flips direction (with 2 players it acts as a Skip).</li>
-          <li><b>+2</b> — next player draws 2 and is skipped.</li>
-          <li><b>Wild</b> — you choose the color.</li>
-          <li><b>Wild +4</b> — choose color; next player draws 4 and is skipped.</li>
-        </ul>
-        <p><b>Easy rules.</b> UNO is called for you at one card — no penalty, no timers.</p>
-        <p><b>Levels.</b> Every deal is generated from a seed and checked so you always start with at least two playable cards. Win → next level with smarter bots. Lose → retry the <i>exact same deal</i>.</p>
-        <p><b>Controls.</b> Desktop: ←/→ select, Enter play, D draw, 1–4 color, H help, C cheats, R retry. Mobile: tap cards or use the ◀ Play ▶ pad.</p>
-        <div class="uno-ovbtns"><button type="button" class="uno-btn primary" data-act="closeHelp">Got it</button></div>
+        <div class="uno-head"><h3>How to play</h3><button class="uno-btn" type="button" data-act="closeHelp" aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="uno-body uno-help">
+          <div>
+            <b>Your turn</b>
+            <p>Match the table's <b>color</b> or <b>number / symbol</b>. Wilds always fit — then pick the next color.</p>
+            <p><b>Stuck?</b> Tap the deck or <b>Draw</b>. If the drawn card fits it is played automatically; otherwise your turn passes.</p>
+            <b>Action cards</b>
+            <ul>
+              <li><b>Skip</b> — next player loses a turn.</li>
+              <li><b>Reverse</b> — flips direction (with 2 players it acts as a Skip).</li>
+              <li><b>+2</b> — next player draws 2 and is skipped.</li>
+              <li><b>Wild</b> — you choose the color.</li>
+              <li><b>Wild +4</b> — choose a color; next player draws 4 and is skipped.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <p>Be the first to empty your hand. UNO is called automatically at one card — no penalty, no timers.</p>
+            <p>Every deal is seeded and validated so you start with at least two playable cards. Win → next level with smarter bots. Lose → retry the <i>exact same deal</i>.</p>
+            <b>Controls</b>
+            <ul>
+              <li><span class="uno-kbd">← →</span> select · <span class="uno-kbd">Enter</span> play · <span class="uno-kbd">D</span> draw · <span class="uno-kbd">1–4</span> pick color</li>
+              <li><span class="uno-kbd">H</span> help · <span class="uno-kbd">C</span> cheats · <span class="uno-kbd">P</span> pause · <span class="uno-kbd">R</span> restart · <span class="uno-kbd">Esc</span> close</li>
+              <li>Mobile: tap cards or use the ◀ Play ▶ pad below the board.</li>
+            </ul>
+            <div class="uno-foot"><span class="uno-note">Press H to reopen this guide</span><button class="uno-btn primary" type="button" data-act="closeHelp">Got it</button></div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="uno-ov" data-ov="cheats" hidden>
       <div class="uno-ovcard">
-        <h3>Cheats</h3>
-        <div class="uno-note">Sandbox mode — using any cheat marks this round, and your best level won't increase. Cheats are disabled in room matches.</div>
-        <div data-cheatlist></div>
-        <div class="uno-ovbtns" style="margin-top:12px"><button type="button" class="uno-btn" data-act="closeCheats">Close</button></div>
+        <div class="uno-head"><h3>Cheats</h3><button class="uno-btn" type="button" data-act="closeCheats" aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="uno-body uno-cheats">
+          <div class="uno-note">Sandbox mode — using any cheat marks this round, and your best level won't increase. Cheats are disabled in room matches.</div>
+          <div data-cheatlist></div>
+        </div>
+        <div class="uno-foot"><span class="uno-note">Offline games only</span><button class="uno-btn" type="button" data-act="closeCheats">Close cheats</button></div>
+      </div>
+    </div>
+
+    <div class="uno-ov" data-ov="pause" hidden>
+      <div class="uno-ovcard">
+        <div class="uno-head"><h3>Paused</h3></div>
+        <div class="uno-body"><p>The board, bots and timers are frozen.</p></div>
+        <div class="uno-foot"><span class="uno-note">Press P or Esc to resume</span><button class="uno-btn primary" type="button" data-resume>Resume</button></div>
       </div>
     </div>
 
     <div class="uno-ov" data-ov="over" hidden>
       <div class="uno-ovcard">
-        <h3 data-overtitle>Game over</h3>
-        <p class="uno-ovsub" data-overreason></p>
-        <div class="uno-ovbtns" data-overbtns></div>
+        <div class="uno-head"><h3 data-overtitle>Game over</h3></div>
+        <div class="uno-body"><p class="uno-ovsub" data-overreason></p></div>
+        <div class="uno-foot"><div class="uno-ovbtns" data-overbtns></div></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="uno-pad">
+    <button type="button" class="uno-btn" data-act="selPrev" aria-label="Select previous card">${iconSVG("chevronLeft", { size: 16 })}</button>
+    <button type="button" class="uno-btn primary" data-act="playSel" data-padplay>Play</button>
+    <button type="button" class="uno-btn" data-act="selNext" aria-label="Select next card">${iconSVG("chevronRight", { size: 16 })}</button>
+  </div>
 </div>`;
-
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
-    const statusEl = $("[data-status]"), dotEl = $(".game-status-dot"), chipsEl = $("[data-chips]");
+    const statusEl = $("[data-status]"), dotEl = $("[data-status-dot]");
+    const hud = {
+        level: $('[data-hud="level"]'), skill: $('[data-hud="skill"]'), best: $('[data-hud="best"]'),
+        bestChip: $('[data-hud="bestchip"]'), hand: $('[data-hud="hand"]'), deck: $('[data-hud="deck"]'),
+        room: $('[data-hud="room"]'), seat: $('[data-hud="seat"]'), cheated: $('[data-hud="cheated"]'),
+    };
     const oppsEl = $("[data-opps]"), discardEl = $("[data-discard]");
     const deckBtn = $(".uno-deck"), deckCountEl = $("[data-deckcount]"), dirEl = $("[data-dir]");
     const colorDotEl = $("[data-colordot]"), colorNameEl = $("[data-colorname]"), lastEl = $("[data-last]");
     const pickerEl = $("[data-picker]"), handEl = $("[data-hand]");
-    const handCountEl = $("[data-handcount]"), handUnoEl = $("[data-handuno]");
+    const handUnoEl = $("[data-handuno]");
     const drawBtn = $("[data-drawbtn]"), padPlayBtn = $("[data-padplay]");
-    const restartBtn = $("[data-restartbtn]"), cheatsBtn = $("[data-cheatsbtn]");
+    const restartBtn = $(".uno-hud [data-restart]"), cheatsBtn = $("[data-cheats]"), pauseBtn = $("[data-pause]");
     const toastsEl = $("[data-toasts]");
-    const ovHelp = $('[data-ov="help"]'), ovCheats = $('[data-ov="cheats"]'), ovOver = $('[data-ov="over"]');
+    const ov = {
+        help: $('[data-ov="help"]'), cheats: $('[data-ov="cheats"]'),
+        pause: $('[data-ov="pause"]'), over: $('[data-ov="over"]'),
+    };
     const overTitle = $("[data-overtitle]"), overReason = $("[data-overreason]"), overBtns = $("[data-overbtns]");
     const cheatList = $("[data-cheatlist]");
 
@@ -557,6 +641,7 @@ export function mount(root, context = {}) {
     /* ---------------- ronde baru ---------------- */
     function newGame(level, seed) {
         if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+        paused = false; pauseStart = 0; botRemain = null;
         const nPlayers = online ? 2 : 4;
         const deal = generateDeal(seed, nPlayers);
         const swap = online ? Math.random() < 0.5 : false; /* posisi pemain multiplayer diacak */
@@ -580,7 +665,7 @@ export function mount(root, context = {}) {
             swapSeats: swap, cheated: false, cheats: { reveal: false, freePlay: false },
             lastAction: players[deal.starter].name + " goes first 🎲",
         };
-        sel = 0; picker = null; overlay = null; scrollSelFlag = false; lastTopSig = "";
+        sel = 0; picker = null; scrollSelFlag = false; lastTopSig = "";
         toast("Level " + level + " · " + (deal.starter === mySeat() ? "you start!" : players[deal.starter].name + " starts"), "good");
         if (online) toast("Random seats: you are Player " + (mySeat() + 1));
     }
@@ -603,14 +688,37 @@ export function mount(root, context = {}) {
         if (online && room.isHost) room.publishState(state).catch(console.warn);
         scheduleBot();
     }
-    function scheduleBot() {
+    /* Pause: hentikan bot & timer, lalu geser penanda waktu saat resume
+       supaya sisa jeda tidak loncat (Date.now()/performance.now() anchor). */
+    const clock = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+    const nowMs = () => clock() - pauseOffset;
+    function scheduleBot(wait) {
         if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (destroyed || online || !state || state.phase !== "play") return;
+        if (destroyed || paused || online || !state || state.phase !== "play") return;
         if (!state.players[state.turn].ai) return;
-        botTimer = setTimeout(() => { botTimer = null; botMove(); }, 750 + Math.random() * 550);
+        const ms = wait == null ? 750 + Math.random() * 550 : wait;
+        botDueAt = nowMs() + ms;
+        botTimer = setTimeout(() => { botTimer = null; if (paused || destroyed) return; botMove(); }, ms);
+    }
+    function togglePause(on) {
+        if (online || !state) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) {
+            pauseStart = clock();
+            botRemain = botTimer ? Math.max(0, botDueAt - nowMs()) : null;
+            if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+        } else {
+            if (pauseStart) pauseOffset += clock() - pauseStart;
+            pauseStart = 0;
+            const remain = botRemain; botRemain = null;
+            scheduleBot(remain);
+        }
+        render();
     }
     function botMove() {
-        if (destroyed || !state || state.phase !== "play") return;
+        if (destroyed || paused || !state || state.phase !== "play") return;
         const seat = state.turn, p = state.players[seat];
         if (!p.ai) return;
         let oppMin = 99;
@@ -629,7 +737,9 @@ export function mount(root, context = {}) {
         if (destroyed || !state || !action || typeof action !== "object") return;
         const seat = seatOf(actor);
         const type = action.type;
+        if (paused && type !== "restart") return;
         if (type === "restart") {
+            helpOpen = false; cheatsOpen = false;
             if (online) newGame(1, newSeed());          /* rematch: seed & kursi baru */
             else newGame(state.level, state.seed);      /* retry: deal SAMA (solvable) */
             publish(); return;
@@ -669,7 +779,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- interaksi lokal ---------------- */
     function tryPlay(i) {
-        if (!state || overlay || picker || state.phase === "over") return;
+        if (!state || helpOpen || cheatsOpen || paused || picker || state.phase === "over") return;
         const my = mySeat();
         if (state.turn !== my) { toast("Wait — " + state.players[state.turn].name + " is playing", "warn"); return; }
         const me = state.players[my], c = me.hand[i];
@@ -684,13 +794,13 @@ export function mount(root, context = {}) {
         submitAction({ type: "play", index: i });
     }
     function tryDraw() {
-        if (!state || overlay || state.phase === "over") return;
+        if (!state || helpOpen || cheatsOpen || paused || state.phase === "over") return;
         if (state.turn !== mySeat()) { toast("Not your turn yet", "warn"); return; }
         picker = null;
         submitAction({ type: "draw" });
     }
     function moveSel(d) {
-        if (!state) return;
+        if (!state || helpOpen || cheatsOpen || paused) return;
         const n = state.players[mySeat()].hand.length;
         if (!n) return;
         sel = (sel + d + n) % n;
@@ -698,7 +808,7 @@ export function mount(root, context = {}) {
         render();
     }
     function confirmColor(col) {
-        if (!picker) return;
+        if (!picker || paused) return;
         const i = picker.index;
         picker = null;
         submitAction({ type: "play", index: i, color: col });
@@ -709,9 +819,15 @@ export function mount(root, context = {}) {
         if (destroyed) return;
         if (!state) {
             statusEl.textContent = "Waiting for host to deal…";
-            chipsEl.innerHTML = '<span class="uno-chip">Room · 2 players</span>';
+            dotEl.style.background = "#94a3b8";
+            hud.level.textContent = "—"; hud.skill.textContent = "";
+            hud.best.textContent = "—"; hud.bestChip.hidden = true;
+            hud.hand.textContent = "0"; hud.deck.textContent = "0";
+            hud.room.hidden = !online; hud.seat.textContent = String(playerIndex + 1);
+            hud.cheated.hidden = true;
             oppsEl.innerHTML = ""; handEl.innerHTML = ""; discardEl.innerHTML = "";
             drawBtn.disabled = true; padPlayBtn.disabled = true;
+            syncUI();
             return;
         }
         const my = mySeat(), me = state.players[my];
@@ -724,10 +840,15 @@ export function mount(root, context = {}) {
         pickerEl.hidden = !picker;
         sel = Math.max(0, Math.min(sel, me.hand.length - 1));
 
-        /* chips + status */
-        chipsEl.innerHTML = online
-            ? '<span class="uno-chip">Room · 2 players</span><span class="uno-chip">You: P' + (my + 1) + "</span>" + (state.cheated ? "" : "")
-            : '<span class="uno-chip">Level ' + state.level + " · " + SKILL_LABEL[skillFor(state.level)] + ' bots</span><span class="uno-chip">Best Lv ' + (best || "—") + "</span>" + (state.cheated ? '<span class="uno-chip">🪄 cheated</span>' : "");
+        /* HUD chips + status */
+        hud.level.textContent = String(state.level);
+        hud.skill.textContent = online ? "" : SKILL_LABEL[skillFor(state.level)] + " bots";
+        hud.best.textContent = best ? String(best) : "—";
+        hud.bestChip.hidden = online;
+        hud.hand.textContent = String(me.hand.length);
+        hud.deck.textContent = String(state.deck.length);
+        hud.room.hidden = !online; hud.seat.textContent = String(my + 1);
+        hud.cheated.hidden = !state.cheated;
         const anyPlayable = me.hand.some((c) => free || canPlay(c, t, state.currentColor));
         if (state.phase === "over") {
             statusEl.textContent = state.winner === my ? "You win! 🎉" : state.players[state.winner].name + " wins";
@@ -771,7 +892,6 @@ export function mount(root, context = {}) {
         oppsEl.innerHTML = oh;
 
         /* tangan (scroll dipertahankan antar-render) */
-        handCountEl.textContent = String(me.hand.length);
         handUnoEl.hidden = me.hand.length !== 1;
         const prevScroll = handEl.scrollLeft;
         handEl.innerHTML = me.hand.map((c, i) => {
@@ -786,17 +906,43 @@ export function mount(root, context = {}) {
             scrollSelFlag = false;
         }
 
-        /* kontrol */
-        drawBtn.disabled = !myTurn;
-        padPlayBtn.disabled = !myTurn || !(free || canPlay(me.hand[sel], t, state.currentColor));
-        restartBtn.innerHTML = (online ? "Rematch" : "Retry level") + "<kbd>R</kbd>";
+        /* kontrol HUD — update label span, jangan textContent tombol (icon!) */
+        const blocked = helpOpen || cheatsOpen || paused;
+        drawBtn.disabled = !myTurn || blocked;
+        padPlayBtn.disabled = !myTurn || blocked || !(free || canPlay(me.hand[sel], t, state.currentColor));
+        const restartLabel = restartBtn.querySelector(".uno-btn-label");
+        if (restartLabel) restartLabel.textContent = online ? "Rematch" : "Restart";
+        restartBtn.setAttribute("aria-label", online ? "Rematch" : "Restart");
         cheatsBtn.hidden = online;
+        pauseBtn.disabled = online;
 
-        /* overlay */
-        ovHelp.hidden = overlay !== "help";
-        ovCheats.hidden = overlay !== "cheats" || online;
-        if (overlay === "cheats" && !online) renderCheats();
+        /* overlay: help > cheats > pause > result */
+        if (cheatsOpen && !online) renderCheats();
         renderOver();
+        syncUI();
+    }
+
+    /* Overlays saling menekan. Label tombol di-update lewat span agar ikon utuh. */
+    function syncUI() {
+        const resultOpen = Boolean(state && state.phase === "over");
+        ov.help.hidden = !helpOpen;
+        ov.cheats.hidden = !cheatsOpen || helpOpen || online;
+        ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+        ov.over.hidden = !resultOpen || helpOpen || cheatsOpen || paused;
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".uno-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.title = (paused ? "Resume" : "Pause") + " (P)";
+        }
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) cbtn.classList.toggle("on", cheatsOpen || Boolean(state && !online && (state.cheats?.reveal || state.cheats?.freePlay)));
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
     }
 
     function renderCheats() {
@@ -817,7 +963,7 @@ export function mount(root, context = {}) {
     }
 
     function renderOver() {
-        if (state.phase !== "over") { ovOver.hidden = true; return; }
+        if (!state || state.phase !== "over") return;
         const my = mySeat(), win = state.winner === my;
         overTitle.textContent = win ? "You win! 🎉" : state.players[state.winner].name + " wins";
         let reason;
@@ -832,12 +978,19 @@ export function mount(root, context = {}) {
             : win
                 ? '<button type="button" class="uno-btn primary" data-act="nextLevel">Next level →</button><button type="button" class="uno-btn" data-act="restart">Replay level</button>'
                 : '<button type="button" class="uno-btn primary" data-act="restart">Retry same deal</button><span class="uno-ovhint">Same seed = same cards. You can beat it!</span>';
-        ovOver.hidden = false;
     }
 
     /* ---------------- events: klik / keyboard / wheel ---------------- */
     function handleClick(e) {
         if (e.target.closest("[data-exit]")) { onExit(); return; }
+        if (e.target.closest("[data-help]")) { toggleHelp(); return; }
+        if (e.target.closest("[data-cheats]")) {
+            if (!online && !helpOpen) { cheatsOpen = !cheatsOpen; render(); }
+            return;
+        }
+        if (e.target.closest("[data-pause]")) { togglePause(); return; }
+        if (e.target.closest("[data-restart]")) { submitAction({ type: "restart" }); return; }
+        if (e.target.closest("[data-resume]")) { togglePause(false); return; }
         const btn = e.target.closest("[data-act]");
         if (btn) {
             const a = btn.dataset.act;
@@ -845,9 +998,10 @@ export function mount(root, context = {}) {
             else if (a === "selPrev") moveSel(-1);
             else if (a === "selNext") moveSel(1);
             else if (a === "playSel") tryPlay(sel);
-            else if (a === "help") { overlay = overlay === "help" ? null : "help"; picker = null; render(); }
-            else if (a === "cheats") { if (!online) { overlay = overlay === "cheats" ? null : "cheats"; render(); } }
-            else if (a === "closeHelp" || a === "closeCheats") { overlay = null; render(); }
+            else if (a === "help") { toggleHelp(); picker = null; }
+            else if (a === "cheats") { if (!online && !helpOpen) { cheatsOpen = !cheatsOpen; render(); } }
+            else if (a === "closeHelp") toggleHelp(false);
+            else if (a === "closeCheats") { cheatsOpen = false; render(); }
             else if (a === "restart") submitAction({ type: "restart" });
             else if (a === "nextLevel") submitAction({ type: "nextLevel" });
             else if (a === "cancelColor") { picker = null; render(); }
@@ -855,7 +1009,9 @@ export function mount(root, context = {}) {
             else if (a === "cheat") submitAction({ type: "cheat", cheat: btn.dataset.cheat });
             return;
         }
-        if (e.target === ovHelp || e.target === ovCheats) { overlay = null; render(); return; }
+        if (e.target === ov.help) { toggleHelp(false); return; }
+        if (e.target === ov.cheats) { cheatsOpen = false; render(); return; }
+        if (e.target === ov.pause) { togglePause(false); return; }
         const cardBtn = e.target.closest(".uno-card");
         if (cardBtn && cardBtn.dataset.i != null) tryPlay(+cardBtn.dataset.i);
     }
@@ -864,30 +1020,43 @@ export function mount(root, context = {}) {
         if (destroyed || e.altKey || e.ctrlKey || e.metaKey) return;
         const tag = (e.target && e.target.tagName) || "";
         if (/INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable)) return;
-        const k = e.key, lk = (k || "").toLowerCase();
+        const k = e.key, lk = (k || "").toLowerCase(), code = e.code || "";
+        /* Prioritas: help → cheats → pause → Escape → aksi game */
+        if (code === "KeyH" || lk === "h" || k === "?") {
+            if (!e.repeat) toggleHelp();
+            e.preventDefault(); return;
+        }
+        if (code === "KeyC" || lk === "c") {
+            if (!e.repeat && !online && !helpOpen) { cheatsOpen = !cheatsOpen; render(); }
+            e.preventDefault(); return;
+        }
+        if (code === "KeyP" || lk === "p") {
+            if (!e.repeat && !helpOpen && !cheatsOpen) togglePause();
+            e.preventDefault(); return;
+        }
         if (k === "Escape") {
-            if (picker) { picker = null; render(); e.preventDefault(); }
-            else if (overlay) { overlay = null; render(); e.preventDefault(); }
-            return;
+            if (picker) { picker = null; render(); }
+            else if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (paused) togglePause(false);
+            e.preventDefault(); return;
         }
-        if (overlay) {
-            if ((lk === "h" && overlay === "help") || (lk === "c" && overlay === "cheats")) { overlay = null; render(); e.preventDefault(); }
-            return;
+        if ((code === "KeyR" || lk === "r") && !e.repeat) {
+            if (!helpOpen && !cheatsOpen) submitAction({ type: "restart" });
+            e.preventDefault(); return;
         }
+        /* Enter/Space pada tombol yang sedang fokus = klik normal (aksesibilitas) */
+        if ((k === "Enter" || k === " ") && e.target.closest && e.target.closest("button")) return;
+        if (helpOpen || cheatsOpen || paused) { e.preventDefault(); return; }
         if (picker) {
             const map = { 1: "red", 2: "yellow", 3: "green", 4: "blue" };
             if (map[k]) { confirmColor(map[k]); e.preventDefault(); }
             return;
         }
-        /* Enter/Space pada tombol yang sedang fokus = klik normal (aksesibilitas) */
-        if ((k === "Enter" || k === " ") && e.target.closest && e.target.closest("button")) return;
         if (k === "ArrowLeft") { moveSel(-1); e.preventDefault(); }
         else if (k === "ArrowRight") { moveSel(1); e.preventDefault(); }
         else if (k === "Enter" || k === " ") { tryPlay(sel); e.preventDefault(); }
         else if (lk === "d") { tryDraw(); e.preventDefault(); }
-        else if (lk === "h" || k === "?") { overlay = "help"; render(); e.preventDefault(); }
-        else if (lk === "c" && !online) { overlay = "cheats"; render(); e.preventDefault(); }
-        else if (lk === "r") { submitAction({ type: "restart" }); e.preventDefault(); }
     }
 
     function handleWheel(e) {

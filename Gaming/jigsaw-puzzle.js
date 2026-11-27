@@ -9,6 +9,8 @@
     keyboard + mouse untuk desktop. Tanpa teks tutorial. ASCII only.
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 /* ---------- artwork: 5 gambar, tanpa defs/id sehingga string yang sama
    bisa ditanam di setiap keping; viewBox per keping memotong gambar ---------- */
 const ART_W = 480, ART_H = 360;
@@ -321,14 +323,23 @@ export function mount(root, context = {}) {
     /* UI lokal (tidak diserialisasi ke room) */
     const ui = {
         selectedId: null, cursor: { c: 0, r: 0 },
-        peek: false, cheats: false,
+        peek: false,
         gen: -1, prevPlaced: new Set(), lastEventSeq: 0,
         toastTimer: null, shakeTimer: null,
     };
+    let cheatOpen = false, helpOpen = false, paused = false, pauseAt = 0;
     let botTimer = null, tickTimer = null;
     const offs = [];
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (err) { }
+
+    /* First-run internal guide, once per browser (global help stays closed). */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("jigsaw-puzzle-help-seen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("jigsaw-puzzle-help-seen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     /* ---------- shell + gaya minimalis (scoped .jp-app) ---------- */
     root.innerHTML = `
@@ -336,23 +347,24 @@ export function mount(root, context = {}) {
 .jp-app{--jp-bg:#f6f7f9;--jp-panel:#fff;--jp-line:#e4e7ec;--jp-ink:#16181d;--jp-mut:#69707d;--jp-acc:#4f46e5;--jp-acc-soft:#eef2ff;--jp-s0:#4f46e5;--jp-s1:#d97706;color:var(--jp-ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
 .jp-app *{box-sizing:border-box}
 .jp-app :focus-visible{outline:2px solid var(--jp-acc);outline-offset:2px}
-.jp-app .game-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-.jp-app .game-intro h2{margin:0;font-size:18px;font-weight:650;letter-spacing:-.01em;color:var(--jp-ink)}
-.jp-app .game-intro p{margin:2px 0 0;color:var(--jp-mut);font-size:12.5px}
-.jp-app .jp-intro-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.jp-app .jp-seg{display:flex;border:1px solid var(--jp-line);border-radius:9px;overflow:hidden;background:var(--jp-panel)}
-.jp-app .jp-seg button{border:0;background:transparent;padding:6px 12px;font-size:12.5px;color:var(--jp-mut);cursor:pointer}
-.jp-app .jp-seg button.on{background:var(--jp-acc);color:#fff}
-.jp-app .jp-hud{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
-.jp-app .jp-chip{display:flex;flex-direction:column;gap:1px;padding:6px 10px;background:var(--jp-panel);border:1px solid var(--jp-line);border-radius:10px;min-width:62px}
-.jp-app .jp-chip small{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--jp-mut)}
-.jp-app .jp-chip b{font-size:13px;font-weight:600}
+.jp-app .jp-hud{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin:0 0 10px;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.jp-app .jp-chip{display:flex;flex-direction:column;gap:2px;padding:4px 6px;background:var(--jp-panel);border:1px solid var(--jp-line);border-radius:8px;min-width:42px}
+.jp-app .jp-chip small{font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--jp-mut)}
+.jp-app .jp-chip b{font-size:11px;font-weight:600}
+.jp-app .jp-chip.status{justify-content:center;min-width:62px}
 .jp-app .jp-chip.s0 b{color:var(--jp-s0)}
 .jp-app .jp-chip.s1 b{color:var(--jp-s1)}
 .jp-app .jp-chip.turn{border-color:var(--jp-acc);background:var(--jp-acc-soft)}
-.jp-app .jp-stage{position:relative;background:var(--jp-bg);border:1px solid var(--jp-line);border-radius:14px;padding:14px;min-height:430px}
-.jp-app .jp-layout{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;justify-content:center}
-.jp-app .jp-board-col{flex:0 1 430px;min-width:250px;display:flex;flex-direction:column;gap:10px}
+.jp-app .jp-seg{display:flex;border:1px solid var(--jp-line);border-radius:9px;overflow:hidden;background:var(--jp-panel)}
+.jp-app .jp-seg button{border:0;background:transparent;padding:4px 7px;font-size:10px;color:var(--jp-mut);cursor:pointer}
+.jp-app .jp-seg button.on{background:var(--jp-acc);color:#fff}
+.jp-app .jp-sp{flex:1 1 auto}
+.jp-app .jp-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.jp-app .jp-icon-btn svg{flex:none;display:block}
+.jp-app .jp-stage{position:relative;display:flex;flex-direction:column;background:var(--jp-bg);border:1px solid var(--jp-line);border-radius:14px;padding:12px;min-height:0}
+.jp-app.game-fill > .jp-stage{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.jp-app .jp-layout{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;flex:1 1 auto;min-height:0}
+.jp-app .jp-board-col{flex:0 1 min(430px,calc((100dvh - 230px) * 4 / 3));min-width:250px;height:100%;display:flex;flex-direction:column;justify-content:center}
 .jp-app .jp-board{position:relative;width:100%;aspect-ratio:4/3;display:grid;background:#eceef2;border:1px solid var(--jp-line);border-radius:10px;overflow:hidden}
 .jp-app .jp-ghost{position:absolute;inset:0;opacity:0;transition:opacity .2s;pointer-events:none}
 .jp-app .jp-ghost.on{opacity:.2}
@@ -368,8 +380,7 @@ export function mount(root, context = {}) {
 .jp-app .jp-own.s0{background:var(--jp-s0)}
 .jp-app .jp-own.s1{background:var(--jp-s1)}
 .jp-app .jp-cell.pop svg{animation:jp-pop .3s ease}
-.jp-app .jp-controls{display:flex;gap:8px;flex-wrap:wrap}
-.jp-app .jp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 12px;border:1px solid var(--jp-line);border-radius:10px;background:var(--jp-panel);color:var(--jp-ink);font-size:12.5px;font-weight:550;cursor:pointer;transition:border-color .15s,background .15s;-webkit-tap-highlight-color:transparent}
+.jp-app .jp-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:5px 7px;border:1px solid var(--jp-line);border-radius:9px;background:var(--jp-panel);color:var(--jp-ink);font-size:10.5px;font-weight:550;cursor:pointer;transition:border-color .15s,background .15s;-webkit-tap-highlight-color:transparent}
 .jp-app .jp-btn:hover:not(:disabled){border-color:var(--jp-acc)}
 .jp-app .jp-btn:disabled{opacity:.45;cursor:default}
 .jp-app .jp-btn.primary{background:var(--jp-acc);border-color:var(--jp-acc);color:#fff}
@@ -387,9 +398,12 @@ export function mount(root, context = {}) {
 .jp-app .jp-piece svg{width:100%;height:100%;display:block;transform:rotate(var(--rot,0deg));transition:transform .16s ease;pointer-events:none}
 .jp-app .jp-piece.shake{animation:jp-shake .3s}
 .jp-app .jp-empty{color:var(--jp-mut);font-size:12px;padding:16px;text-align:center;width:100%}
-.jp-app .jp-overlay{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(246,247,249,.9);backdrop-filter:blur(3px);border-radius:14px;padding:16px}
+.jp-app .jp-overlay{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(246,247,249,.92);backdrop-filter:blur(3px);border-radius:14px;padding:16px}
 .jp-app .jp-overlay[hidden]{display:none}
-.jp-app .jp-card{width:min(360px,100%);background:var(--jp-panel);border:1px solid var(--jp-line);border-radius:14px;padding:18px;text-align:center;display:flex;flex-direction:column;gap:10px;max-height:100%;overflow-y:auto}
+.jp-app .jp-card{width:min(440px,100%);background:var(--jp-panel);border:1px solid var(--jp-line);border-radius:14px;padding:18px;text-align:center;display:flex;flex-direction:column;gap:10px;max-height:100%;overflow:hidden}
+.jp-app .jp-head,.jp-app .jp-foot{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.jp-app .jp-head{justify-content:space-between}
+.jp-app .jp-body{flex:1 1 auto;min-height:0;overflow:auto}
 .jp-app .jp-card h3{margin:0;font-size:16px;font-weight:650}
 .jp-app .jp-art{border:1px solid var(--jp-line);border-radius:10px;overflow:hidden}
 .jp-app .jp-art svg{display:block;width:100%;height:auto}
@@ -403,6 +417,9 @@ export function mount(root, context = {}) {
 .jp-app .jp-score{font-size:26px;font-weight:700;letter-spacing:.02em}
 .jp-app .jp-cheats{z-index:30}
 .jp-app .jp-cheat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.jp-app .jp-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;text-align:left}
+.jp-app .jp-help b{display:block;margin-bottom:6px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--jp-mut)}
+.jp-app .jp-help ul{margin:0 0 12px;padding-left:16px;font-size:12px;line-height:1.7;color:var(--jp-mut)}
 .jp-app .jp-note{font-size:11px;color:var(--jp-mut);margin:0}
 .jp-app .jp-toast{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:40;background:#16181d;color:#fff;font-size:12px;padding:7px 12px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 .jp-app .jp-toast.show{opacity:.95}
@@ -410,9 +427,9 @@ export function mount(root, context = {}) {
 @keyframes jp-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
 @media (max-width:720px){
 .jp-app .jp-layout{flex-direction:column;align-items:stretch}
-.jp-app .jp-side{max-width:none}
+.jp-app .jp-side{max-width:none;width:100%}
 .jp-app .jp-tray{max-height:220px}
-.jp-app .jp-controls .jp-btn{flex:1 1 auto;min-height:44px}
+.jp-app .jp-board-col{flex:0 0 auto;width:100%;min-width:0;height:auto}
 .jp-app .jp-piece{width:62px;height:62px}
 }
 @media (pointer:coarse){
@@ -420,31 +437,72 @@ export function mount(root, context = {}) {
 .jp-app .jp-btn{min-height:42px}
 .jp-app .jp-piece{width:64px;height:64px}
 }
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.jp-app{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.jp-app *,.jp-app *::before,.jp-app *::after{box-sizing:border-box}
+.jp-app :where(svg,canvas,img){max-width:100%;height:auto}
+.jp-app :where(button,[role="button"],select,input){touch-action:manipulation}
+.jp-app :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--jp-acc);outline-offset:2px}
+.jp-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="tools"],[class*="seg"],[class*="row"]){flex-wrap:wrap;min-width:0;gap:8px}
+.jp-app :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+.jp-app :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.jp-app :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .jp-app :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .jp-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="tools"],[class*="seg"],[class*="row"]){gap:8px}
+}
+@media (max-width:480px){.jp-app :where(kbd,[class*="kbd"]){display:none}}
+@media (pointer:coarse){
+  .jp-app :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .jp-app *,.jp-app *::before,.jp-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* ==== fill height + mobile refinements (LAST: beats pointer:coarse 44px) ==== */
+@media (max-width:640px){
+.jp-app.game-fill > .jp-stage:not(:has(.jp-overlay:not([hidden]))){aspect-ratio:auto;min-height:0}
+.jp-app.game-fill > .jp-stage:has(.jp-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.jp-app .jp-hud{gap:5px;margin-bottom:8px}
+.jp-app .jp-hud .jp-chip{padding:4px 6px;font-size:9px;min-width:0}
+.jp-app .jp-hud .jp-chip[data-hud="grid"],.jp-app .jp-hud .jp-chip[data-hud="best"]{display:none}
+.jp-app .jp-hud .jp-btn,.jp-app .jp-hud .jp-seg button{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+.jp-app .jp-hud .jp-btn-label,.jp-app .jp-hud .jp-sp{display:none}
+.jp-app .jp-overlay{padding:8px}
+.jp-app .jp-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.jp-app .jp-body,.jp-app .jp-cheat-grid,.jp-app .jp-help{scrollbar-width:none}
+.jp-app .jp-body::-webkit-scrollbar,.jp-app .jp-cheat-grid::-webkit-scrollbar,.jp-app .jp-help::-webkit-scrollbar{display:none}
+.jp-app .jp-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--jp-line)}
+.jp-app .jp-note{display:none}
+}
 </style>
-<div class="jp-app game-app">
-  <div class="game-intro">
-    <div><h2>Jigsaw Puzzle</h2><p data-sub>Solo</p></div>
-    <div class="jp-intro-right">
-      <div class="jp-seg" data-seg>
-        <button type="button" data-mode="solo">Solo</button>
-        <button type="button" data-mode="bot">VS Bot</button>
-      </div>
-      <span class="game-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Ready</span></span>
-    </div>
+<div class="jp-app game-app game-fill" data-jp>
+  <div class="jp-hud" data-hud>
+    <span class="jp-chip status" data-status aria-live="polite"><span data-hudval="status">Ready</span></span>
+    <span class="jp-chip"><small>Mode</small><b data-hudval="mode">Solo</b></span>
+    <span class="jp-chip"><small>Level</small><b data-hudval="level">1</b></span>
+    <span class="jp-chip" data-hud="grid"><small>Grid</small><b data-hudval="grid">3 x 3</b></span>
+    <span class="jp-chip"><small>Placed</small><b data-hudval="placed">0/9</b></span>
+    <span class="jp-chip"><small>Time</small><b data-hudval="time">0:00</b></span>
+    <span class="jp-chip"><small>Score</small><b data-hudval="score">0 pts</b></span>
+    <span class="jp-chip" data-hud="turn" hidden><small>Turn</small><b data-hudval="turn">You</b></span>
+    <span class="jp-chip" data-hud="best"><small>Best</small><b data-hudval="best">Lv 0</b></span>
+    <span class="jp-seg" data-seg>
+      <button type="button" data-mode="solo">Solo</button>
+      <button type="button" data-mode="bot">VS Bot</button>
+    </span>
+    <span class="jp-sp"></span>
+    <button class="jp-btn jp-icon-btn" type="button" data-act="rotate" aria-label="Rotate piece" title="Rotate piece (X)">${icon("rotate")}<span class="jp-btn-label">Rotate</span></button>
+    <button class="jp-btn jp-icon-btn" type="button" data-act="peek" aria-label="Peek at picture" title="Peek at picture (V)">${icon("eye")}<span class="jp-btn-label">Peek</span></button>
+    <button class="jp-btn jp-icon-btn" type="button" data-act="deselect" aria-label="Clear selection" title="Clear selection (Esc)">${icon("x")}<span class="jp-btn-label">Clear</span></button>
+    <button class="jp-btn jp-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="jp-btn-label">Help</span></button>
+    <button class="jp-btn jp-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="jp-btn-label">Cheats</span></button>
+    <button class="jp-btn jp-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="jp-btn-label">Pause</span></button>
+    <button class="jp-btn jp-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="jp-btn-label">Restart</span></button>
+    <button class="jp-btn jp-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="jp-btn-label">Exit game</span></button>
   </div>
-  <div class="jp-hud" data-hud></div>
   <section class="game-panel jp-stage" data-board>
     <div class="jp-layout">
-      <div class="jp-board-col">
-        <div class="jp-board" data-grid></div>
-        <div class="jp-controls">
-          <button type="button" class="jp-btn" data-act="rotate">${icon("rotate")}<span>Rotate</span><span class="jp-kbd">R</span></button>
-          <button type="button" class="jp-btn" data-act="peek">${icon("eye")}<span>Peek</span><span class="jp-kbd">P</span></button>
-          <button type="button" class="jp-btn" data-act="deselect">${icon("x")}<span>Clear</span><span class="jp-kbd">Esc</span></button>
-          <button type="button" class="jp-btn" data-act="cheats">${icon("flask")}<span>Cheats</span><span class="jp-kbd">C</span></button>
-          <button type="button" class="jp-btn" data-act="restart">${icon("refresh")}<span>Restart</span></button>
-        </div>
-      </div>
+      <div class="jp-board-col"><div class="jp-board" data-grid></div></div>
       <div class="jp-side">
         <div class="jp-tray-head"><span>Pieces</span><span data-traycount></span></div>
         <div class="jp-tray" data-tray></div>
@@ -454,44 +512,95 @@ export function mount(root, context = {}) {
     <div class="jp-overlay" data-ov="done" hidden><div class="jp-card" data-done></div></div>
     <div class="jp-overlay jp-cheats" data-ov="cheats" hidden>
       <div class="jp-card">
-        <h3>Cheats</h3>
-        <div class="jp-cheat-grid">
-          <button type="button" class="jp-btn" data-cheat="reveal">Reveal picture</button>
+        <div class="jp-head"><h3>Cheats</h3><button class="jp-btn" type="button" data-act="close-cheats" aria-label="Close cheats">Close</button></div>
+        <div class="jp-body jp-cheat-grid">
+          <button type="button" class="jp-btn" data-cheat="reveal"><span data-reveal-label>Reveal picture</span></button>
           <button type="button" class="jp-btn" data-cheat="straighten">Straighten all</button>
           <button type="button" class="jp-btn" data-cheat="placeOne">Place one</button>
           <button type="button" class="jp-btn" data-cheat="finish">Finish level</button>
           <button type="button" class="jp-btn" data-cheat="clearMisses">Clear misses</button>
           <button type="button" class="jp-btn" data-cheat="skip">Skip level</button>
         </div>
-        <p class="jp-note" data-cheatnote></p>
-        <div class="jp-row"><button type="button" class="jp-btn" data-act="close-cheats">Close</button></div>
+        <div class="jp-foot"><p class="jp-note" data-cheatnote></p></div>
+      </div>
+    </div>
+    <div class="jp-overlay" data-ov="pause" hidden>
+      <div class="jp-card">
+        <div class="jp-head"><h3>Paused</h3></div>
+        <div class="jp-body"><p>Timer and bot are frozen. Press P or Esc to resume.</p></div>
+        <div class="jp-foot"><button class="jp-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="jp-overlay" data-ov="help" hidden>
+      <div class="jp-card">
+        <div class="jp-head"><h3>How to play</h3><button class="jp-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="jp-body jp-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Pick a piece from the tray, then click a grid cell to place it.</li>
+              <li><span class="jp-kbd">X</span> / right-click piece — rotate 90 degrees</li>
+              <li><span class="jp-kbd">V</span> — peek at the full picture</li>
+              <li>Arrows — move cursor · <span class="jp-kbd">Enter</span> — place · <span class="jp-kbd">Esc</span> — clear selection</li>
+              <li><span class="jp-kbd">H</span> help · <span class="jp-kbd">C</span> cheats · <span class="jp-kbd">P</span> pause · <span class="jp-kbd">R</span> restart</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap a piece, then tap a cell. Tap the selected piece again to deselect.</li>
+              <li>Use the Rotate and Peek buttons in the HUD.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>A piece fits only in its home cell and only when its rotation is 0.</li>
+              <li>Wrong cell or angle counts as a miss; a wrong placement toggles the turn in races.</li>
+              <li>Solo: finish the picture. VS Bot / multiplayer: most correctly placed pieces wins.</li>
+              <li>A reference picture appears at the start of every level.</li>
+            </ul>
+            <div class="jp-foot"><span class="jp-note">Press H to reopen this guide</span><button class="jp-btn primary" type="button" data-help-close>Got it</button></div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="jp-toast" data-toast aria-live="polite"></div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const subEl = $("[data-sub]");
-    const statusEl = $("[data-status]");
     const segEl = $("[data-seg]");
-    const hudEl = $("[data-hud]");
     const grid = $("[data-grid]");
     const trayEl = $("[data-tray]");
     const trayCount = $("[data-traycount]");
-    const ovRef = $('[data-ov="ref"]');
+    const ov = {
+        ref: $('[data-ov="ref"]'),
+        done: $('[data-ov="done"]'),
+        cheats: $('[data-ov="cheats"]'),
+        pause: $('[data-ov="pause"]'),
+        help: $('[data-ov="help"]'),
+    };
     const refCard = $("[data-ref]");
-    const ovDone = $('[data-ov="done"]');
     const doneCard = $("[data-done]");
-    const ovCheats = $('[data-ov="cheats"]');
     const toastEl = $("[data-toast]");
+    const hud = {
+        status: $('[data-hudval="status"]'),
+        mode: $('[data-hudval="mode"]'),
+        level: $('[data-hudval="level"]'),
+        grid: $('[data-hudval="grid"]'),
+        placed: $('[data-hudval="placed"]'),
+        time: $('[data-hudval="time"]'),
+        score: $('[data-hudval="score"]'),
+        turn: $('[data-hudval="turn"]'),
+        best: $('[data-hudval="best"]'),
+        turnChip: $('[data-hud="turn"]'),
+    };
     const rotateBtn = $('[data-act="rotate"]');
     const peekBtn = $('[data-act="peek"]');
     const deselectBtn = $('[data-act="deselect"]');
-    const cheatsBtn = $('[data-act="cheats"]');
-    const restartBtn = $('[data-act="restart"]');
-    const revealBtn = $('[data-cheat="reveal"]');
+    const cheatsBtn = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
+    const restartBtn = $("[data-restart]");
+    const revealLabel = $("[data-reveal-label]");
     const cheatNote = $("[data-cheatnote]");
 
     /* ---------- util ---------- */
@@ -534,21 +643,104 @@ export function mount(root, context = {}) {
         '<svg viewBox="0 0 480 360" aria-hidden="true">' + ARTS[idx].svg + "</svg>";
 
     /* ---------- render ---------- */
-    const chip = (label, val, cls) =>
-        '<div class="jp-chip ' + (cls || "") + '"><small>' + label + "</small><b>" + val + "</b></div>";
+    function syncHud() {
+        const set = (node, val) => { if (node) node.textContent = String(val); };
+        if (!state) {
+            set(hud.status, "Waiting for host");
+            set(hud.mode, online ? "Multiplayer" : "Solo");
+            set(hud.level, "—");
+            set(hud.grid, "—");
+            set(hud.placed, "—");
+            set(hud.time, "0:00");
+            set(hud.score, "—");
+            set(hud.best, "Lv " + best);
+            hud.turnChip.hidden = true;
+            return;
+        }
+        const race = state.mode !== "solo";
+        const ms = mySeat(), os = 1 - ms;
+        const playing = state.phase === "playing";
+        const total = state.pieces.length;
+        const done = state.pieces.filter((p) => p.placed).length;
+        set(hud.status,
+            state.phase === "reference" ? "Ready" :
+                state.phase === "complete" ? "Finished" :
+                    race ? (state.turn === ms ? "Your turn" : state.mode === "bot" ? "Bot is thinking" : "Opponent's turn") :
+                        "In progress");
+        set(hud.mode, state.mode === "solo" ? "Solo" : state.mode === "bot" ? "VS Bot" : "Multiplayer");
+        set(hud.level, state.level);
+        set(hud.grid, state.cols + " x " + state.rows);
+        set(hud.placed, done + "/" + total);
+        set(hud.time, playing ? fmt(elapsed()) : state.phase === "complete" ? fmt(state.doneIn) : "0:00");
+        set(hud.score, race
+            ? "You " + state.scores[ms] + " / " + oppName() + " " + state.scores[os]
+            : state.misses[ms] + " miss");
+        set(hud.best, "Lv " + best);
+        hud.turnChip.hidden = !(race && playing);
+        if (race && playing) set(hud.turn, seatLabel(state.turn));
+    }
+
+    function syncPauseButton() {
+        const label = pauseBtn.querySelector(".jp-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        const ico = pauseBtn.querySelector("svg");
+        if (ico) ico.outerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+    }
+
+    /* Pause freezes the clock and the bot; the Date.now() anchor is shifted on
+       resume so elapsed time does not jump forward. */
+    function setPaused(on) {
+        if (!state) return;
+        on = typeof on === "boolean" ? on : !paused;
+        if (paused === on) return;
+        if (on) {
+            paused = true;
+            pauseAt = Date.now();
+            if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+            clearTimeout(ui.toastTimer);
+            toastEl.classList.remove("show");
+        } else {
+            const held = Math.max(0, Date.now() - pauseAt);
+            if (state.phase === "playing" && typeof state.startedAt === "number")
+                state.startedAt += held;
+            paused = false;
+            pauseAt = 0;
+            if (online && room.isHost) room.publishState(state).catch(console.warn);
+            scheduleBot();
+        }
+        render();
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+
+    function toggleCheats(on) {
+        if (!state || helpOpen || paused) return;
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        render();
+    }
 
     function setControls() {
         const playing = !!state && state.phase === "playing";
         const race = !!state && state.mode !== "solo";
         const myTurn = !state || !race || state.turn === mySeat();
-        rotateBtn.disabled = !playing || !state.rotation || !ui.selectedId || !myTurn;
-        deselectBtn.disabled = !ui.selectedId;
+        const blocked = helpOpen || cheatOpen || paused;
+        rotateBtn.disabled = !playing || !state.rotation || !ui.selectedId || !myTurn || blocked;
+        deselectBtn.disabled = !ui.selectedId || blocked;
         restartBtn.disabled = !state;
         cheatsBtn.disabled = !state;
+        pauseBtn.disabled = !state;
+        peekBtn.disabled = blocked;
         peekBtn.classList.toggle("on", ui.peek);
         peekBtn.setAttribute("aria-pressed", String(ui.peek));
-        revealBtn.textContent = ui.peek ? "Hide picture" : "Reveal picture";
+        revealLabel.textContent = ui.peek ? "Hide picture" : "Reveal picture";
         cheatNote.textContent = online ? "Cheats affect both players." : "";
+        syncPauseButton();
     }
 
     function paintCursor() {
@@ -561,14 +753,13 @@ export function mount(root, context = {}) {
     function render() {
         if (destroyed) return;
         if (!state) {
-            subEl.textContent = "Multiplayer";
-            statusEl.textContent = "Waiting for host";
-            hudEl.innerHTML = "";
             grid.innerHTML = "";
             trayEl.innerHTML = '<div class="jp-empty">Loading room...</div>';
             trayCount.textContent = "";
-            ovRef.hidden = true; ovDone.hidden = true; ovCheats.hidden = true;
+            ov.ref.hidden = true; ov.done.hidden = true; ov.cheats.hidden = true;
+            ov.pause.hidden = true; ov.help.hidden = !helpOpen;
             segEl.style.display = "none";
+            syncHud();
             setControls();
             return;
         }
@@ -603,35 +794,11 @@ export function mount(root, context = {}) {
             try { localStorage.setItem(META.bestKey, String(best)); } catch (err) { }
         }
 
-        /* intro + status */
-        const modeLabel = state.mode === "solo" ? "Solo" : state.mode === "bot" ? "VS Bot" : "Multiplayer";
-        subEl.textContent = modeLabel + " / " + ARTS[state.artIdx].name + (best > 0 ? " / Best Lv " + best : "");
+        /* satu bar HUD: semuainfo + kontrol, papan tetap fokus pada puzzle */
         segEl.style.display = online ? "none" : "flex";
         segEl.querySelectorAll("button").forEach((b) =>
             b.classList.toggle("on", b.dataset.mode === state.mode));
-        statusEl.textContent =
-            state.phase === "reference" ? "Ready" :
-                state.phase === "complete" ? "Finished" :
-                    race ? (myTurn ? "Your turn" : state.mode === "bot" ? "Bot is thinking" : "Opponent's turn") :
-                        "In progress";
-
-        /* HUD */
-        const timeVal = playing ? fmt(elapsed()) : state.phase === "complete" ? fmt(state.doneIn) : "0:00";
-        let chips =
-            chip("Level", state.level) +
-            chip("Grid", state.cols + " x " + state.rows) +
-            chip("Placed", done + "/" + total) +
-            '<div class="jp-chip"><small>Time</small><b data-time>' + timeVal + "</b></div>";
-        if (race) {
-            chips +=
-                chip("You (P" + (ms + 1) + ")", state.scores[ms] + " pts / " + state.misses[ms] + " miss", "s" + ms) +
-                chip(opp + " (P" + (os + 1) + ")", state.scores[os] + " pts / " + state.misses[os] + " miss", "s" + os) +
-                chip("Rounds", state.wins[ms] + "-" + state.wins[os]) +
-                (playing ? chip("Turn", seatLabel(state.turn), "turn") : "");
-        } else {
-            chips += chip("Misses", state.misses[ms]);
-        }
-        hudEl.innerHTML = chips;
+        syncHud();
 
         /* papan */
         grid.style.gridTemplateColumns = "repeat(" + state.cols + ",1fr)";
@@ -674,11 +841,12 @@ export function mount(root, context = {}) {
         setControls();
 
         /* popup referensi gambar final di awal SETIAP level (tanpa tutorial) */
-        ovRef.hidden = state.phase !== "reference";
-        if (!ovRef.hidden) {
+        ov.ref.hidden = state.phase !== "reference" || cheatOpen || helpOpen || paused;
+        if (!ov.ref.hidden) {
             const oppSeat = 1 - ms;
             refCard.innerHTML =
-                "<h3>Level " + state.level + "</h3>" +
+                '<div class="jp-head"><h3>Level ' + state.level + "</h3></div>" +
+                '<div class="jp-body">' +
                 '<div class="jp-art">' + fullArt(state.artIdx) + "</div>" +
                 '<div class="jp-meta"><span>' + state.cols + " x " + state.rows + "</span><span>" +
                 (state.rotation ? "Rotation on" : "No rotation") + "</span><span>" + ARTS[state.artIdx].name + "</span></div>" +
@@ -688,28 +856,34 @@ export function mount(root, context = {}) {
                     '<span><i class="dot s' + oppSeat + '"></i>' + opp + " is Player " + (oppSeat + 1) + "</span>" +
                     "<span>First move: " + seatLabel(state.first) + "</span></div>"
                     : "") +
-                '<div class="jp-row"><button type="button" class="jp-btn primary" data-act="start">' + icon("play") +
-                'Start</button><button type="button" class="jp-btn" data-act="reroll">' + icon("shuffle") + "New picture</button></div>";
+                "</div>" +
+                '<div class="jp-foot"><div class="jp-row"><button type="button" class="jp-btn primary" data-act="start">' + icon("play") +
+                'Start</button><button type="button" class="jp-btn" data-act="reroll">' + icon("shuffle") + "New picture</button></div></div>";
         }
 
         /* popup hasil level */
-        ovDone.hidden = state.phase !== "complete";
-        if (!ovDone.hidden) {
+        ov.done.hidden = state.phase !== "complete" || cheatOpen || helpOpen || paused;
+        if (!ov.done.hidden) {
             const title = !race ? "Picture complete" :
                 state.winner === "draw" ? "Draw" :
                     state.winner === ms ? "You win" : opp + " wins";
             doneCard.innerHTML =
-                "<h3>" + title + "</h3>" +
+                '<div class="jp-head"><h3>' + title + "</h3></div>" +
+                '<div class="jp-body">' +
                 (race
                     ? '<div class="jp-score"><i class="dot s' + ms + '"></i>' + state.scores[ms] + " : " + state.scores[os] +
                     '<i class="dot s' + os + '"></i></div><div class="jp-meta"><span>You</span><span>' + opp + "</span><span>Time " + fmt(state.doneIn) + "</span></div>"
                     : '<div class="jp-meta"><span>Time ' + fmt(state.doneIn) + "</span><span>" + state.misses[ms] + " misses</span></div>") +
                 '<div class="jp-art">' + fullArt(state.artIdx) + "</div>" +
-                '<div class="jp-row"><button type="button" class="jp-btn primary" data-act="next">Next level</button>' +
-                '<button type="button" class="jp-btn" data-act="replay">Replay</button></div>';
+                "</div>" +
+                '<div class="jp-foot"><div class="jp-row"><button type="button" class="jp-btn primary" data-act="next">Next level</button>' +
+                '<button type="button" class="jp-btn" data-act="replay">Replay</button></div></div>';
         }
 
-        ovCheats.hidden = !ui.cheats;
+        /* satu modal aktif: help > cheats > pause > hasil/referensi */
+        ov.cheats.hidden = !cheatOpen || helpOpen;
+        ov.pause.hidden = !paused || helpOpen || cheatOpen;
+        ov.help.hidden = !helpOpen;
 
         /* umpan balik event terakhir (miss / cheat) untuk kedua sisi */
         const ev = state.lastEvent;
@@ -791,7 +965,7 @@ export function mount(root, context = {}) {
         attemptPlace(p, t.c, t.r, seat);
     }
     function scheduleBot() {
-        const want = !online && !!state && state.mode === "bot" &&
+        const want = !online && !paused && !!state && state.mode === "bot" &&
             state.phase === "playing" && state.turn === state.seats[1];
         if (!want) {
             if (botTimer) { clearTimeout(botTimer); botTimer = null; }
@@ -817,6 +991,7 @@ export function mount(root, context = {}) {
     }
     function applyAction(action, actor) {
         if (destroyed || !state || !action) return;
+        if ((paused || helpOpen) && actor === playerIndex) return;
         if (actor !== 0 && actor !== 1) return;
         const seat = state.seats[actor];
         const race = state.mode !== "solo";
@@ -917,10 +1092,17 @@ export function mount(root, context = {}) {
     }
     function handleClick(event) {
         const el = event.target.closest(
-            "[data-exit],[data-act],[data-piece],[data-cell],[data-cheat],[data-mode]");
+            "[data-exit],[data-help],[data-help-close],[data-cheats],[data-pause],[data-resume],[data-act],[data-piece],[data-cell],[data-cheat],[data-mode]");
         if (!el || !root.contains(el)) return;
         if (el.hasAttribute("data-exit")) { onExit(); return; }
         if (el.disabled) return;
+        if (el.closest("[data-help]")) { toggleHelp(); return; }
+        if (el.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (el.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (el.closest('[data-act="close-cheats"]')) { toggleCheats(false); return; }
+        if (el.closest("[data-pause]")) { if (!helpOpen) setPaused(); return; }
+        if (el.closest("[data-resume]")) { setPaused(false); return; }
+        if (helpOpen || cheatOpen || paused) return;
         if (el.dataset.mode) { submitAction({ type: "mode", mode: el.dataset.mode }); return; }
         const act = el.dataset.act;
         if (act) {
@@ -931,8 +1113,6 @@ export function mount(root, context = {}) {
             else if (act === "rotate") rotateSelected();
             else if (act === "peek") { ui.peek = !ui.peek; render(); }
             else if (act === "deselect") { ui.selectedId = null; render(); }
-            else if (act === "cheats") { ui.cheats = !ui.cheats; render(); }
-            else if (act === "close-cheats") { ui.cheats = false; render(); }
             return;
         }
         if (el.dataset.cheat) {
@@ -960,7 +1140,7 @@ export function mount(root, context = {}) {
     /* klik kanan pada keping = putar (desktop) */
     function handleContext(event) {
         const b = event.target.closest("[data-piece]");
-        if (!b) return;
+        if (!b || helpOpen || cheatOpen || paused) return;
         event.preventDefault();
         ui.selectedId = b.dataset.piece;
         render();
@@ -1006,22 +1186,34 @@ export function mount(root, context = {}) {
         if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || "")) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         const k = e.key;
+        const hit = (code, lower) => e.code === code || k === lower || k === lower.toUpperCase();
         const isPieceBtn = !!(t && t.getAttribute && t.getAttribute("data-piece"));
         /* biarkan Enter/Space mengaktifkan tombol non-keping secara native */
         if ((k === "Enter" || k === " ") && t && t.tagName === "BUTTON" &&
             root.contains(t) && !isPieceBtn) return;
-        if (ui.cheats) {
-            if (k === "Escape" || k === "c" || k === "C") { e.preventDefault(); ui.cheats = false; render(); }
+
+        /* Prioritas: help -> cheats -> pause/Escape -> aksi game. */
+        if (hit("KeyH", "h")) { e.preventDefault(); toggleHelp(); return; }
+        if (hit("KeyC", "c")) { e.preventDefault(); if (!helpOpen) toggleCheats(); return; }
+        if (hit("KeyP", "p")) { e.preventDefault(); if (!helpOpen) setPaused(); return; }
+        if (k === "Escape") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            else if (ui.selectedId) { ui.selectedId = null; render(); }
             return;
         }
+        if (helpOpen || cheatOpen || paused) return;
+        if (hit("KeyR", "r")) { e.preventDefault(); submitAction({ type: "restart" }); return; }
+
         if (state.phase === "reference") {
-            if (k === "Enter" || k === " " || k === "s" || k === "S") { e.preventDefault(); submitAction({ type: "start" }); }
-            else if (k === "n" || k === "N") { e.preventDefault(); submitAction({ type: "reroll" }); }
+            if (k === "Enter" || k === " " || hit("KeyS", "s")) { e.preventDefault(); submitAction({ type: "start" }); }
+            else if (hit("KeyN", "n")) { e.preventDefault(); submitAction({ type: "reroll" }); }
             return;
         }
         if (state.phase === "complete") {
-            if (k === "Enter" || k === " " || k === "n" || k === "N") { e.preventDefault(); submitAction({ type: "next" }); }
-            else if (k === "r" || k === "R") { e.preventDefault(); submitAction({ type: "restart" }); }
+            if (k === "Enter" || k === " " || hit("KeyN", "n")) { e.preventDefault(); submitAction({ type: "next" }); }
             return;
         }
         if (k === "ArrowLeft" || k === "ArrowRight" || k === "ArrowUp" || k === "ArrowDown") {
@@ -1031,10 +1223,8 @@ export function mount(root, context = {}) {
         } else if (k === "Enter" || k === " ") {
             e.preventDefault();
             if (ui.selectedId) placeAtCursor(); else selectFocused();
-        } else if (k === "r" || k === "R") { e.preventDefault(); rotateSelected(); }
-        else if (k === "p" || k === "P") { e.preventDefault(); ui.peek = !ui.peek; render(); }
-        else if (k === "c" || k === "C") { e.preventDefault(); ui.cheats = true; render(); }
-        else if (k === "Escape") { e.preventDefault(); ui.selectedId = null; render(); }
+        } else if (hit("KeyX", "x")) { e.preventDefault(); rotateSelected(); }
+        else if (hit("KeyV", "v")) { e.preventDefault(); ui.peek = !ui.peek; render(); }
     }
 
     /* ---------- init ---------- */
@@ -1043,9 +1233,8 @@ export function mount(root, context = {}) {
     root.addEventListener("pointerover", handleHover);
     document.addEventListener("keydown", handleKey);
     tickTimer = setInterval(() => {
-        if (destroyed || !state) return;
-        const t = root.querySelector("[data-time]");
-        if (t && state.phase === "playing") t.textContent = fmt(elapsed());
+        if (destroyed || !state || paused || helpOpen || cheatOpen) return;
+        if (state.phase === "playing") hud.time.textContent = fmt(elapsed());
     }, 500);
 
     if (online) {

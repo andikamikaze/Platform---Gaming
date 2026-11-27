@@ -5,6 +5,8 @@
   2. Regenerate manifest: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "traffic-control",
     name: "Traffic Control",
@@ -347,85 +349,106 @@ export function mount(root, context = {}) {
         evaluateEnd(st);
     }
 
-    /* ---------------- HTML skeleton (minimalist) ---------------- */
+    /* ---------------- HTML skeleton (HUD + board + pad) ---------------- */
     root.innerHTML = `
-<div class="game-app tc-app">
+<div class="game-app tc-app game-fill" data-tc>
 <style>
 .tc-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--paper:#fff;--bg:#f6f8fa;--acc:#2563eb;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
+.tc-app *{box-sizing:border-box}
 .tc-app [hidden]{display:none!important}
-.tc-app .game-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
-.tc-app .game-intro h2{margin:0 0 2px;font-size:20px;letter-spacing:-.01em}
-.tc-app .game-intro p{margin:0;color:var(--mut);font-size:13px}
-.tc-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mut);border:1px solid var(--line);background:var(--paper);padding:6px 11px;border-radius:999px;white-space:nowrap}
-.tc-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block}
-.tc-app .game-panel{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:14px}
-.tc-hud{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.tc-chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:var(--bg)}
+.tc-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.tc-chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:var(--bg);white-space:nowrap}
 .tc-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
 .tc-chip.warn b{color:var(--bad)}
-.tc-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block}
+.tc-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block;flex:none}
 .tc-turnbar{width:46px;height:4px;border-radius:2px;background:var(--line);overflow:hidden;display:inline-block}
 .tc-turnbar i{display:block;height:100%;background:var(--acc);width:100%}
 .tc-cheatbadge{color:var(--warn);border-color:#fde68a;background:#fffbeb;font-weight:600}
-.tc-stage{position:relative;width:100%;max-width:920px;margin:0 auto;aspect-ratio:960/820;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#f3f5f7;user-select:none;-webkit-user-select:none;touch-action:manipulation}
-.tc-stage[data-live="1"]{cursor:pointer}
-.tc-stage svg{position:absolute;inset:0;width:100%;height:100%;display:block}
-.tc-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(246,248,250,.88);backdrop-filter:blur(3px);padding:16px;overflow:auto;z-index:5}
-.tc-card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:20px 22px;max-width:560px;width:100%;box-shadow:0 8px 30px rgba(15,23,42,.06);animation:tcPop .18s ease-out}
-@keyframes tcPop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.tc-card h3{margin:0 0 8px;font-size:19px}
-.tc-card p{margin:6px 0;font-size:13.5px;color:var(--mut);line-height:1.55}
-.tc-card p b{color:var(--ink)}
-.tc-mapinfo{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
-.tc-ov-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.tc-btn{appearance:none;border:1px solid var(--acc);background:var(--acc);color:#fff;font-weight:600;font-size:14px;font-family:inherit;border-radius:10px;padding:10px 18px;cursor:pointer}
+.tc-spacer{flex:1 1 auto}
+.tc-btn{appearance:none;border:1px solid var(--acc);background:var(--acc);color:#fff;font-weight:600;font-size:13px;font-family:inherit;border-radius:8px;padding:9px 14px;min-height:44px;cursor:pointer}
 .tc-btn.ghost{background:var(--paper);color:var(--ink);border-color:var(--line)}
 .tc-btn:disabled{opacity:.5;cursor:default}
-.tc-seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:4px 0}
-.tc-seg button{border:0;background:var(--paper);padding:8px 14px;font-size:13px;font-family:inherit;color:var(--mut);cursor:pointer}
+.tc-hud .tc-btn{background:var(--paper);color:var(--ink);border-color:var(--line);font-size:10px;min-height:32px;padding:6px 10px}
+.tc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.tc-icon-btn svg{flex:none;display:block}
+.tc-board{position:relative;width:100%;max-width:920px;margin:0 auto;aspect-ratio:960/820;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f3f5f7;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.tc-board[data-live="1"]{cursor:pointer}
+.tc-board svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.tc-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(246,248,250,.88);backdrop-filter:blur(3px);padding:12px;overflow:auto;z-index:5}
+.tc-card{display:flex;flex-direction:column;gap:8px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:18px 20px;max-width:560px;width:100%;max-height:100%;overflow:hidden;box-shadow:0 4px 16px rgba(15,23,42,.06);animation:tcPop .18s ease-out}
+@keyframes tcPop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.tc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.tc-head h3{margin:0;font-size:19px}
+.tc-body{flex:1 1 auto;min-height:0;overflow:auto}
+.tc-foot{display:flex;flex-wrap:wrap;gap:8px;flex:none;margin-top:4px}
+.tc-card p{margin:8px 0;font-size:13.5px;color:var(--mut);line-height:1.55}
+.tc-card p b{color:var(--ink)}
+.tc-mapinfo{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.tc-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:4px 0}
+.tc-seg button{border:0;background:var(--paper);padding:8px 14px;min-height:40px;font-size:13px;font-family:inherit;color:var(--mut);cursor:pointer}
 .tc-seg button.on{background:var(--acc);color:#fff;font-weight:600}
-.tc-steps{display:grid;gap:9px;margin:10px 0}
-.tc-step{display:flex;gap:10px;font-size:13px;color:var(--mut);line-height:1.5}
+.tc-steps{display:grid;gap:8px;margin:12px 0}
+.tc-step{display:flex;gap:8px;font-size:13px;color:var(--mut);line-height:1.5}
 .tc-step b{color:var(--ink)}
 .tc-num{flex:0 0 22px;height:22px;border-radius:50%;background:var(--bg);border:1px solid var(--line);display:grid;place-items:center;font-size:11.5px;color:var(--ink);font-weight:600}
-.tc-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+.tc-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
 .tc-cheatrow small{display:block;color:var(--mut);font-size:11.5px}
-.tc-toggle{border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12px;font-family:inherit;background:var(--bg);color:var(--mut);cursor:pointer;min-width:52px}
+.tc-toggle{border:1px solid var(--line);border-radius:999px;padding:8px 12px;min-height:44px;font-size:12px;font-family:inherit;background:var(--bg);color:var(--mut);cursor:pointer;min-width:52px}
 .tc-toggle.on{background:#dcfce7;border-color:#86efac;color:#166534;font-weight:600}
-.tc-controls{display:flex;gap:8px;margin:12px auto 0;max-width:920px}
-.tc-switch{flex:1;min-height:56px;border:0;border-radius:12px;background:var(--acc);color:#fff;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;touch-action:manipulation}
+.tc-pad{display:flex;justify-content:center;width:100%;max-width:920px;margin:0 auto}
+.tc-switch{flex:1 1 0;min-width:0;min-height:56px;border:1px solid var(--acc);border-radius:10px;background:var(--acc);color:#fff;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;touch-action:manipulation}
 .tc-switch b{font-size:16px}
 .tc-switch small{font-size:11.5px;opacity:.85}
-.tc-switch:disabled{background:#e2e8f0;color:#94a3b8;cursor:default}
-.tc-icon{flex:0 0 44px;min-height:44px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font-size:17px;font-family:inherit;cursor:pointer;touch-action:manipulation}
-.tc-keys{font-size:12px;color:var(--mut);text-align:center;margin:10px 0 0}
-.tc-touch{display:none;font-size:12px;color:var(--mut);text-align:center;margin:10px 0 0}
-.tc-app .game-actions{margin-top:12px;display:flex;justify-content:flex-end}
-.tc-app .game-action-button{border:1px solid var(--line);background:var(--paper);color:var(--mut);border-radius:10px;padding:9px 16px;font-size:13px;font-family:inherit;cursor:pointer}
+.tc-switch svg{display:block}
+.tc-switch:disabled{background:#e2e8f0;border-color:var(--line);color:#94a3b8;cursor:default}
+.tc-btn:focus-visible,.tc-seg button:focus-visible,.tc-toggle:focus-visible,.tc-switch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.tc-app *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (keep last) --- */
+.tc-icon-btn svg{flex:none;display:block}
+.tc-card .tc-body,.tc-card .tc-steps{min-height:0;overflow:auto}
 @media (max-width:640px){
-  .tc-keys{display:none}.tc-touch{display:block}
-  .tc-switch{min-height:62px}.tc-app .game-panel{padding:10px}.tc-card{padding:16px}
+.tc-app.game-fill > .tc-board:not(:has(.tc-ov:not([hidden]))){aspect-ratio:960/820;flex:0 0 auto}
+.tc-app.game-fill > .tc-board:has(.tc-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.tc-app .tc-hud{gap:5px;margin-bottom:8px}
+.tc-app .tc-hud .tc-chip{padding:4px 6px;font-size:9px}
+.tc-app .tc-hud .tc-chip[data-chip-map],.tc-app .tc-hud .tc-chip[data-chip-best]{display:none}
+.tc-app .tc-hud .tc-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.tc-app .tc-hud .tc-btn-label,.tc-app .tc-hud .tc-spacer{display:none}
+.tc-app .tc-ov{padding:8px}
+.tc-app .tc-card{width:100%;height:100%;max-height:100%;padding:12px}
+.tc-app .tc-card .tc-body,.tc-app .tc-card .tc-steps{scrollbar-width:none}
+.tc-app .tc-card .tc-body::-webkit-scrollbar,.tc-app .tc-card .tc-steps::-webkit-scrollbar{display:none}
+.tc-app .tc-foot{position:static;margin:0;padding-top:10px}
+.tc-app .tc-switch{min-height:62px}
 }
 </style>
-<div class="game-intro">
-  <div><h2>Traffic Control</h2><p>Switch the lights, time the yellow, keep the junction alive.</p></div>
-  <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
+<div class="tc-hud">
+  <span class="tc-chip"><i class="tc-dot" data-dot></i><b data-status>Ready</b></span>
+  <span class="tc-chip">Passed <b data-hud-passed>0</b>/<b data-hud-target>–</b></span>
+  <span class="tc-chip" data-chip-queue>Queue <b data-hud-queue>0</b>/<b data-hud-qlimit>–</b></span>
+  <span class="tc-chip"><i class="tc-dot" data-green-dot></i><b data-hud-green>N–S</b></span>
+  <span class="tc-chip" data-chip-turn hidden><b data-turn-name>You</b><span data-turn-time>12s</span><span class="tc-turnbar"><i data-turn-bar></i></span></span>
+  <span class="tc-chip" data-chip-map>–</span>
+  <span class="tc-chip" data-chip-best hidden>Best <b data-hud-best>0</b></span>
+  <span class="tc-chip tc-cheatbadge" data-chip-cheat hidden>CHEATS</span>
+  <span class="tc-spacer"></span>
+  <button class="tc-btn tc-icon-btn" type="button" data-hud-switch title="Switch lights (Space)" aria-label="Switch lights">${iconSVG("toggleRight", { size: 14 })}<span class="tc-btn-label">Switch</span></button>
+  <button class="tc-btn tc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="tc-btn-label">Help</span></button>
+  <button class="tc-btn tc-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="tc-btn-label">Cheats</span></button>
+  <button class="tc-btn tc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="tc-btn-label" data-pause-label>Pause</span></button>
+  <button class="tc-btn tc-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="tc-btn-label">Restart</span></button>
+  <button class="tc-btn tc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="tc-btn-label">Exit game</span></button>
 </div>
-<section class="game-panel" data-board>
-  <div class="tc-hud">
-    <span class="tc-chip">Passed <b data-hud-passed>0</b>/<b data-hud-target>–</b></span>
-    <span class="tc-chip" data-chip-queue>Queue <b data-hud-queue>0</b>/<b data-hud-qlimit>–</b></span>
-    <span class="tc-chip"><i class="tc-dot" data-green-dot></i><b data-hud-green>N–S</b></span>
-    <span class="tc-chip" data-chip-turn hidden><b data-turn-name>You</b><span data-turn-time>12s</span><span class="tc-turnbar"><i data-turn-bar></i></span></span>
-    <span class="tc-chip" data-chip-map>–</span>
-    <span class="tc-chip" data-chip-best hidden>Best <b data-hud-best>0</b></span>
-    <span class="tc-chip tc-cheatbadge" data-chip-cheat hidden>CHEATS</span>
-  </div>
-  <div class="tc-stage" data-stage>
-    <svg data-svg viewBox="0 0 960 820" aria-hidden="true"></svg>
-    <div class="tc-ov" data-ov-wait hidden><div class="tc-card"><h3>Waiting for host…</h3><p>Hi <b data-player></b> — the host is setting up the junction. The game will appear here automatically.</p></div></div>
-    <div class="tc-ov" data-ov-intro hidden><div class="tc-card">
-      <h3>Traffic Control</h3>
+<section class="game-panel tc-board" data-board>
+  <svg data-svg viewBox="0 0 960 820" aria-hidden="true"></svg>
+  <div class="tc-ov" data-ov-wait hidden><div class="tc-card">
+    <div class="tc-head"><h3>Waiting for host…</h3></div>
+    <div class="tc-body"><p>Hi <b data-player></b> — the host is setting up the junction. The game will appear here automatically.</p></div>
+  </div></div>
+  <div class="tc-ov" data-ov-intro hidden><div class="tc-card">
+    <div class="tc-head"><h3>Traffic Control</h3></div>
+    <div class="tc-body">
       <p>Green serves one axis. Switch with the big button, <b>Space</b>, or a click on the junction. A fast car near the stop line <b>runs the yellow</b> — switch only on a clear crossing, and never let a road fill up.</p>
       <div class="tc-mapinfo" data-intro-info></div>
       <div class="tc-seg" data-mode-row>
@@ -433,26 +456,31 @@ export function mount(root, context = {}) {
         <button type="button" data-act="mode" data-mode="duel">Vs Bot</button>
       </div>
       <p data-first-note></p>
-      <div class="tc-ov-actions">
-        <button class="tc-btn" type="button" data-act="start" data-btn-start>Start game</button>
-        <button class="tc-btn ghost" type="button" data-act="reroll" data-btn-reroll>🎲 New map</button>
-        <button class="tc-btn ghost" type="button" data-act="help">How to play</button>
-      </div>
       <p data-guest-note hidden>Only the host can start. You'll be assigned a random seat.</p>
-    </div></div>
-    <div class="tc-ov" data-ov-over hidden><div class="tc-card">
-      <h3 data-over-title>Game over</h3>
-      <p data-over-reason></p>
-      <p data-over-scores></p>
-      <div class="tc-ov-actions">
-        <button class="tc-btn" type="button" data-act="restart">Play again</button>
-        <button class="tc-btn ghost" type="button" data-act="next" data-btn-next hidden>Next level →</button>
-        <button class="tc-btn ghost" type="button" data-act="reroll" data-btn-reroll2>🎲 New map</button>
-      </div>
-    </div></div>
-    <div class="tc-ov" data-ov-pause hidden><div class="tc-card"><h3>Paused</h3><p>Take a breath. The cars will wait.</p><div class="tc-ov-actions"><button class="tc-btn" type="button" data-act="pause">Resume</button></div></div></div>
-    <div class="tc-ov" data-ov-help hidden><div class="tc-card">
-      <h3>How to play</h3>
+    </div>
+    <div class="tc-foot">
+      <button class="tc-btn" type="button" data-act="start" data-btn-start>Start game</button>
+      <button class="tc-btn ghost" type="button" data-act="reroll" data-btn-reroll>🎲 New map</button>
+      <button class="tc-btn ghost" type="button" data-help>How to play</button>
+    </div>
+  </div></div>
+  <div class="tc-ov" data-ov-over hidden><div class="tc-card">
+    <div class="tc-head"><h3 data-over-title>Game over</h3></div>
+    <div class="tc-body"><p data-over-reason></p><p data-over-scores></p></div>
+    <div class="tc-foot">
+      <button class="tc-btn" type="button" data-act="restart">Play again</button>
+      <button class="tc-btn ghost" type="button" data-act="next" data-btn-next hidden>Next level →</button>
+      <button class="tc-btn ghost" type="button" data-act="reroll" data-btn-reroll2>🎲 New map</button>
+    </div>
+  </div></div>
+  <div class="tc-ov" data-ov-pause hidden><div class="tc-card">
+    <div class="tc-head"><h3>Paused</h3></div>
+    <div class="tc-body"><p>Take a breath. The cars will wait.</p></div>
+    <div class="tc-foot"><button class="tc-btn" type="button" data-act="pause">Resume</button></div>
+  </div></div>
+  <div class="tc-ov" data-ov-help hidden><div class="tc-card">
+    <div class="tc-head"><h3>How to play</h3><button class="tc-btn ghost" type="button" data-help-close aria-label="Close help">Close</button></div>
+    <div class="tc-body">
       <div class="tc-steps">
         <div class="tc-step"><span class="tc-num">1</span><span><b>One green at a time.</b> North–South or East–West flows; the rest queue at the stop line.</span></div>
         <div class="tc-step"><span class="tc-num">2</span><span><b>Switch:</b> big button, <b>Space</b>, or click/tap the junction. A short yellow plays before the other axis goes green.</span></div>
@@ -460,41 +488,35 @@ export function mount(root, context = {}) {
         <div class="tc-step"><span class="tc-num">4</span><span><b>Gridlock:</b> if one approach fills up, the city jams. Watch the Queue chip and give the busy road green in time.</span></div>
         <div class="tc-step"><span class="tc-num">5</span><span><b>Duel (bot / online):</b> control alternates every 12 s. Cars that exit during your shift score for you; a crash or jam on your shift loses the duel. First controller and seats are random.</span></div>
       </div>
-      <p><b>Keys:</b> Space switch · P pause · R restart · H help · C cheats · Esc close.</p>
-      <div class="tc-ov-actions"><button class="tc-btn" type="button" data-act="help-close">Got it</button></div>
-    </div></div>
-    <div class="tc-ov" data-ov-cheats hidden><div class="tc-card">
-      <h3>Cheats</h3>
+      <p><b>Keys:</b> Space switch · H help · C cheats · P pause · R restart · Esc close.</p>
+    </div>
+    <div class="tc-foot"><button class="tc-btn" type="button" data-help-close>Got it</button></div>
+  </div></div>
+  <div class="tc-ov" data-ov-cheats hidden><div class="tc-card">
+    <div class="tc-head"><h3>Cheats</h3><button class="tc-btn ghost" type="button" data-cheats-close aria-label="Close cheats">Close</button></div>
+    <div class="tc-body">
       <p>Local mode only. Using any cheat disables best-score saving.</p>
       <div class="tc-cheatrow"><span>Ghost mode<small>Collisions are ignored</small></span><button class="tc-toggle" type="button" data-act="cheat-toggle" data-key="ghost">OFF</button></div>
       <div class="tc-cheatrow"><span>No gridlock<small>Full roads never jam</small></span><button class="tc-toggle" type="button" data-act="cheat-toggle" data-key="noJam">OFF</button></div>
       <div class="tc-cheatrow"><span>Freeze spawns<small>No new cars enter</small></span><button class="tc-toggle" type="button" data-act="cheat-toggle" data-key="freeze">OFF</button></div>
       <div class="tc-cheatrow"><span>Slow motion<small>Everything at 55% speed</small></span><button class="tc-toggle" type="button" data-act="cheat-toggle" data-key="slow">OFF</button></div>
       <div class="tc-cheatrow"><span>Autopilot<small>Smart switching on your shift</small></span><button class="tc-toggle" type="button" data-act="cheat-toggle" data-key="auto">OFF</button></div>
-      <div class="tc-ov-actions">
-        <button class="tc-btn ghost" type="button" data-act="cheat-btn" data-key="pass5">+5 passed</button>
-        <button class="tc-btn ghost" type="button" data-act="cheat-btn" data-key="clear">Clear traffic</button>
-        <button class="tc-btn ghost" type="button" data-act="cheat-btn" data-key="skip">Skip yellow</button>
-        <button class="tc-btn" type="button" data-act="cheats-close">Close</button>
-      </div>
-    </div></div>
-  </div>
-  <div class="tc-controls">
-    <button class="tc-switch" type="button" data-act="switch"><b>Switch lights</b><small data-switch-sub>Green: N–S</small></button>
-    <button class="tc-icon" type="button" data-act="pause" data-btn-pause title="Pause (P)" aria-label="Pause">⏸</button>
-    <button class="tc-icon" type="button" data-act="restart" title="Restart (R)" aria-label="Restart">↻</button>
-    <button class="tc-icon" type="button" data-act="help" title="How to play (H)" aria-label="Help">?</button>
-    <button class="tc-icon" type="button" data-act="cheats" data-btn-cheats title="Cheats (C)" aria-label="Cheats">⚙</button>
-  </div>
-  <p class="tc-keys">Space / click junction — switch · P pause · R restart · H help · C cheats</p>
-  <p class="tc-touch">Tap the junction or the big button to switch the lights.</p>
+    </div>
+    <div class="tc-foot">
+      <button class="tc-btn ghost" type="button" data-act="cheat-btn" data-key="pass5">+5 passed</button>
+      <button class="tc-btn ghost" type="button" data-act="cheat-btn" data-key="clear">Clear traffic</button>
+      <button class="tc-btn ghost" type="button" data-act="cheat-btn" data-key="skip">Skip yellow</button>
+    </div>
+  </div></div>
 </section>
-<div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+<div class="tc-pad">
+  <button class="tc-switch" type="button" data-act="switch"><span>${iconSVG("toggleRight", { size: 16 })} <b>Switch lights</b></span><small data-switch-sub>Green: N–S</small></button>
+</div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
-    const svgEl = $('[data-svg]'), stageEl = $('[data-stage]');
+    const svgEl = $('[data-svg]'), boardEl = $('[data-board]');
     const hudPassed = $('[data-hud-passed]'), hudQueue = $('[data-hud-queue]');
     const hudTarget = $('[data-hud-target]'), hudQLimit = $('[data-hud-qlimit]');
     const chipQueue = $('[data-chip-queue]'), greenDot = $('[data-green-dot]'), hudGreen = $('[data-hud-green]');
@@ -508,13 +530,33 @@ export function mount(root, context = {}) {
     const guestNote = $('[data-guest-note]'), btnNext = $('[data-btn-next]');
     const overTitle = $('[data-over-title]'), overReason = $('[data-over-reason]'), overScores = $('[data-over-scores]');
     const switchBtn = $('[data-act="switch"]'), switchSub = $('[data-switch-sub]');
-    const btnPause = $('[data-btn-pause]'), btnCheats = $('[data-btn-cheats]');
+    const hudSwitch = $('[data-hud-switch]');
+    const btnPause = $('[data-pause]'), pauseIcon = $('[data-pause-icon]'), pauseLabel = $('[data-pause-label]');
+    const btnCheats = $('[data-cheats]'), btnRestart = $('[data-restart]');
     $('[data-player]').textContent = playerName;
 
     /* ---------------- rendering ---------------- */
     let builtSeed = null, carLayer = null, fxLayer = null, sigEls = [], barEls = [];
     const carEls = new Map();
-    let helpOpen = false, cheatsOpen = false, structKey = "";
+    let helpOpen = false, cheatsOpen = false, structKey = "", lastPauseIcon = "";
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("trafficControlHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("trafficControlHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        ensureStruct();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        ensureStruct();
+    }
 
     function buildScene(m) {
         const t = THEMES[m.theme], rng = mulberry32((m.seed ^ 0x51ab3c) >>> 0);
@@ -609,14 +651,16 @@ export function mount(root, context = {}) {
 
     function render() {
         const guest = online && !room.isHost;
-        ovWait.toggleAttribute("hidden", !!state);
-        ovIntro.toggleAttribute("hidden", !state || state.phase !== "intro");
-        ovOver.toggleAttribute("hidden", !state || state.phase !== "over");
-        ovPause.toggleAttribute("hidden", !state || state.phase !== "paused");
+        const halt = helpOpen || cheatsOpen;
+        ovWait.toggleAttribute("hidden", !!state || halt);
+        ovIntro.toggleAttribute("hidden", !state || state.phase !== "intro" || halt);
+        ovOver.toggleAttribute("hidden", !state || state.phase !== "over" || halt);
+        ovPause.toggleAttribute("hidden", !state || state.phase !== "paused" || halt);
         ovHelp.toggleAttribute("hidden", !helpOpen);
         ovCheats.toggleAttribute("hidden", !cheatsOpen || online);
         btnCheats.hidden = online;
         btnPause.hidden = online;
+        btnRestart.disabled = !state || state.phase === "intro";
         if (!state) { statusEl.textContent = "Waiting for host…"; return; }
 
         const m = state.map;
@@ -768,11 +812,24 @@ export function mount(root, context = {}) {
 
         const mine = isMyTurn();
         switchBtn.disabled = !(mine && state.yellow <= 0 && !uiHalt());
+        hudSwitch.disabled = switchBtn.disabled;
         switchSub.textContent = state.phase !== "running" ? "Green: " + (nsG ? "N–S" : "E–W")
             : yel ? "Yellow…" : !mine && state.mode !== "solo" ? nameOf(state.controller) + " is driving"
                 : "Green: " + (nsG ? "N–S" : "E–W");
-        stageEl.dataset.live = mine && !helpOpen && !cheatsOpen ? "1" : "0";
-        btnPause.textContent = state.phase === "paused" ? "▶" : "⏸";
+        boardEl.dataset.live = mine && !helpOpen && !cheatsOpen ? "1" : "0";
+        btnPause.disabled = online || !(state.phase === "running" || state.phase === "paused");
+        const pausedNow = state.phase === "paused";
+        const pauseText = pausedNow ? "Resume" : "Pause";
+        if (pauseLabel.textContent !== pauseText) {
+            pauseLabel.textContent = pauseText;
+            btnPause.setAttribute("aria-label", pauseText);
+            btnPause.title = pauseText + " (P)";
+        }
+        const iconName = pausedNow ? "play" : "pause";
+        if (iconName !== lastPauseIcon) {
+            lastPauseIcon = iconName;
+            pauseIcon.innerHTML = iconSVG(iconName, { size: 14 });
+        }
 
         let txt, col;
         if (state.phase === "intro") { txt = "Ready"; col = "#94a3b8"; }
@@ -789,7 +846,7 @@ export function mount(root, context = {}) {
     }
 
     /* ---------------- networking / actions ---------------- */
-    let destroyed = false, raf = 0, lastT = 0, lastPub = 0, recvT = 0;
+    let destroyed = false, raf = 0, lastT = 0, lastPub = 0, recvT = 0, pausedAt = 0;
 
     function pushIfHost() {
         if (online && room.isHost) {
@@ -799,6 +856,9 @@ export function mount(root, context = {}) {
     }
     function newGame(level, md, phase) {
         state = makeState(genValidatedMap(level), { mode: md, phase: phase || "intro", level });
+        pausedAt = 0;
+        lastT = performance.now();
+        recvT = lastT;
     }
     function applyAction(action, actorSeat) {
         if (!state || !action) return;
@@ -832,8 +892,15 @@ export function mount(root, context = {}) {
                 break;
             case "pause":
                 if (!online) {
-                    if (st.phase === "running") st.phase = "paused";
-                    else if (st.phase === "paused") st.phase = "running";
+                    if (st.phase === "running") {
+                        st.phase = "paused";
+                        pausedAt = performance.now();
+                    } else if (st.phase === "paused") {
+                        st.phase = "running";
+                        /* shift time anchors so the pause gap never becomes a simulation jump */
+                        const delta = Math.max(0, performance.now() - pausedAt);
+                        lastT += delta; recvT += delta; lastPub += delta; pausedAt = 0;
+                    }
                 }
                 break;
             case "cheat": {
@@ -880,47 +947,58 @@ export function mount(root, context = {}) {
     /* ---------------- events ---------------- */
     function handleClick(e) {
         if (destroyed) return;
-        if (e.target.closest("[data-exit]")) { onExit(); return; }
-        const btn = e.target.closest("[data-act]");
+        const t = e.target;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-hud-switch]")) { trySwitch(); return; }
+        const btn = t.closest("[data-act]");
         if (btn) {
             const act = btn.dataset.act;
             if (act === "switch") trySwitch();
-            else if (act === "start" || act === "restart" || act === "reroll" || act === "next" || act === "pause")
+            else if (act === "restart") { if (state && state.phase !== "intro") submitAction({ type: "restart" }); }
+            else if (act === "start" || act === "reroll" || act === "next" || act === "pause")
                 submitAction({ type: act });
             else if (act === "mode") submitAction({ type: "mode", value: btn.dataset.mode });
-            else if (act === "help") { helpOpen = true; cheatsOpen = false; ensureStruct(); }
-            else if (act === "help-close") { helpOpen = false; ensureStruct(); }
-            else if (act === "cheats" && !online) { cheatsOpen = !cheatsOpen; helpOpen = false; ensureStruct(); }
-            else if (act === "cheats-close") { cheatsOpen = false; ensureStruct(); }
             else if (act === "cheat-toggle") submitAction({ type: "cheat", op: "toggle", key: btn.dataset.key });
             else if (act === "cheat-btn") submitAction({ type: "cheat", op: btn.dataset.key, key: btn.dataset.key });
             return;
         }
-        if (e.target.closest("[data-stage]") && !e.target.closest(".tc-ov")) trySwitch();
+        if (t.closest("[data-board]") && !t.closest(".tc-ov") && !t.closest("button")) trySwitch();
     }
     function handleKey(e) {
         if (destroyed || !state) return;
         const tag = (e.target && e.target.tagName) || "";
         if (tag === "INPUT" || tag === "TEXTAREA") return;
         const k = e.key;
+        /* priority: help -> cheats -> pause -> Escape -> game actions */
+        if (k === "h" || k === "H") { e.preventDefault(); toggleHelp(); return; }
+        if (k === "c" || k === "C") { e.preventDefault(); toggleCheats(); return; }
+        if (k === "p" || k === "P") {
+            e.preventDefault();
+            if (!online && !helpOpen && !cheatsOpen && (state.phase === "running" || state.phase === "paused"))
+                submitAction({ type: "pause" });
+            return;
+        }
+        if (k === "Escape") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (!online && state.phase === "paused") submitAction({ type: "pause" });
+            return;
+        }
+        if (helpOpen || cheatsOpen || tag === "BUTTON") return;
         if (k === " " || e.code === "Space") {
             e.preventDefault();
-            if (e.repeat || helpOpen || cheatsOpen) return;
+            if (e.repeat) return;
             if (state.phase === "intro") { if (authority) submitAction({ type: "start" }); }
             else if (state.phase === "over") submitAction({ type: "restart" });
             else if (state.phase === "paused") submitAction({ type: "pause" });
             else trySwitch();
-        } else if (k === "p" || k === "P") {
-            if (!online && (state.phase === "running" || state.phase === "paused")) submitAction({ type: "pause" });
         } else if (k === "r" || k === "R") {
             if (state.phase !== "intro") submitAction({ type: "restart" });
-        } else if (k === "h" || k === "H") {
-            helpOpen = !helpOpen; cheatsOpen = false; ensureStruct();
-        } else if (k === "c" || k === "C") {
-            if (!online) { cheatsOpen = !cheatsOpen; helpOpen = false; ensureStruct(); }
-        } else if (k === "Escape") {
-            if (helpOpen || cheatsOpen) { helpOpen = false; cheatsOpen = false; ensureStruct(); }
-            else if (state.phase === "paused") submitAction({ type: "pause" });
         }
     }
     root.addEventListener("click", handleClick);

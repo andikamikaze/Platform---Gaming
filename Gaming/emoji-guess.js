@@ -5,7 +5,11 @@
   1. id META = nama file tanpa .js  -> "emoji-guess"
   2. Setelah menaruh file ini, jalankan: node tools/build-games-manifest.mjs
   Tidak ada karakter emoji: semua ikon adalah inline SVG buatan tangan.
+  Layout: HUD bar (info + tombol ikon), board penuh tinggi, overlay
+  help/cheats/pause/result di dalam board. Bantuan internal sekali jalan.
 */
+
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "emoji-guess",
@@ -208,6 +212,11 @@ export function mount(root, context = {}) {
     const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     let virtualOpen = coarse; // keyboard virtual otomatis terbuka di perangkat sentuh
     let cheatOpen = false;
+    let helpOpen = false;
+    let paused = false;
+    let frozen = false;
+    let freezeAt = 0;
+    let freezePerfAt = 0;
     let state = null;
     let botPlan = null;
     let lastKey = "";
@@ -215,78 +224,133 @@ export function mount(root, context = {}) {
     try { wins = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { }
     function saveWins() { try { localStorage.setItem(META.bestKey, String(wins)); } catch (e) { } }
 
-    /* ---------------- skeleton (minimalist, tanpa tutorial) ---------------- */
+    /* bantuan internal: tampil sekali per perangkat, dibuka lagi lewat H / tombol Help */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("emojiGuessHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("emojiGuessHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+
+    /* ---------------- skeleton: HUD bar + fill board + overlays ---------------- */
     root.innerHTML = `
-<div class="game-app">
-  <div class="game-intro">
-    <div><h2>Emoji Guess</h2><p data-sub>Versus bot</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <section class="game-panel" data-board>
-    <style>
-.eg{position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:560px;margin:0 auto;padding:6px 2px 2px;color:#e7eaf2}
-.eg [hidden]{display:none!important}
-.eg button{font:inherit;cursor:pointer}
-.eg-score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;width:100%;gap:10px}
-.eg-seat{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
-.eg-seat.right{align-items:flex-end}
-.eg-name{font-size:11px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#8b93a7}
-.eg-seat.on .eg-name{color:#a5b4fc}
-.eg-num{font-size:24px;font-weight:700;line-height:1}
-.eg-mid{display:flex;flex-direction:column;align-items:center;gap:2px}
-.eg-round{font-size:12px;color:#8b93a7;font-variant-numeric:tabular-nums}
-.eg-cat{font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:#fbbf24}
-.eg-pics{display:flex;align-items:center;gap:16px}
-.eg-pic{width:96px;height:96px;border:1px solid #ffffff22;border-radius:16px;display:grid;place-items:center;background:#ffffff08}
-.eg-pic svg{width:54px;height:54px;color:#c7d2fe}
-.eg-plus{color:#5b6478;font-size:22px;font-weight:600}
-.eg-mask{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;min-height:30px}
-.eg-slot{width:20px;height:28px;border-bottom:2px solid #ffffff2e;display:grid;place-items:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;font-weight:700;text-transform:uppercase;color:#e7eaf2}
-.eg-slot.on{border-color:#a5b4fc}
-.eg-tries{display:flex;gap:6px;min-height:8px}
-.eg-dot{width:7px;height:7px;border-radius:50%;background:#ffffff26}
-.eg-dot.on{background:#818cf8}
-.eg-row{display:flex;gap:8px;width:100%;max-width:400px}
-.eg-input{flex:1;min-width:0;background:transparent;border:1px solid #ffffff2c;border-radius:10px;color:#fff;font-size:16px;font-weight:600;padding:9px 12px;text-align:center;letter-spacing:1px}
-.eg-input:focus{outline:none;border-color:#818cf8}
-.eg-input:disabled{opacity:.45}
-.eg-btn{background:transparent;border:1px solid #ffffff2c;color:#c9cfdd;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600;transition:border-color .15s,color .15s,background .15s}
+<style>
+.eg-app{--eg-line:#ffffff1f;--eg-panel:#141a30;--eg-mut:#8b93a7;--eg-acc:#818cf8;position:relative;display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0;color:#e7eaf2;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.eg-app *{box-sizing:border-box}
+.eg-app [hidden]{display:none!important}
+.eg-app button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
+.eg-app :is(button,input):focus-visible{outline:2px solid #a5b4fc;outline-offset:2px}
+.eg-hud{display:flex;align-items:center;gap:5px 6px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.eg-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--eg-line);border-radius:999px;background:#ffffff08;color:var(--eg-mut);white-space:nowrap}
+.eg-chip b{color:#e7eaf2;font-weight:700;font-variant-numeric:tabular-nums}
+.eg-chip [data-name]{display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.eg-seat.on{border-color:var(--eg-acc)}
+.eg-seat.on [data-name]{color:#a5b4fc}
+.eg-dotstat{width:7px;height:7px;border-radius:50%;background:#34d399;flex:none}
+.eg-cat{color:#fbbf24}
+.eg-spacer{flex:1 1 auto}
+.eg-btn{min-height:44px;background:transparent;border:1px solid #ffffff2c;color:#c9cfdd;border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600;transition:border-color .15s,color .15s,background .15s}
 .eg-btn:hover:not(:disabled){border-color:#818cf8;color:#fff}
 .eg-btn:disabled{opacity:.4;cursor:default}
 .eg-btn.primary{background:#818cf8;border-color:#818cf8;color:#0d1024}
 .eg-btn.primary:hover:not(:disabled){background:#a5b4fc;border-color:#a5b4fc;color:#0d1024}
 .eg-btn[aria-pressed="true"]{border-color:#818cf8;color:#a5b4fc}
-.eg-fb{min-height:18px;font-size:13px;font-weight:600;text-align:center;color:#8b93a7}
+.eg-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.eg-icon-btn svg{flex:none;display:block}
+.eg-app .eg-hud .eg-btn{min-height:32px;padding:5px 8px;font-size:10px}
+.eg-app .eg-hud .eg-icon-btn[data-hint] .eg-btn-label,
+.eg-app .eg-hud .eg-icon-btn[data-keys] .eg-btn-label{display:none}
+.eg-board{position:relative;width:100%;flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;padding:12px;background:#0b0e1c;border:1px solid var(--eg-line);border-radius:12px;overflow:hidden}
+.eg-play{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:560px;margin:auto;padding:4px 2px 2px}
+.eg-pics{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;width:100%}
+.eg-pic{width:96px;height:96px;border:1px solid #ffffff22;border-radius:12px;display:grid;place-items:center;background:#ffffff08}
+.eg-pic svg{width:54px;height:54px;color:#c7d2fe}
+.eg-plus{color:#5b6478;font-size:22px;font-weight:600}
+.eg-mask{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;min-height:30px}
+.eg-slot{width:20px;height:28px;border-bottom:2px solid #ffffff2e;display:grid;place-items:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;font-weight:700;text-transform:uppercase;color:#e7eaf2}
+.eg-slot.on{border-color:var(--eg-acc)}
+.eg-tries{display:flex;gap:6px;min-height:8px}
+.eg-dot{width:7px;height:7px;border-radius:50%;background:#ffffff26}
+.eg-dot.on{background:#818cf8}
+.eg-row{display:flex;gap:8px;width:100%;max-width:400px}
+.eg-input{flex:1;min-width:0;min-height:44px;background:transparent;border:1px solid #ffffff2c;border-radius:9px;color:#fff;font-size:16px;font-weight:600;padding:8px 12px;text-align:center;letter-spacing:1px}
+.eg-input:focus{border-color:#818cf8}
+.eg-input:disabled{opacity:.45}
+.eg-fb{min-height:18px;font-size:13px;font-weight:600;line-height:1.4;text-align:center;color:#8b93a7}
 .eg-fb.good{color:#34d399}
 .eg-fb.bad{color:#f87171}
 .eg-keys{display:flex;flex-direction:column;gap:6px;width:100%;max-width:420px}
 .eg-krow{display:flex;gap:5px;justify-content:center}
-.eg-key{flex:1;min-width:0;max-width:38px;height:36px;border:1px solid #ffffff22;background:#ffffff08;color:#dfe3ee;border-radius:8px;font-size:14px;font-weight:600;text-transform:uppercase}
+.eg-key{flex:1;min-width:0;max-width:38px;min-height:44px;border:1px solid #ffffff22;background:#ffffff08;color:#dfe3ee;border-radius:8px;font-size:14px;font-weight:600;text-transform:uppercase}
 .eg-key.wide{max-width:64px;flex:1.6}
 .eg-key:hover{border-color:#818cf8}
 .eg-keys.off .eg-key{opacity:.35;pointer-events:none}
-.eg-tools{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-.eg-ov{position:absolute;inset:0;background:rgba(9,11,24,.92);backdrop-filter:blur(3px);display:grid;place-items:center;border-radius:14px;z-index:5}
-.eg-ovcard{display:flex;flex-direction:column;gap:8px;width:min(320px,92%);padding:18px}
-.eg-ovcard.center{align-items:center;text-align:center}
-.eg-ovhead{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#8b93a7;margin-bottom:4px}
-.eg-x{background:none;border:none;color:#8b93a7;font-size:20px;line-height:1;padding:2px 6px}
-.eg-x:hover{color:#fff}
-.eg-cheat{display:flex;justify-content:space-between;align-items:center;gap:10px;background:transparent;border:1px solid #ffffff22;border-radius:10px;color:#dfe3ee;padding:10px 12px;font-size:13px;font-weight:600;text-align:left}
-.eg-cheat em{font-style:normal;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#5b6478}
+.eg-ov{position:absolute;inset:0;padding:12px;overflow:auto;background:rgba(9,11,24,.94);display:grid;place-items:center;border-radius:12px;z-index:5}
+.eg-ovcard{display:flex;flex-direction:column;gap:8px;width:min(360px,100%);max-height:100%;overflow:hidden;padding:16px;background:var(--eg-panel);border:1px solid var(--eg-line);border-radius:12px}
+.eg-ovcard.center{width:min(320px,100%);align-items:center;text-align:center}
+.eg-ovhead{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--eg-mut)}
+.eg-cheats,.eg-help{flex:1 1 auto;min-height:0;overflow:auto}
+.eg-cheats{display:flex;flex-direction:column;gap:6px}
+.eg-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;align-items:start}
+.eg-help b{display:block;margin-bottom:5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--eg-mut)}
+.eg-help ul{margin:0 0 10px;padding-left:16px;font:600 11px/1.6 ui-monospace,monospace;color:#c9cfdd}
+.eg-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--eg-line);border-bottom-width:2px;border-radius:5px;background:#0b0e1c;font:inherit;color:#e7eaf2}
+.eg-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:auto;padding-top:10px;border-top:1px solid var(--eg-line)}
+.eg-note{font-size:10px;line-height:1.5;color:var(--eg-mut)}
+.eg-cheat{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:44px;background:transparent;border:1px solid #ffffff22;border-radius:9px;color:#dfe3ee;padding:8px 12px;font-size:13px;font-weight:600;text-align:left}
+.eg-cheat em{font-style:normal;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#5b6478}
 .eg-cheat:hover:not(:disabled){border-color:#f472b6;color:#fff}
 .eg-cheat:disabled{opacity:.35;cursor:default}
 .eg-ovtitle{margin:0;font-size:22px;font-weight:700}
 .eg-ovscore{margin:0;font-size:14px;color:#c9cfdd;font-variant-numeric:tabular-nums}
-.eg-ovsub{margin:0;font-size:12px;color:#8b93a7;min-height:14px}
-@media (max-width:480px){.eg-pic{width:80px;height:80px}.eg-pic svg{width:46px;height:46px}.eg-num{font-size:20px}}
-    </style>
-    <div class="eg">
-      <div class="eg-score">
-        <div class="eg-seat" data-seat="0"><span class="eg-name" data-name="0">You</span><b class="eg-num" data-score="0">0</b></div>
-        <div class="eg-mid"><span class="eg-round" data-round>1 / 8</span><span class="eg-cat" data-cat></span></div>
-        <div class="eg-seat right" data-seat="1"><span class="eg-name" data-name="1">Bot</span><b class="eg-num" data-score="1">0</b></div>
-      </div>
+.eg-ovsub{margin:0;font-size:12px;line-height:1.5;color:#8b93a7;min-height:14px}
+@media (prefers-reduced-motion:reduce){.eg-app *{animation:none!important;transition:none!important}}
+/* --- layout overrides (keep last: beat pointer:coarse + design polish) --- */
+.eg-app.game-fill > .eg-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.eg-app.game-fill > .eg-board:not(:has(.eg-ov:not([hidden]))){flex:0 0 auto;min-height:0;aspect-ratio:auto}
+.eg-app.game-fill > .eg-board:has(.eg-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.eg-app .eg-hud{gap:5px}
+.eg-app .eg-hud .eg-chip{padding:4px 6px;font-size:9px}
+.eg-app .eg-hud .eg-chip[data-hud="status"],
+.eg-app .eg-hud .eg-chip[data-hud="cat"],
+.eg-app .eg-hud .eg-chip[data-hud="wins"]{display:none}
+.eg-app .eg-hud .eg-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.eg-app .eg-hud .eg-btn-label,
+.eg-app .eg-hud .eg-spacer{display:none}
+.eg-app .eg-play{gap:8px}
+.eg-app .eg-pics{gap:8px}
+.eg-app .eg-pic{width:80px;height:80px;border-radius:10px}
+.eg-app .eg-pic svg{width:46px;height:46px}
+.eg-app .eg-ov{padding:8px}
+.eg-app .eg-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.eg-app .eg-cheats,.eg-app .eg-help{scrollbar-width:none}
+.eg-app .eg-cheats::-webkit-scrollbar,.eg-app .eg-help::-webkit-scrollbar{display:none}
+.eg-app .eg-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--eg-line)}
+.eg-app .eg-note{display:none}
+}
+</style>
+<div class="game-app eg-app game-fill" data-eg>
+  <div class="eg-hud">
+    <span class="eg-chip eg-seat" data-seat="0"><span data-name="0">You</span> <b data-score="0">0</b></span>
+    <span class="eg-chip">ROUND <b data-round>1 / 8</b></span>
+    <span class="eg-chip">TRIES <b data-tries-num>5</b></span>
+    <span class="eg-chip">HINTS <b data-hints>2</b></span>
+    <span class="eg-chip" data-hud="cat"><span class="eg-cat" data-cat>&nbsp;</span></span>
+    <span class="eg-chip" data-hud="status"><i class="eg-dotstat"></i><span data-status>Ready</span></span>
+    <span class="eg-chip eg-seat" data-seat="1"><span data-name="1">Bot</span> <b data-score="1">0</b></span>
+    <span class="eg-chip" data-hud="wins">WINS <b data-wins>0</b></span>
+    <span class="eg-spacer"></span>
+    <button class="eg-btn eg-icon-btn" type="button" data-hint aria-label="Hint" title="Reveal a letter (?)">${iconSVG("lightbulb", { size: 14 })}<span class="eg-btn-label">Hint</span></button>
+    <button class="eg-btn eg-icon-btn" type="button" data-keys aria-pressed="false" aria-label="Toggle on-screen keyboard" title="On-screen keyboard">${iconSVG("keyboard", { size: 14 })}<span class="eg-btn-label">Keys</span></button>
+    <button class="eg-btn eg-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="eg-btn-label">Help</span></button>
+    <button class="eg-btn eg-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="eg-btn-label">Cheats</span></button>
+    <button class="eg-btn eg-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="eg-btn-label">Pause</span></button>
+    <button class="eg-btn eg-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="eg-btn-label">Restart</span></button>
+    <button class="eg-btn eg-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="eg-btn-label">Exit</span></button>
+  </div>
+  <section class="game-panel eg-board" data-board>
+    <div class="eg-play" data-play>
       <div class="eg-pics" data-pics></div>
       <div class="eg-mask" data-mask></div>
       <div class="eg-tries" data-tries aria-label="Tries left"></div>
@@ -296,46 +360,83 @@ export function mount(root, context = {}) {
       </div>
       <div class="eg-fb" data-fb></div>
       <div class="eg-keys" data-kbd hidden></div>
-      <div class="eg-tools">
-        <button class="eg-btn" type="button" data-act="hint" data-hint>Hint</button>
-        <button class="eg-btn" type="button" data-act="keys" data-keys aria-pressed="false">Keys</button>
-        <button class="eg-btn" type="button" data-act="cheats">Cheats</button>
-        <button class="eg-btn" type="button" data-act="restart" data-restart>Restart</button>
-      </div>
-      <div class="eg-ov" data-ov="cheat" hidden>
-        <div class="eg-ovcard">
-          <div class="eg-ovhead"><span>Cheats</span><button class="eg-x" type="button" data-act="cheat-close" aria-label="Close">×</button></div>
+    </div>
+    <div class="eg-ov" data-ov="cheat" hidden>
+      <div class="eg-ovcard">
+        <div class="eg-ovhead"><span>Cheats</span><button class="eg-btn" type="button" data-cheats-close aria-label="Close cheats">Close</button></div>
+        <div class="eg-cheats">
           <button class="eg-cheat" type="button" data-cheat="reveal">Reveal answer<em>turn</em></button>
           <button class="eg-cheat" type="button" data-cheat="solve">Solve this card<em>turn</em></button>
           <button class="eg-cheat" type="button" data-cheat="hint">Free letter<em>turn</em></button>
           <button class="eg-cheat" type="button" data-cheat="tries">Refill tries<em>turn</em></button>
           <button class="eg-cheat" type="button" data-cheat="nerf" data-nerf>Weaken bot<em>bot</em></button>
         </div>
+        <div class="eg-foot"><span class="eg-note">Cheats apply to your seat only</span><button class="eg-btn" type="button" data-cheats-close>Close</button></div>
       </div>
-      <div class="eg-ov" data-ov="over" hidden>
-        <div class="eg-ovcard center">
-          <h3 class="eg-ovtitle" data-ovtitle>Match over</h3>
-          <p class="eg-ovscore" data-ovscore></p>
-          <p class="eg-ovsub" data-ovsub></p>
-          <button class="eg-btn primary" type="button" data-act="restart">Play again</button>
+    </div>
+    <div class="eg-ov" data-ov="over" hidden>
+      <div class="eg-ovcard center">
+        <h3 class="eg-ovtitle" data-ovtitle>Match over</h3>
+        <p class="eg-ovscore" data-ovscore></p>
+        <p class="eg-ovsub" data-ovsub></p>
+        <div class="eg-foot"><span class="eg-note">Wins are saved in this browser</span><button class="eg-btn primary" type="button" data-act="restart">Play again</button></div>
+      </div>
+    </div>
+    <div class="eg-ov" data-ov="pause" hidden>
+      <div class="eg-ovcard center">
+        <h3 class="eg-ovtitle">Paused</h3>
+        <p class="eg-ovsub">Timers and the bot are frozen.</p>
+        <div class="eg-foot"><span class="eg-note">Press P or Esc to resume</span><button class="eg-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="eg-ov" data-ov="help" hidden>
+      <div class="eg-ovcard">
+        <div class="eg-ovhead"><span>How to play</span><button class="eg-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="eg-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Guess the word from the two pictograms. Type it in the input and press <span class="eg-kbd">Enter</span> or Guess.</li>
+              <li><span class="eg-kbd">?</span> reveals a letter &middot; <span class="eg-kbd">Backspace</span> deletes a character.</li>
+              <li><span class="eg-kbd">H</span> help &middot; <span class="eg-kbd">C</span> cheats &middot; <span class="eg-kbd">P</span>/<span class="eg-kbd">Esc</span> pause &middot; <span class="eg-kbd">R</span> restart.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap <span class="eg-kbd">Keys</span> to toggle the on-screen keyboard, then tap letters and Go.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>${ROUNDS} cards per match, alternating turns (${ROUNDS / 2} per player).</li>
+              <li>${TRIES} guesses per card and ${HINTS} hints per player. A missed card reveals the answer.</li>
+              <li>Score a point for each correct word; most points after ${ROUNDS} cards wins.</li>
+              <li>Career wins are saved in this browser and shown in the HUD and result screen.</li>
+            </ul>
+          </div>
         </div>
+        <div class="eg-foot"><span class="eg-note">Press H to reopen this guide</span><button class="eg-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
-    const subEl = $("[data-sub]"), statusEl = $("[data-status]");
+    const statusEl = $("[data-status]");
     const seatEls = [$('[data-seat="0"]'), $('[data-seat="1"]')];
     const nameEls = [$('[data-name="0"]'), $('[data-name="1"]')];
     const scoreEls = [$('[data-score="0"]'), $('[data-score="1"]')];
     const roundEl = $("[data-round]"), catEl = $("[data-cat]");
+    const triesNumEl = $("[data-tries-num]"), hintsEl = $("[data-hints]"), winsEl = $("[data-wins]");
     const picsEl = $("[data-pics]"), maskEl = $("[data-mask]"), triesEl = $("[data-tries]");
     const inputEl = $("[data-input]"), guessBtn = $('[data-act="submit"]'), fbEl = $("[data-fb]");
     const kbdEl = $("[data-kbd]"), hintBtn = $("[data-hint]"), keysBtn = $("[data-keys]"), restartBtn = $("[data-restart]");
-    const cheatOv = $('[data-ov="cheat"]'), overOv = $('[data-ov="over"]');
+    const pauseBtnEl = $("[data-pause]");
+    const ov = {
+        cheat: $('[data-ov="cheat"]'), over: $('[data-ov="over"]'),
+        pause: $('[data-ov="pause"]'), help: $('[data-ov="help"]'),
+    };
     const ovTitle = $("[data-ovtitle]"), ovScore = $("[data-ovscore]"), ovSub = $("[data-ovsub]");
     const cheatBtns = {
         reveal: $('[data-cheat="reveal"]'), solve: $('[data-cheat="solve"]'),
@@ -353,15 +454,98 @@ export function mount(root, context = {}) {
         return '<div class="eg-krow">' + keys + extra + "</div>";
     }).join("");
 
-    /* ---------------- timers ---------------- */
-    const timers = new Set();
+    /* ---------------- timers (bisa dibekukan saat pause/help/cheats) ---------------- */
+    const timers = new Map();
+    let timerSeq = 0;
+    function armTimer(rec) {
+        rec.startedAt = Date.now();
+        rec.handle = setTimeout(() => {
+            timers.delete(rec.id);
+            rec.handle = 0;
+            if (!frozen) rec.fn();
+        }, Math.max(0, rec.remaining));
+    }
     function after(ms, fn) {
-        const id = setTimeout(() => { timers.delete(id); fn(); }, ms);
-        timers.add(id);
+        const id = ++timerSeq;
+        const rec = { id, fn, remaining: ms, startedAt: 0, handle: 0 };
+        timers.set(id, rec);
+        if (!frozen) armTimer(rec); // saat beku, timer baru dipasang saat resume
     }
     function clearTimers() {
-        for (const id of timers) clearTimeout(id);
+        for (const rec of timers.values()) if (rec.handle) clearTimeout(rec.handle);
         timers.clear();
+    }
+    function freezeTimers() {
+        for (const rec of timers.values()) {
+            if (!rec.handle) continue;
+            clearTimeout(rec.handle);
+            rec.handle = 0;
+            rec.remaining = Math.max(0, rec.remaining - (Date.now() - rec.startedAt));
+        }
+    }
+    function resumeTimers() {
+        for (const rec of timers.values()) if (!rec.handle) armTimer(rec);
+    }
+    function shiftClock(ms) {
+        if (!authority || !ms || ms < 0) return;
+        if (botPlan && botPlan.at) botPlan.at += ms;
+    }
+    function syncFreeze() {
+        const next = paused || helpOpen || cheatOpen;
+        if (next === frozen) return;
+        frozen = next;
+        if (frozen) {
+            freezeAt = Date.now();
+            freezePerfAt = performance.now();
+            freezeTimers();
+        } else {
+            const shift = freezeAt ? Date.now() - freezeAt : 0;
+            const perfShift = freezePerfAt ? performance.now() - freezePerfAt : 0;
+            freezeAt = 0;
+            freezePerfAt = 0;
+            void perfShift; /* penanda performa: engine berbasis setTimeout */
+            shiftClock(shift);
+            resumeTimers();
+        }
+    }
+
+    /* ---------------- overlay / mode toggles ---------------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) { helpOpen = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function togglePause(on) {
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { cheatOpen = false; helpOpen = false; }
+        syncFreeze();
+        render();
+    }
+    function syncOverlays() {
+        const over = Boolean(state && state.phase === "over");
+        ov.over.hidden = !over || cheatOpen || helpOpen || paused;
+        ov.cheat.hidden = !cheatOpen || helpOpen || paused;
+        ov.pause.hidden = !paused || cheatOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+        keysBtn.setAttribute("aria-pressed", virtualOpen ? "true" : "false");
+        const label = pauseBtnEl.querySelector(".eg-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtnEl.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtnEl.title = paused ? "Resume (P)" : "Pause (P)";
+    }
+    function restartGame() {
+        paused = false;
+        helpOpen = false;
+        cheatOpen = false;
+        syncFreeze();
+        submitAction({ type: "restart" });
     }
 
     /* ---------------- seats & labels ---------------- */
@@ -375,23 +559,24 @@ export function mount(root, context = {}) {
 
     /* ---------------- render ---------------- */
     function render() {
-        keysBtn.setAttribute("aria-pressed", virtualOpen ? "true" : "false");
         kbdEl.hidden = !virtualOpen;
         if (!state) {
             statusEl.textContent = "Waiting for host…";
+            triesNumEl.textContent = "—";
+            hintsEl.textContent = "—";
+            winsEl.textContent = String(wins);
             inputEl.disabled = true; guessBtn.disabled = true; hintBtn.disabled = true;
             restartBtn.disabled = true;
             kbdEl.classList.add("off");
-            cheatOv.hidden = true; overOv.hidden = true;
+            syncOverlays();
             return;
         }
         const me = mySeat();
         const card = state.deck[Math.min(state.round, ROUNDS - 1)];
-        const mine = state.phase === "play" && !state.lock && state.turn === me;
+        const mine = state.phase === "play" && !state.lock && state.turn === me && !frozen;
 
-        subEl.textContent = online ? playerName + " — you are Player " + (me + 1) : "Versus bot";
-        statusEl.textContent =
-            state.phase === "over" ? "Match over"
+        statusEl.textContent = frozen ? "Paused"
+            : state.phase === "over" ? "Match over"
                 : state.lock ? "Next card…"
                     : mine ? "Your turn"
                         : online ? "Opponent's turn"
@@ -402,6 +587,9 @@ export function mount(root, context = {}) {
             scoreEls[i].textContent = String(state.scores[i]);
             seatEls[i].classList.toggle("on", state.phase === "play" && state.turn === i);
         }
+        triesNumEl.textContent = String(state.tries);
+        hintsEl.textContent = String(state.hints[me]);
+        winsEl.textContent = String(wins);
         roundEl.textContent = Math.min(state.round + 1, ROUNDS) + " / " + ROUNDS;
         catEl.textContent = card.cat;
         picsEl.innerHTML =
@@ -421,7 +609,10 @@ export function mount(root, context = {}) {
         inputEl.placeholder = mine ? "answer" : "—";
         guessBtn.disabled = !mine;
         hintBtn.disabled = !mine || state.hints[me] <= 0;
-        hintBtn.textContent = "Hint · " + state.hints[me];
+        const hintLabel = hintBtn.querySelector(".eg-btn-label");
+        if (hintLabel) hintLabel.textContent = "Hint · " + state.hints[me];
+        hintBtn.setAttribute("aria-label", "Reveal a letter, " + state.hints[me] + " left");
+        hintBtn.title = "Reveal a letter, " + state.hints[me] + " left (?)";
         restartBtn.disabled = online ? state.phase !== "over" : false;
         kbdEl.classList.toggle("off", !mine);
         for (const k in cheatBtns) cheatBtns[k].disabled = !mine;
@@ -438,7 +629,7 @@ export function mount(root, context = {}) {
         }
 
         if (state.phase === "over") {
-            cheatOpen = false;
+            if (cheatOpen || paused) { cheatOpen = false; paused = false; syncFreeze(); }
             ovTitle.textContent =
                 state.winner === -1 ? "Draw"
                     : state.winner === me ? "You win"
@@ -447,11 +638,8 @@ export function mount(root, context = {}) {
             ovSub.textContent = !online
                 ? "Career wins: " + wins + (state.cheated ? " · cheats used" : "")
                 : (state.cheated ? "Cheats were used" : "");
-            overOv.hidden = false;
-        } else {
-            overOv.hidden = true;
         }
-        cheatOv.hidden = !cheatOpen;
+        syncOverlays();
     }
 
     function publish() {
@@ -634,7 +822,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- input helpers ---------------- */
     function typeChar(ch) {
-        if (inputEl.disabled) return;
+        if (frozen || inputEl.disabled) return;
         if (inputEl.value.length < 24) inputEl.value += ch;
         if (!coarse) { try { inputEl.focus({ preventScroll: true }); } catch (e) { } }
     }
@@ -643,15 +831,31 @@ export function mount(root, context = {}) {
         inputEl.readOnly = coarse && virtualOpen;
         inputEl.setAttribute("inputmode", coarse && virtualOpen ? "none" : "text");
     }
+    function handleEscape() {
+        if (helpOpen) toggleHelp(false);
+        else if (cheatOpen) toggleCheats(false);
+        else if (paused) togglePause(false);
+        else if (virtualOpen && coarse) { virtualOpen = false; syncInputMode(); render(); }
+        else { try { inputEl.blur(); } catch (e) { } }
+    }
 
     /* ---------------- events: mouse + keyboard fisik + tombol virtual ---------------- */
     function handleClick(event) {
         const t = event.target;
         if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        if (t.closest("[data-hint]")) { submitAction({ type: "hint" }); return; }
+        if (t.closest("[data-keys]")) { virtualOpen = !virtualOpen; syncInputMode(); render(); return; }
         const kb = t.closest("[data-key]");
         if (kb) {
-            if (!inputEl.disabled) {
+            if (!inputEl.disabled && !frozen) {
                 const k = kb.dataset.key;
                 if (k === "enter") submitAction({ type: "guess", value: inputEl.value });
                 else if (k === "back") inputEl.value = inputEl.value.slice(0, -1);
@@ -660,23 +864,21 @@ export function mount(root, context = {}) {
             return;
         }
         const ch = t.closest("[data-cheat]");
-        if (ch) { submitAction({ type: "cheat", id: ch.dataset.cheat }); return; }
+        if (ch) { if (!frozen) submitAction({ type: "cheat", id: ch.dataset.cheat }); return; }
         const btn = t.closest("[data-act]");
         if (!btn) return;
         const a = btn.dataset.act;
         if (a === "submit") submitAction({ type: "guess", value: inputEl.value });
-        else if (a === "hint") submitAction({ type: "hint" });
         else if (a === "restart") submitAction({ type: "restart" });
-        else if (a === "keys") { virtualOpen = !virtualOpen; syncInputMode(); render(); }
-        else if (a === "cheats") { cheatOpen = true; render(); }
-        else if (a === "cheat-close") { cheatOpen = false; render(); }
     }
 
     function onInputKey(e) {
-        if (e.key === "Enter") { e.preventDefault(); submitAction({ type: "guess", value: inputEl.value }); }
-        else if (e.key === "Escape") {
-            if (cheatOpen) { cheatOpen = false; render(); }
-            else inputEl.blur();
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (!frozen) submitAction({ type: "guess", value: inputEl.value });
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            handleEscape();
         } else if (inputEl.readOnly && e.key.length === 1 && /[a-z0-9 ]/i.test(e.key)) {
             e.preventDefault();
             typeChar(e.key.toLowerCase());
@@ -684,20 +886,32 @@ export function mount(root, context = {}) {
     }
 
     function onDocKey(e) {
-        if (e.target === inputEl) return;
-        if (e.key === "Escape") { if (cheatOpen) { cheatOpen = false; render(); } return; }
-        if (!state) return;
-        if (state.phase === "over") {
-            if (e.key === "Enter") { e.preventDefault(); submitAction({ type: "restart" }); }
+        if (e.target === inputEl) return; // input owns typing + its own Enter/Esc
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const k = e.key, code = e.code || "";
+        const is = (letter) => code === "Key" + letter || k === letter.toLowerCase() || k === letter.toUpperCase();
+        /* prioritas: help -> cheats -> pause/Escape -> aksi game */
+        if (is("H")) { e.preventDefault(); toggleHelp(); return; }
+        if (is("C")) { e.preventDefault(); if (!helpOpen && !paused) toggleCheats(); return; }
+        if (is("P") || k === "Escape") {
+            e.preventDefault();
+            if (k === "Escape") handleEscape();
+            else togglePause();
             return;
         }
-        if (e.key === "?") { e.preventDefault(); submitAction({ type: "hint" }); return; }
+        if (is("R")) { e.preventDefault(); restartGame(); return; }
+        if (!state || frozen) return;
+        if (state.phase === "over") {
+            if (k === "Enter") { e.preventDefault(); submitAction({ type: "restart" }); }
+            return;
+        }
+        if (k === "?") { e.preventDefault(); submitAction({ type: "hint" }); return; }
         if (inputEl.disabled) return;
-        if (e.key === "Enter") { e.preventDefault(); submitAction({ type: "guess", value: inputEl.value }); }
-        else if (e.key === "Backspace") { e.preventDefault(); inputEl.value = inputEl.value.slice(0, -1); }
-        else if (e.key.length === 1 && /[a-z0-9 ]/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (k === "Enter") { e.preventDefault(); submitAction({ type: "guess", value: inputEl.value }); }
+        else if (k === "Backspace") { e.preventDefault(); inputEl.value = inputEl.value.slice(0, -1); }
+        else if (k.length === 1 && /[a-z0-9 ]/i.test(k)) {
             e.preventDefault();
-            typeChar(e.key.toLowerCase());
+            typeChar(k.toLowerCase());
         }
     }
 
@@ -707,6 +921,7 @@ export function mount(root, context = {}) {
     syncInputMode();
 
     /* ---------------- wiring: room (multiplayer) / AI ---------------- */
+    syncFreeze(); // bantuan first-run ikut membekukan timer sebelum state dibuat
     if (online) {
         subs.push(room.onRoom((nextRoom) => { roomData = nextRoom; render(); }));
         if (room.isHost) {

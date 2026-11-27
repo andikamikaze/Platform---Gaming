@@ -5,6 +5,8 @@
   3. Regenerate manifest: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "rise-of-empires",
     name: "Rise of Empires",
@@ -255,84 +257,92 @@ export function mount(root, context = {}) {
     let destroyed = false;
 
     /* UI lokal (tidak dibagikan ke room) */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("riseOfEmpiresHelpSeen") === "1"; } catch (_) { /* storage blocked */ }
     const ui = {
         tab: "map", cursor: { col: 7, row: 5 }, cityCursor: 4,
-        sheet: null, frac: 0.5, help: true, cheat: false, endClosed: false,
-        pad: false, surrArm: false, counted: false, botTimer: null,
+        sheet: null, frac: 0.5, help: !seenHelp, cheat: false, paused: false, endClosed: false,
+        pad: false, surrArm: false, counted: false, botTimer: null, surrTimer: null,
     };
+    try { ui.pad = matchMedia("(pointer:coarse)").matches; } catch (_) { /* matchMedia unavailable */ }
+    if (!seenHelp) {
+        try { localStorage.setItem("riseOfEmpiresHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     root.innerHTML = `
 <style>
-.roe-app{--p0:#8b5cf6;--p1:#fb7185;--bg:#0b1020;--panel:#111a30;--line:#ffffff14;--txt:#e5e7eb;--mut:#94a3b8;--gold:#fbbf24;--ok:#34d399;--bad:#f87171;position:relative;display:flex;flex-direction:column;gap:8px;width:100%;max-width:1180px;margin:0 auto;padding:10px;box-sizing:border-box;color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.roe-app{--p0:#8b5cf6;--p1:#fb7185;--bg:#0b1020;--panel:#111a30;--line:#ffffff14;--txt:#e5e7eb;--mut:#94a3b8;--gold:#fbbf24;--ok:#34d399;--bad:#f87171;position:relative;display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0;max-width:1180px;margin:0 auto;padding:10px;box-sizing:border-box;color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .roe-app *{box-sizing:border-box}
 .roe-app [hidden]{display:none!important}
-.roe-intro{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.roe-intro h2{margin:0;font-size:17px;letter-spacing:.3px}
-.roe-intro p{margin:2px 0 0;font-size:11px;color:var(--mut)}
-.roe-ir{display:flex;gap:6px;align-items:center}
-.roe-ibtn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--txt);font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
-.roe-ibtn:hover{border-color:#ffffff3a}
-.roe-ibtn.roe-danger{color:var(--bad)}
-.roe-ibtn.armed{background:#7f1d1d;border-color:var(--bad)}
-.roe-hud{display:flex;gap:6px;flex-wrap:wrap}
-.roe-chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;white-space:nowrap}
+.roe-app button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.roe-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+.roe-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.roe-chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 10px;min-height:28px;font-size:11px;white-space:nowrap}
 .roe-chip i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
-.roe-chip b{font-weight:700}
+.roe-chip b{font-weight:700;font-variant-numeric:tabular-nums}
 .roe-chip small{color:var(--mut);font-size:10px}
-.roe-tabs{display:flex;gap:6px;align-items:center}
-.roe-tabs button{border:1px solid var(--line);background:var(--panel);color:var(--mut);border-radius:999px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer}
-.roe-tabs button.on{background:#1c2650;color:#fff;border-color:#ffffff30}
-.roe-round{margin-left:auto;font-size:11px;color:var(--mut)}
-.roe-main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;min-height:0}
-.roe-stage{position:relative;padding:0;overflow:hidden;display:flex;min-height:clamp(340px,58vh,640px);background:#0d1530;border:1px solid var(--line);border-radius:14px}
-.roe-view{flex:1;display:flex;min-width:0}
+.roe-res-compact{display:none}
+.roe-spacer{flex:1 1 auto;min-width:6px}
+.roe-ctrls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.roe-btn,.roe-tabs button{border:1px solid var(--line);background:#182148;color:var(--txt);border-radius:8px;padding:6px 10px;min-height:32px;font-size:11px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s;white-space:nowrap}
+.roe-btn:hover:not(:disabled),.roe-tabs button:hover{border-color:#ffffff45}
+.roe-btn.primary{background:var(--ok);border-color:transparent;color:#052e22}
+.roe-btn.on,.roe-tabs button.on{border-color:var(--gold);background:#2a2f52;color:#fff}
+.roe-btn:disabled,.roe-tabs button:disabled,.roe-end:disabled,.roe-mini:disabled{opacity:.38;cursor:default}
+.roe-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.roe-icon-btn svg{flex:none;display:block}
+.roe-btn-label{white-space:nowrap}
+.roe-tabs{display:flex;gap:6px}
+.roe-end{display:inline-flex;align-items:center;gap:5px;background:var(--ok);color:#052e22;border:none;border-radius:8px;padding:7px 12px;min-height:32px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}
+.roe-end svg{flex:none;display:block}
+.roe-danger{color:var(--bad)}
+.roe-btn.armed{background:#7f1d1d;border-color:var(--bad)}
+.roe-main{display:flex;gap:12px;flex:1 1 auto;min-height:0}
+.roe-app.game-fill>.roe-main>.roe-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;padding:0;overflow:hidden;display:flex;min-width:0;background:#0d1530;border:1px solid var(--line);border-radius:12px}
+.roe-view{flex:1;display:flex;min-width:0;min-height:0}
 .roe-view svg{width:100%;height:100%;display:block;touch-action:manipulation}
 .roe-node{cursor:pointer}
 .roe-node:hover .roe-hit{stroke:#fbbf24;stroke-width:1.5}
 .roe-slot{cursor:pointer}
-.roe-sheet{position:absolute;left:0;right:0;bottom:0;background:#0e1630f2;border-top:1px solid #ffffff22;padding:10px 12px;max-height:72%;overflow:auto;backdrop-filter:blur(4px);z-index:5}
-.roe-sheet h3{margin:0 0 4px;font-size:13px}
+.roe-sheet{position:absolute;left:0;right:0;bottom:0;background:#0e1630f2;border-top:1px solid #ffffff22;padding:12px 16px;max-height:72%;overflow:auto;z-index:5}
+.roe-sheet h3{margin:0 0 8px;font-size:14px}
 .roe-sheet .info{font-size:11.5px;color:var(--mut);line-height:1.5}
-.roe-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
-.roe-btn{border:1px solid var(--line);background:#182148;color:var(--txt);border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer}
-.roe-btn.primary{background:var(--ok);border-color:transparent;color:#052e22}
-.roe-btn.on{border-color:var(--gold);background:#2a2f52}
-.roe-btn:disabled,.roe-ibtn:disabled,.roe-end:disabled,.roe-mini:disabled{opacity:.38;cursor:default}
-.roe-bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:6px;margin-top:8px}
-.roe-bgrid button{text-align:left;border:1px solid var(--line);background:#131d3d;color:var(--txt);border-radius:10px;padding:7px 9px;font-size:11.5px;font-weight:700;cursor:pointer}
-.roe-bgrid button small{display:block;color:var(--gold);font-weight:600;font-size:10px;margin-top:2px}
-.roe-side{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
-.roe-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
-.roe-card h3{margin:0 0 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
-.roe-trow{display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px}
+.roe-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.roe-bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px;margin-top:8px}
+.roe-bgrid button{text-align:left;border:1px solid var(--line);background:#131d3d;color:var(--txt);border-radius:8px;padding:8px 12px;min-height:44px;font-size:11.5px;font-weight:700;cursor:pointer}
+.roe-bgrid button small{display:block;color:var(--gold);font-weight:600;font-size:10px;margin-top:4px}
+.roe-side{flex:0 0 280px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
+.roe-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.roe-card h3{margin:0 0 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
+.roe-trow{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
 .roe-trow .nm{flex:1;min-width:0}
 .roe-trow small{color:var(--mut);font-size:10px}
-.roe-mini{border:1px solid var(--line);background:#182148;color:var(--txt);border-radius:7px;padding:3px 7px;font-size:10.5px;font-weight:700;cursor:pointer}
+.roe-mini{border:1px solid var(--line);background:#182148;color:var(--txt);border-radius:6px;padding:6px 8px;min-height:32px;font-size:10.5px;font-weight:700;cursor:pointer}
 .roe-mrow{display:flex;justify-content:space-between;gap:6px;font-size:11.5px;padding:2px 0;align-items:center}
 .roe-log{font-size:11px;color:var(--mut);line-height:1.5}
 .roe-log b{color:var(--txt);font-weight:600}
 .roe-log .r{color:var(--gold);font-weight:700;margin-right:4px}
-.roe-bar{display:flex;gap:8px;align-items:center}
-.roe-end{background:var(--ok);color:#052e22;border:none;border-radius:12px;padding:10px 18px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
-.roe-note{flex:1;min-width:0;font-size:11.5px;color:var(--mut)}
+.roe-note{flex:none;font-size:11px;color:var(--mut);line-height:1.4;padding:2px 0}
 .roe-app kbd{background:#0b1020;border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:10px;font-family:inherit}
-.roe-pad{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;align-items:flex-end;padding:10px;pointer-events:none;z-index:4}
-.roe-pad>div{pointer-events:auto}
-.roe-dpad{display:grid;grid-template-columns:repeat(3,42px);grid-template-rows:repeat(3,42px);gap:3px}
-.roe-dpad button{border:1px solid #ffffff2a;background:#131d3dcc;color:var(--txt);border-radius:10px;font-size:15px;cursor:pointer}
+.roe-pad{display:none;gap:8px;justify-content:space-between;align-items:flex-end;padding:2px 10px 4px;flex:none}
+.roe-app.pad-on .roe-pad{display:flex}
+.roe-dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:4px}
+.roe-dpad button{border:1px solid #ffffff2a;background:#131d3dcc;color:var(--txt);border-radius:8px;font-size:15px;cursor:pointer}
 .roe-ab{display:flex;gap:8px}
 .roe-ab button{width:50px;height:50px;border-radius:50%;border:1px solid #ffffff2a;background:#131d3dcc;color:var(--txt);font-size:15px;font-weight:800;cursor:pointer}
 .roe-ab .a{background:#065f46dd}
-@media(pointer:coarse){.roe-pad{display:flex}}
-.roe-app.pad-on .roe-pad{display:flex}
-.roe-overlay{position:absolute;inset:0;background:#05070fd9;display:flex;align-items:center;justify-content:center;z-index:30;padding:12px}
-.roe-modal{background:#0f1830;border:1px solid #ffffff22;border-radius:16px;max-width:600px;width:100%;max-height:92%;overflow:auto;padding:16px}
-.roe-modal h2{margin:0 0 8px;font-size:18px}
+.roe-overlay{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:#05070fd9;padding:16px}
+.roe-modal{display:flex;flex-direction:column;overflow:hidden;width:min(600px,100%);max-height:100%;background:#0f1830;border:1px solid #ffffff22;border-radius:14px}
+.roe-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 20px 8px}
+.roe-head h2{margin:0;font-size:18px}
+.roe-body{flex:1 1 auto;min-height:0;overflow:auto;padding:0 20px 12px}
+.roe-foot{flex:none;display:flex;gap:8px;justify-content:flex-end;padding:12px 20px 16px;border-top:1px solid var(--line)}
 .roe-modal h4{margin:12px 0 4px;font-size:12px;color:var(--gold);text-transform:uppercase;letter-spacing:.5px}
 .roe-modal p,.roe-modal li{font-size:12.5px;color:#cbd5e1;line-height:1.55;margin:4px 0}
 .roe-modal ol,.roe-modal ul{padding-left:18px;margin:4px 0}
 .roe-legend{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .roe-legend span{border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:11px;color:var(--mut)}
+.roe-cheats{flex:1 1 auto;min-height:0;overflow:auto;padding:0 20px 12px}
 .roe-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .roe-cheatgrid button{border:1px solid #f59e0b44;background:#1d1a33;color:var(--txt);border-radius:10px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;text-align:left}
 .roe-cheatgrid button small{display:block;color:var(--mut);font-weight:500;font-size:10.5px;margin-top:2px}
@@ -344,120 +354,162 @@ export function mount(root, context = {}) {
 @keyframes roe-dash{to{stroke-dashoffset:-16}}
 .roe-route{animation:roe-dash 1.2s linear infinite}
 @media(max-width:900px){
-  .roe-main{grid-template-columns:1fr}
-  .roe-side{max-height:210px}
-  .roe-stage{min-height:clamp(300px,52vh,520px)}
-  .roe-intro h2{font-size:15px}
+.roe-main{flex-direction:column}
+.roe-side{flex:0 0 auto;max-height:200px}
+}
+@media(prefers-reduced-motion:reduce){.roe-route{animation:none}.roe-app.wait .game-status .game-status-dot{animation:none}.roe-app *{transition-duration:.01ms!important}}
+/* --- layout overrides last (beat pointer:coarse 44px defaults) --- */
+@media (max-width:640px){
+.roe-app{gap:6px;padding:6px}
+.roe-hud{gap:5px}
+.roe-chips{gap:4px}
+.roe-app .roe-hud .roe-chip{padding:3px 6px;min-height:0;font-size:9px}
+.roe-app .roe-hud .roe-chip small{display:none}
+.roe-app .roe-hud .roe-chip[data-hud="wounded"],
+.roe-app .roe-hud .roe-chip[data-hud="round"],
+.roe-app .roe-hud .roe-chip[data-hud="best"],
+.roe-app .roe-hud .roe-chip[data-hud="food"],
+.roe-app .roe-hud .roe-chip[data-hud="wood"],
+.roe-app .roe-hud .roe-chip[data-hud="stone"],
+.roe-app .roe-hud .roe-chip[data-hud="gold"]{display:none}
+.roe-app .roe-hud .roe-chip[data-hud="res"]{display:inline-flex;gap:4px}
+.roe-app .roe-hud .roe-chip[data-hud="status"]{padding:3px 5px}
+.roe-app .roe-hud .roe-chip[data-hud="status"] span{display:none}
+.roe-app .roe-hud .roe-btn,
+.roe-app .roe-hud .roe-tabs button{min-height:32px;padding:5px 8px;font-size:9px}
+.roe-app .roe-hud .roe-btn-label,
+.roe-app .roe-hud .roe-spacer{display:none}
+.roe-app.game-fill>.roe-main>.roe-board:not(:has(.roe-overlay:not([hidden]))){aspect-ratio:15/11;flex:0 0 auto}
+.roe-app.game-fill>.roe-main>.roe-board:has(.roe-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.roe-side{max-height:170px}
+.roe-overlay{padding:8px}
+.roe-modal{width:100%;height:100%;max-height:100%;padding:0;border-radius:12px}
+.roe-body,.roe-cheats{scrollbar-width:none}
+.roe-body::-webkit-scrollbar,.roe-cheats::-webkit-scrollbar{display:none}
+.roe-foot{padding:10px 12px 12px}
+.roe-note{display:none}
+}
+@media (pointer:coarse){
+.roe-app .roe-hud .roe-btn,
+.roe-app .roe-hud .roe-tabs button{min-height:32px;padding:5px 8px;font-size:9px}
+.roe-pad .roe-dpad button{min-height:44px}
 }
 </style>
-<div class="game-app roe-app" data-app>
-  <div class="game-intro roe-intro">
-    <div><h2>Rise of Empires</h2><p data-sub>Strategy turn-based — bangun, latih, taklukkan.</p></div>
-    <div class="roe-ir">
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-      <button class="roe-ibtn" type="button" data-act="help" title="Bantuan / cara main (H)">?</button>
-      <button class="roe-ibtn" type="button" data-act="cheatToggle" data-cheatbtn title="Cheat (F)">⚡</button>
-      <button class="roe-ibtn" type="button" data-act="restart" data-newmap title="Peta baru (acak)">↻</button>
+<div class="game-app roe-app game-fill" data-app>
+  <!-- single HUD bar: info left, controls right; no intro / footer row -->
+  <div class="roe-hud">
+    <div class="roe-chips" data-chips></div>
+    <span class="roe-spacer"></span>
+    <div class="roe-ctrls">
+      <div class="roe-tabs">
+        <button type="button" data-act="tab" data-tab="map" class="on" aria-label="Peta (1)" title="Peta (1)">${iconSVG("map", { size: 14 })}<span class="roe-btn-label">Peta <kbd>1</kbd></span></button>
+        <button type="button" data-act="tab" data-tab="city" aria-label="Kota (2)" title="Kota (2)">${iconSVG("home", { size: 14 })}<span class="roe-btn-label">Kota <kbd>2</kbd></span></button>
+      </div>
+      <button class="roe-end" type="button" data-act="end" data-end aria-label="Akhiri Giliran (E)" title="Akhiri Giliran (E)">${iconSVG("flag", { size: 14 })}<span class="roe-btn-label">Akhiri Giliran</span></button>
+      <button class="roe-btn roe-icon-btn" type="button" data-act="padToggle" data-padbtn aria-label="Tombol virtual" title="Tombol virtual (mobile)">${iconSVG("gamepad2", { size: 14 })}<span class="roe-btn-label">Pad</span></button>
+      <button class="roe-btn roe-icon-btn roe-danger" type="button" data-act="surrender" data-surr aria-label="Menyerah" title="Menyerah">🏳<span class="roe-btn-label">Menyerah</span></button>
+      <button class="roe-btn roe-icon-btn" type="button" data-help aria-label="Bantuan" title="Bantuan (H)">${iconSVG("helpCircle", { size: 14 })}<span class="roe-btn-label">Bantuan</span></button>
+      <button class="roe-btn roe-icon-btn" type="button" data-cheats aria-label="Cheat" title="Cheat (C)">${iconSVG("wrench", { size: 14 })}<span class="roe-btn-label">Cheat</span></button>
+      <button class="roe-btn roe-icon-btn" type="button" data-pause aria-label="Jeda" title="Jeda (P)">${iconSVG("pause", { size: 14 })}<span class="roe-btn-label">Jeda</span></button>
+      <button class="roe-btn roe-icon-btn" type="button" data-restart data-newmap aria-label="Peta baru" title="Peta baru (R)">${iconSVG("refresh", { size: 14 })}<span class="roe-btn-label">Peta baru</span></button>
+      <button class="roe-btn roe-icon-btn" type="button" data-exit aria-label="Keluar game" title="Keluar game">${iconSVG("logOut", { size: 14 })}<span class="roe-btn-label">Keluar</span></button>
     </div>
   </div>
-  <div class="roe-hud" data-hud></div>
-  <div class="roe-tabs">
-    <button type="button" data-act="tab" data-tab="map" class="on">🗺 Peta <kbd>1</kbd></button>
-    <button type="button" data-act="tab" data-tab="city">🏰 Kota <kbd>2</kbd></button>
-    <span class="roe-round" data-round></span>
-  </div>
   <div class="roe-main">
-    <section class="game-panel roe-stage" data-board>
+    <!-- board = arena + overlays only (no stage wrapper) -->
+    <section class="game-panel roe-board" data-board>
       <div class="roe-view" data-view></div>
       <div class="roe-sheet" data-sheet hidden></div>
-      <div class="roe-pad" data-pad>
-        <div class="roe-dpad">
-          <span></span><button type="button" data-act="pad" data-k="up">▲</button><span></span>
-          <button type="button" data-act="pad" data-k="left">◀</button><span></span><button type="button" data-act="pad" data-k="right">▶</button>
-          <span></span><button type="button" data-act="pad" data-k="down">▼</button><span></span>
+      <div class="roe-overlay" data-helpov hidden>
+        <div class="roe-modal">
+          <div class="roe-head"><h2>Cara Bermain</h2><button class="roe-btn" type="button" data-help-close aria-label="Tutup bantuan" title="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+          <div class="roe-body">
+            <p><b>Tujuan:</b> ratakan kota lawan (HP 100 → 0). Kamu bermain sebagai kekaisaran <b data-helpcolor></b>; posisi spawn & siapa jalan duluan diacak tiap pertandingan.</p>
+            <h4>Alur giliran (sesederhana ini)</h4>
+            <ol>
+              <li><b>Bangun di Kota</b> — ketuk slot kosong, pilih bangunan. Ketuk bangunan untuk upgrade. Town Center membuka level bangunan lain.</li>
+              <li><b>Latih pasukan</b> — di kartu "Pasukan" (butuh Barracks). Instan, tanpa antrean.</li>
+              <li><b>Ketuk node peta</b> — pilih porsi pasukan (25/50/100%), tekan <b>Kirim</b>. Pasukan otomatis berjalan, mengumpulkan / bertempur, lalu pulang.</li>
+              <li><b>Akhiri Giliran</b> — produksi masuk, hospital menyembuhkan, pasukan bergerak & bertempur. Lalu giliran lawan.</li>
+            </ol>
+            <h4>Peta</h4>
+            <ul>
+              <li>Ladang / Hutan / Tambang / Emas: kirim pasukan untuk mengumpulkan (tier makin tinggi = hasil makin besar).</li>
+              <li>Camp Barbar: kalahkan untuk loot. Respawn setelah ${RESPAWN} ronde.</li>
+              <li>Kota lawan: menangkan siege untuk merusak HP kota (siege memberi damage ekstra). HP 0 = menang.</li>
+            </ul>
+            <h4>Counter pasukan</h4>
+            <div class="roe-legend"><span>Infanteri ➜ Kavaleri</span><span>Kavaleri ➜ Pemanah</span><span>Pemanah ➜ Infanteri</span><span>Siege ×2 vs tembok</span></div>
+            <p>Korban perang 60% menjadi <b>pasukan luka</b> dan sembuh otomatis di Hospital — jangan takut bertempur.</p>
+            <h4>Kontrol</h4>
+            <ul>
+              <li><b>Mouse:</b> klik node/slot, klik ganda node = kirim 50% pasukan otomatis, klik kanan = tutup panel.</li>
+              <li><b>Keyboard:</b> <kbd>←↑→↓</kbd>/<kbd>WASD</kbd> pilih • <kbd>Enter</kbd>/<kbd>Spasi</kbd> konfirmasi • <kbd>E</kbd> giliran • <kbd>1</kbd>/<kbd>2</kbd> Peta/Kota • <kbd>H</kbd> bantuan • <kbd>C</kbd> cheat • <kbd>P</kbd> jeda • <kbd>R</kbd> peta baru • <kbd>Esc</kbd> tutup.</li>
+              <li><b>Mobile:</b> tombol virtual D-pad + A/B di bawah peta (atau tombol 🎮), semua aksi bisa disentuh.</li>
+            </ul>
+          </div>
+          <div class="roe-foot"><button class="roe-btn primary" type="button" data-act="closeHelp" data-help-close>Mulai bermain</button></div>
         </div>
-        <div class="roe-ab">
-          <button type="button" class="b" data-act="pad" data-k="b">B</button>
-          <button type="button" class="a" data-act="pad" data-k="a">A</button>
+      </div>
+      <div class="roe-overlay" data-cheatov hidden>
+        <div class="roe-modal">
+          <div class="roe-head"><h2>⚡ Cheat (mode AI)</h2><button class="roe-btn" type="button" data-act="closeCheat" aria-label="Tutup cheat" title="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+          <div class="roe-cheats">
+            <p>Cheat hanya tersedia saat bermain melawan bot, agar multiplayer tetap adil.</p>
+            <div class="roe-cheatgrid">
+              <button type="button" data-act="cheat" data-cheat="res">+1000 semua sumber daya<small>Isi ulang gudang</small></button>
+              <button type="button" data-act="cheat" data-cheat="troops">+20 setiap pasukan<small>Langsung di kota</small></button>
+              <button type="button" data-act="cheat" data-cheat="heal">Pulihkan kota & luka<small>HP 100, semua luka sembuh</small></button>
+              <button type="button" data-act="cheat" data-cheat="build">Bangunan level max<small>Semua slot terisi level 5</small></button>
+              <button type="button" data-act="cheat" data-cheat="weaken">Lemahkan lawan<small>Pasukan & HP bot dipotong 50%</small></button>
+              <button type="button" data-act="cheat" data-cheat="win">Menang instan<small>Akhiri pertandingan</small></button>
+              <button type="button" data-act="cheat" data-cheat="passive">Bot pasif: <span data-passive>OFF</span><small>Bot hanya produksi, tidak menyerang</small></button>
+            </div>
+          </div>
+          <div class="roe-foot"><button class="roe-btn" type="button" data-act="closeCheat">Tutup</button></div>
+        </div>
+      </div>
+      <div class="roe-overlay" data-pauseov hidden>
+        <div class="roe-modal" style="text-align:center">
+          <div class="roe-head"><h2>Dijeda</h2></div>
+          <div class="roe-body"><p>Bot dan penghitung waktu dibekukan. Tekan <kbd>P</kbd> atau <kbd>Esc</kbd> untuk melanjutkan.</p></div>
+          <div class="roe-foot" style="justify-content:center"><button class="roe-btn primary" type="button" data-resume>Lanjutkan</button></div>
+        </div>
+      </div>
+      <div class="roe-overlay" data-endov hidden>
+        <div class="roe-modal" style="text-align:center">
+          <div class="roe-head"><h2 class="roe-endtitle" data-endtitle></h2></div>
+          <div class="roe-body"><p data-endsub></p><p data-endwait hidden style="color:var(--mut)">Menunggu host memulai match baru…</p></div>
+          <div class="roe-foot" style="justify-content:center">
+            <button class="roe-btn primary" type="button" data-act="restart" data-rematch>Match baru (peta acak)</button>
+            <button class="roe-btn" type="button" data-act="closeEnd">Lihat peta</button>
+          </div>
         </div>
       </div>
     </section>
     <aside class="roe-side" data-side></aside>
   </div>
-  <div class="roe-bar">
-    <button class="roe-end" type="button" data-act="end" data-end>Akhiri Giliran <kbd>E</kbd></button>
-    <button class="roe-ibtn" type="button" data-act="padToggle" title="Tombol virtual (mobile)">🎮</button>
-    <button class="roe-ibtn roe-danger" type="button" data-act="surrender" data-surr title="Menyerah">🏳</button>
-    <span class="roe-note" data-note></span>
-  </div>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
-
-  <div class="roe-overlay" data-helpov hidden>
-    <div class="roe-modal">
-      <h2>Cara Bermain</h2>
-      <p><b>Tujuan:</b> ratakan kota lawan (HP 100 → 0). Kamu bermain sebagai kekaisaran <b data-helpcolor></b>; posisi spawn & siapa jalan duluan diacak tiap pertandingan.</p>
-      <h4>Alur giliran (sesederhana ini)</h4>
-      <ol>
-        <li><b>Bangun di Kota</b> — ketuk slot kosong, pilih bangunan. Ketuk bangunan untuk upgrade. Town Center membuka level bangunan lain.</li>
-        <li><b>Latih pasukan</b> — di kartu "Pasukan" (butuh Barracks). Instan, tanpa antrean.</li>
-        <li><b>Ketuk node peta</b> — pilih porsi pasukan (25/50/100%), tekan <b>Kirim</b>. Pasukan otomatis berjalan, mengumpulkan / bertempur, lalu pulang.</li>
-        <li><b>Akhiri Giliran</b> — produksi masuk, hospital menyembuhkan, pasukan bergerak & bertempur. Lalu giliran lawan.</li>
-      </ol>
-      <h4>Peta</h4>
-      <ul>
-        <li>Ladang / Hutan / Tambang / Emas: kirim pasukan untuk mengumpulkan (tier makin tinggi = hasil makin besar).</li>
-        <li>Camp Barbar: kalahkan untuk loot. Respawn setelah ${RESPAWN} ronde.</li>
-        <li>Kota lawan: menangkan siege untuk merusak HP kota (siege memberi damage ekstra). HP 0 = menang.</li>
-      </ul>
-      <h4>Counter pasukan</h4>
-      <div class="roe-legend"><span>Infanteri ➜ Kavaleri</span><span>Kavaleri ➜ Pemanah</span><span>Pemanah ➜ Infanteri</span><span>Siege ×2 vs tembok</span></div>
-      <p>Korban perang 60% menjadi <b>pasukan luka</b> dan sembuh otomatis di Hospital — jangan takut bertempur.</p>
-      <h4>Kontrol</h4>
-      <ul>
-        <li><b>Mouse:</b> klik node/slot, klik ganda node = kirim 50% pasukan otomatis, klik kanan = tutup panel.</li>
-        <li><b>Keyboard:</b> <kbd>←↑→↓</kbd>/<kbd>WASD</kbd> pilih • <kbd>Enter</kbd>/<kbd>Spasi</kbd> buka/konfirmasi • <kbd>Esc</kbd> tutup • <kbd>E</kbd> akhiri giliran • <kbd>1</kbd>/<kbd>2</kbd> Peta/Kota • <kbd>H</kbd> bantuan • <kbd>F</kbd> cheat (mode AI).</li>
-        <li><b>Mobile:</b> tombol virtual D-pad + A/B di pojok peta (atau tombol 🎮), semua aksi bisa disentuh.</li>
-      </ul>
-      <div class="roe-row" style="justify-content:flex-end"><button class="roe-btn primary" type="button" data-act="closeHelp">Mulai bermain</button></div>
+  <div class="roe-note" data-note></div>
+  <!-- touch pad is a sibling after the board, never an overlay on it -->
+  <div class="roe-pad" data-pad>
+    <div class="roe-dpad">
+      <span></span><button type="button" data-act="pad" data-k="up">▲</button><span></span>
+      <button type="button" data-act="pad" data-k="left">◀</button><span></span><button type="button" data-act="pad" data-k="right">▶</button>
+      <span></span><button type="button" data-act="pad" data-k="down">▼</button><span></span>
     </div>
-  </div>
-
-  <div class="roe-overlay" data-cheatov hidden>
-    <div class="roe-modal">
-      <h2>⚡ Cheat (mode AI)</h2>
-      <p>Cheat hanya tersedia saat bermain melawan bot, agar multiplayer tetap adil.</p>
-      <div class="roe-cheatgrid">
-        <button type="button" data-act="cheat" data-cheat="res">+1000 semua sumber daya<small>Isi ulang gudang</small></button>
-        <button type="button" data-act="cheat" data-cheat="troops">+20 setiap pasukan<small>Langsung di kota</small></button>
-        <button type="button" data-act="cheat" data-cheat="heal">Pulihkan kota & luka<small>HP 100, semua luka sembuh</small></button>
-        <button type="button" data-act="cheat" data-cheat="build">Bangunan level max<small>Semua slot terisi level 5</small></button>
-        <button type="button" data-act="cheat" data-cheat="weaken">Lemahkan lawan<small>Pasukan & HP bot dipotong 50%</small></button>
-        <button type="button" data-act="cheat" data-cheat="win">Menang instan<small>Akhiri pertandingan</small></button>
-        <button type="button" data-act="cheat" data-cheat="passive">Bot pasif: <span data-passive>OFF</span><small>Bot hanya produksi, tidak menyerang</small></button>
-      </div>
-      <div class="roe-row" style="justify-content:flex-end"><button class="roe-btn" type="button" data-act="closeCheat">Tutup</button></div>
-    </div>
-  </div>
-
-  <div class="roe-overlay" data-endov hidden>
-    <div class="roe-modal" style="text-align:center">
-      <h2 class="roe-endtitle" data-endtitle></h2>
-      <p data-endsub></p>
-      <div class="roe-row" style="justify-content:center">
-        <button class="roe-btn primary" type="button" data-act="restart" data-rematch>Match baru (peta acak)</button>
-        <button class="roe-btn" type="button" data-act="closeEnd">Lihat peta</button>
-      </div>
-      <p data-endwait hidden style="color:var(--mut)">Menunggu host memulai match baru…</p>
+    <div class="roe-ab">
+      <button type="button" class="b" data-act="pad" data-k="b">B</button>
+      <button type="button" class="a" data-act="pad" data-k="a">A</button>
     </div>
   </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const appEl = $("[data-app]"), viewEl = $("[data-view]"), sheetEl = $("[data-sheet]"),
-        sideEl = $("[data-side]"), hudEl = $("[data-hud]"), noteEl = $("[data-note]"),
-        statusEl = $("[data-status]"), subEl = $("[data-sub]"), roundEl = $("[data-round]"),
+        sideEl = $("[data-side]"), chipsEl = $("[data-chips]"), noteEl = $("[data-note]"),
         endBtn = $("[data-end]"), surrBtn = $("[data-surr]"),
-        helpOv = $("[data-helpov]"), cheatOv = $("[data-cheatov]"), endOv = $("[data-endov]");
+        helpOv = $("[data-helpov]"), cheatOv = $("[data-cheatov]"), endOv = $("[data-endov]"),
+        pauseOv = $("[data-pauseov]");
 
     /* ---------------- state & helpers ---------------- */
 
@@ -533,6 +585,46 @@ export function mount(root, context = {}) {
         });
     }
     function campAlive(n) { return !n.clearedUntil || state.round >= n.clearedUntil; }
+
+    /* Pause-aware timers: bot & surrender confirmation freeze with the game.
+       Date.now() due anchors are re-armed with the remaining wait on resume,
+       so no time is skipped while paused. */
+    const liveTimers = new Map();
+    let deferredTimers = [];
+    function setT(fn, ms) {
+        const token = {};
+        const arm = (wait) => {
+            const id = setTimeout(() => { liveTimers.delete(token); fn(); }, wait);
+            liveTimers.set(token, { fn, due: Date.now() + wait, id });
+        };
+        token.arm = arm;
+        if (ui.paused) deferredTimers.push({ token, fn, wait: Math.max(0, ms) });
+        else arm(ms);
+        return token;
+    }
+    function clearT(token) {
+        if (!token) return;
+        const rec = liveTimers.get(token);
+        if (rec) { clearTimeout(rec.id); liveTimers.delete(token); }
+        deferredTimers = deferredTimers.filter((d) => d.token !== token);
+    }
+    function pauseTimers() {
+        const now = Date.now();
+        for (const [token, rec] of liveTimers) {
+            clearTimeout(rec.id);
+            deferredTimers.push({ token, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        liveTimers.clear();
+    }
+    function resumeTimers() {
+        const q = deferredTimers; deferredTimers = [];
+        for (const d of q) d.token.arm(d.wait);
+    }
+    function clearAllTimers() {
+        for (const rec of liveTimers.values()) clearTimeout(rec.id);
+        liveTimers.clear();
+        deferredTimers = [];
+    }
 
     /* ---------------- aksi (divalidasi, lalu mutasi state) ---------------- */
 
@@ -750,14 +842,15 @@ export function mount(root, context = {}) {
     /* ---------------- bot AI (mode AI saja, jalan di sisi host/lokal) ---------------- */
 
     function scheduleBot() {
-        if (online || ui.botTimer || destroyed) return;
-        ui.botTimer = setTimeout(() => {
+        if (online || ui.botTimer || destroyed || ui.paused || ui.help) return;
+        ui.botTimer = setT(() => {
             ui.botTimer = null;
             if (destroyed || !state || state.winner !== null || state.current !== 1) return;
-            if (ui.help) { scheduleBot(); return; } // tunggu tutorial ditutup
+            if (ui.help || ui.paused) { scheduleBot(); return; } // tunggu tutorial / jeda selesai
             botTurn();
         }, 700);
     }
+    function cancelBot() { clearT(ui.botTimer); ui.botTimer = null; }
     function botTurn() {
         const B = state.players[1], E = state.players[0];
         const A = (x) => act(x, 1);
@@ -880,14 +973,24 @@ export function mount(root, context = {}) {
         const cap = capOf(me);
         const dot = { food: "#fbbf24", wood: "#34d399", stone: "#94a3b8", gold: "#fde047" };
         const nm = { food: "Makanan", wood: "Kayu", stone: "Batu", gold: "Emas" };
+        const myTurn = state.current === playerIndex && state.winner === null;
+        const statusTxt = state.winner !== null
+            ? (state.winner === playerIndex ? "Menang!" : "Kalah")
+            : myTurn ? "Giliranmu" : online ? "Giliran lawan" : "Bot bergerak…";
+        let wins = 0;
+        try { wins = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (e) { /* storage unavailable */ }
         let h = "";
         for (const k of RESK)
-            h += `<span class="roe-chip"><i style="background:${dot[k]}"></i>${nm[k]} <b>${Math.floor(me.res[k])}</b><small>/${cap}</small></span>`;
+            h += `<span class="roe-chip" data-hud="${k}"><i style="background:${dot[k]}"></i>${nm[k]} <b>${Math.floor(me.res[k])}</b><small>/${cap}</small></span>`;
+        h += `<span class="roe-chip roe-res-compact" data-hud="res">${RESK.map((k) => `<i style="background:${dot[k]}"></i><b>${Math.floor(me.res[k])}</b>`).join("")}</span>`;
         h += `<span class="roe-chip">⚔ Pasukan <b>${tot(me.army)}</b>${tot(outUnits(me)) ? `<small>+${tot(outUnits(me))} di lapangan</small>` : ""}</span>`;
         h += `<span class="roe-chip">🏰 HP <b style="color:${me.hp > 40 ? "var(--ok)" : "var(--bad)"}">${me.hp}</b></span>`;
-        if (tot(me.wounded)) h += `<span class="roe-chip">🩹 Luka <b>${tot(me.wounded)}</b><small>/${hospCap(me)}</small></span>`;
+        if (tot(me.wounded)) h += `<span class="roe-chip" data-hud="wounded">🩹 Luka <b>${tot(me.wounded)}</b><small>/${hospCap(me)}</small></span>`;
         h += `<span class="roe-chip" style="border-color:${P_COLOR[1 - playerIndex]}55">Lawan HP <b>${en.hp}</b></span>`;
-        hudEl.innerHTML = h;
+        h += `<span class="roe-chip game-status" data-hud="status"><i class="game-status-dot"></i><span>${statusTxt}</span></span>`;
+        h += `<span class="roe-chip" data-hud="round">R${state.round} · Peta #${state.seed}</span>`;
+        h += `<span class="roe-chip" data-hud="best">${online ? "Multiplayer" : "vs Bot"} · Menang <b>${wins}</b></span>`;
+        chipsEl.innerHTML = h;
     }
 
     function renderView() {
@@ -1073,24 +1176,34 @@ export function mount(root, context = {}) {
         appEl.classList.toggle("myturn", myTurn);
         appEl.classList.toggle("wait", !myTurn && state.winner === null);
         appEl.classList.toggle("pad-on", ui.pad);
-        statusEl.textContent = state.winner !== null ? (state.winner === playerIndex ? "Menang!" : "Kalah") : myTurn ? "Giliranmu" : online ? "Giliran lawan" : "Bot bergerak…";
-        let wins = 0;
-        try { wins = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (e) { }
-        subEl.textContent = `Kamu: ${P_NAME_COLOR[playerIndex]} • ${online ? "Multiplayer" : "vs Bot"} • Menang: ${wins}`;
-        roundEl.textContent = `Ronde ${state.round} • Peta #${state.seed}`;
-        endBtn.disabled = !myTurn;
+        endBtn.disabled = !myTurn || ui.help || ui.cheat || ui.paused;
         surrBtn.classList.toggle("armed", ui.surrArm);
         surrBtn.title = ui.surrArm ? "Ketuk lagi untuk konfirmasi menyerah" : "Menyerah";
+        surrBtn.disabled = state.winner !== null;
         noteEl.textContent = hint();
         for (const b of root.querySelectorAll(".roe-tabs button")) b.classList.toggle("on", b.dataset.tab === ui.tab);
-        $("[data-cheatbtn]").hidden = online;
+        const cheatsBtn = $("[data-cheats]");
+        if (cheatsBtn) { cheatsBtn.disabled = online; cheatsBtn.classList.toggle("on", ui.cheat && !online); }
         $("[data-newmap]").hidden = online && !room.isHost;
+        const pauseBtn = $("[data-pause]");
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".roe-btn-label");
+            if (label) label.textContent = ui.paused ? "Lanjut" : "Jeda";
+            pauseBtn.setAttribute("aria-label", ui.paused ? "Lanjut" : "Jeda");
+            pauseBtn.disabled = online;
+            pauseBtn.classList.toggle("on", ui.paused);
+        }
+        const padBtn = $("[data-padbtn]");
+        if (padBtn) padBtn.classList.toggle("on", ui.pad);
+        /* Overlays suppress each other; HUD labels are updated on the label
+           span so the icon is never destroyed. */
         helpOv.hidden = !ui.help;
-        cheatOv.hidden = !ui.cheat || online;
+        cheatOv.hidden = !ui.cheat || online || ui.help;
+        pauseOv.hidden = !ui.paused || ui.help || ui.cheat;
         $("[data-helpcolor]").textContent = P_NAME_COLOR[playerIndex];
         $("[data-passive]").textContent = state.cheats.botPassive ? "ON" : "OFF";
         const showEnd = state.winner !== null && !ui.endClosed;
-        endOv.hidden = !showEnd;
+        endOv.hidden = !showEnd || ui.help || ui.cheat || ui.paused;
         if (showEnd) {
             const win = state.winner === playerIndex;
             const t = $("[data-endtitle]");
@@ -1102,6 +1215,37 @@ export function mount(root, context = {}) {
             $("[data-rematch]").hidden = !hostCan;
             $("[data-endwait]").hidden = hostCan;
         }
+    }
+
+    /* ---------------- overlay state ---------------- */
+
+    function toggleHelp(on) {
+        ui.help = typeof on === "boolean" ? on : !ui.help;
+        if (ui.help) {
+            ui.cheat = false; ui.paused = false; resumeTimers(); cancelBot();
+        } else if (!online && state?.current === 1) scheduleBot();
+        render();
+    }
+    function toggleCheat(on) {
+        if (online) return;
+        ui.cheat = typeof on === "boolean" ? on : !ui.cheat;
+        if (ui.cheat) { ui.help = false; ui.paused = false; resumeTimers(); }
+        render();
+    }
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !ui.paused;
+        if (next === ui.paused) return;
+        ui.paused = next;
+        if (ui.paused) { pauseTimers(); cancelBot(); }
+        else { resumeTimers(); if (!ui.help && state?.current === 1) scheduleBot(); }
+        render();
+    }
+    function restartGame() {
+        ui.help = false; ui.cheat = false; ui.paused = false; resumeTimers();
+        cancelBot();
+        clearT(ui.surrTimer); ui.surrTimer = null; ui.surrArm = false;
+        submitAction({ type: "restart" });
     }
 
     /* ---------------- interaksi UI ---------------- */
@@ -1156,10 +1300,18 @@ export function mount(root, context = {}) {
     function handleClick(event) {
         const t = event.target;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheat(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        const el = t.closest("[data-act]");
+        if (el && el.dataset.act === "closeCheat") { toggleCheat(false); return; }
+        if (ui.help || ui.paused || (ui.cheat && el?.dataset.act !== "cheat")) return;
         const nodeG = t.closest("[data-node]");
         if (nodeG && state) { openNodeSheet(nodeG.dataset.node); return; }
         const slotG = t.closest("[data-slot]");
-        const el = t.closest("[data-act]");
         if (slotG && (!el || el.dataset.act === "build" || el.dataset.act === "upgrade")) {
             if (!el && state) {
                 const i = parseInt(slotG.dataset.slot, 10);
@@ -1171,10 +1323,10 @@ export function mount(root, context = {}) {
         }
         if (!el) return;
         const a = el.dataset.act;
-        if (a === "help") { ui.help = true; render(); }
-        else if (a === "closeHelp") { ui.help = false; render(); if (!online && state?.current === 1) scheduleBot(); }
-        else if (a === "cheatToggle") { if (!online) { ui.cheat = !ui.cheat; render(); } }
-        else if (a === "closeCheat") { ui.cheat = false; render(); }
+        if (a === "help") toggleHelp();
+        else if (a === "closeHelp") toggleHelp(false);
+        else if (a === "cheatToggle") toggleCheat();
+        else if (a === "closeCheat") toggleCheat(false);
         else if (a === "closeEnd") { ui.endClosed = true; render(); }
         else if (a === "padToggle") { ui.pad = !ui.pad; render(); }
         else if (a === "tab") { ui.tab = el.dataset.tab; ui.sheet = null; render(); }
@@ -1185,17 +1337,20 @@ export function mount(root, context = {}) {
             else if (k === "left") moveCursor(-1, 0);
             else if (k === "right") moveCursor(1, 0);
             else if (k === "a") confirmPrimary();
-            else if (k === "b") { if (ui.sheet) closeSheet(); else if (ui.cheat) { ui.cheat = false; render(); } }
+            else if (k === "b") { if (ui.sheet) closeSheet(); else if (ui.cheat) toggleCheat(false); }
         }
         else if (a === "frac") { ui.frac = parseFloat(el.dataset.frac); render(); }
         else if (a === "closeSheet") closeSheet();
         else if (a === "surrender") {
             if (!state || state.winner !== null) return;
-            if (!ui.surrArm) { ui.surrArm = true; render(); setTimeout(() => { ui.surrArm = false; if (!destroyed) render(); }, 2500); }
-            else { ui.surrArm = false; submitAction({ type: "surrender" }); }
+            if (!ui.surrArm) {
+                ui.surrArm = true; render();
+                clearT(ui.surrTimer);
+                ui.surrTimer = setT(() => { ui.surrTimer = null; ui.surrArm = false; if (!destroyed) render(); }, 2500);
+            } else { ui.surrArm = false; submitAction({ type: "surrender" }); }
         }
-        else if (a === "restart") { ui.help = false; ui.cheat = false; submitAction({ type: "restart" }); }
-        else if (!state || ui.help) return;
+        else if (a === "restart") restartGame();
+        else if (!state || ui.help || ui.paused || (ui.cheat && a !== "cheat")) return;
         else if (a === "build") { submitAction({ type: "build", slot: parseInt(el.dataset.slot, 10), btype: el.dataset.btype }); ui.sheet = { kind: "slot", idx: parseInt(el.dataset.slot, 10) }; render(); }
         else if (a === "upgrade") submitAction({ type: "upgrade", slot: parseInt(el.dataset.slot, 10) });
         else if (a === "train") submitAction({ type: "train", kind: el.dataset.kind, n: parseInt(el.dataset.n, 10) });
@@ -1205,7 +1360,7 @@ export function mount(root, context = {}) {
         }
         else if (a === "recall") submitAction({ type: "recall", id: parseInt(el.dataset.id, 10) });
         else if (a === "end") submitAction({ type: "end" });
-        else if (a === "cheat") submitAction({ type: "cheat", cheat: el.dataset.cheat });
+        else if (a === "cheat") { if (!online) submitAction({ type: "cheat", cheat: el.dataset.cheat }); }
     }
 
     function handleDblClick(event) {
@@ -1220,15 +1375,32 @@ export function mount(root, context = {}) {
         if (event.ctrlKey || event.metaKey || event.altKey) return;
         const tag = (event.target.tagName || "").toLowerCase();
         if (tag === "input" || tag === "textarea") return;
-        const k = event.key;
+        const k = event.key, code = event.code || "";
+        /* Keyboard priority: help -> cheats -> pause -> Escape -> game actions. */
+        if (code === "KeyH" || k === "h" || k === "H" || k === "?") {
+            if (!event.repeat) toggleHelp();
+            event.preventDefault(); return;
+        }
+        if (code === "KeyC" || k === "c" || k === "C" || k === "f" || k === "F") {
+            if (!event.repeat && !ui.help && !ui.paused) toggleCheat();
+            event.preventDefault(); return;
+        }
+        if (code === "KeyP" || k === "p" || k === "P") {
+            if (!event.repeat && !ui.help && !ui.cheat) togglePause();
+            event.preventDefault(); return;
+        }
         if (k === "Escape") {
-            if (ui.help) { ui.help = false; render(); if (!online && state?.current === 1) scheduleBot(); }
-            else if (ui.cheat) { ui.cheat = false; render(); }
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheat) toggleCheat(false);
+            else if (ui.paused) togglePause(false);
             else if (ui.sheet) closeSheet();
             event.preventDefault(); return;
         }
-        if (ui.help) { if (k === "Enter") { ui.help = false; render(); if (!online && state?.current === 1) scheduleBot(); event.preventDefault(); } return; }
-        if (ui.cheat) return;
+        if (ui.help || ui.cheat || ui.paused) {
+            if (k === "Enter" && ui.help) toggleHelp(false);
+            event.preventDefault(); return;
+        }
+        if (code === "KeyR" || k === "r" || k === "R") { restartGame(); event.preventDefault(); return; }
         const map = {
             ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
             w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0], W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
@@ -1238,8 +1410,6 @@ export function mount(root, context = {}) {
         if (k === "e" || k === "E") { if (state && state.current === playerIndex && state.winner === null) submitAction({ type: "end" }); event.preventDefault(); return; }
         if (k === "1") { ui.tab = "map"; ui.sheet = null; render(); return; }
         if (k === "2") { ui.tab = "city"; ui.sheet = null; render(); return; }
-        if (k === "h" || k === "H" || k === "?") { ui.help = true; render(); return; }
-        if (k === "f" || k === "F") { if (!online) { ui.cheat = true; render(); } return; }
     }
 
     root.addEventListener("click", handleClick);
@@ -1286,7 +1456,9 @@ export function mount(root, context = {}) {
             root.removeEventListener("dblclick", handleDblClick);
             root.removeEventListener("contextmenu", handleContext);
             window.removeEventListener("keydown", handleKey);
-            if (ui.botTimer) { clearTimeout(ui.botTimer); ui.botTimer = null; }
+            clearAllTimers();
+            ui.botTimer = null;
+            ui.surrTimer = null;
         },
     };
 }

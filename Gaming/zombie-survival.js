@@ -14,6 +14,8 @@
 /* Setelah menyalin file ini: node tools/build-games-manifest.mjs     */
 /* ================================================================ */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "zombie-survival", // harus sama dengan nama file (tanpa .js)
     name: "Zombie Survival",
@@ -252,52 +254,56 @@ export function mount(root, context = {}) {
 
     /* ---------------- shell (minimal UI) ---------------- */
     root.innerHTML = `
-<div class="game-app zs">
+<div class="game-app zs game-fill" data-zs>
 <style>
-.zs{--ink:#1c1917;--mut:#78716c;--line:#e7e5e4;--acc:#65a30d;color:var(--ink)}
+.zs{--ink:#1c1917;--mut:#78716c;--line:#e7e5e4;--acc:#65a30d;color:var(--ink);width:100%;max-width:900px;margin:0 auto;padding:0 12px calc(12px + env(safe-area-inset-bottom));box-sizing:border-box}
+.zs.game-fill{display:flex;flex-direction:column}
+.zs *{box-sizing:border-box}
 .zs [hidden]{display:none!important}
 .zs button{font-family:inherit}
-.zs .game-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
-.zs .game-intro h2{margin:0 0 2px;font-size:18px;font-weight:800;letter-spacing:-.01em}
-.zs .game-intro p{margin:0;font-size:12.5px;color:var(--mut);max-width:56ch}
-.zs .game-status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding-top:4px}
-.zs .game-status-dot{width:8px;height:8px;border-radius:50%;background:#a8a29e;display:inline-block}
+.zs-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace}
+.zs-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--mut);border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 9px;font-weight:600;line-height:1.4;white-space:nowrap}
+.zs-chip b{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
+.zs-chip.cheat{border-color:#f59e0b66;background:#fffbeb;color:#92400e;font-weight:800}
+.zs .game-status-dot{width:8px;height:8px;border-radius:50%;background:#a8a29e;display:inline-block;flex:none}
 .zs .game-status-dot.live{background:#65a30d;box-shadow:0 0 0 3px #65a30d22}
 .zs .game-status-dot.warn{background:#f59e0b}
 .zs .game-status-dot.bad{background:#ef4444}
-.zs-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px}
-.zs-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--mut);border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 9px;font-weight:600;line-height:1.4}
-.zs-chip b{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
-.zs-chip.cheat{border-color:#f59e0b66;background:#fffbeb;color:#92400e;font-weight:800}
 .zs-hp{width:60px;height:6px;border-radius:3px;background:#e7e5e4;overflow:hidden;display:inline-block}
 .zs-hp i{display:block;height:100%;border-radius:3px;background:#10b981;transition:width .15s}
-.zs-spacer{flex:1}
-.zs-ibtn{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1}
-.zs-ibtn:hover{background:#f5f5f4}
-.zs-stage{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--line);background:#161a15;line-height:0;user-select:none;-webkit-user-select:none}
-.zs-board{display:block;width:100%;height:auto;cursor:crosshair;touch-action:none}
-.zs-boss{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:min(70%,340px);z-index:3;line-height:1.2}
-.zs-boss .nm{font-size:9.5px;font-weight:800;letter-spacing:.16em;color:#e9d5ff;text-align:center;text-shadow:0 1px 2px #000;margin-bottom:3px}
-.zs-boss .bar{height:7px;border-radius:4px;background:#ffffff22;border:1px solid #ffffff33;overflow:hidden}
-.zs-boss .bar i{display:block;height:100%;background:#a78bfa;transition:width .15s}
-.zs-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.9);backdrop-filter:blur(5px);line-height:1.45;padding:14px;overflow:auto;z-index:5}
-.zs-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;max-width:430px;width:100%;box-shadow:0 12px 32px rgba(28,25,23,.1);text-align:center;margin:auto}
-.zs-card.wide{max-width:520px}
-.zs-card h3{margin:0 0 6px;font-size:19px;font-weight:800;letter-spacing:-.01em}
-.zs-card .sub{margin:0 0 14px;font-size:12.5px;color:var(--mut)}
-.zs-btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:#fff;font-weight:700;font-size:13px;border-radius:999px;padding:9px 20px;cursor:pointer}
+.zs-spacer{flex:1 1 auto}
+.zs-btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:#fff;font-weight:700;font-size:12px;border-radius:10px;padding:8px 14px;min-height:36px;cursor:pointer}
 .zs-btn:hover{opacity:.88}
 .zs-btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
 .zs-btn.ghost:hover{background:#f5f5f4;opacity:1}
 .zs-btn.acc{background:var(--acc);border-color:var(--acc)}
-.zs-btnrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.zs-icon-btn{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;font-size:10px;min-height:32px}
+.zs-icon-btn svg{flex:none;display:block}
+.zs-btn-label{white-space:nowrap}
+.zs-btnrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:0 auto}
+.zs-arena{position:relative;width:100%;flex:1 1 auto;min-height:0;aspect-ratio:5/4;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#161a15;line-height:0;user-select:none;-webkit-user-select:none}
+.zs-board{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+.zs-boss{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:min(70%,340px);z-index:3;line-height:1.2}
+.zs-boss .nm{font-size:9.5px;font-weight:800;letter-spacing:.16em;color:#e9d5ff;text-align:center;text-shadow:0 1px 2px #000;margin-bottom:3px}
+.zs-boss .bar{height:7px;border-radius:4px;background:#ffffff22;border:1px solid #ffffff33;overflow:hidden}
+.zs-boss .bar i{display:block;height:100%;background:#a78bfa;transition:width .15s}
+.zs-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.9);backdrop-filter:blur(5px);line-height:1.45;padding:12px;overflow:auto;z-index:5}
+.zs-card{display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;max-height:100%;max-width:min(430px,100%);width:100%;box-shadow:0 6px 18px rgba(28,25,23,.08);text-align:center;margin:auto}
+.zs-card.wide{max-width:min(520px,100%)}
+.zs-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.zs-card h3{margin:0;font-size:18px;font-weight:800;letter-spacing:-.01em}
+.zs-head .zs-btn{min-height:30px;padding:4px 10px;font-size:10px}
+.zs-card .sub{margin:0 0 12px;font-size:12.5px;color:var(--mut)}
+.zs-scroll,.zs-help,.zs-cheats,.zs-draft,.zs-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.zs-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}
+.zs-note{font-size:10.5px;color:var(--mut);text-align:left}
 .zs-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 12px}
 .zs-stat{border:1px solid var(--line);border-radius:12px;padding:8px 4px}
 .zs-stat b{display:block;font-size:15px;font-weight:800}
 .zs-stat span{font-size:9.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
-.zs-draft{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.zs-draft{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px}
 @media (max-width:420px){.zs-draft{grid-template-columns:1fr}}
-.zs-skill{border:1.5px solid var(--line);border-radius:14px;background:#fff;padding:12px 8px;cursor:pointer;text-align:center;color:var(--ink)}
+.zs-skill{border:1.5px solid var(--line);border-radius:12px;background:#fff;padding:12px 8px;min-height:44px;cursor:pointer;text-align:center;color:var(--ink)}
 .zs-skill:hover{border-color:var(--acc);background:#f7fee7}
 .zs-skill .ic{font-size:22px;line-height:1.2}
 .zs-skill h4{margin:5px 0 2px;font-size:12.5px;font-weight:800}
@@ -307,58 +313,76 @@ export function mount(root, context = {}) {
 .zs-skill.picked{border-color:var(--acc);background:#f7fee7}
 .zs-skill.dim{opacity:.45;pointer-events:none}
 .zs-help{text-align:left}
-.zs-help h3{text-align:center}
 .zs-help h5{margin:12px 0 4px;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--acc)}
 .zs-help p,.zs-help li{font-size:12px;color:#44403c;margin:2px 0}
 .zs-help ul{margin:2px 0;padding-left:16px}
 .zs-help kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:10.5px;background:#fafaf9;font-family:inherit}
-.zs-cheats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px;text-align:left}
+.zs-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;text-align:left}
 @media (max-width:420px){.zs-cheats{grid-template-columns:1fr}}
-.zs-cheat-item{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:11px;padding:6px 10px;font-size:11.5px;font-weight:600}
-.zs-tgl{border:1px solid var(--line);border-radius:999px;font-size:10px;font-weight:800;padding:2px 9px;cursor:pointer;background:#f5f5f4;color:var(--mut)}
+.zs-cheat-item{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:11.5px;font-weight:600}
+.zs-tgl{border:1px solid var(--line);border-radius:999px;font-size:10px;font-weight:800;min-height:44px;padding:4px 12px;cursor:pointer;background:#f5f5f4;color:var(--mut)}
 .zs-tgl.on{background:var(--acc);border-color:var(--acc);color:#fff}
-.zs-mini{border:1px solid var(--line);background:#fff;border-radius:11px;font-size:11.5px;font-weight:700;padding:7px 10px;cursor:pointer;text-align:left;color:var(--ink)}
+.zs-mini{border:1px solid var(--line);background:#fff;border-radius:10px;font-size:11.5px;font-weight:700;min-height:44px;padding:7px 10px;cursor:pointer;text-align:left;color:var(--ink)}
 .zs-mini:hover{border-color:var(--acc);background:#f7fee7}
-.zs-toasts{position:absolute;left:10px;bottom:10px;display:flex;flex-direction:column;gap:5px;z-index:4;pointer-events:none;line-height:1.3}
-.zs-toast{background:#ffffffee;border:1px solid var(--line);border-radius:9px;font-size:11px;font-weight:600;padding:5px 10px;box-shadow:0 4px 12px rgba(0,0,0,.12);max-width:270px;color:var(--ink)}
-.zs-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
-.zs-hint{font-size:11px;color:var(--mut)}
+.zs-toasts{position:absolute;left:10px;bottom:10px;display:flex;flex-direction:column;gap:5px;z-index:4;pointer-events:none;line-height:1.3;max-width:calc(100% - 20px)}
+.zs-toast{background:#ffffffee;border:1px solid var(--line);border-radius:9px;font-size:11px;font-weight:600;padding:5px 10px;box-shadow:0 3px 10px rgba(0,0,0,.08);max-width:270px;color:var(--ink)}
+.zs-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .zs-pad{display:none;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(2,46px);gap:5px}
 .zs-acts{display:none;align-items:center;gap:8px}
 .zs.touch .zs-pad{display:grid}
 .zs.touch .zs-acts{display:flex}
-.zs.touch .zs-hint{display:none}
-@media (pointer:coarse){.zs .zs-pad{display:grid}.zs .zs-acts{display:flex}.zs .zs-hint{display:none}}
-.zs-dbtn{width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:16px;color:var(--ink);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;padding:0;line-height:1}
+@media (pointer:coarse){.zs .zs-pad{display:grid}.zs .zs-acts{display:flex}}
+.zs-dbtn{width:46px;height:46px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:16px;color:var(--ink);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;padding:0;line-height:1}
 .zs-dbtn:active{background:#f7fee7;border-color:var(--acc)}
 .zs-hit{width:66px;height:66px;border-radius:50%;background:var(--acc);border:none;color:#fff;font-weight:800;font-size:13px;letter-spacing:.04em;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
 .zs-hit:active{transform:scale(.94)}
 .zs-dashb{width:54px;height:54px;border-radius:50%;border:1.5px solid var(--ink);background:#fff;color:var(--ink);font-weight:800;font-size:10px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
 .zs-dashb.cool{opacity:.4}
-.zs .game-actions{margin-top:12px}
+.zs :focus-visible,.zs button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.zs *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- fill height + mobile refinements (last, highest specificity) --- */
+@media (pointer:coarse){.zs button:not(:disabled){min-height:44px}}
+.zs .zs-hud{gap:6px;margin-bottom:8px}
+.zs .zs-hud .zs-chip{padding:4px 7px;font-size:9px}
+.zs .zs-hud .zs-icon-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.zs .zs-hud .zs-btn-label,.zs .zs-hud .zs-spacer{display:none}
+.zs.game-fill > .zs-arena{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.zs{padding-left:8px;padding-right:8px}
+.zs.game-fill > .zs-arena:not(:has(.zs-ov:not([hidden]))){aspect-ratio:5/4;flex:0 0 auto}
+.zs.game-fill > .zs-arena:has(.zs-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.zs .zs-hud{gap:5px}
+.zs .zs-hud .zs-chip{padding:4px 6px;font-size:9px}
+.zs .zs-hud .zs-icon-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.zs .zs-ov{padding:8px}
+.zs .zs-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.zs .zs-scroll,.zs .zs-help,.zs .zs-cheats,.zs .zs-draft,.zs .zs-stats{scrollbar-width:none}
+.zs .zs-scroll::-webkit-scrollbar,.zs .zs-help::-webkit-scrollbar,.zs .zs-cheats::-webkit-scrollbar,.zs .zs-draft::-webkit-scrollbar,.zs .zs-stats::-webkit-scrollbar{display:none}
+.zs .zs-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.zs .zs-note{display:none}
+}
 </style>
-<div class="game-intro">
-  <div><h2>Zombie Survival</h2><p>Roguelite arena — dodge telegraphed attacks, draft endless skill combos, grab weapon drops and survive ${TOTAL_WAVES} waves.</p></div>
-  <span class="game-status"><i class="game-status-dot" data-el="statusDot"></i><span data-el="status">Ready</span></span>
-</div>
-<div class="zs-bar">
-  <span class="zs-chip">Wave <b data-el="wave">1</b>/${TOTAL_WAVES}</span>
-  <span class="zs-chip">Kills <b data-el="kills">0</b></span>
-  <span class="zs-chip">Score <b data-el="score">0</b></span>
-  <span class="zs-chip">Best <b data-el="best">0</b></span>
+<div class="zs-hud">
+  <span class="zs-chip">STATUS <b data-el="status">Ready</b><i class="game-status-dot" data-el="statusDot"></i></span>
+  <span class="zs-chip">WAVE <b data-el="wave">1</b>/${TOTAL_WAVES}</span>
+  <span class="zs-chip">KILLS <b data-el="kills">0</b></span>
+  <span class="zs-chip">SCORE <b data-el="score">0</b></span>
+  <span class="zs-chip">BEST <b data-el="best">0</b></span>
   <span data-el="hps" style="display:inline-flex;gap:6px"></span>
-  <span class="zs-chip">\u{1F3CF} <b data-el="wpn">Bat</b></span>
-  <span class="zs-chip" title="Level seed">Seed <b data-el="seed">—</b></span>
+  <span class="zs-chip">WPN <b data-el="wpn">Bat</b></span>
+  <span class="zs-chip">SEED <b data-el="seed">—</b></span>
   <span class="zs-chip cheat" data-el="cheatBadge" hidden>CHEATS</span>
   <span class="zs-spacer"></span>
-  <button class="zs-ibtn" type="button" data-act="touch" title="Toggle touch controls" aria-label="Toggle touch controls">\u{1F3AE}</button>
-  <button class="zs-ibtn" type="button" data-act="mute" data-el="sndBtn" title="Sound" aria-label="Toggle sound">\u{1F50A}</button>
-  <button class="zs-ibtn" type="button" data-act="help" title="How to play (H)" aria-label="How to play">?</button>
-  <button class="zs-ibtn" type="button" data-act="cheats" data-el="cheatBtn" title="Cheats (C)" aria-label="Cheats">\u26A1</button>
-  <button class="zs-ibtn" type="button" data-act="pause" data-el="pauseBtn" title="Pause (P)" aria-label="Pause">\u23F8</button>
-  <button class="zs-ibtn" type="button" data-act="restart" data-el="restartBtn" title="Restart" aria-label="Restart">\u21BB</button>
+  <button class="zs-btn zs-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="zs-btn-label">Help</span></button>
+  <button class="zs-btn zs-icon-btn" type="button" data-cheats data-el="cheatBtn" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="zs-btn-label">Cheats</span></button>
+  <button class="zs-btn zs-icon-btn" type="button" data-pause data-el="pauseBtn" aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="zs-btn-label">Pause</span></button>
+  <button class="zs-btn zs-icon-btn" type="button" data-restart data-el="restartBtn" aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="zs-btn-label">Restart</span></button>
+  <button class="zs-btn zs-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="zs-btn-label">Exit game</span></button>
+  <button class="zs-btn zs-icon-btn" type="button" data-act="touch" aria-label="Toggle touch controls" title="Toggle touch controls">${iconSVG("gamepad2", { size: 14 })}<span class="zs-btn-label">Touch</span></button>
+  <button class="zs-btn zs-icon-btn" type="button" data-act="mute" data-el="sndBtn" aria-label="Toggle sound" title="Sound">${iconSVG("volume", { size: 14 })}<span class="zs-btn-label">Sound</span></button>
 </div>
-<section class="game-panel zs-stage" data-board>
+<section class="game-panel zs-arena" data-board>
   <svg class="zs-board" data-el="board" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Zombie Survival arena">
     <g data-el="world">
       <rect x="0" y="0" width="${W}" height="${H}" fill="#171b16"/>
@@ -383,98 +407,106 @@ export function mount(root, context = {}) {
   </div>
   <div class="zs-toasts" data-el="toasts"></div>
 
-  <div class="zs-ov" data-ov="wait" hidden><div class="zs-card"><h3>Connecting\u2026</h3><p class="sub" style="margin:0">Waiting for the host's state.</p></div></div>
+  <div class="zs-ov" data-ov="wait" hidden><div class="zs-card"><div class="zs-head"><h3>Connecting\u2026</h3></div><div class="zs-scroll"><p class="sub" style="margin:0">Waiting for the host's state.</p></div></div></div>
 
   <div class="zs-ov" data-ov="start">
     <div class="zs-card">
-      <h3>Zombie Survival</h3>
-      <p class="sub">Survive ${TOTAL_WAVES} waves in a freshly generated arena. Zombies telegraph their attacks — dodge or dash through them. Clear a wave, draft a skill (they stack forever), and face the boss at the end.</p>
-      <div class="zs-btnrow">
+      <div class="zs-head"><h3>Zombie Survival</h3></div>
+      <div class="zs-scroll">
+        <p class="sub">Survive ${TOTAL_WAVES} waves in a freshly generated arena. Zombies telegraph their attacks — dodge or dash through them. Clear a wave, draft a skill (they stack forever), and face the boss at the end.</p>
+        <p class="sub" style="margin:12px 0 0" data-el="startNote">Coin toss decides who moves first \u00B7 spawn corners are randomized.</p>
+      </div>
+      <div class="zs-foot"><div class="zs-btnrow">
         <button class="zs-btn acc" type="button" data-act="start" data-el="startBtn">Start run</button>
         <button class="zs-btn ghost" type="button" data-act="help">How to play</button>
-      </div>
-      <p class="sub" style="margin:12px 0 0" data-el="startNote">Coin toss decides who moves first \u00B7 spawn corners are randomized.</p>
+      </div></div>
     </div>
   </div>
 
   <div class="zs-ov" data-ov="pause" hidden>
     <div class="zs-card">
-      <h3>Paused</h3>
-      <p class="sub" data-el="pauseSub">Game paused.</p>
-      <div class="zs-btnrow"><button class="zs-btn" type="button" data-act="resume" data-el="resumeBtn">Resume</button><button class="zs-btn ghost" type="button" data-act="help">How to play</button></div>
+      <div class="zs-head"><h3>Paused</h3></div>
+      <div class="zs-scroll"><p class="sub" data-el="pauseSub">Game paused.</p></div>
+      <div class="zs-foot"><div class="zs-btnrow"><button class="zs-btn" type="button" data-act="resume" data-el="resumeBtn">Resume</button><button class="zs-btn ghost" type="button" data-act="help">How to play</button></div></div>
     </div>
   </div>
 
   <div class="zs-ov" data-ov="draft" hidden>
     <div class="zs-card wide">
-      <h3>Choose a skill</h3>
-      <p class="sub" data-el="draftSub">Wave cleared!</p>
-      <div class="zs-draft" data-el="draftCards"></div>
-      <p class="sub" style="margin:0" data-el="draftWait"></p>
+      <div class="zs-head"><h3>Choose a skill</h3></div>
+      <div class="zs-scroll">
+        <p class="sub" data-el="draftSub">Wave cleared!</p>
+        <div class="zs-draft" data-el="draftCards"></div>
+      </div>
+      <div class="zs-foot"><p class="sub" style="margin:0" data-el="draftWait"></p></div>
     </div>
   </div>
 
   <div class="zs-ov" data-ov="help" hidden>
     <div class="zs-card wide zs-help">
-      <h3>How to play</h3>
-      <h5>Goal</h5>
-      <p>Survive ${TOTAL_WAVES} waves. Every wave generates a new arena layout (always fully connected — no unreachable spots). Wave ${TOTAL_WAVES} spawns <b>The Abomination</b>.</p>
-      <h5>Desktop controls</h5>
-      <ul>
-        <li><kbd>WASD</kbd> / <kbd>\u2190\u2191\u2192\u2193</kbd> move \u00B7 mouse to aim</li>
-        <li><kbd>Click</kbd> / <kbd>Space</kbd> attack (hold to auto-attack)</li>
-        <li><kbd>Shift</kbd> / right-click dash (brief invulnerability)</li>
-        <li><kbd>1\u20133</kbd> pick skill \u00B7 <kbd>P</kbd> pause \u00B7 <kbd>H</kbd> help \u00B7 <kbd>C</kbd> cheats</li>
-      </ul>
-      <h5>Mobile controls</h5>
-      <ul>
-        <li>D-pad to move \u00B7 <b>HIT</b> to attack (auto-aims at the nearest zombie) \u00B7 <b>DASH</b> to dodge.</li>
-      </ul>
-      <h5>Combat</h5>
-      <ul>
-        <li>Zombies raise their arms and show a red <b>!</b> before striking — step away or dash during the wind-up.</li>
-        <li>Your hits knock zombies back and interrupt their wind-ups.</li>
-        <li>The boss telegraphs a <b>stomp ring</b> and a <b>charge lane</b>, and summons minions. Keep moving.</li>
-      </ul>
-      <h5>Roguelite draft</h5>
-      <ul>
-        <li>After each wave pick 1 of 3 skills. Every skill stacks without limit — combine burn + frost + corpse bombs + orbit blades\u2026</li>
-        <li>In co-op both players draft; a random coin toss decides who moves first, and spawn corners/roles are randomized.</li>
-      </ul>
-      <h5>Loot</h5>
-      <ul>
-        <li>Weapons: Katana, War Hammer, Spear, Pistol, Shotgun, SMG, Rail Rifle (guns use ammo; empty guns revert to the bat).</li>
-        <li>Items: medkit, ammo box, gem (score), coffee (speed), shield (blocks 2 hits), nuke (clears the screen).</li>
-      </ul>
-      <div class="zs-btnrow" style="margin-top:14px"><button class="zs-btn" type="button" data-act="closepanel">Got it</button></div>
+      <div class="zs-head"><h3>How to play</h3><button class="zs-btn ghost" type="button" data-help-close aria-label="Close help">Close</button></div>
+      <div class="zs-scroll">
+        <h5>Goal</h5>
+        <p>Survive ${TOTAL_WAVES} waves. Every wave generates a new arena layout (always fully connected — no unreachable spots). Wave ${TOTAL_WAVES} spawns <b>The Abomination</b>.</p>
+        <h5>Desktop controls</h5>
+        <ul>
+          <li><kbd>WASD</kbd> / <kbd>\u2190\u2191\u2192\u2193</kbd> move \u00B7 mouse to aim</li>
+          <li><kbd>Click</kbd> / <kbd>Space</kbd> attack (hold to auto-attack)</li>
+          <li><kbd>Shift</kbd> / right-click dash (brief invulnerability)</li>
+          <li><kbd>1\u20133</kbd> pick skill \u00B7 <kbd>P</kbd> pause \u00B7 <kbd>H</kbd> help \u00B7 <kbd>C</kbd> cheats \u00B7 <kbd>R</kbd> restart</li>
+        </ul>
+        <h5>Mobile controls</h5>
+        <ul>
+          <li>D-pad to move \u00B7 <b>HIT</b> to attack (auto-aims at the nearest zombie) \u00B7 <b>DASH</b> to dodge.</li>
+        </ul>
+        <h5>Combat</h5>
+        <ul>
+          <li>Zombies raise their arms and show a red <b>!</b> before striking — step away or dash during the wind-up.</li>
+          <li>Your hits knock zombies back and interrupt their wind-ups.</li>
+          <li>The boss telegraphs a <b>stomp ring</b> and a <b>charge lane</b>, and summons minions. Keep moving.</li>
+        </ul>
+        <h5>Roguelite draft</h5>
+        <ul>
+          <li>After each wave pick 1 of 3 skills. Every skill stacks without limit — combine burn + frost + corpse bombs + orbit blades\u2026</li>
+          <li>In co-op both players draft; a random coin toss decides who moves first, and spawn corners/roles are randomized.</li>
+        </ul>
+        <h5>Loot</h5>
+        <ul>
+          <li>Weapons: Katana, War Hammer, Spear, Pistol, Shotgun, SMG, Rail Rifle (guns use ammo; empty guns revert to the bat).</li>
+          <li>Items: medkit, ammo box, gem (score), coffee (speed), shield (blocks 2 hits), nuke (clears the screen).</li>
+        </ul>
+      </div>
+      <div class="zs-foot"><span class="zs-note">Press H to reopen this guide</span><button class="zs-btn" type="button" data-help-close>Got it</button></div>
     </div>
   </div>
 
   <div class="zs-ov" data-ov="cheats" hidden>
     <div class="zs-card wide">
-      <h3>\u26A1 Cheats</h3>
-      <p class="sub">Using cheats marks the run — best score won't be saved.</p>
-      <div class="zs-cheats" data-el="cheatGrid"></div>
-      <div class="zs-btnrow"><button class="zs-btn" type="button" data-act="closepanel">Close</button></div>
+      <div class="zs-head"><h3>\u26A1 Cheats</h3><button class="zs-btn ghost" type="button" data-cheat-close aria-label="Close cheats">Close</button></div>
+      <div class="zs-scroll"><p class="sub">Using cheats marks the run — best score won't be saved.</p><div class="zs-cheats" data-el="cheatGrid"></div></div>
+      <div class="zs-foot"><span class="zs-note">Press C to toggle cheats</span><button class="zs-btn" type="button" data-cheat-close>Close</button></div>
     </div>
   </div>
 
   <div class="zs-ov" data-ov="over" hidden>
     <div class="zs-card">
-      <h3 data-el="ovTitle">Game over</h3>
-      <p class="sub" data-el="ovSub"></p>
-      <div class="zs-stats" data-el="ovStats"></div>
-      <p class="sub" data-el="ovCheat" style="margin:0 0 10px"></p>
-      <div class="zs-btnrow">
-        <button class="zs-btn acc" type="button" data-act="start" data-el="againBtn">Play again</button>
-        <button class="zs-btn ghost" type="button" data-exit>Exit game</button>
+      <div class="zs-head"><h3 data-el="ovTitle">Game over</h3></div>
+      <div class="zs-scroll">
+        <p class="sub" data-el="ovSub"></p>
+        <div class="zs-stats" data-el="ovStats"></div>
+        <p class="sub" data-el="ovCheat" style="margin:0 0 10px"></p>
       </div>
-      <p class="sub" style="margin:10px 0 0" data-el="ovWait"></p>
+      <div class="zs-foot">
+        <div class="zs-btnrow">
+          <button class="zs-btn acc" type="button" data-act="start" data-el="againBtn">Play again</button>
+          <button class="zs-btn ghost" type="button" data-exit>Exit game</button>
+        </div>
+        <p class="sub" style="margin:0" data-el="ovWait"></p>
+      </div>
     </div>
   </div>
 </section>
-<div class="zs-foot">
-  <span class="zs-hint">WASD move \u00B7 mouse aim \u00B7 click / Space attack \u00B7 Shift dash \u00B7 P pause \u00B7 H help \u00B7 C cheats</span>
+<div class="zs-controls">
   <div class="zs-pad" data-el="pad">
     <button class="zs-dbtn" type="button" data-dir="up" style="grid-column:2;grid-row:1" aria-label="Up">\u25B2</button>
     <button class="zs-dbtn" type="button" data-dir="left" style="grid-column:1;grid-row:2" aria-label="Left">\u25C0</button>
@@ -486,7 +518,6 @@ export function mount(root, context = {}) {
     <button class="zs-hit" type="button" data-act="hit" data-el="hitBtn" aria-label="Attack">HIT</button>
   </div>
 </div>
-<div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------------- refs ---------------- */
@@ -514,7 +545,13 @@ export function mount(root, context = {}) {
     let field = new Int16Array(COLS * ROWS).fill(-1);
     let fieldT = 0;
     const cheats = { god: false, onehit: false, ammo: false, slowmo: false, freeze: false };
-    let panel = null, panelAutoPaused = false;
+    let helpOpen = false, cheatsOpen = false, overlayAutoPaused = false, pauseStamp = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("zombieSurvivalHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("zombieSurvivalHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { }
     let mounted = true, raf = 0, lastT = 0, pubAcc = 0, lastSend = 0, lastInputSig = "";
@@ -794,7 +831,8 @@ export function mount(root, context = {}) {
         const seed = (Math.random() * 1e9) | 0;
         rng = mulberry32(seed);
         for (const k in cheats) cheats[k] = false;
-        panel = null; panelAutoPaused = false;
+        helpOpen = false; cheatsOpen = false; overlayAutoPaused = false;
+        pauseStamp = 0; lastSend = performance.now(); pubAcc = 0;
         const n = online ? 2 : 1;
         /* ACAK: siapa jadi survivor mana (owner) + sudut spawn (posisi) */
         const owners = n === 2 ? (rng() < 0.5 ? [0, 1] : [1, 0]) : [0];
@@ -1675,15 +1713,30 @@ export function mount(root, context = {}) {
         R.status.textContent = st;
         R.statusDot.className = "game-status-dot " + cls;
     }
+    /* ikon + label diperbarui lewat span, bukan textContent (iconSVG tidak boleh hilang) */
+    function setIconBtn(btn, icon, label, title) {
+        if (!btn) return;
+        if (btn.dataset.icon !== icon) {
+            btn.dataset.icon = icon;
+            btn.innerHTML = iconSVG(icon, { size: 14 }) + '<span class="zs-btn-label">' + label + '</span>';
+        } else {
+            const span = btn.querySelector(".zs-btn-label");
+            if (span && span.textContent !== label) span.textContent = label;
+        }
+        btn.setAttribute("aria-label", label);
+        if (title) btn.setAttribute("title", title);
+    }
+    function anyOverlay() { return helpOpen || cheatsOpen; }
     function syncOverlays(v) {
         const phase = v ? v.phase : "wait";
-        vis(OV.wait, !v);
-        vis(OV.start, !!v && phase === "menu");
-        vis(OV.pause, !!v && v.paused && !panel && (phase === "fight" || phase === "toss" || phase === "draft"));
-        vis(OV.draft, !!v && phase === "draft" && !panel);
-        vis(OV.over, !!v && phase === "over" && !panel);
-        vis(OV.help, panel === "help");
-        vis(OV.cheats, panel === "cheats");
+        const blocked = anyOverlay();
+        vis(OV.wait, !v && !blocked);
+        vis(OV.start, !!v && phase === "menu" && !blocked);
+        vis(OV.pause, !!v && v.paused && !blocked && (phase === "fight" || phase === "toss" || phase === "draft"));
+        vis(OV.draft, !!v && phase === "draft" && !blocked);
+        vis(OV.over, !!v && phase === "over" && !blocked);
+        vis(OV.help, helpOpen);
+        vis(OV.cheats, cheatsOpen && hostSide);
         vis(R.startBtn, hostSide);
         vis(R.cheatBtn, hostSide);
         vis(R.pauseBtn, hostSide);
@@ -1700,7 +1753,7 @@ export function mount(root, context = {}) {
             ? "Coin toss decides who moves first \u00B7 spawn corners are randomized."
             : "Waiting for " + (hostName || "the host") + " to start the run\u2026";
         R.pauseSub.textContent = hostSide ? "Game paused. Press P or tap Resume." : "The host paused the game.";
-        R.pauseBtn.textContent = v.paused ? "\u25B6" : "\u23F8";
+        setIconBtn(R.pauseBtn, v.paused ? "play" : "pause", v.paused ? "Resume" : "Pause", v.paused ? "Resume (P)" : "Pause (P)");
         if (phase === "draft" && v.draft) {
             const sig = v.draft.options.join(",") + "|" + JSON.stringify(v.draft.picks) + "|" + v.wave;
             if (sig !== draftSig) {
@@ -1799,33 +1852,66 @@ export function mount(root, context = {}) {
         sfx("click");
         publish();
     }
-    function openPanel(name) {
-        if (panel === name) { closePanel(); return; }
-        panel = name;
-        if (hostSide && sim && !sim.paused && (sim.phase === "fight" || sim.phase === "toss" || sim.phase === "draft")) {
-            sim.paused = true; panelAutoPaused = true; publish();
+    /* Pause: tik/timer/bot berhenti; penanda waktu di-geser saat resume. */
+    function setPaused(on) {
+        if (!hostSide || !sim || sim.paused === on) return;
+        if (on) {
+            pauseStamp = performance.now();
+            sim.paused = true;
+        } else {
+            if (pauseStamp) {
+                const d = performance.now() - pauseStamp;
+                lastSend += d; pubAcc = 0; pauseStamp = 0;
+            }
+            sim.paused = false;
+            overlayAutoPaused = false;
         }
-        if (name === "cheats") syncCheatGrid();
-        sfx("click");
+        publish();
     }
-    function closePanel() {
-        if (!panel) return;
-        panel = null;
-        if (panelAutoPaused && sim) { sim.paused = false; panelAutoPaused = false; publish(); }
+    function syncOverlayPause() {
+        if (!hostSide || !sim) return;
+        const live = sim.phase === "fight" || sim.phase === "toss" || sim.phase === "draft";
+        if (anyOverlay() && !sim.paused && live) { setPaused(true); overlayAutoPaused = true; }
+        else if (!anyOverlay() && overlayAutoPaused) setPaused(false);
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        syncOverlayPause();
         sfx("click");
+        render(view);
+    }
+    function toggleCheats(on) {
+        if (!hostSide) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        if (cheatsOpen) syncCheatGrid();
+        syncOverlayPause();
+        sfx("click");
+        render(view);
+    }
+    function closeOverlays() {
+        if (helpOpen) toggleHelp(false);
+        else if (cheatsOpen) toggleCheats(false);
     }
     function togglePause() {
+        if (anyOverlay()) { closeOverlays(); return; }
         if (!hostSide || !sim) return;
         if (sim.phase !== "fight" && sim.phase !== "toss" && sim.phase !== "draft") return;
-        sim.paused = !sim.paused;
-        if (!sim.paused) panelAutoPaused = false;
-        publish();
+        setPaused(!sim.paused);
     }
 
     /* ---------------- input ---------------- */
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) { if (hostSide) { closeOverlays(); startRun(); } return; }
         const pick = t.closest("[data-pick]");
         if (pick) { submitAction({ type: "pick", id: pick.dataset.pick }); return; }
         const ct = t.closest("[data-cheat-t]");
@@ -1841,13 +1927,15 @@ export function mount(root, context = {}) {
         const act = t.closest("[data-act]");
         if (!act) return;
         const a = act.dataset.act;
-        if (a === "start" || a === "restart") { if (hostSide) startRun(); }
-        else if (a === "resume") { if (hostSide && sim) { sim.paused = false; panelAutoPaused = false; publish(); } }
-        else if (a === "help") openPanel("help");
-        else if (a === "cheats") { if (hostSide) openPanel("cheats"); }
-        else if (a === "closepanel") closePanel();
-        else if (a === "pause") togglePause();
-        else if (a === "mute") { muted = !muted; R.sndBtn.textContent = muted ? "\u{1F507}" : "\u{1F50A}"; }
+        if (a === "start") { if (hostSide) startRun(); }
+        else if (a === "resume") { if (hostSide && sim) setPaused(false); }
+        else if (a === "help") toggleHelp(true);
+        else if (a === "cheats") toggleCheats();
+        else if (a === "closepanel") closeOverlays();
+        else if (a === "mute") {
+            muted = !muted;
+            setIconBtn(R.sndBtn, muted ? "volumeX" : "volume", muted ? "Muted" : "Sound", "Sound");
+        }
         else if (a === "touch") { root.querySelector(".zs").classList.toggle("touch"); }
     }
     function boardPos(e) {
@@ -1865,16 +1953,18 @@ export function mount(root, context = {}) {
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const c = e.code;
         if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].indexOf(c) >= 0) e.preventDefault();
+        /* prioritas: help -> cheats -> pause / Escape -> aksi game */
+        if (c === "KeyH") { if (!e.repeat) toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!e.repeat && hostSide && !helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") { if (!e.repeat) togglePause(); e.preventDefault(); return; }
+        if (anyOverlay()) return;
+        if (c === "KeyR") { if (!e.repeat && hostSide) startRun(); e.preventDefault(); return; }
         if (c === "ArrowUp" || c === "KeyW") keys.up = true;
         else if (c === "ArrowDown" || c === "KeyS") keys.down = true;
         else if (c === "ArrowLeft" || c === "KeyA") keys.left = true;
         else if (c === "ArrowRight" || c === "KeyD") keys.right = true;
         else if (c === "Space") attackHeldKey = true;
         else if (c === "ShiftLeft" || c === "ShiftRight") { if (!e.repeat) requestDash(); }
-        else if (c === "KeyP") { if (!e.repeat) togglePause(); }
-        else if (c === "KeyH") { if (!e.repeat) openPanel("help"); }
-        else if (c === "KeyC") { if (!e.repeat && hostSide) openPanel("cheats"); }
-        else if (c === "Escape") { if (!e.repeat) { if (panel) closePanel(); else togglePause(); } }
         else if (c === "Enter") { if (!e.repeat && hostSide && sim && (sim.phase === "menu" || sim.phase === "over")) startRun(); }
         else if (c === "Digit1" || c === "Digit2" || c === "Digit3") {
             if (view && view.phase === "draft" && view.draft) {
@@ -1897,7 +1987,7 @@ export function mount(root, context = {}) {
     }
     function onVis() {
         if (document.hidden && hostSide && sim && !sim.paused && (sim.phase === "fight" || sim.phase === "toss")) {
-            sim.paused = true; publish();
+            setPaused(true);
         }
     }
     function onBoardMove(e) {
@@ -1954,9 +2044,10 @@ export function mount(root, context = {}) {
         lastT = t;
         if (!(dt > 0)) dt = 0;
         if (dt > 0.05) dt = 0.05;
-        syncLocalInput(t);
+        const frozen = anyOverlay() || (hostSide && !!sim && sim.paused);
+        if (!frozen) syncLocalInput(t);
         if (hostSide && sim) {
-            if (!sim.paused && (sim.phase === "toss" || sim.phase === "fight" || sim.phase === "draft")) {
+            if (!frozen && (sim.phase === "toss" || sim.phase === "fight" || sim.phase === "draft")) {
                 update(dt * (cheats.slowmo ? 0.5 : 1));
             }
             if (online) {
@@ -1965,7 +2056,7 @@ export function mount(root, context = {}) {
             }
             render(sim);
         } else {
-            if (view) {
+            if (view && !frozen) {
                 const k = 1 - Math.exp(-dt * 12);
                 for (const list of [view.players, view.zombies, view.items, view.shots]) {
                     for (const e of list) {
@@ -1979,7 +2070,7 @@ export function mount(root, context = {}) {
             }
             render(view);
         }
-        ageToasts(dt);
+        if (!frozen) ageToasts(dt);
     }
 
     /* ---------------- init ---------------- */

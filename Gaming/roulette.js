@@ -1,14 +1,16 @@
 /* ==== GAME: roulette.js ==== */
 /*
-  Roulette Duel — European single-zero (37 pocket).
+  Roulette — European single-zero (37 pocket).
   Format baru: export const META + export function mount(root, context).
   Setelah menaruh file ini di JS/games/, jalankan:
     node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "roulette", // harus sama dengan nama file (tanpa .js)
-    name: "Roulette Duel",
+    name: "Roulette",
     category: "casino",
     catLabel: "Casino",
     desc: "Duel roulette melawan bot/pemain. Level acak: ubah modal awal menjadi target sebelum putaran habis.",
@@ -154,97 +156,168 @@ export function mount(root, context = {}) {
     let wheelRot = 0, ballRot = 0, lastSpinId = 0, lastSession = "";
     let prevBanks = null, shownBanks = [0, 0];
     const bankRaf = [0, 0];
-    let settleTimer = 0, botTimer = 0;
-    let lastChipsKey = "", helpOpen = false, cheatOpen = false, peekOn = false, savedSession = "";
+    /* Pausable timers + UI-local flags. */
+    const timers = new Set();
+    let settleRec = null, botRec = null;
+    let timersPaused = false, pauseStart = 0, clockShift = 0;
+    const clockNow = () => Date.now() - clockShift;
+    let bankTweens = [null, null], spinFrozen = false;
+    let lastChipsKey = "", savedSession = "", peekOn = false;
+    let helpOpen = false, cheatsOpen = false, paused = false;
     const offs = [];
+
+    /* First-run internal guide (global how-to is disabled for this game). */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("rouletteHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("rouletteHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     /* ---------------- shell (design minimalis) ---------------- */
     root.innerHTML = `
 <style>
 .rlt-app [hidden]{display:none!important}
-.rlt-app{color:#111827}
-.rlt-app .rlt-stage{position:relative;padding:14px;background:#fff;border:1px solid #e5e7eb;border-radius:14px}
-.rlt-app .rlt-players{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-.rlt-app .rlt-pcard{position:relative;flex:1 1 180px;border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;background:#fafafa;transition:box-shadow .25s,border-color .25s}
-.rlt-app .rlt-pcard.turn{border-color:#f59e0b;box-shadow:0 0 0 3px #f59e0b22;background:#fff}
-.rlt-app .rlt-pname{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700}
+.rlt-app{--rlt-surface:var(--color-surface);--rlt-soft:var(--color-surface-muted);--rlt-ink:var(--color-text);--rlt-mut:var(--color-text-muted);--rlt-line:var(--color-border);color:var(--rlt-ink);min-width:0}
+
+/* HUD bar — all meta info lives here, the board is only the table. */
+.rlt-app .rlt-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+.rlt-app .rlt-pill{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;padding:6px 9px;border:1px solid var(--rlt-line);border-radius:999px;background:var(--rlt-surface);color:var(--rlt-mut)}
+.rlt-app .rlt-pill b{color:var(--rlt-ink);font-variant-numeric:tabular-nums}
+.rlt-app .rlt-statusdot{width:7px;height:7px;border-radius:50%;background:#94a3b8;flex:none}
+.rlt-app .rlt-cheatbadge{border-color:#f59e0b;color:#b45309;background:#fffbeb}
+.rlt-app .rlt-spacer{flex:1 1 auto}
+.rlt-app .rlt-iconbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:6px 10px;border-radius:9px;border:1px solid var(--rlt-line);background:var(--rlt-surface);color:var(--rlt-ink);font:700 11.5px/1 inherit;cursor:pointer;touch-action:manipulation}
+.rlt-app .rlt-iconbtn svg{flex:none;display:block}
+.rlt-app .rlt-iconbtn:hover:not(:disabled){background:var(--rlt-soft)}
+.rlt-app .rlt-iconbtn:disabled{opacity:.4;cursor:default}
+
+.rlt-app .rlt-stage{position:relative;display:flex;flex-direction:column;gap:12px;overflow:auto;padding:12px;background:var(--rlt-surface);border:1px solid var(--rlt-line);border-radius:12px;min-width:0}
+.rlt-app .rlt-players{display:flex;gap:12px;flex-wrap:wrap;min-width:0}
+.rlt-app .rlt-pcard{position:relative;flex:1 1 180px;min-width:0;border:1px solid var(--rlt-line);border-radius:10px;padding:12px;background:var(--rlt-soft);transition:border-color .16s ease,box-shadow .16s ease}
+.rlt-app .rlt-pcard.turn{border-color:#f59e0b;box-shadow:0 0 0 2px #f59e0b33;background:var(--rlt-surface)}
+.rlt-app .rlt-pname{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;flex-wrap:wrap;min-width:0}
 .rlt-app .rlt-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
 .rlt-app .rlt-pcard.s0 .rlt-dot{background:#f59e0b}
 .rlt-app .rlt-pcard.s1 .rlt-dot{background:#3b82f6}
-.rlt-app .rlt-ptag{font-style:normal;font-size:10px;font-weight:800;color:#6b7280;border:1px solid #e5e7eb;border-radius:999px;padding:1px 7px}
-.rlt-app .rlt-pbank{font-size:24px;font-weight:800;letter-spacing:.01em;margin-top:2px;font-variant-numeric:tabular-nums}
-.rlt-app .rlt-psub{font-size:11.5px;color:#6b7280;margin-top:2px}
-.rlt-app .rlt-delta{position:absolute;right:12px;top:10px;pointer-events:none}
+.rlt-app .rlt-ptag{font-style:normal;font-size:10px;font-weight:800;color:var(--rlt-mut);border:1px solid var(--rlt-line);border-radius:999px;padding:1px 8px}
+.rlt-app .rlt-pbank{font-size:24px;font-weight:800;letter-spacing:.01em;margin-top:4px;font-variant-numeric:tabular-nums}
+.rlt-app .rlt-psub{font-size:11.5px;color:var(--rlt-mut);margin-top:4px;line-height:1.4}
+.rlt-app .rlt-delta{position:absolute;right:12px;top:12px;pointer-events:none}
 .rlt-app .rlt-delta span{display:block;font-weight:800;font-size:15px;animation:rltFloat 1.1s ease-out forwards}
 .rlt-app .rlt-delta .pos{color:#059669}
 .rlt-app .rlt-delta .neg{color:#dc2626}
-@keyframes rltFloat{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-26px)}}
-.rlt-app .rlt-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:#6b7280;margin-bottom:10px}
+@keyframes rltFloat{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-24px)}}
+.rlt-app .rlt-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--rlt-mut);min-width:0}
 .rlt-app .rlt-results{display:flex;gap:4px;flex-wrap:wrap}
 .rlt-app .rlt-r{font-style:normal;font-size:10.5px;font-weight:800;color:#fff;border-radius:6px;padding:2px 6px}
 .rlt-app .rlt-r.red{background:#dc2626}.rlt-app .rlt-r.black{background:#1f2937}.rlt-app .rlt-r.green{background:#059669}
-.rlt-app .rlt-layout{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start;justify-content:center}
-.rlt-app .rlt-left{display:flex;flex-direction:column;align-items:center;gap:12px;flex:0 0 auto}
-.rlt-app .rlt-wheel-wrap{position:relative;width:300px;max-width:100%;aspect-ratio:1/1}
+.rlt-app .rlt-layout{display:flex;flex:1 1 auto;min-height:0;flex-wrap:wrap;gap:16px;align-items:center;align-content:center;justify-content:center;min-width:0}
+.rlt-app .rlt-left{display:flex;flex-direction:column;align-items:center;gap:12px;flex:0 1 300px;width:100%;max-width:320px;min-width:0}
+.rlt-app .rlt-wheel-wrap{position:relative;width:100%;max-width:300px;aspect-ratio:1/1}
 .rlt-app .rlt-wheel{width:100%;height:100%;display:block;transition:transform 4.2s cubic-bezier(.17,.84,.26,1)}
 .rlt-app .rlt-orbit{position:absolute;inset:0;pointer-events:none;transition:transform 4.2s cubic-bezier(.2,.65,.25,1)}
 .rlt-app .rlt-ball{position:absolute;left:50%;top:4%;width:4.6%;aspect-ratio:1/1;margin-left:-2.3%;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#cbd5e1 75%);box-shadow:0 2px 5px rgba(0,0,0,.4)}
 .rlt-app .rlt-pointer{position:absolute;top:-6px;left:50%;transform:translateX(-50%);z-index:3}
-.rlt-app .rlt-banner{width:300px;max-width:100%;text-align:center;background:#fafafa;border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;box-sizing:border-box}
+.rlt-app .rlt-banner{width:100%;max-width:300px;text-align:center;background:var(--rlt-soft);border:1px solid var(--rlt-line);border-radius:10px;padding:12px;box-sizing:border-box}
 .rlt-app .rlt-bn{font-size:20px;font-weight:800;letter-spacing:.03em}
-.rlt-app .rlt-bn.red{color:#dc2626}.rlt-app .rlt-bn.black{color:#111827}.rlt-app .rlt-bn.green{color:#059669}
-.rlt-app .rlt-bpay{font-size:12.5px;color:#6b7280;margin-top:3px}
-.rlt-app .rlt-right{display:flex;flex-direction:column;gap:10px;flex:1 1 320px;max-width:480px;min-width:280px}
-.rlt-app .rlt-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.rlt-app .rlt-chiplabel{font-size:11px;font-weight:800;letter-spacing:.09em;color:#9ca3af;text-transform:uppercase}
-.rlt-app .rlt-chip{width:44px;height:44px;border-radius:50%;background:#fff;border:3px dashed #d1d5db;color:#111827;font-weight:800;font-size:13px;cursor:pointer;padding:0}
+.rlt-app .rlt-bn.red{color:#dc2626}.rlt-app .rlt-bn.black{color:var(--rlt-ink)}.rlt-app .rlt-bn.green{color:#059669}
+.rlt-app .rlt-bpay{font-size:12.5px;color:var(--rlt-mut);margin-top:4px;line-height:1.4}
+.rlt-app .rlt-right{display:flex;flex-direction:column;gap:12px;flex:1 1 300px;width:100%;max-width:480px;min-width:0}
+.rlt-app .rlt-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.rlt-app .rlt-chiplabel{font-size:11px;font-weight:800;letter-spacing:.09em;color:var(--rlt-mut);text-transform:uppercase}
+.rlt-app .rlt-chip{width:44px;height:44px;border-radius:50%;background:var(--rlt-surface);border:3px dashed #d1d5db;color:var(--rlt-ink);font-weight:800;font-size:13px;cursor:pointer;padding:0}
 .rlt-app .rlt-chip.sel{outline:3px solid #f59e0b;outline-offset:2px}
 .rlt-app .rlt-chip:disabled{opacity:.35;cursor:default}
 .rlt-app .rlt-chip.c5{border-color:#f87171}.rlt-app .rlt-chip.c10{border-color:#60a5fa}
 .rlt-app .rlt-chip.c25{border-color:#34d399}.rlt-app .rlt-chip.c50{border-color:#fbbf24}.rlt-app .rlt-chip.c100{border-color:#a78bfa}
 .rlt-app .rlt-outside{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
-.rlt-app .rlt-out{position:relative;background:#fff;border:1px solid #e5e7eb;border-radius:8px;color:#111827;font-weight:700;font-size:12px;padding:10px 2px;cursor:pointer}
+.rlt-app .rlt-out{position:relative;background:var(--rlt-surface);border:1px solid var(--rlt-line);border-radius:8px;color:var(--rlt-ink);font-weight:700;font-size:12px;padding:10px 2px;min-height:44px;cursor:pointer}
 .rlt-app .rlt-out.red{background:#dc2626;color:#fff;border-color:#dc2626}
 .rlt-app .rlt-out.black{background:#1f2937;color:#fff;border-color:#1f2937}
-.rlt-app .rlt-grid{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:3px}
-.rlt-app .rlt-num{position:relative;background:#1f2937;border:1px solid transparent;border-radius:6px;color:#fff;font-weight:700;font-size:12.5px;min-height:36px;cursor:pointer;padding:0}
+.rlt-app .rlt-grid{display:grid;grid-template-columns:repeat(13,minmax(28px,1fr));gap:4px;overflow-x:auto;overscroll-behavior-inline:contain;padding:8px 4px 4px;min-width:0}
+.rlt-app .rlt-num{position:relative;background:#1f2937;border:1px solid transparent;border-radius:6px;color:#fff;font-weight:700;font-size:12.5px;min-height:40px;cursor:pointer;padding:0}
 .rlt-app .rlt-num.red{background:#dc2626}
 .rlt-app .rlt-num.zero{background:#059669;grid-column:1;grid-row:1/span 3}
 .rlt-app .rlt-num.cur{outline:2px solid #3b82f6;outline-offset:1px}
 .rlt-app .rlt-out:not(:disabled):hover,.rlt-app .rlt-num:not(:disabled):hover{filter:brightness(1.12)}
 .rlt-app .rlt-amt{position:absolute;top:-7px;right:-4px;background:#f59e0b;color:#fff;font-size:10px;font-weight:800;font-style:normal;border-radius:999px;padding:1px 5px;z-index:1}
-.rlt-app .rlt-ctl{display:flex;gap:8px}
-.rlt-app .rlt-btn{flex:1;padding:11px 12px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#111827;font-weight:700;font-size:13.5px;cursor:pointer}
-.rlt-app .rlt-btn:hover:not(:disabled){background:#f3f4f6}
+.rlt-app .rlt-ctl{display:flex;gap:8px;flex-wrap:wrap}
+.rlt-app .rlt-btn{flex:1 1 120px;min-height:44px;padding:10px 12px;border-radius:9px;border:1px solid var(--rlt-line);background:var(--rlt-surface);color:var(--rlt-ink);font-weight:700;font-size:13.5px;cursor:pointer}
+.rlt-app .rlt-btn:hover:not(:disabled){background:var(--rlt-soft)}
 .rlt-app .rlt-btn.primary{background:#111827;color:#fff;border-color:#111827}
 .rlt-app .rlt-btn.primary:hover:not(:disabled){background:#1f2937}
 .rlt-app .rlt-btn:disabled{opacity:.4;cursor:default}
-.rlt-app .rlt-hint{font-size:11px;color:#9ca3af;line-height:1.6}
-.rlt-app kbd{border:1px solid #e5e7eb;border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:10.5px;background:#fafafa;font-family:inherit}
+.rlt-app .rlt-hint{font-size:11px;color:var(--rlt-mut);line-height:1.6}
+.rlt-app kbd{border:1px solid var(--rlt-line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:10.5px;background:var(--rlt-soft);font-family:inherit}
 .rlt-app .rlt-pad{display:none;grid-template-areas:". up ." "left bet right" ". down .";grid-template-columns:repeat(3,56px);gap:6px;justify-content:center;margin-top:4px}
-.rlt-app .rlt-pad button{height:48px;border-radius:12px;border:1px solid #e5e7eb;background:#fff;font-size:16px;font-weight:800;cursor:pointer;color:#111827}
+.rlt-app .rlt-pad button{height:48px;border-radius:10px;border:1px solid var(--rlt-line);background:var(--rlt-surface);font-size:16px;font-weight:800;cursor:pointer;color:var(--rlt-ink)}
 .rlt-app .rlt-pad button:disabled{opacity:.4}
 .rlt-app .rlt-pad [data-pad="up"]{grid-area:up}.rlt-app .rlt-pad [data-pad="down"]{grid-area:down}
 .rlt-app .rlt-pad [data-pad="left"]{grid-area:left}.rlt-app .rlt-pad [data-pad="right"]{grid-area:right}
 .rlt-app .rlt-pad [data-pad="bet"]{grid-area:bet;background:#f59e0b;color:#fff;border-color:#f59e0b;font-size:12px}
 @media (pointer:coarse),(max-width:720px){.rlt-app .rlt-pad{display:grid}.rlt-app .rlt-hint.desktop{display:none}}
-.rlt-app .rlt-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(17,24,39,.45);backdrop-filter:blur(2px);z-index:6;border-radius:14px}
-.rlt-app .rlt-card{background:#fff;border-radius:14px;padding:20px;max-width:430px;width:calc(100% - 32px);max-height:92%;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.18)}
-.rlt-app .rlt-card h3{margin:0 0 10px;font-size:18px}
-.rlt-app .rlt-card h4{margin:12px 0 4px;font-size:13px}
-.rlt-app .rlt-card p,.rlt-app .rlt-card li{font-size:12.5px;color:#374151;line-height:1.65;margin:4px 0}
-.rlt-app .rlt-card ul{padding-left:18px;margin:4px 0}
-.rlt-app .rlt-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.rlt-app .rlt-cheats button{padding:10px;border-radius:10px;border:1px solid #e5e7eb;background:#fafafa;font-weight:700;font-size:12px;cursor:pointer;color:#111827}
-.rlt-app .rlt-cheats button:hover{background:#f3f4f6}
-.rlt-app .rlt-peek{margin-top:10px;font-size:12.5px;color:#6b7280}
-.rlt-app .rlt-ovbtns{display:flex;gap:8px;margin-top:14px}
+.rlt-app .rlt-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(17,24,39,.45);backdrop-filter:blur(2px);z-index:6;border-radius:12px;padding:16px}
+.rlt-app .rlt-card{display:flex;flex-direction:column;gap:8px;background:var(--rlt-surface);border:1px solid var(--rlt-line);border-radius:12px;padding:18px;max-width:480px;width:100%;max-height:100%;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.rlt-app .rlt-ovhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none}
+.rlt-app .rlt-card h3{margin:0;font-size:18px}
+.rlt-app .rlt-card h4{margin:12px 0 4px;font-size:13px;color:var(--rlt-ink)}
+.rlt-app .rlt-card p,.rlt-app .rlt-card li{font-size:12.5px;color:var(--rlt-mut);line-height:1.6;margin:4px 0}
+.rlt-app .rlt-card ul{padding-left:20px;margin:4px 0}
+.rlt-app .rlt-help,.rlt-app .rlt-cheats{flex:1 1 auto;min-height:0;overflow:auto}
+.rlt-app .rlt-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rlt-app .rlt-cheats button{padding:10px;min-height:44px;border-radius:9px;border:1px solid var(--rlt-line);background:var(--rlt-soft);font-weight:700;font-size:12px;cursor:pointer;color:var(--rlt-ink)}
+.rlt-app .rlt-cheats button:hover{background:var(--rlt-surface)}
+.rlt-app .rlt-peek{margin-top:8px;font-size:12.5px;color:var(--rlt-mut)}
+.rlt-app .rlt-ovbtns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;flex:none}
+.rlt-app .rlt-note{font-size:11px;color:var(--rlt-mut)}
 .rlt-app .rlt-win{color:#059669}.rlt-app .rlt-lose{color:#dc2626}
+.rlt-app button:focus-visible{outline:2px solid #f59e0b;outline-offset:2px}
+@media (max-width:720px){
+.rlt-app .rlt-stage{padding:12px}
+.rlt-app .rlt-layout{gap:12px}
+.rlt-app .rlt-players{gap:8px}
+.rlt-app .rlt-left,.rlt-app .rlt-right{max-width:100%}
+.rlt-app .rlt-cheats{grid-template-columns:1fr}
+}
+@media (pointer:coarse){.rlt-app .rlt-num{min-height:44px}.rlt-app .rlt-out{min-height:48px}}
+@media (prefers-reduced-motion:reduce){.rlt-app .rlt-delta span{animation:none}.rlt-app .rlt-wheel,.rlt-app .rlt-orbit{transition-duration:.01ms!important}.rlt-app .rlt-pcard{transition:none}}
+/* --- fill height + mobile refinements (must stay last) --- */
+.rlt-app.game-fill > .rlt-stage{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.rlt-app.game-fill > .rlt-stage:not(:has(.rlt-ov:not([hidden]))){flex:0 0 auto}
+.rlt-app.game-fill > .rlt-stage:has(.rlt-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+.rlt-app .rlt-hud{gap:5px}
+.rlt-app .rlt-hud .rlt-pill{padding:4px 6px;font-size:9px}
+.rlt-app .rlt-hud .rlt-pill.rlt-wide{display:none}
+.rlt-app .rlt-hud .rlt-iconbtn{min-height:32px;padding:5px 9px;font-size:9px}
+.rlt-app .rlt-hud .rlt-btn-label,.rlt-app .rlt-hud .rlt-spacer{display:none}
+.rlt-app .rlt-stage{padding:10px}
+.rlt-app .rlt-layout{gap:10px}
+.rlt-app .rlt-ov{padding:8px}
+.rlt-app .rlt-card{width:100%;height:100%;max-height:100%;padding:14px;border-radius:12px}
+.rlt-app .rlt-help,.rlt-app .rlt-cheats{scrollbar-width:none}
+.rlt-app .rlt-help::-webkit-scrollbar,.rlt-app .rlt-cheats::-webkit-scrollbar{display:none}
+.rlt-app .rlt-ovbtns{position:static;margin:0;padding-top:10px}
+.rlt-app .rlt-note{display:none}
+}
 </style>
-<div class="game-app rlt-app">
-  <div class="game-intro">
-    <div><h2>Roulette Duel</h2><p data-level>Memuat level…</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app rlt-app game-fill" data-rlt>
+  <div class="rlt-hud">
+    <span class="rlt-pill"><i class="rlt-statusdot" data-dot></i><span data-status>Ready</span></span>
+    <span class="rlt-pill rlt-wide" data-hud="levelinfo">Level —</span>
+    <span class="rlt-pill">LV <b data-hud="level">—</b></span>
+    <span class="rlt-pill">KAMU <b data-hud="bank">0</b></span>
+    <span class="rlt-pill">TGT <b data-hud="target">0</b></span>
+    <span class="rlt-pill">PUT <b data-hud="spins">0/0</b></span>
+    <span class="rlt-pill">BET <b data-hud="bet">0</b></span>
+    <span class="rlt-pill rlt-cheatbadge" data-cheatbadge hidden>CHEATS</span>
+    <span class="rlt-spacer"></span>
+    <button class="rlt-iconbtn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="rlt-btn-label">Help</span></button>
+    <button class="rlt-iconbtn" type="button" data-cheats data-cheatsbtn aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="rlt-btn-label">Cheats</span></button>
+    <button class="rlt-iconbtn" type="button" data-pause data-pausebtn aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="rlt-btn-label">Pause</span></button>
+    <button class="rlt-iconbtn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="rlt-btn-label">Restart</span></button>
+    <button class="rlt-iconbtn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="rlt-btn-label">Exit</span></button>
   </div>
   <section class="game-panel rlt-stage" data-board>
     <div class="rlt-players">
@@ -283,47 +356,42 @@ export function mount(root, context = {}) {
           <button class="rlt-btn" type="button" data-act="undo" disabled>Undo</button>
           <button class="rlt-btn" type="button" data-act="clear" disabled>Bersihkan</button>
         </div>
-        <div class="rlt-pad">
-          <button type="button" data-pad="up">▲</button>
-          <button type="button" data-pad="left">◀</button>
-          <button type="button" data-pad="bet">Pasang</button>
-          <button type="button" data-pad="right">▶</button>
-          <button type="button" data-pad="down">▼</button>
-        </div>
-        <div class="rlt-hint desktop">Desktop: <kbd>1–4</kbd> chip · <kbd>R</kbd>/<kbd>B</kbd>/<kbd>E</kbd>/<kbd>O</kbd>/<kbd>L</kbd>/<kbd>H</kbd> taruhan luar · <kbd>←↑↓→</kbd>+<kbd>Enter</kbd> pasang di angka · <kbd>Spasi</kbd> putar · <kbd>U</kbd> undo · <kbd>C</kbd> bersihkan · <kbd>T</kbd> bantuan · <kbd>X</kbd> cheat · klik kanan = tarik chip.</div>
+        <div class="rlt-hint desktop">Desktop: <kbd>1–5</kbd> chip · <kbd>Q</kbd>/<kbd>W</kbd>/<kbd>E</kbd>/<kbd>O</kbd>/<kbd>L</kbd>/<kbd>I</kbd> taruhan luar · <kbd>←↑↓→</kbd>+<kbd>Enter</kbd> pasang di angka · <kbd>Spasi</kbd> putar · <kbd>U</kbd> undo · <kbd>K</kbd> bersihkan · klik kanan = tarik chip.</div>
         <div class="rlt-hint">Mobile: gunakan D-pad untuk memilih angka, lalu tekan Pasang.</div>
       </div>
     </div>
 
     <div class="rlt-ov" data-ov="help" hidden>
       <div class="rlt-card">
-        <h3>Cara main</h3>
-        <h4>Tujuan</h4>
-        <p>Setiap sesi memakai <b>level acak</b> (modal awal, target, chip, dan batas putaran). Capai <b>target</b> sebelum putaranmu habis. Lawan bangkrut (bankroll &lt; min bet) = kamu menang. Jika kedua pemain kehabisan putaran, bankroll tertinggi menang.</p>
-        <h4>Taruhan &amp; bayaran</h4>
-        <ul>
-          <li>Merah / Hitam / Genap / Ganjil / 1–18 / 19–36 → 1:1 (stake ×2 kembali).</li>
-          <li>Angka tunggal (0–36) → mengembalikan 35× stake.</li>
-          <li>Angka 0 mengalahkan semua taruhan luar.</li>
-        </ul>
-        <h4>Giliran</h4>
-        <p>Undian koin menentukan siapa jalan duluan, dan posisimu (P1/P2) juga diundi acak setiap game. Pemain bergantian memasang chip lalu memutar roda.</p>
-        <h4>Kontrol</h4>
-        <ul>
-          <li>Mouse: klik chip → klik meja. Klik kanan pada kotak = tarik chip terakhir. Scroll di baris chip = ganti chip.</li>
-          <li>Keyboard: 1–4 pilih chip, R/B/E/O/L/H taruhan luar, panah + Enter untuk angka, Spasi putar, U undo, C bersihkan, T bantuan, X cheat.</li>
-          <li>Mobile: D-pad virtual + tombol Pasang muncul otomatis di layar sentuh / sempit.</li>
-        </ul>
-        <h4>Level yang adil</h4>
-        <p>Generator menjamin target ≤ 3× modal dan budget putaran ≥ kebutuhan minimum + cadangan, jadi setiap level selalu bisa diselesaikan.</p>
-        <div class="rlt-ovbtns"><button class="rlt-btn primary" type="button" data-act="close-help">Mengerti</button></div>
+        <div class="rlt-ovhead"><h3>How to play</h3><button class="rlt-iconbtn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}<span class="rlt-btn-label">Close</span></button></div>
+        <div class="rlt-help">
+          <h4>Tujuan</h4>
+          <p>Setiap sesi memakai <b>level acak</b> (modal awal, target, chip, dan batas putaran). Capai <b>target</b> sebelum putaranmu habis. Lawan bangkrut (bankroll &lt; min bet) = kamu menang. Jika kedua pemain kehabisan putaran, bankroll tertinggi menang.</p>
+          <h4>Taruhan &amp; bayaran</h4>
+          <ul>
+            <li>Merah / Hitam / Genap / Ganjil / 1–18 / 19–36 → 1:1 (stake ×2 kembali).</li>
+            <li>Angka tunggal (0–36) → mengembalikan 35× stake.</li>
+            <li>Angka 0 mengalahkan semua taruhan luar.</li>
+          </ul>
+          <h4>Giliran</h4>
+          <p>Undian koin menentukan siapa jalan duluan, dan posisimu (P1/P2) juga diundi acak setiap game. Pemain bergantian memasang chip lalu memutar roda.</p>
+          <h4>Kontrol</h4>
+          <ul>
+            <li>Mouse: klik chip → klik meja. Klik kanan pada kotak = tarik chip terakhir. Scroll di baris chip = ganti chip.</li>
+            <li>Keyboard: <kbd>1–5</kbd> pilih chip, <kbd>Q</kbd>/<kbd>W</kbd>/<kbd>E</kbd>/<kbd>O</kbd>/<kbd>L</kbd>/<kbd>I</kbd> taruhan luar, panah + <kbd>Enter</kbd> untuk angka, <kbd>Spasi</kbd> putar, <kbd>U</kbd> undo, <kbd>K</kbd> bersihkan, <kbd>H</kbd> bantuan, <kbd>C</kbd> cheat, <kbd>P</kbd> jeda, <kbd>R</kbd> level baru, <kbd>Esc</kbd> tutup.</li>
+            <li>Mobile: D-pad virtual + tombol Pasang muncul otomatis di layar sentuh / sempit.</li>
+          </ul>
+          <h4>Level yang adil</h4>
+          <p>Generator menjamin target ≤ 3× modal dan budget putaran ≥ kebutuhan minimum + cadangan, jadi setiap level selalu bisa diselesaikan.</p>
+        </div>
+        <div class="rlt-ovbtns"><span class="rlt-note">Tekan H untuk membuka panduan ini lagi.</span><button class="rlt-btn primary" type="button" data-help-close>Mengerti</button></div>
       </div>
     </div>
 
     <div class="rlt-ov" data-ov="cheat" hidden>
       <div class="rlt-card">
-        <h3>Cheat 🃏</h3>
-        <p>Hanya untuk mode lokal / host. memakai cheat menandai sesi ini sebagai "cheated".</p>
+        <div class="rlt-ovhead"><h3>Cheat 🃏</h3><button class="rlt-iconbtn" type="button" data-cheat-close aria-label="Close cheats">${iconSVG("x", { size: 14 })}<span class="rlt-btn-label">Close</span></button></div>
+        <p>Hanya untuk mode lokal / host. Memakai cheat menandai sesi ini sebagai "cheated".</p>
         <div class="rlt-cheats">
           <button type="button" data-cheat="cash">+100 chip</button>
           <button type="button" data-cheat="near">Bankroll ≈ target</button>
@@ -333,7 +401,7 @@ export function mount(root, context = {}) {
           <button type="button" data-cheat="win">Menang instan</button>
         </div>
         <div class="rlt-peek" data-el="peek"></div>
-        <div class="rlt-ovbtns"><button class="rlt-btn" type="button" data-act="close-cheat">Tutup</button></div>
+        <div class="rlt-ovbtns"><button class="rlt-btn" type="button" data-cheat-close>Tutup</button></div>
       </div>
     </div>
 
@@ -344,31 +412,47 @@ export function mount(root, context = {}) {
         <div class="rlt-ovbtns"><button class="rlt-btn primary" type="button" data-act="restart">Main lagi (level baru)</button></div>
       </div>
     </div>
+
+    <div class="rlt-ov" data-ov="pause" hidden>
+      <div class="rlt-card">
+        <div class="rlt-ovhead"><h3>Dijeda</h3></div>
+        <p>Timer, bot, dan animasi roda dibekukan. Tekan <kbd>P</kbd> atau <kbd>Esc</kbd> untuk melanjutkan.</p>
+        <div class="rlt-ovbtns"><button class="rlt-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="help">Cara main</button>
-    <button class="game-action-button" type="button" data-act="cheat" data-el="cheatBtn">Cheat</button>
-    <button class="game-action-button" type="button" data-act="restart">Level baru</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="rlt-pad">
+    <button type="button" data-pad="up">▲</button>
+    <button type="button" data-pad="left">◀</button>
+    <button type="button" data-pad="bet">Pasang</button>
+    <button type="button" data-pad="right">▶</button>
+    <button type="button" data-pad="down">▼</button>
   </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
     const $$ = (s) => Array.prototype.slice.call(root.querySelectorAll(s));
-    const statusEl = $("[data-status]"), levelEl = $("[data-level]"), flipEl = $("[data-flip]"), resultsEl = $("[data-results]");
+    const statusEl = $("[data-status]"), dotEl = $("[data-dot]");
+    const hudLevel = $('[data-hud="level"]'), hudBank = $('[data-hud="bank"]');
+    const hudTarget = $('[data-hud="target"]'), hudSpins = $('[data-hud="spins"]');
+    const hudBet = $('[data-hud="bet"]'), hudLevelInfo = $('[data-hud="levelinfo"]');
+    const cheatBadge = $("[data-cheatbadge]");
+    const flipEl = $("[data-flip]"), resultsEl = $("[data-results]");
     const wheelSvg = $('[data-el="wheel"]'), orbit = $('[data-el="orbit"]');
     const bNum = $('[data-el="bNum"]'), bPay = $('[data-el="bPay"]');
     const chipsEl = $('[data-el="chips"]'), outsideEl = $('[data-el="outside"]'), gridEl = $('[data-el="grid"]');
     const cardEls = $$("[data-pc]"), nameEls = $$("[data-pname]"), tagEls = $$("[data-ptag]");
     const bankEls = $$("[data-bank]"), spinsEls = $$("[data-spins]"), tableEls = $$("[data-table]"), deltaEls = $$("[data-delta]");
     const spinBtn = $('[data-act="spin"]'), undoBtn = $('[data-act="undo"]'), clearBtn = $('[data-act="clear"]');
-    const padBetBtn = $('[data-pad="bet"]'), cheatBtn = $('[data-el="cheatBtn"]'), peekEl = $('[data-el="peek"]');
-    const ovHelp = $('[data-ov="help"]'), ovCheat = $('[data-ov="cheat"]'), ovOver = $('[data-ov="over"]');
+    const padBetBtn = $('[data-pad="bet"]'), cheatBtn = $("[data-cheatsbtn]"), pauseBtn = $("[data-pausebtn]"), peekEl = $('[data-el="peek"]');
     const ovTitle = $('[data-el="ovTitle"]'), ovSub = $('[data-el="ovSub"]');
-    const show = (el) => el.removeAttribute("hidden");
-    const hide = (el) => el.setAttribute("hidden", "");
-    if (!canCheat) hide(cheatBtn);
+    const ovs = {
+        help: $('[data-ov="help"]'), cheat: $('[data-ov="cheat"]'),
+        over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'),
+    };
+    if (!canCheat) cheatBtn.hidden = true;
+    if (online) pauseBtn.hidden = true;
 
     /* ---------------- roda (SVG) ---------------- */
     const STEP = 360 / WHEEL_ORDER.length;
@@ -422,9 +506,47 @@ export function mount(root, context = {}) {
     const cursorSpot = () => (cursor.col === 0 ? "n0" : "n" + (cursor.col * 3 - cursor.row));
     const canPlaySeat = (s) => state.banks[s] >= state.level.minBet && state.spins[s] < state.level.limit;
 
+    /* Semua timer melewati jam yang bisa dijeda. Saat resume, anchor
+       Date.now() digeser sebesar durasi jeda sehingga sisa waktu utuh. */
+    function armTimer(rec, ms) {
+        rec.due = clockNow() + ms;
+        rec.id = setTimeout(() => {
+            timers.delete(rec); rec.id = 0;
+            if (rec.kind === "settle" && settleRec === rec) settleRec = null;
+            if (rec.kind === "bot" && botRec === rec) botRec = null;
+            rec.fn();
+        }, ms);
+    }
+    function later(ms, fn, kind) {
+        const rec = { fn, kind, id: 0, due: 0, left: Math.max(0, ms) };
+        timers.add(rec);
+        if (!timersPaused) armTimer(rec, rec.left);
+        return rec;
+    }
+    function cancelTimer(rec) {
+        if (!rec) return;
+        if (rec.id) clearTimeout(rec.id);
+        timers.delete(rec);
+        rec.id = 0;
+    }
     function clearTimers() {
-        if (settleTimer) { clearTimeout(settleTimer); settleTimer = 0; }
-        if (botTimer) { clearTimeout(botTimer); botTimer = 0; }
+        timers.forEach((rec) => { if (rec.id) clearTimeout(rec.id); });
+        timers.clear();
+        settleRec = null; botRec = null;
+    }
+    function pauseTimers() {
+        if (timersPaused) return;
+        timersPaused = true;
+        pauseStart = Date.now();
+        timers.forEach((rec) => {
+            if (rec.id) { clearTimeout(rec.id); rec.id = 0; rec.left = Math.max(0, rec.due - clockNow()); }
+        });
+    }
+    function resumeTimers() {
+        if (!timersPaused) return;
+        clockShift += Date.now() - pauseStart;
+        timersPaused = false;
+        timers.forEach((rec) => armTimer(rec, rec.left));
     }
 
     /* ---------------- animasi uang ---------------- */
@@ -435,16 +557,35 @@ export function mount(root, context = {}) {
         deltaEls[seat].appendChild(span);
         span.addEventListener("animationend", () => span.remove(), { once: true });
     }
+    function bankFrame(seat, t) {
+        const rec = bankTweens[seat];
+        if (!rec) return;
+        const k = Math.min(1, (t - rec.t0) / rec.dur), e = 1 - Math.pow(1 - k, 3);
+        shownBanks[seat] = Math.round(rec.from + (rec.to - rec.from) * e);
+        bankEls[seat].textContent = String(shownBanks[seat]);
+        if (k < 1) bankRaf[seat] = requestAnimationFrame((tt) => bankFrame(seat, tt));
+        else { bankTweens[seat] = null; bankRaf[seat] = 0; }
+    }
     function tweenBank(seat, from, to) {
         cancelAnimationFrame(bankRaf[seat]);
-        const t0 = performance.now(), dur = 650;
-        const step = (t) => {
-            const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-            shownBanks[seat] = Math.round(from + (to - from) * e);
-            bankEls[seat].textContent = String(shownBanks[seat]);
-            if (k < 1) bankRaf[seat] = requestAnimationFrame(step);
-        };
-        bankRaf[seat] = requestAnimationFrame(step);
+        bankTweens[seat] = { from, to, t0: performance.now(), dur: 650, left: 650 };
+        bankRaf[seat] = requestAnimationFrame((t) => bankFrame(seat, t));
+    }
+    function pauseTweens() {
+        const p = performance.now();
+        bankTweens.forEach((rec, seat) => {
+            if (!rec) return;
+            cancelAnimationFrame(bankRaf[seat]); bankRaf[seat] = 0;
+            rec.left = Math.max(0, rec.dur - (p - rec.t0));
+        });
+    }
+    function resumeTweens() {
+        const p = performance.now();
+        bankTweens.forEach((rec, seat) => {
+            if (!rec) return;
+            rec.t0 = p - (rec.dur - (rec.left == null ? rec.dur : rec.left));
+            bankRaf[seat] = requestAnimationFrame((t) => bankFrame(seat, t));
+        });
     }
 
     /* ---------------- animasi roda ---------------- */
@@ -466,6 +607,49 @@ export function mount(root, context = {}) {
         ballRot -= curB + 360 * 4;
         orbit.style.transform = "rotate(" + ballRot + "deg)";
     }
+    /* Bekukan transisi CSS roda saat jeda, lanjutkan dari posisi tersebut. */
+    function freezeSpin() {
+        if (spinFrozen || !state || state.phase !== "spinning") return;
+        wheelSvg.style.transition = "none"; orbit.style.transition = "none";
+        wheelSvg.style.transform = getComputedStyle(wheelSvg).transform;
+        orbit.style.transform = getComputedStyle(orbit).transform;
+        spinFrozen = true;
+    }
+    function thawSpin() {
+        if (!spinFrozen) return;
+        spinFrozen = false;
+        wheelSvg.style.transition = ""; orbit.style.transition = "";
+        wheelSvg.style.transform = "rotate(" + wheelRot + "deg)";
+        orbit.style.transform = "rotate(" + ballRot + "deg)";
+    }
+
+    /* ---------------- UI: overlay & jeda ---------------- */
+    const uiBlocked = () => helpOpen || cheatsOpen || paused;
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (!canCheat || helpOpen) cheatsOpen = false;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function setPaused(on) {
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next && (online || helpOpen || cheatsOpen || !state || state.phase === "over")) return;
+        if (next === paused) return;
+        paused = next;
+        if (paused) { pauseTimers(); pauseTweens(); freezeSpin(); }
+        else { resumeTimers(); resumeTweens(); thawSpin(); }
+        render();
+    }
+    function restartGame() {
+        if (paused) { resumeTimers(); resumeTweens(); thawSpin(); }
+        paused = false; cheatsOpen = false; helpOpen = false;
+        submitAction({ t: "restart" });
+    }
 
     /* ---------------- render ---------------- */
     function render() {
@@ -474,12 +658,22 @@ export function mount(root, context = {}) {
         const myTurn = st.phase === "bet" && st.turn === me;
         const myBets = st.bets[me];
 
-        levelEl.textContent = "Level " + (L.seed % 1000) + " · Modal " + L.start + " → Target " + L.target + " · Min bet " + L.minBet + " · " + L.limit + " putaran/pemain";
+        /* info pindah ke HUD */
+        hudLevelInfo.textContent = "Modal " + L.start + " · Min " + L.minBet + " · " + L.limit + " putaran";
+        hudLevel.textContent = String(L.seed % 1000);
+        hudBank.textContent = String(st.banks[me]);
+        hudTarget.textContent = String(L.target);
+        hudSpins.textContent = st.spins[me] + "/" + L.limit;
+        hudBet.textContent = String(tableTotal(me));
+        cheatBadge.hidden = !st.cheated;
         flipEl.textContent = "Undian: " + seatName(st.first) + " jalan duluan · Kamu " + (me === 0 ? "P1" : "P2");
-        statusEl.textContent =
+        statusEl.textContent = paused ? "Dijeda" :
             st.phase === "over" ? (st.winner === -1 ? "Seri" : st.winner === me ? "Kamu menang!" : "Kamu kalah") :
                 st.phase === "spinning" ? "Roda berputar…" :
                     myTurn ? "Giliranmu — pasang taruhan" : online ? "Giliran lawan…" : "Bot sedang berpikir…";
+        dotEl.style.background = paused ? "#94a3b8"
+            : st.phase === "over" ? (st.winner === me ? "#059669" : st.winner === -1 ? "#94a3b8" : "#dc2626")
+                : myTurn ? "#059669" : "#d97706";
 
         /* chip (rebuild hanya jika level berubah) */
         const key = L.chips.join(",");
@@ -556,15 +750,14 @@ export function mount(root, context = {}) {
         undoBtn.disabled = clearBtn.disabled = !myTurn || stake === 0;
         padBetBtn.disabled = !myTurn || st.banks[me] < chip;
 
-        /* overlay */
-        helpOpen ? show(ovHelp) : hide(ovHelp);
-        cheatOpen && canCheat ? show(ovCheat) : hide(ovCheat);
+        /* overlay: help > cheats > pause > result */
         peekEl.textContent = peekOn ? "Angka berikutnya: " + st.nextN + " (" + pocketColor(st.nextN) + ")" : "";
+        let ov = null;
         if (st.phase === "over") {
             ovTitle.textContent = st.winner === -1 ? "Seri 🤝" : st.winner === me ? "Kamu menang 🎉" : "Kamu kalah";
             ovTitle.className = st.winner === me ? "rlt-win" : "rlt-lose";
             ovSub.textContent = st.reason + " Bankroll akhir: kamu " + st.banks[me] + ", " + seatName(1 - me) + " " + st.banks[1 - me] + "." + (st.cheated ? " (cheat aktif)" : "");
-            show(ovOver);
+            ov = "over";
             if (savedSession !== st.session) {
                 savedSession = st.session;
                 try {
@@ -572,7 +765,17 @@ export function mount(root, context = {}) {
                     if (st.banks[me] > best) localStorage.setItem(META.bestKey, String(st.banks[me]));
                 } catch (_) { }
             }
-        } else hide(ovOver);
+        }
+        if (paused && !online) ov = "pause";
+        if (cheatsOpen && canCheat) ov = "cheat";
+        if (helpOpen) ov = "help";
+        Object.keys(ovs).forEach((k) => { ovs[k].hidden = k !== ov; });
+
+        const pLabel = pauseBtn.querySelector(".rlt-btn-label");
+        if (pLabel) pLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
+        cheatBtn.hidden = !canCheat;
 
         ensureBot();
     }
@@ -676,8 +879,8 @@ export function mount(root, context = {}) {
 
         publish();
         if (a.t === "spin" && state.phase === "spinning") {
-            if (settleTimer) clearTimeout(settleTimer);
-            settleTimer = setTimeout(() => { settleTimer = 0; applyAction({ t: "settle" }, 0); }, SPIN_MS);
+            cancelTimer(settleRec);
+            settleRec = later(SPIN_MS, () => applyAction({ t: "settle" }, 0), "settle");
         }
     }
 
@@ -688,14 +891,14 @@ export function mount(root, context = {}) {
 
     /* ---------------- bot (mode AI) ---------------- */
     function ensureBot() {
-        if (online || !state || botTimer) return;
+        if (online || uiBlocked() || !state || botRec) return;
         if (state.phase === "bet" && state.turn === state.seats[1]) {
-            botTimer = setTimeout(botStep, 800 + Math.random() * 600);
+            botRec = later(800 + Math.random() * 600, botStep, "bot");
         }
     }
     function botStep() {
-        botTimer = 0;
-        if (!state || state.phase !== "bet") return;
+        botRec = null;
+        if (!state || state.phase !== "bet" || paused) return;
         const seat = state.seats[1];
         if (state.turn !== seat) return;
         const bank = state.banks[seat], staked = tableTotal(seat);
@@ -720,6 +923,20 @@ export function mount(root, context = {}) {
     function handleClick(event) {
         const t = event.target;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { setPaused(); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        const ch = t.closest("[data-cheat]");
+        if (ch && canCheat && cheatsOpen && !helpOpen) {
+            if (ch.dataset.cheat === "peek") { peekOn = !peekOn; render(); }
+            else submitAction({ t: "cheat", kind: ch.dataset.cheat });
+            return;
+        }
+        if (uiBlocked()) return;
         const pad = t.closest("[data-pad]");
         if (pad) {
             const d = pad.dataset.pad;
@@ -734,30 +951,21 @@ export function mount(root, context = {}) {
         if (spot && !spot.disabled) { submitAction({ t: "bet", spot: spot.dataset.spot, chip }); return; }
         const cb = t.closest("[data-chip]");
         if (cb && !cb.disabled) { chip = +cb.dataset.chip; render(); return; }
-        const ch = t.closest("[data-cheat]");
-        if (ch && canCheat) {
-            if (ch.dataset.cheat === "peek") { peekOn = !peekOn; render(); }
-            else submitAction({ t: "cheat", kind: ch.dataset.cheat });
-            return;
-        }
         const b = t.closest("[data-act]");
         if (!b) return;
         const act = b.dataset.act;
-        if (act === "help") { helpOpen = !helpOpen; cheatOpen = false; render(); }
-        else if (act === "cheat" && canCheat) { cheatOpen = !cheatOpen; helpOpen = false; render(); }
-        else if (act === "close-help") { helpOpen = false; render(); }
-        else if (act === "close-cheat") { cheatOpen = false; render(); }
-        else if (act === "restart") submitAction({ t: "restart" });
+        if (act === "restart") restartGame();
         else if (act === "spin") submitAction({ t: "spin" });
         else if (act === "undo") submitAction({ t: "undo" });
         else if (act === "clear") submitAction({ t: "clear" });
     }
     function handleContext(event) {
+        if (uiBlocked()) return;
         const spot = event.target.closest("[data-spot]");
         if (spot) { event.preventDefault(); submitAction({ t: "remove", spot: spot.dataset.spot }); }
     }
     function handleWheel(event) {
-        if (!state || !event.target.closest('[data-el="chips"]')) return;
+        if (!state || uiBlocked() || !event.target.closest('[data-el="chips"]')) return;
         event.preventDefault();
         const arr = state.level.chips, i = arr.indexOf(chip);
         chip = arr[(i + (event.deltaY > 0 ? 1 : -1) + arr.length) % arr.length];
@@ -769,19 +977,29 @@ export function mount(root, context = {}) {
         if (!root.isConnected || !state) return;
         const tag = (e.target.tagName || "").toLowerCase();
         if (tag === "input" || tag === "textarea") return;
-        if (e.code === "Escape") { helpOpen = false; cheatOpen = false; render(); return; }
-        if (e.code === "KeyT") { helpOpen = !helpOpen; cheatOpen = false; render(); return; }
-        if (e.code === "KeyX" && canCheat) { cheatOpen = !cheatOpen; helpOpen = false; render(); return; }
-        if (helpOpen || cheatOpen || state.phase === "over") return;
-        const outsideKeys = { KeyR: "red", KeyB: "black", KeyE: "even", KeyO: "odd", KeyL: "low", KeyH: "high" };
+        /* Prioritas: help → cheats → pause → Escape → aksi game. */
+        if (e.code === "KeyH" || e.code === "KeyT") { e.preventDefault(); toggleHelp(); return; }
+        if ((e.code === "KeyC" || e.code === "KeyX") && canCheat && !helpOpen) { e.preventDefault(); toggleCheats(); return; }
+        if (e.code === "KeyP" && !helpOpen && !cheatsOpen) { e.preventDefault(); setPaused(); return; }
+        if (e.code === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            e.preventDefault();
+            return;
+        }
+        if (uiBlocked()) return;
+        if (e.code === "KeyR") { e.preventDefault(); restartGame(); return; }
+        if (state.phase === "over") return;
+        const outsideKeys = { KeyQ: "red", KeyW: "black", KeyE: "even", KeyO: "odd", KeyL: "low", KeyI: "high" };
         if (e.code === "Space") { e.preventDefault(); if (!e.repeat) submitAction({ t: "spin" }); return; }
-        if (/^Digit[1-4]$/.test(e.code)) {
+        if (/^Digit[1-5]$/.test(e.code)) {
             const v = state.level.chips[+e.code.slice(5) - 1];
             if (v != null) { chip = v; render(); }
             return;
         }
         if (outsideKeys[e.code]) { submitAction({ t: "bet", spot: outsideKeys[e.code], chip }); return; }
-        if (e.code === "KeyC") { submitAction({ t: "clear" }); return; }
+        if (e.code === "KeyK") { submitAction({ t: "clear" }); return; }
         if (e.code === "KeyU" || e.code === "Backspace") { e.preventDefault(); submitAction({ t: "undo" }); return; }
         if (e.code === "ArrowLeft") { e.preventDefault(); moveCursor(-1, 0); return; }
         if (e.code === "ArrowRight") { e.preventDefault(); moveCursor(1, 0); return; }
@@ -819,6 +1037,7 @@ export function mount(root, context = {}) {
             clearTimers();
             cancelAnimationFrame(bankRaf[0]);
             cancelAnimationFrame(bankRaf[1]);
+            bankTweens = [null, null];
             offs.forEach((off) => { if (typeof off === "function") off(); });
             state = null;
         },

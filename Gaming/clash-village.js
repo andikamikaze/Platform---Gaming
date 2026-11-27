@@ -3,6 +3,8 @@
 /* Template: export META + mount(root, context).                    */
 /* =============================================================== */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "clash-village",
     name: "Clash Village",
@@ -261,7 +263,48 @@ export function mount(root, context = {}) {
     /* ---------------- local UI ---------------- */
     let buildType = null, sel = null, moveFrom = null, selTroop = "barb";
     let cursor = { x: 3, y: 3 }, padOn = false, cheatOpen = false;
+    let helpOpen = false, paused = false;
     try { padOn = matchMedia("(pointer:coarse)").matches; } catch (_) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("clashVillageHelpSeen") === "1"; } catch (_) { }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("clashVillageHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* Pause-aware cosmetic timers (notes + fx). The simulation tick is frozen
+       via its interval; these Date.now() due anchors are shifted on resume. */
+    const liveTimers = new Map();
+    let deferredTimers = [];
+    function setT(fn, ms) {
+        const token = {};
+        const arm = (wait) => {
+            const id = setTimeout(() => { liveTimers.delete(token); fn(); }, wait);
+            liveTimers.set(token, { fn, due: Date.now() + wait, id });
+        };
+        token.arm = arm;
+        if (paused) deferredTimers.push({ token, fn, wait: Math.max(0, ms) });
+        else arm(ms);
+        return token;
+    }
+    function clearT(token) {
+        if (!token) return;
+        const rec = liveTimers.get(token);
+        if (rec) { clearTimeout(rec.id); liveTimers.delete(token); }
+        deferredTimers = deferredTimers.filter((d) => d.token !== token);
+    }
+    function pauseTimers() {
+        const now = Date.now();
+        for (const [token, rec] of liveTimers) {
+            clearTimeout(rec.id);
+            deferredTimers.push({ token, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        liveTimers.clear();
+    }
+    function resumeTimers() {
+        const q = deferredTimers; deferredTimers = [];
+        for (const d of q) d.token.arm(d.wait);
+    }
 
     /* ---------------- actions (host authoritative) ---------------- */
     function startMatch() {
@@ -367,44 +410,50 @@ export function mount(root, context = {}) {
 
     /* ---------------- DOM skeleton ---------------- */
     root.innerHTML = `
-<div class="game-app cv${padOn ? " pad-on" : ""}">
+<div class="game-app cv game-fill" data-cv>
 <style>
-.cv{--panel:#151b29;--line:#242d40;--tx:#e8ebf2;--mut:#8a93a8;--acc:#f2b23e;--acc2:#8b7cf6;--ok:#41d98d;--bad:#f26d6d;color:var(--tx);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.cv{--panel:#151b29;--line:#242d40;--tx:#e8ebf2;--mut:#8a93a8;--acc:#f2b23e;--acc2:#8b7cf6;--ok:#41d98d;--bad:#f26d6d;width:100%;height:100%;min-height:0;margin:0;padding:2px 4px 4px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;color:var(--tx);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.cv *{box-sizing:border-box}
 .cv [hidden]{display:none!important}
-.cv .game-intro{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-.cv .game-intro h2{margin:0;font-size:17px;font-weight:700;letter-spacing:.3px}
-.cv .cv-hud{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--mut)}
-.cv .cv-hud b{color:var(--tx);font-weight:600}
-.cv .cv-hud .g b{color:var(--acc)} .cv .cv-hud .e b{color:#c084fc}
-.cv .game-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
-.cv .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
-.cv .cv-main{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
-.cv .cv-board{position:relative;flex:1 1 340px;max-width:440px;aspect-ratio:1/1}
-.cv .cv-board svg{width:100%;height:100%;display:block;border-radius:12px;touch-action:manipulation}
-.cv .cv-side{flex:1 1 260px;min-width:250px;max-width:330px;display:flex;flex-direction:column;gap:8px}
-.cv .cv-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
+.cv button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.cv-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.cv-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;min-height:30px;border:1px solid var(--line);border-radius:999px;background:#111726;color:var(--mut);white-space:nowrap}
+.cv-chip b{color:var(--tx);font-weight:700;font-variant-numeric:tabular-nums}
+.cv-chip.g b{color:var(--acc)}.cv-chip.e b{color:#c084fc}
+.cv-chip i.game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block;flex:none}
+.cv-spacer{flex:1 1 auto;min-width:6px}
+.cv-btn,.cv-b{appearance:none;border:1px solid var(--line);background:#1a2233;color:var(--tx);border-radius:8px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s}
+.cv-btn{padding:6px 10px;min-height:32px}
+.cv-btn:hover:not(:disabled),.cv-b:hover:not(:disabled){border-color:var(--acc)}
+.cv-btn:disabled,.cv-b:disabled{opacity:.38;cursor:default}
+.cv-btn.on{border-color:var(--acc);color:var(--acc)}
+.cv-btn.primary{background:var(--acc);border-color:var(--acc);color:#1a1408}
+.cv-btn-label{white-space:nowrap}
+.cv-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.cv-icon-btn svg{flex:none;display:block}
+.cv.game-fill>.cv-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:1px solid var(--line);border-radius:12px;background:#0e1420;overflow:hidden}
+.cv .cv-bsvg{width:100%;height:100%;display:block;touch-action:manipulation}
+.cv:has(.cv-board .cv-ov:not([hidden]))>.cv-side{display:none}
+.cv .cv-side{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;min-height:0;max-height:min(32vh,230px)}
+.cv .cv-side .cv-card{flex:1 1 auto;min-height:0;overflow:auto}
+.cv .cv-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
 .cv .cv-lab{font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);margin:0 0 8px}
-.cv .cv-grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.cv .cv-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-.cv .cv-b{appearance:none;border:1px solid var(--line);background:#1a2233;color:var(--tx);border-radius:8px;padding:8px 10px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left;min-height:38px}
+.cv .cv-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cv .cv-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cv .cv-b{padding:8px 12px;text-align:left;min-height:44px}
 .cv .cv-b small{display:block;color:var(--mut);font-weight:500;font-size:10.5px}
 .cv .cv-b.on{border-color:var(--acc);background:#26293a}
-.cv .cv-b:disabled{opacity:.38;cursor:default}
 .cv .cv-b.pri{background:var(--acc);border-color:var(--acc);color:#1a1408;text-align:center}
 .cv .cv-b.vio{background:#2a2547;border-color:var(--acc2);text-align:center}
 .cv .cv-b.ghost{background:transparent;text-align:center}
-.cv .cv-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.cv .cv-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .cv .cv-row .cv-b{flex:1 1 auto}
-.cv .cv-info{font-size:12.5px;color:var(--mut)} .cv .cv-info b{color:var(--tx)}
+.cv .cv-info{font-size:12.5px;color:var(--mut)}.cv .cv-info b{color:var(--tx)}
 .cv .cv-bar{height:6px;background:#0d1220;border-radius:3px;overflow:hidden;margin-top:8px}
-.cv .cv-bar i{display:block;height:100%;background:var(--ok);border-radius:3px;transition:width .2s}
-.cv .cv-note{min-height:18px;font-size:12px;color:var(--mut)}
-.cv .game-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
-.cv .game-action-button,.cv .cv-ico{appearance:none;border:1px solid var(--line);background:#1a2233;color:var(--tx);border-radius:8px;padding:8px 14px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
-.cv .cv-ico{padding:8px 11px}
-.cv .cv-ico.on{border-color:var(--acc)}
+.cv .cv-bar i{display:block;height:100%;background:var(--ok);border-radius:3px;transition:width .18s}
+.cv .cv-note{flex:none;min-height:18px;font-size:12px;color:var(--mut)}
 .cv .cv-cell{cursor:pointer}
-.cv .cv-cell.ok{fill:#41d98d22} .cv .cv-cell.no{fill:#f26d6d14}
+.cv .cv-cell.ok{fill:#41d98d22}.cv .cv-cell.no{fill:#f26d6d14}
 .cv .cv-cell.dep{stroke:#8b7cf655;stroke-dasharray:4 3}
 .cv .cv-cell.dep.on{stroke:#8b7cf6;fill:#8b7cf61e}
 .cv [data-g]{pointer-events:none}
@@ -421,19 +470,27 @@ export function mount(root, context = {}) {
 .cv .cv-prev{fill:none;stroke:#f2b23e88;stroke-width:1.5;stroke-dasharray:5 4}
 .cv .cv-ghost{fill:#f2b23e33;stroke:#f2b23e;stroke-width:1.5}
 .cv .cv-cursor{fill:none;stroke:var(--acc);stroke-width:2;animation:cvPulse 1.4s ease-in-out infinite}
-.cv .cv-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0d1220d9;border-radius:12px;z-index:5}
-.cv .cv-ovcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px;max-width:320px;text-align:center}
-.cv .cv-ovcard h3{margin:0 0 6px;font-size:16px}
-.cv .cv-ovcard p{margin:0 0 12px;font-size:12.5px;color:var(--mut)}
-.cv .cv-coin{width:44px;height:44px;margin:0 auto 10px;border-radius:50%;background:var(--acc);color:#1a1408;font-weight:800;display:flex;align-items:center;justify-content:center;animation:cvCoin .5s linear infinite}
-.cv .cv-cheats{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0d1220e6;border-radius:12px;z-index:6}
-.cv .cv-cheats .cv-card{width:250px}
-.cv .cv-cheats .cv-b{margin-bottom:6px;width:100%}
-.cv .cv-pad{display:none;gap:6px;align-items:center;margin-top:10px}
+.cv .cv-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:#0d1220d9;border-radius:12px;padding:12px}
+.cv .cv-ovcard{display:flex;flex-direction:column;overflow:hidden;width:min(360px,100%);max-height:100%;padding:16px 18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;text-align:center}
+.cv .cv-head,.cv .cv-foot{flex:none}
+.cv .cv-head{display:flex;align-items:center;justify-content:center;gap:10px}
+.cv .cv-head h3{margin:0;font-size:17px}
+.cv .cv-body{flex:1 1 auto;min-height:0;overflow:auto}
+.cv .cv-body p{margin:0 0 12px;font-size:12.5px;color:var(--mut)}
+.cv .cv-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.cv .cv-cheats,.cv .cv-help{flex:1 1 auto;min-height:0;overflow:auto}
+.cv .cv-cheats{display:flex;flex-direction:column;gap:6px;text-align:left}
+.cv .cv-cheats .cv-b{width:100%;margin:0}
+.cv .cv-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;text-align:left}
+.cv .cv-help b{display:block;margin:0 0 5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+.cv .cv-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6}
+.cv .cv-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#0d1220;font:600 10px/1.4 ui-monospace,monospace}
+.cv .cv-coin{width:44px;height:44px;margin:0 auto 12px;border-radius:50%;background:var(--acc);color:#1a1408;font-weight:800;display:flex;align-items:center;justify-content:center;animation:cvCoin .5s linear infinite}
+.cv .cv-pad{display:none;gap:8px;align-items:center;margin-top:2px;flex:none}
 .cv.pad-on .cv-pad{display:flex}
 .cv .cv-dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,44px);gap:4px}
 .cv .cv-dpad button,.cv .cv-ab button{appearance:none;border:1px solid var(--line);background:#1a2233;color:var(--tx);border-radius:8px;font-size:16px;cursor:pointer;min-height:44px}
-.cv .cv-ab{display:flex;gap:6px;margin-left:10px}
+.cv .cv-ab{display:flex;gap:8px;margin-left:12px}
 .cv .cv-ab button{width:52px;height:52px;border-radius:50%;font-weight:700}
 .cv .cv-star{fill:#2a3247;stroke:var(--acc);stroke-width:1.2}.cv .cv-star.lit{fill:var(--acc)}
 @keyframes cvBoom{from{transform:scale(.4);opacity:.9}to{transform:scale(1.7);opacity:0}}
@@ -443,58 +500,131 @@ export function mount(root, context = {}) {
 @keyframes cvPulse{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes cvPop{50%{transform:scale(1.18)}}
 @keyframes cvCoin{from{transform:rotateY(0)}to{transform:rotateY(360deg)}}
-@media (max-width:720px){.cv .cv-side{max-width:none}.cv .cv-b{min-height:44px}}
+@media (prefers-reduced-motion:reduce){.cv .cv-troop,.cv .cv-bar i{transition:none}.cv .cv-lunge,.cv .cv-aura,.cv .cv-boom,.cv .cv-splash,.cv .cv-ring,.cv .cv-dep,.cv .cv-ragecast,.cv .cv-slash,.cv .cv-ball,.cv .cv-cursor,.cv .cv-coin{animation:none}}
+/* --- layout overrides last (beat pointer:coarse 44px defaults) --- */
+@media (max-width:640px){
+.cv.game-fill>.cv-board:not(:has(.cv-ov:not([hidden]))){aspect-ratio:1;flex:0 0 auto}
+.cv.game-fill>.cv-board:has(.cv-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.cv{gap:6px}
+.cv .cv-hud{gap:4px}
+.cv .cv-hud .cv-chip{padding:4px 6px;min-height:0;font-size:9px}
+.cv .cv-hud .cv-chip[data-hud="meta"],.cv .cv-hud .cv-chip[data-hud="pct"]{display:none}
+.cv .cv-hud .cv-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.cv .cv-hud .cv-btn-label,.cv .cv-hud .cv-spacer{display:none}
+.cv .cv-side{max-height:30vh}
+.cv .cv-side .cv-b{min-height:38px;padding:6px 8px;font-size:11px}
+.cv .cv-ov{padding:8px}
+.cv .cv-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.cv .cv-body,.cv .cv-cheats,.cv .cv-help{scrollbar-width:none}
+.cv .cv-body::-webkit-scrollbar,.cv .cv-cheats::-webkit-scrollbar,.cv .cv-help::-webkit-scrollbar{display:none}
+.cv .cv-help{grid-template-columns:1fr;gap:8px}
+.cv .cv-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.cv .cv-note{display:none}
+}
+@media (pointer:coarse){
+.cv .cv-hud .cv-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.cv .cv-card .cv-b{min-height:44px}
+}
 </style>
-  <div class="game-intro">
-    <h2>Clash Village</h2>
-    <div class="cv-hud">
-      <span class="g">Gold <b data-hud="gold">0</b></span>
-      <span class="e">Elixir <b data-hud="elixir">0</b></span>
-      <span>Army <b data-hud="army">0</b>/<b data-hud="cap">0</b></span>
-      <span data-hud="meta">Tier <b data-hud="tier">1</b> · Best <b data-hud="best">0</b></span>
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-    </div>
+  <div class="cv-hud">
+    <span class="cv-chip g">GOLD <b data-hud="gold">0</b></span>
+    <span class="cv-chip e">ELIXIR <b data-hud="elixir">0</b></span>
+    <span class="cv-chip">ARMY <b data-hud="army">0</b>/<b data-hud="cap">0</b></span>
+    <span class="cv-chip" data-hud="meta">TIER <b data-hud="tier">1</b> · BEST <b data-hud="best">0</b></span>
+    <span class="cv-chip" data-hud="time" hidden>TIME <b data-hud="timeval">—</b></span>
+    <span class="cv-chip" data-hud="pct" hidden>DEST <b data-hud="pctval">0%</b></span>
+    <span class="cv-chip"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+    <span class="cv-spacer"></span>
+    <button class="cv-btn primary" type="button" data-act="primary" data-el="primary" aria-label="Primary action" title="Primary action (A)"><span class="cv-btn-label">Attack (A)</span></button>
+    <button class="cv-btn" type="button" data-act="pad" data-el="padbtn" aria-label="Virtual pad" title="Virtual pad (V)">${iconSVG("gamepad2", { size: 14 })}<span class="cv-btn-label">Pad</span></button>
+    <button class="cv-btn cv-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="cv-btn-label">Help</span></button>
+    <button class="cv-btn cv-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="cv-btn-label">Cheats</span></button>
+    <button class="cv-btn cv-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="cv-btn-label">Pause</span></button>
+    <button class="cv-btn cv-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="cv-btn-label">Restart</span></button>
+    <button class="cv-btn cv-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cv-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="cv-main">
-      <div class="cv-board">
-        <svg viewBox="0 0 360 360" data-el="board" role="img" aria-label="Board">
-          <g data-g="cells"></g><g data-g="marks"></g><g data-g="builds"></g><g data-g="troops"></g><g data-g="prev"></g><g data-g="fx"></g>
-        </svg>
-        <div class="cv-ov" data-el="ov" hidden><div class="cv-ovcard" data-el="ovcard"></div></div>
-        <div class="cv-cheats" data-el="cheats" hidden>
-          <div class="cv-card">
-            <p class="cv-lab">Cheats</p>
-            <button class="cv-b" data-cheat="res">Max resources</button>
-            <button class="cv-b" data-cheat="maxv">Max village</button>
-            <button class="cv-b" data-cheat="army">Full army</button>
-            <button class="cv-b" data-cheat="god">God mode</button>
-            <button class="cv-b" data-cheat="onehit">One-hit buildings</button>
-            <button class="cv-b" data-cheat="freeze">Freeze battle time</button>
-            <button class="cv-b" data-cheat="win">Win current battle</button>
-            <button class="cv-b" data-cheat="tier">+1 tier</button>
-            <button class="cv-b ghost" data-cheat="close">Close</button>
+  <section class="game-panel cv-board" data-board>
+    <svg class="cv-bsvg" viewBox="0 0 360 360" preserveAspectRatio="xMidYMid meet" data-el="board" role="img" aria-label="Village battlefield">
+      <g data-g="cells"></g><g data-g="marks"></g><g data-g="builds"></g><g data-g="troops"></g><g data-g="prev"></g><g data-g="fx"></g>
+    </svg>
+    <div class="cv-ov" data-el="ov" hidden>
+      <div class="cv-ovcard">
+        <div class="cv-head" data-el="ovhead"></div>
+        <div class="cv-body" data-el="ovcard"></div>
+        <div class="cv-foot" data-el="ovfoot"></div>
+      </div>
+    </div>
+    <div class="cv-ov" data-ov="pause" hidden>
+      <div class="cv-ovcard">
+        <div class="cv-head"><h3>Paused</h3></div>
+        <div class="cv-body"><p>The battle, bot and timers are frozen.</p></div>
+        <div class="cv-foot"><span class="cv-note">Press P or Esc to resume</span><button class="cv-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="cv-ov" data-ov="cheat" hidden>
+      <div class="cv-ovcard">
+        <div class="cv-head"><h3>Cheats</h3><button class="cv-btn" type="button" data-cheat="close" aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="cv-cheats">
+          <button class="cv-b" data-cheat="res">Max resources</button>
+          <button class="cv-b" data-cheat="maxv">Max village</button>
+          <button class="cv-b" data-cheat="army">Full army</button>
+          <button class="cv-b" data-cheat="god">God mode</button>
+          <button class="cv-b" data-cheat="onehit">One-hit buildings</button>
+          <button class="cv-b" data-cheat="freeze">Freeze battle time</button>
+          <button class="cv-b" data-cheat="win">Win current battle</button>
+          <button class="cv-b" data-cheat="tier">+1 tier</button>
+        </div>
+        <div class="cv-foot"><span class="cv-note">Offline games only</span></div>
+      </div>
+    </div>
+    <div class="cv-ov" data-ov="help" hidden>
+      <div class="cv-ovcard">
+        <div class="cv-head"><h3>How to play</h3><button class="cv-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="cv-help">
+          <div>
+            <b>Build phase</b>
+            <ul>
+              <li>Pick a building from the panel, then click/tap an empty cell to place it.</li>
+              <li>Click a building to select it: upgrade (U) or move (M) it.</li>
+              <li>Train barbarians, archers and giants with elixir, or use Quick army (F).</li>
+              <li>Press A / Attack when ready. A coin toss decides who raids first.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap the panel to build/train and tap the grid to place troops.</li>
+              <li>Toggle the D-pad with the Pad button; A confirms, B cancels.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Raid phase</b>
+            <ul>
+              <li>Your hero and trained troops deploy on the outer ring of the enemy base.</li>
+              <li>Use 1–4 to pick a troop, click a ring cell to deploy it.</li>
+              <li>G = Rage, D = Auto deploy, X = End raid. Destroy the Town Hall for a star.</li>
+              <li><span class="cv-kbd">H</span> help · <span class="cv-kbd">C</span> cheats · <span class="cv-kbd">P</span> pause · <span class="cv-kbd">R</span> restart</li>
+            </ul>
+            <b>Rules</b>
+            <ul>
+              <li>Two raids decide the match; higher destruction percent wins.</li>
+              <li>Winning unlocks the next tier and a bonus. Gold/elixir cap at 3000.</li>
+              <li>Cheats are available in offline games only.</li>
+            </ul>
+            <div class="cv-foot"><span class="cv-note">Press H to reopen this guide</span><button class="cv-btn primary" type="button" data-help-close>Got it</button></div>
           </div>
         </div>
       </div>
-      <div class="cv-side">
-        <div class="cv-card" data-el="panel"></div>
-        <div class="cv-note" data-el="note"></div>
-      </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="cv-b pri" type="button" data-act="primary" data-el="primary">Attack</button>
-    <button class="cv-ico" type="button" data-act="cheat" data-el="cheatbtn" title="Cheats (C)">⚡</button>
-    <button class="cv-ico" type="button" data-act="pad" data-el="padbtn" title="Virtual pad (V)">🎮</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="cv-side" data-el="side">
+    <div class="cv-card" data-el="panel"></div>
+    <div class="cv-note" data-el="note"></div>
   </div>
   <div class="cv-pad">
     <div class="cv-dpad">
-      <span></span><button data-vk="up">▲</button><span></span>
-      <button data-vk="left">◀</button><button data-vk="down">▼</button><button data-vk="right">▶</button>
+      <span></span><button type="button" data-vk="up">▲</button><span></span>
+      <button type="button" data-vk="left">◀</button><button type="button" data-vk="down">▼</button><button type="button" data-vk="right">▶</button>
     </div>
-    <div class="cv-ab"><button data-vk="ok">A</button><button data-vk="cancel">B</button></div>
+    <div class="cv-ab"><button type="button" data-vk="ok">A</button><button type="button" data-vk="cancel">B</button></div>
   </div>
 </div>`;
 
@@ -502,9 +632,14 @@ export function mount(root, context = {}) {
     const wrap = $(".cv"), board = $('[data-el="board"]');
     const gCells = $('[data-g="cells"]'), gMarks = $('[data-g="marks"]'), gBuilds = $('[data-g="builds"]'), gTroops = $('[data-g="troops"]'), gPrev = $('[data-g="prev"]'), gFx = $('[data-g="fx"]');
     const panelEl = $('[data-el="panel"]'), noteEl = $('[data-el="note"]'), statusEl = $("[data-status]");
-    const ovEl = $('[data-el="ov"]'), ovCard = $('[data-el="ovcard"]');
-    const cheatsEl = $('[data-el="cheats"]'), primaryBtn = $('[data-el="primary"]');
-    const hud = { gold: $('[data-hud="gold"]'), elixir: $('[data-hud="elixir"]'), army: $('[data-hud="army"]'), cap: $('[data-hud="cap"]'), tier: $('[data-hud="tier"]'), best: $('[data-hud="best"]'), meta: $('[data-hud="meta"]') };
+    const ovEl = $('[data-el="ov"]'), ovHead = $('[data-el="ovhead"]'), ovCard = $('[data-el="ovcard"]'), ovFoot = $('[data-el="ovfoot"]');
+    const cheatsEl = $('[data-ov="cheat"]'), pauseEl = $('[data-ov="pause"]'), helpEl = $('[data-ov="help"]');
+    const primaryBtn = $('[data-el="primary"]'), padBtn = $('[data-el="padbtn"]');
+    const hud = {
+        gold: $('[data-hud="gold"]'), elixir: $('[data-hud="elixir"]'), army: $('[data-hud="army"]'), cap: $('[data-hud="cap"]'),
+        tier: $('[data-hud="tier"]'), best: $('[data-hud="best"]'), meta: $('[data-hud="meta"]'),
+        time: $('[data-hud="time"]'), timeval: $('[data-hud="timeval"]'), pct: $('[data-hud="pct"]'), pctval: $('[data-hud="pctval"]'),
+    };
 
     /* ---------------- art ---------------- */
     const ICONS = {
@@ -532,12 +667,12 @@ export function mount(root, context = {}) {
 
     function note(msg) {
         noteEl.textContent = msg;
-        if (noteTimer) clearTimeout(noteTimer);
-        noteTimer = setTimeout(() => { noteEl.textContent = ""; }, 2500);
+        clearT(noteTimer);
+        noteTimer = setT(() => { noteEl.textContent = ""; }, 2500);
     }
     function clearBoard() {
         for (const m of [bNodes, tNodes, fNodes]) { for (const n of m.values()) n.remove(); m.clear(); }
-        for (const t of fxTimers) clearTimeout(t); fxTimers.clear();
+        for (const t of fxTimers) clearT(t); fxTimers.clear();
         gBuilds.innerHTML = ""; gTroops.innerHTML = ""; gFx.innerHTML = ""; gPrev.innerHTML = "";
     }
     function drawCells() {
@@ -628,7 +763,7 @@ export function mount(root, context = {}) {
                 n.style.transform = tr(f.x0, f.y0);
                 requestAnimationFrame(() => requestAnimationFrame(() => { n.style.transition = `transform ${f.ttl}s linear`; n.style.transform = tr(f.x1, f.y1); }));
             }
-            const to = setTimeout(() => { n.remove(); fNodes.delete(f.id); fxTimers.delete(to); }, (f.ttl + .2) * 1000);
+            const to = setT(() => { n.remove(); fNodes.delete(f.id); fxTimers.delete(to); }, (f.ttl + .2) * 1000);
             fxTimers.add(to);
         }
     }
@@ -660,8 +795,7 @@ export function mount(root, context = {}) {
         if (state.phase === "raid" && b) {
             const mine = b.attacker === me;
             const pct = b.totalW ? Math.round(100 * b.deadW / b.totalW) : 0;
-            let h = `<p class="cv-lab">${mine ? "Your raid" : "Defending"} · ${Math.max(0, Math.ceil(b.time))}s</p>`;
-            h += `<div class="cv-info">Destroyed <b>${pct}%</b></div><div class="cv-bar"><i style="width:${pct}%"></i></div>`;
+            let h = `<div class="cv-bar"><i style="width:${pct}%"></i></div>`;
             h += `<div class="cv-grid2" style="margin-top:8px">`;
             for (const k of [...KINDS, "hero"]) {
                 const cnt = b.army[k] || 0;
@@ -670,12 +804,12 @@ export function mount(root, context = {}) {
             h += `</div>`;
             if (mine) {
                 const hOn = !!heroOf(b);
-                h += `<div class="cv-row">${btn("rage", b.rageUsed ? "Rage used" : "⚡ Rage (R)", b.rageUsed || !hOn, "vio")}${btn("all", "Auto deploy (D)", false, "")}${btn("end", "End (X)", false, "ghost")}</div>`;
+                h += `<div class="cv-row">${btn("rage", b.rageUsed ? "Rage used" : "⚡ Rage (G)", b.rageUsed || !hOn, "vio")}${btn("all", "Auto deploy (D)", false, "")}${btn("end", "End (X)", false, "ghost")}</div>`;
             }
             return h;
         }
         const th = thLvl(v), cap = armyCap(v), tot = armyTotal(v.army);
-        let h = `<p class="cv-lab">Build · Town Hall ${th}</p><div class="cv-grid2">`;
+        let h = `<div class="cv-grid2">`;
         for (const t of SHOP) {
             const s = BLD[t], cnt = countT(v, t), max = maxCount(t, th), full = cnt >= max;
             const small = max === 0 ? "TH 2" : full ? `${cnt}/${max}` : `${s.cost} ${s.cur}`;
@@ -687,7 +821,7 @@ export function mount(root, context = {}) {
             h += `<div class="cv-info" style="margin-top:8px"><b>${s.label}</b> · Lv ${bd.l}/3</div>`;
             h += `<div class="cv-row">${btn("upgrade", bd.l >= 3 ? "Max level" : `Upgrade ${c} ${s.cur} (U)`, bd.l >= 3 || state.phase !== "build", "")}${btn("move", moveFrom ? "Pick cell (M)" : "Move (M)", state.phase !== "build", "ghost")}${btn("deselect", "✕", false, "ghost")}</div>`;
         }
-        h += `<p class="cv-lab" style="margin-top:10px">Army ${tot}/${cap} · Hero ready</p><div class="cv-grid3">`;
+        h += `<div class="cv-grid3">`;
         for (const k of KINDS) h += btn("train", `${TROOPS[k].label} ×${v.army[k]}<small>${TROOPS[k].cost} elixir</small>`, state.phase !== "build" || tot >= cap || v.elixir < TROOPS[k].cost, "", `data-k="${k}"`);
         h += `</div><div class="cv-row">${btn("quick", "Quick army (F)", state.phase !== "build" || tot >= cap || v.elixir < 25, "vio")}</div>`;
         return h;
@@ -700,31 +834,82 @@ export function mount(root, context = {}) {
     }
     function renderOverlay() {
         const me = mySeat(), p = state.phase;
+        const suppress = cheatOpen || helpOpen || paused;
+        let show = false;
         if (p === "coin") {
-            ovEl.hidden = false;
+            show = true;
             const youFirst = state.first === me;
-            ovCard.innerHTML = `<div class="cv-coin">⚔</div><h3>${youFirst ? "You attack first" : (online ? "Opponent attacks first" : "Enemy attacks first")}</h3><p>Coin toss · raid ${state.raidNo + 1} of 2</p>`;
+            ovHead.innerHTML = `<h3>${youFirst ? "You attack first" : (online ? "Opponent attacks first" : "Enemy attacks first")}</h3>`;
+            ovCard.innerHTML = `<div class="cv-coin">⚔</div><p>Coin toss · raid ${state.raidNo + 1} of 2</p>`;
+            ovFoot.innerHTML = "";
         } else if (p === "between") {
-            ovEl.hidden = false;
+            show = true;
             const r = state.results[state.battle.attacker];
             const who = state.battle.attacker === me ? "You" : (online ? "Opponent" : "Enemy");
-            ovCard.innerHTML = `<h3>${who} scored ${r.pct}%</h3>${starsSvg(r.stars)}<p>${state.battle.attacker === me ? "Now defend your village." : "Your turn to raid."}</p>${btn("continue", "Continue (A)", false, "pri")}`;
+            ovHead.innerHTML = `<h3>${who} scored ${r.pct}%</h3>`;
+            ovCard.innerHTML = `${starsSvg(r.stars)}<p>${state.battle.attacker === me ? "Now defend your village." : "Your turn to raid."}</p>`;
+            ovFoot.innerHTML = `<span class="cv-note">Press A to continue</span><button class="cv-btn primary" type="button" data-act="continue">Continue (A)</button>`;
         } else if (p === "final") {
-            ovEl.hidden = false;
-            const [r0, r1] = state.results;
+            show = true;
             const win = state.winner === me, draw = state.winner === 2;
             const title = draw ? "Draw" : win ? "Victory" : "Defeat";
             const mineR = state.results[me], oppR = state.results[1 - me];
-            ovCard.innerHTML = `<h3>${title}</h3>${starsSvg(mineR.stars)}<p>You ${mineR.pct}% · ${online ? "Opponent" : "Enemy"} ${oppR.pct}%${!online && win ? ` · Tier ${state.tier}` : ""}</p>${btn("continue", online ? "Rematch (A)" : "Back to village (A)", false, "pri")}`;
-        } else ovEl.hidden = true;
+            ovHead.innerHTML = `<h3>${title}</h3>`;
+            ovCard.innerHTML = `${starsSvg(mineR.stars)}<p>You ${mineR.pct}% · ${online ? "Opponent" : "Enemy"} ${oppR.pct}%${!online && win ? ` · Tier ${state.tier}` : ""}</p>`;
+            ovFoot.innerHTML = `<span class="cv-note">Press A to continue</span><button class="cv-btn primary" type="button" data-act="continue">${online ? "Rematch (A)" : "Back to village (A)"}</button>`;
+        }
+        ovEl.hidden = !show || suppress;
     }
     function renderCheats() {
-        cheatsEl.hidden = online || !cheatOpen;
+        cheatsEl.hidden = online || !cheatOpen || helpOpen;
         if (cheatOpen && !online) {
             cheatsEl.querySelector('[data-cheat="god"]').classList.toggle("on", flags.god);
             cheatsEl.querySelector('[data-cheat="onehit"]').classList.toggle("on", flags.onehit);
             cheatsEl.querySelector('[data-cheat="freeze"]').classList.toggle("on", flags.freeze);
         }
+    }
+    /* Overlays suppress each other; HUD labels are updated on the label span
+       so the icon is never destroyed. */
+    function syncUI() {
+        pauseEl.hidden = !paused || cheatOpen || helpOpen;
+        helpEl.hidden = !helpOpen;
+        const cb = root.querySelector("[data-cheats]");
+        if (cb) { cb.disabled = online; cb.classList.toggle("on", cheatOpen); }
+        const pb = root.querySelector("[data-pause]");
+        if (pb) {
+            const label = pb.querySelector(".cv-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pb.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pb.disabled = online;
+        }
+        const rb = root.querySelector("[data-restart]");
+        if (rb) rb.disabled = online;
+        padBtn.classList.toggle("on", padOn);
+        wrap.classList.toggle("pad-on", padOn);
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) pauseTimers(); else resumeTimers();
+        render();
+    }
+    function restart() {
+        if (online) return;
+        helpOpen = false; cheatOpen = false; paused = false; resumeTimers();
+        flags.god = flags.onehit = flags.freeze = false;
+        cheated = false;
+        buildType = null; sel = null; moveFrom = null; selTroop = "barb"; cursor = { x: 3, y: 3 };
+        boardMode = ""; panelSig = ""; cellsSig = ""; battleKey = "";
+        state = initState();
+        clearBoard();
+        publish();
     }
     function render() {
         if (!state) { statusEl.textContent = "Waiting for host…"; return; }
@@ -734,10 +919,17 @@ export function mount(root, context = {}) {
         hud.cap.textContent = armyCap(v);
         if (online) hud.meta.innerHTML = `You <b>P${me + 1}</b>${cheated ? "" : ""}`;
         else { hud.tier.textContent = state.tier; hud.best.textContent = best; }
+        hud.time.hidden = !b;
+        hud.timeval.textContent = b ? `${Math.max(0, Math.ceil(b.time))}s` : "—";
+        hud.pct.hidden = !b;
+        hud.pctval.textContent = `${b && b.totalW ? Math.round(100 * b.deadW / b.totalW) : 0}%`;
         const phaseTxt = { build: online ? (state.ready[me] ? "Waiting opponent" : "Build · Ready up") : "Build", coin: "Coin toss", raid: b && b.attacker === me ? "Raiding" : "Defending", between: "Intermission", final: "Match over" };
         statusEl.textContent = phaseTxt[state.phase] || "…";
         primaryBtn.hidden = state.phase === "raid" || state.phase === "coin";
-        primaryBtn.textContent = state.phase === "build" ? (online ? (state.ready[me] ? "Ready ✓" : "Ready (A)") : "Attack (A)") : state.phase === "between" ? "Continue (A)" : online ? "Rematch (A)" : "Back to village (A)";
+        const primaryText = state.phase === "build" ? (online ? (state.ready[me] ? "Ready ✓" : "Ready (A)") : "Attack (A)") : state.phase === "between" ? "Continue (A)" : online ? "Rematch (A)" : "Back to village (A)";
+        const primaryLabel = primaryBtn.querySelector(".cv-btn-label");
+        if (primaryLabel) primaryLabel.textContent = primaryText;
+        primaryBtn.setAttribute("aria-label", primaryText);
         primaryBtn.disabled = online && state.phase === "build" && state.ready[me];
         const mode = b ? "battle" : "village";
         const bk = b ? `${state.match}:${state.raidNo}` : "";
@@ -753,7 +945,7 @@ export function mount(root, context = {}) {
         drawMarks(); drawPrev();
         const sig = [state.phase, b ? Math.ceil(b.time) + ":" + b.deadW + ":" + JSON.stringify(b.army) + ":" + b.rageUsed + ":" + (heroOf(b) ? 1 : 0) + ":" + b.attacker : "", Math.floor(v.gold), Math.floor(v.elixir), JSON.stringify(v.army), sel ? sel.x + "," + sel.y : "", buildType, moveFrom ? 1 : 0, selTroop, state.ready.join(""), thLvl(v)].join("|");
         if (sig !== panelSig) { panelSig = sig; panelEl.innerHTML = panelHTML(); }
-        renderOverlay(); renderCheats();
+        renderOverlay(); renderCheats(); syncUI();
     }
     function publish() {
         render();
@@ -762,6 +954,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- input ---------------- */
     function cellAction(x, y) {
+        if (helpOpen || cheatOpen || paused) return;
         const me = mySeat(), v = state.villages[me], b = state.battle;
         cursor = { x, y };
         if (state.phase === "raid" && b) {
@@ -791,6 +984,7 @@ export function mount(root, context = {}) {
         else if (p === "between" || p === "final") submitAction({ t: "continue" });
     }
     function virtualKey(k) {
+        if (helpOpen || cheatOpen || paused) return;
         if (k === "up") cursor.y = clamp(cursor.y - 1, 0, GRID - 1);
         else if (k === "down") cursor.y = clamp(cursor.y + 1, 0, GRID - 1);
         else if (k === "left") cursor.x = clamp(cursor.x - 1, 0, GRID - 1);
@@ -800,15 +994,23 @@ export function mount(root, context = {}) {
         publish();
     }
     function handleClick(e) {
-        const ex = e.target.closest("[data-exit]"); if (ex) { onExit(); return; }
-        const vk = e.target.closest("[data-vk]"); if (vk) { virtualKey(vk.dataset.vk); return; }
-        const ch = e.target.closest("[data-cheat]"); if (ch) { if (ch.dataset.cheat === "close") { cheatOpen = false; renderCheats(); } else cheat(ch.dataset.cheat); return; }
-        const el = e.target.closest("[data-act]"); if (!el || !state) return;
+        const t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restart(); return; }
+        if (t.closest("[data-cheats]")) { if (!online) { cheatOpen = !cheatOpen; if (cheatOpen) helpOpen = false; render(); } return; }
+        const vk = t.closest("[data-vk]"); if (vk) { virtualKey(vk.dataset.vk); return; }
+        const ch = t.closest("[data-cheat]"); if (ch) { if (ch.dataset.cheat === "close") { cheatOpen = false; render(); } else cheat(ch.dataset.cheat); return; }
+        if (helpOpen || cheatOpen || paused) return;
+        const el = t.closest("[data-act]"); if (!el || !state) return;
         const act = el.dataset.act;
         if (act === "primary") primary();
-        else if (act === "cheat") { if (!online) { cheatOpen = !cheatOpen; renderCheats(); } }
-        else if (act === "pad") { padOn = !padOn; wrap.classList.toggle("pad-on", padOn); $('[data-el="padbtn"]').classList.toggle("on", padOn); }
-        else if (act === "build") { buildType = el.dataset.b; sel = null; moveFrom = false; moveFrom = null; publish(); }
+        else if (act === "pad") { padOn = !padOn; padBtn.classList.toggle("on", padOn); wrap.classList.toggle("pad-on", padOn); }
+        else if (act === "build") { buildType = el.dataset.b; sel = null; moveFrom = null; publish(); }
         else if (act === "train") submitAction({ t: "train", k: el.dataset.k });
         else if (act === "quick") submitAction({ t: "quick" });
         else if (act === "upgrade" && sel) submitAction({ t: "upgrade", x: sel.x, y: sel.y });
@@ -821,6 +1023,7 @@ export function mount(root, context = {}) {
         else if (act === "continue") submitAction({ t: "continue" });
     }
     function handlePointer(e) {
+        if (helpOpen || cheatOpen || paused) return;
         const c = e.target.closest?.(".cv-cell"); if (!c || !state) return;
         e.preventDefault();
         cellAction(Number(c.dataset.x), Number(c.dataset.y));
@@ -832,14 +1035,39 @@ export function mount(root, context = {}) {
     }
     function handleKey(e) {
         if (!root.isConnected || !state) return;
-        const k = e.key;
-        const map = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "ok", " ": "ok", Escape: "cancel" };
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        const code = e.code || "", k = e.key, low = k.toLowerCase();
+        /* priority: help -> cheats -> pause -> escape -> restart -> game actions */
+        if (code === "KeyH" || k === "?") { if (!e.repeat) toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") {
+            if (!e.repeat && !online && !helpOpen) { cheatOpen = !cheatOpen; render(); }
+            e.preventDefault(); return;
+        }
+        if (code === "KeyP") {
+            if (!e.repeat && !helpOpen && !cheatOpen) togglePause();
+            e.preventDefault(); return;
+        }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) { cheatOpen = false; render(); }
+            else if (paused) togglePause(false);
+            else virtualKey("cancel");
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR") {
+            if (!e.repeat && !online && !helpOpen && !cheatOpen) restart();
+            e.preventDefault(); return;
+        }
+        if (tag === "BUTTON") return; /* keep native Enter/Space on HUD buttons */
+        if (helpOpen || cheatOpen || paused) { e.preventDefault(); return; }
+
+        const map = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "ok", " ": "ok" };
         if (map[k]) { e.preventDefault(); virtualKey(map[k]); return; }
         const b = state.battle, raid = state.phase === "raid" && b && b.attacker === mySeat();
-        const low = k.toLowerCase();
         if (raid) {
             if (["1", "2", "3", "4"].includes(k)) { selTroop = [...KINDS, "hero"][Number(k) - 1]; publish(); }
-            else if (low === "r") submitAction({ t: "rage" });
+            else if (low === "g") submitAction({ t: "rage" });
             else if (low === "d") submitAction({ t: "all" });
             else if (low === "x") submitAction({ t: "end" });
             return;
@@ -854,8 +1082,7 @@ export function mount(root, context = {}) {
             else if (low === "m" && sel) { moveFrom = moveFrom ? null : { ...sel }; publish(); }
         }
         if (low === "a") primary();
-        else if (low === "c" && !online) { cheatOpen = !cheatOpen; renderCheats(); }
-        else if (low === "v") { padOn = !padOn; wrap.classList.toggle("pad-on", padOn); }
+        else if (low === "v") { padOn = !padOn; padBtn.classList.toggle("on", padOn); wrap.classList.toggle("pad-on", padOn); }
     }
     root.addEventListener("click", handleClick);
     board.addEventListener("pointerdown", handlePointer);
@@ -866,7 +1093,7 @@ export function mount(root, context = {}) {
     let simId = null, acc = 0, tickN = 0;
     if (isHost) {
         simId = setInterval(() => {
-            if (!state) return;
+            if (!state || paused || helpOpen || cheatOpen) return;
             const dt = 0.1; tickN++;
             acc += dt;
             if (acc >= 1) {
@@ -903,14 +1130,14 @@ export function mount(root, context = {}) {
         state = initState();
         render();
     }
-    $('[data-el="padbtn"]').classList.toggle("on", padOn);
-    $('[data-el="cheatbtn"]').hidden = online;
+    padBtn.classList.toggle("on", padOn);
+    wrap.classList.toggle("pad-on", padOn);
 
     return {
         destroy() {
             if (simId) clearInterval(simId);
-            if (noteTimer) clearTimeout(noteTimer);
-            for (const t of fxTimers) clearTimeout(t); fxTimers.clear();
+            clearT(noteTimer);
+            for (const t of fxTimers) clearT(t); fxTimers.clear();
             root.removeEventListener("click", handleClick);
             board.removeEventListener("pointerdown", handlePointer);
             board.removeEventListener("pointermove", handleMove);

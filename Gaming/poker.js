@@ -31,6 +31,8 @@ export const META = {
     bestKey: "pokerBestLevel",
 };
 
+import { iconSVG } from "../JS/icons.js";
+
 /* ================================================================ */
 /* Pure card helpers                                                 */
 /* ================================================================ */
@@ -758,58 +760,61 @@ export function mount(root, context = {}) {
 <style>
 .pk-app{--pk-ink:#0f172a;--pk-mut:#64748b;--pk-line:#e2e8f0;--pk-acc:#4f46e5;--pk-good:#059669;--pk-bad:#dc2626;--pk-warn:#d97706;color:var(--pk-ink);font-family:inherit}
 .pk-app [hidden]{display:none!important}
-.pk-app .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.pk-app .game-intro h2{margin:0;font-size:20px}
-.pk-app .game-intro p{margin:2px 0 0;font-size:12.5px;color:var(--pk-mut)}
-.pk-app .game-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.pk-app .game-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--pk-mut)}
-.pk-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block}
-.pk-hud{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.pk-pill{font-size:12px;color:var(--pk-mut);background:#fff;border:1px solid var(--pk-line);border-radius:999px;padding:4px 10px}
-.pk-pill b{color:var(--pk-ink);font-weight:700}
+.pk-app .game-app{gap:12px;min-width:0}
+.pk-app button:focus-visible{outline:2px solid var(--pk-acc);outline-offset:2px}
+/* Single HUD bar above the board: info left, icon controls right. */
+.pk-hud{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.pk-pill{display:inline-flex;align-items:center;gap:5px;min-height:28px;font-size:11px;color:var(--pk-mut);background:#fff;border:1px solid var(--pk-line);border-radius:999px;padding:4px 10px;white-space:nowrap}
+.pk-pill b{color:var(--pk-ink);font-weight:700;font-variant-numeric:tabular-nums}
 .pk-pill.pk-cheat{color:#92400e;background:#fef3c7;border-color:#fde68a;font-weight:700}
-.pk-stage{position:relative;display:flex;flex-direction:column;gap:10px;user-select:none;-webkit-user-select:none}
-.pk-opps{display:flex;gap:8px;justify-content:center}
-.pk-seat{flex:1;min-width:0;max-width:220px;background:#fff;border:1px solid var(--pk-line);border-radius:12px;padding:8px;text-align:center;transition:opacity .25s,border-color .2s,box-shadow .2s}
+.pk-spacer{flex:1 1 auto}
+.pk-hud .pk-btn{min-height:30px;padding:5px 9px;font-size:11px;border-radius:8px}
+.pk-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.pk-icon-btn svg{flex:none;display:block}
+.pk-status-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block;flex:none}
+/* Board is the only stage: content + overlays are its direct children. */
+.pk-board{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0;padding:16px;overflow:hidden;user-select:none;-webkit-user-select:none}
+.pk-opps{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.pk-seat{flex:1 1 0;min-width:0;max-width:220px;background:#fff;border:1px solid var(--pk-line);border-radius:12px;padding:12px;text-align:center;transition:opacity .2s,border-color .16s,box-shadow .16s}
 .pk-seat.folded{opacity:.5}
 .pk-seat.out{opacity:.35;filter:grayscale(.7)}
-.pk-seat.acting{border-color:var(--pk-acc);box-shadow:0 0 0 3px #4f46e51f}
-.pk-sname{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12.5px;font-weight:700;min-height:16px}
+.pk-seat.acting{border-color:var(--pk-acc);box-shadow:0 0 0 2px #4f46e51f}
+.pk-sname{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:700;min-height:16px}
 .pk-dot{width:8px;height:8px;border-radius:50%;flex:none}
-.pk-dbtn{font-size:9px;font-weight:800;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:999px;padding:0 5px}
-.pk-cards{display:flex;gap:4px;justify-content:center;align-items:center;min-height:58px;margin:5px 0 3px}
+.pk-dbtn{font-size:9px;font-weight:800;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:999px;padding:0 6px}
+.pk-cards{display:flex;gap:4px;justify-content:center;align-items:center;min-height:58px;margin:8px 0 4px}
 .pk-card{width:40px;height:56px;display:block;flex:none}
 .pk-card.pk-big{width:62px;height:87px}
-.pk-card.pk-in{animation:pkDeal .28s both}
-.pk-card.pk-flip{animation:pkFlip .32s both}
+.pk-card.pk-in{animation:pkDeal .18s both}
+.pk-card.pk-flip{animation:pkFlip .2s both}
 .pk-schips{font-size:12px;color:var(--pk-mut)}
 .pk-schips b{color:var(--pk-ink);font-size:13px}
-.pk-bet{display:flex;justify-content:center;align-items:center;gap:4px;min-height:26px}
+.pk-bet{display:flex;justify-content:center;align-items:center;gap:4px;min-height:28px}
 .pk-chip{width:24px;height:24px;display:block}
 .pk-chip.pk-big{width:34px;height:34px}
 .pk-status{font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--pk-warn);min-height:13px;text-transform:uppercase}
-.pk-table{position:relative;background:#f4faf6;border:1px solid #d8e9de;border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-height:190px}
-.pk-tbar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:26px}
+.pk-table{position:relative;background:#f4faf6;border:1px solid #d8e9de;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:12px;flex:1 1 auto;min-height:0}
+.pk-tbar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
 .pk-stage-lab{font-size:10.5px;font-weight:800;letter-spacing:2px;color:#3f6f52}
-.pk-pot{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#14532d}
-.pk-comm{display:flex;gap:7px;justify-content:center;min-height:72px}
-.pk-slot{width:52px;height:72px;border:1.5px dashed #b9d4c2;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.pk-pot{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#14532d}
+.pk-comm{display:flex;gap:8px;justify-content:center;min-height:76px}
+.pk-slot{width:52px;height:72px;border:1px dashed #b9d4c2;border-radius:8px;display:flex;align-items:center;justify-content:center}
 .pk-slot .pk-card{width:50px;height:70px}
-.pk-log{max-height:52px;overflow:auto;font-size:11px;color:var(--pk-mut);display:flex;flex-direction:column;gap:2px}
-.pk-log div{border-bottom:1px dashed #e8eef2;padding:1.5px 0}
+.pk-log{max-height:60px;overflow:auto;font-size:11px;line-height:1.4;color:var(--pk-mut);display:flex;flex-direction:column;gap:4px}
+.pk-log div{border-bottom:1px dashed #e8eef2;padding:2px 0}
 .pk-l-win{color:var(--pk-good)}
 .pk-l-bad{color:var(--pk-bad)}
 .pk-l-ev{color:var(--pk-warn)}
-.pk-banner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:3;background:#ffffffd9;backdrop-filter:blur(2px);border-radius:14px}
-.pk-bcard{text-align:center;padding:14px 20px;max-width:92%;animation:pkPop .22s both}
-.pk-btitle{font-size:18px;font-weight:800;margin:0 0 6px}
-.pk-blines{font-size:12px;color:var(--pk-mut);line-height:1.6;margin-bottom:12px}
-.pk-me{display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;background:#fff;border:1px solid var(--pk-line);border-radius:14px;padding:12px 14px;transition:box-shadow .2s,border-color .2s}
-.pk-me.acting{border-color:var(--pk-acc);box-shadow:0 0 0 3px #4f46e51f}
+.pk-banner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:3;background:#ffffffd9;backdrop-filter:blur(2px);border-radius:12px}
+.pk-bcard{text-align:center;padding:16px 20px;max-width:calc(100% - 16px);animation:pkPop .18s both}
+.pk-btitle{font-size:18px;font-weight:800;margin:0 0 8px}
+.pk-blines{font-size:12px;color:var(--pk-mut);line-height:1.6;margin-bottom:16px}
+.pk-me{display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap;background:#fff;border:1px solid var(--pk-line);border-radius:12px;padding:16px;transition:box-shadow .2s,border-color .2s}
+.pk-me.acting{border-color:var(--pk-acc);box-shadow:0 0 0 2px #4f46e51f}
 .pk-me.folded{opacity:.6}
 .pk-me.out{opacity:.45;filter:grayscale(.6)}
-.pk-mecards{display:flex;gap:6px}
-.pk-meinfo{display:flex;flex-direction:column;gap:3px;min-width:120px;text-align:center;align-items:center}
+.pk-mecards{display:flex;gap:8px}
+.pk-meinfo{display:flex;flex-direction:column;gap:4px;min-width:120px;text-align:center;align-items:center}
 .pk-mchips{font-size:12.5px;color:var(--pk-mut)}
 .pk-mchips b{color:var(--pk-ink);font-size:15px}
 .pk-handname{font-size:11px;font-weight:800;color:var(--pk-acc);min-height:14px;text-transform:uppercase;letter-spacing:.3px}
@@ -817,16 +822,16 @@ export function mount(root, context = {}) {
 .pk-hint.pk-good{color:var(--pk-good)}
 .pk-hint.pk-mid{color:var(--pk-warn)}
 .pk-hint.pk-bad{color:var(--pk-bad)}
-.pk-controls{flex:1;min-width:260px;display:flex;flex-direction:column;gap:8px}
-.pk-msg{font-size:12.5px;color:#334155;text-align:center;min-height:17px;font-weight:600}
-.pk-raiseline{display:flex;flex-direction:column;gap:5px}
-.pk-slider{width:100%;accent-color:var(--pk-acc);height:26px;cursor:pointer;touch-action:manipulation}
-.pk-presets{display:flex;gap:6px;justify-content:center}
-.pk-preset{font-size:11.5px;font-weight:700;color:var(--pk-mut);background:#f8fafc;border:1px solid var(--pk-line);border-radius:999px;padding:4px 12px;cursor:pointer;min-height:28px;font-family:inherit}
+.pk-controls{flex:1 1 260px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.pk-msg{font-size:12.5px;color:#334155;text-align:center;min-height:20px;line-height:1.45;font-weight:600}
+.pk-raiseline{display:flex;flex-direction:column;gap:8px}
+.pk-slider{width:100%;accent-color:var(--pk-acc);height:32px;cursor:pointer;touch-action:manipulation}
+.pk-presets{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.pk-preset{font-size:11.5px;font-weight:700;color:var(--pk-mut);background:#f8fafc;border:1px solid var(--pk-line);border-radius:999px;padding:8px 12px;cursor:pointer;min-height:40px;font-family:inherit}
 .pk-preset:hover:not(:disabled){color:var(--pk-acc);border-color:var(--pk-acc)}
 .pk-preset:disabled{opacity:.4;cursor:default}
 .pk-btnrow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.pk-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:8px 12px;font-size:13.5px;font-weight:700;font-family:inherit;color:var(--pk-ink);background:#fff;border:1px solid var(--pk-line);border-radius:10px;cursor:pointer;transition:background .15s,border-color .15s,transform .05s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.pk-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:8px 12px;font-size:13.5px;font-weight:700;font-family:inherit;color:var(--pk-ink);background:#fff;border:1px solid var(--pk-line);border-radius:10px;cursor:pointer;transition:background .16s,border-color .16s,transform .1s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .pk-btn:hover:not(:disabled){background:#f8fafc}
 .pk-btn:active:not(:disabled){transform:translateY(1px)}
 .pk-btn:disabled{opacity:.4;cursor:default}
@@ -837,66 +842,89 @@ export function mount(root, context = {}) {
 .pk-btn.pk-danger{color:var(--pk-bad);border-color:#fecaca}
 .pk-btn.pk-danger:hover:not(:disabled){background:#fef2f2}
 .pk-btn.pk-ghost{background:transparent}
-.pk-ov{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;background:#f8fafcef;backdrop-filter:blur(3px);padding:14px;border-radius:14px}
-.pk-ovcard{background:#fff;border:1px solid var(--pk-line);border-radius:16px;box-shadow:0 12px 32px #0f172a14;padding:20px;max-width:560px;width:100%;text-align:center;animation:pkPop .22s both;max-height:100%;overflow:auto}
-.pk-ovtitle{font-size:20px;font-weight:800;margin:0 0 6px}
+.pk-ov{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;background:#f8fafcef;backdrop-filter:blur(3px);padding:16px;border-radius:12px}
+.pk-ovcard{display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid var(--pk-line);border-radius:14px;box-shadow:0 12px 28px #0f172a12;padding:20px;max-width:560px;width:100%;max-height:100%;overflow:hidden;text-align:center;animation:pkPop .18s both}
+.pk-ovhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none}
+.pk-ovtitle{font-size:20px;font-weight:800;margin:0;line-height:1.25}
 .pk-ovtitle.pk-good{color:var(--pk-good)}
 .pk-ovtitle.pk-bad{color:var(--pk-bad)}
-.pk-ovsub{font-size:13px;color:var(--pk-mut);line-height:1.6;margin:0 0 14px}
-.pk-ovbtns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.pk-help{text-align:left;font-size:12.5px;color:#334155;line-height:1.65}
-.pk-help h3{font-size:13px;margin:14px 0 4px;color:var(--pk-ink)}
+.pk-ovsub{font-size:13px;color:var(--pk-mut);line-height:1.6;margin:0;flex:none}
+.pk-ovbtns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;flex:none}
+.pk-help,.pk-cheats{text-align:left;font-size:12.5px;color:#334155;line-height:1.65;flex:1 1 auto;min-height:0;overflow:auto}
+.pk-cheats{display:flex;flex-direction:column;gap:4px}
+.pk-help h3{font-size:13px;margin:16px 0 4px;color:var(--pk-ink)}
 .pk-help h3:first-child{margin-top:0}
 .pk-help ul{margin:4px 0;padding-left:18px}
 .pk-help kbd{background:#f1f5f9;border:1px solid var(--pk-line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px;font-family:inherit;font-weight:700}
-.pk-ranks{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px;font-size:12px}
-.pk-ranks div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed #eef2f6;padding:2px 0}
+.pk-ranks{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px}
+.pk-ranks div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed #eef2f6;padding:4px 0}
 .pk-ranks span{color:var(--pk-mut)}
-.pk-cheatrow{display:flex;align-items:flex-start;gap:10px;text-align:left;padding:9px 4px;border-bottom:1px dashed #eef2f6;font-size:12.5px;cursor:pointer}
-.pk-cheatrow input{width:18px;height:18px;margin-top:1px;accent-color:var(--pk-acc);flex:none}
+.pk-cheatrow{display:flex;align-items:flex-start;gap:12px;text-align:left;padding:12px 4px;border-bottom:1px dashed #eef2f6;font-size:12.5px;cursor:pointer;min-height:44px}
+.pk-cheatrow input{width:20px;height:20px;margin-top:1px;accent-color:var(--pk-acc);flex:none}
 .pk-cheatrow b{display:block;font-size:13px}
 .pk-cheatrow small{color:var(--pk-mut);line-height:1.45;display:block}
-.pk-cheatnote{font-size:11.5px;color:var(--pk-warn);margin:10px 0}
-@keyframes pkDeal{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+.pk-cheatnote{font-size:11.5px;color:var(--pk-warn);margin:12px 0}
+@keyframes pkDeal{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 @keyframes pkFlip{from{opacity:.2;transform:rotateY(80deg)}to{opacity:1;transform:none}}
 @keyframes pkPop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
 @media (max-width:640px){
-.pk-app .game-intro h2{font-size:17px}
-.pk-opps{gap:5px}
-.pk-seat{padding:6px 4px;border-radius:10px}
+.pk-opps{gap:8px}
+.pk-seat{padding:8px 4px;border-radius:10px}
 .pk-card{width:32px;height:45px}
 .pk-cards{min-height:47px}
 .pk-card.pk-big{width:52px;height:73px}
 .pk-slot{width:44px;height:62px}
 .pk-slot .pk-card{width:42px;height:59px}
-.pk-comm{gap:5px;min-height:64px}
-.pk-table{padding:8px;min-height:170px}
-.pk-me{gap:10px;padding:10px}
+.pk-comm{gap:8px;min-height:64px}
+.pk-table{padding:12px;gap:8px}
+.pk-me{gap:12px;padding:12px}
 .pk-controls{min-width:100%}
 .pk-btnrow{grid-template-columns:1fr 1fr}
 .pk-btn{min-height:48px;font-size:14px}
 .pk-ranks{grid-template-columns:1fr}
-.pk-hud{gap:4px}
-.pk-pill{font-size:11px;padding:3px 8px}
+}
+@media (pointer:coarse){.pk-app button:focus-visible{outline-width:3px}.pk-app .pk-preset{min-height:44px}}
+@media (prefers-reduced-motion:reduce){.pk-app *{animation:none!important;transition:none!important}}
+/* --- fill height + mobile refinements (must stay last) --- */
+.pk-app.game-fill > .pk-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.pk-app.game-fill > .pk-board:not(:has(.pk-ov:not([hidden]))){flex:0 0 auto}
+.pk-app.game-fill > .pk-board:has(.pk-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+.pk-app.game-fill > .pk-board:not(:has(.pk-ov:not([hidden]))) .pk-table{min-height:180px}
+.pk-app .pk-hud{gap:5px;margin-bottom:8px}
+.pk-app .pk-hud .pk-pill{padding:4px 6px;font-size:9px}
+.pk-app .pk-hud .pk-pill:has([data-hud="best"]),
+.pk-app .pk-hud .pk-pill:has([data-hud="hand"]),
+.pk-app .pk-hud .pk-pill:has([data-hud="blinds"]){display:none}
+.pk-app .pk-hud .pk-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.pk-app .pk-hud .pk-btn-label,.pk-app .pk-hud .pk-spacer{display:none}
+.pk-app .pk-board{padding:12px}
+.pk-app .pk-ov{padding:8px}
+.pk-app .pk-ovcard{width:100%;height:100%;max-height:100%;padding:14px;border-radius:12px}
+.pk-app .pk-help,.pk-app .pk-cheats{scrollbar-width:none}
+.pk-app .pk-help::-webkit-scrollbar,.pk-app .pk-cheats::-webkit-scrollbar{display:none}
+.pk-app .pk-ovbtns{position:static;margin:0;padding-top:10px}
 }
 </style>
-<div class="game-app pk-app">
-  <div class="game-intro">
-    <div><h2>Poker</h2><p>Texas Hold'em, simplified — bust every rival to clear the level.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
+<div class="game-app pk-app game-fill" data-pk>
+  <div class="pk-hud">
+    <span class="pk-pill"><i class="pk-status-dot" data-dot></i><span data-status>Ready</span></span>
+    <span class="pk-pill" data-pill-best>Best <b data-hud="best">0</b></span>
+    <span class="pk-pill"><b data-hud="level">Lv 1</b></span>
+    <span class="pk-pill">Blinds <b data-hud="blinds">10/20</b></span>
+    <span class="pk-pill">Hand <b data-hud="hand">0</b></span>
+    <span class="pk-pill">You <b data-hud="chips">1000</b></span>
+    <span class="pk-pill">Pot <b data-hud="pot">0</b></span>
+    <span class="pk-pill pk-cheat" data-cheatbadge hidden>CHEATS</span>
+    <span class="pk-spacer"></span>
+    <button class="pk-btn pk-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pk-btn-label">Help</span></button>
+    <button class="pk-btn pk-icon-btn" type="button" data-cheats data-cheatsbtn aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="pk-btn-label">Cheats</span></button>
+    <button class="pk-btn pk-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="pk-btn-label">Pause</span></button>
+    <button class="pk-btn pk-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="pk-btn-label">Restart</span></button>
+    <button class="pk-btn pk-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pk-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="pk-hud">
-      <span class="pk-pill" data-pill-best>Best <b data-hud="best">0</b></span>
-      <span class="pk-pill"><b data-hud="level">Lv 1</b></span>
-      <span class="pk-pill">Blinds <b data-hud="blinds">10/20</b></span>
-      <span class="pk-pill">Hand <b data-hud="hand">0</b></span>
-      <span class="pk-pill">You <b data-hud="chips">1000</b></span>
-      <span class="pk-pill">Pot <b data-hud="pot">0</b></span>
-      <span class="pk-pill pk-cheat" data-cheatbadge hidden>CHEATS</span>
-    </div>
-    <div class="pk-stage">
-      <div class="pk-opps" data-opps></div>
+  <section class="game-panel pk-board" data-board>
+    <div class="pk-opps" data-opps></div>
       <div class="pk-table">
         <div class="pk-tbar"><span class="pk-stage-lab" data-stagelab>TABLE</span><span class="pk-pot" data-pot><span>Pot 0</span></span></div>
         <div class="pk-comm" data-comm></div>
@@ -960,8 +988,13 @@ export function mount(root, context = {}) {
         <p class="pk-ovsub" data-oversub></p>
         <div class="pk-ovbtns"><button class="pk-btn pk-accent" type="button" data-act="start">Play again</button></div>
       </div></div>
+      <div class="pk-ov" data-ov="pause" hidden><div class="pk-ovcard">
+        <div class="pk-ovhead"><h3 class="pk-ovtitle">Paused</h3></div>
+        <p class="pk-ovsub">Timers and bots are frozen. Press P or Esc to resume.</p>
+        <div class="pk-ovbtns"><button class="pk-btn pk-accent" type="button" data-act="resume">Resume</button></div>
+      </div></div>
       <div class="pk-ov" data-ov="help" hidden><div class="pk-ovcard">
-        <div class="pk-ovtitle">How to play</div>
+        <div class="pk-ovhead"><h3 class="pk-ovtitle">How to play</h3><button class="pk-btn" type="button" data-act="closeov" aria-label="Close help">Close</button></div>
         <div class="pk-help">
           <h3>Goal</h3>
           <ul>
@@ -992,7 +1025,7 @@ export function mount(root, context = {}) {
           <h3>Controls</h3>
           <ul>
             <li>Mouse / touch: big buttons under your cards; drag the slider or tap Min / ½ pot / Pot / Max.</li>
-            <li>Keyboard: <kbd>F</kbd> fold · <kbd>C</kbd> check/call · <kbd>R</kbd> raise · <kbd>A</kbd> all-in · <kbd>←</kbd><kbd>→</kbd> adjust raise (<kbd>Shift</kbd> ×10) · <kbd>N</kbd>/<kbd>Space</kbd> next hand · <kbd>H</kbd> help · <kbd>X</kbd> cheats · <kbd>Esc</kbd> close.</li>
+            <li>Keyboard: <kbd>F</kbd> fold · <kbd>Q</kbd> check/call · <kbd>B</kbd> bet/raise · <kbd>A</kbd> all-in · <kbd>←</kbd><kbd>→</kbd> adjust raise (<kbd>Shift</kbd> ×10) · <kbd>N</kbd>/<kbd>Space</kbd> next hand · <kbd>H</kbd> help · <kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>R</kbd> restart · <kbd>Esc</kbd> close.</li>
             <li>Mouse wheel over the slider also adjusts the raise.</li>
           </ul>
           <h3>Tips</h3>
@@ -1001,30 +1034,26 @@ export function mount(root, context = {}) {
             <li>Play weak hands cheaply and strong hands aggressively; that alone beats most bots.</li>
             <li>Cheats (offline only) reveal bot cards, rig a royal flush and more — see the Cheats button.</li>
           </ul>
+          <p class="pk-cheatnote">Press H to reopen this guide at any time.</p>
         </div>
-        <div class="pk-ovbtns" style="margin-top:14px"><button class="pk-btn pk-primary" type="button" data-act="closeov">Got it</button></div>
+        <div class="pk-ovbtns"><button class="pk-btn pk-primary" type="button" data-act="closeov">Got it</button></div>
       </div></div>
       <div class="pk-ov" data-ov="cheats" hidden><div class="pk-ovcard">
-        <div class="pk-ovtitle">Cheats</div>
-        <label class="pk-cheatrow"><input type="checkbox" data-cheat="peek"><span><b>X-ray vision</b><small>See every bot's cards and a power score.</small></span></label>
-        <label class="pk-cheatrow"><input type="checkbox" data-cheat="rig"><span><b>Rig next deal</b><small>Your next hand is dealt a royal flush (one-shot).</small></span></label>
-        <label class="pk-cheatrow"><input type="checkbox" data-cheat="timid"><span><b>Timid bots</b><small>Bots never raise and fold to any bet.</small></span></label>
-        <label class="pk-cheatrow"><input type="checkbox" data-cheat="turbo"><span><b>Turbo</b><small>Almost no dealing / thinking delays.</small></span></label>
-        <div class="pk-ovbtns" style="margin-top:12px">
+        <div class="pk-ovhead"><h3 class="pk-ovtitle">Cheats</h3><button class="pk-btn" type="button" data-act="closeov" aria-label="Close cheats">Close</button></div>
+        <div class="pk-cheats">
+          <label class="pk-cheatrow"><input type="checkbox" data-cheat="peek"><span><b>X-ray vision</b><small>See every bot's cards and a power score.</small></span></label>
+          <label class="pk-cheatrow"><input type="checkbox" data-cheat="rig"><span><b>Rig next deal</b><small>Your next hand is dealt a royal flush (one-shot).</small></span></label>
+          <label class="pk-cheatrow"><input type="checkbox" data-cheat="timid"><span><b>Timid bots</b><small>Bots never raise and fold to any bet.</small></span></label>
+          <label class="pk-cheatrow"><input type="checkbox" data-cheat="turbo"><span><b>Turbo</b><small>Almost no dealing / thinking delays.</small></span></label>
+          <p class="pk-cheatnote">Using any cheat stops best-level recording for this run. Offline only.</p>
+        </div>
+        <div class="pk-ovbtns">
           <button class="pk-btn" type="button" data-act="addchips" data-addchips>+1,000 chips</button>
           <button class="pk-btn pk-danger" type="button" data-act="forcefold" data-forcefold>Force bots to fold</button>
+          <button class="pk-btn pk-primary" type="button" data-act="closeov">Done</button>
         </div>
-        <p class="pk-cheatnote">Using any cheat stops best-level recording for this run. Offline only.</p>
-        <div class="pk-ovbtns"><button class="pk-btn pk-primary" type="button" data-act="closeov">Close</button></div>
       </div></div>
-    </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button pk-btn pk-ghost" type="button" data-act="restart" data-restart>Restart</button>
-    <button class="game-action-button pk-btn pk-ghost" type="button" data-act="help">How to play</button>
-    <button class="game-action-button pk-btn pk-ghost" type="button" data-act="cheats" data-cheatsbtn>Cheats</button>
-    <button class="game-action-button pk-btn" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -1046,12 +1075,14 @@ export function mount(root, context = {}) {
     const btnRaise = $('[data-act="raise"]'), btnJam = $('[data-act="allin"]');
     const ovEls = {
         wait: $('[data-ov="wait"]'), start: $('[data-ov="start"]'), level: $('[data-ov="level"]'),
-        over: $('[data-ov="over"]'), help: $('[data-ov="help"]'), cheats: $('[data-ov="cheats"]'),
+        over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'),
+        help: $('[data-ov="help"]'), cheats: $('[data-ov="cheats"]'),
     };
     const waitSubEl = $("[data-waitsub]"), levelInfoEl = $("[data-levelinfo]"), startBtn = $("[data-startbtn]");
     const levelTitleEl = $("[data-leveltitle]"), levelSubEl = $("[data-levelsub]");
     const overTitleEl = $("[data-overtitle]"), overSubEl = $("[data-oversub]");
     const restartBtn = $("[data-restart]"), cheatsBtn = $("[data-cheatsbtn]");
+    const pauseBtn = $("[data-pause]");
     const cheatInputs = Array.from(root.querySelectorAll("input[data-cheat]"));
     const addChipsBtn = $("[data-addchips]"), forceFoldBtn = $("[data-forcefold]");
 
@@ -1063,15 +1094,39 @@ export function mount(root, context = {}) {
         commSlots.push(d);
     }
 
-    /* ---------- timers (host / offline only) ---------- */
+    /* ---------- timers (host / offline only) ----------
+     * Pausable: every pending timer keeps its remaining game-time. While
+     * paused the wall clock keeps running, so on resume we shift the time
+     * anchor (clockShift) and re-arm with the untouched remaining delay. */
     const timers = new Set();
+    let timersPaused = false, pauseStart = 0, clockShift = 0;
+    const now = () => Date.now() - clockShift;
+    function arm(rec, ms) {
+        rec.due = now() + ms;
+        rec.id = setTimeout(() => { timers.delete(rec); rec.id = 0; rec.fn(); }, ms);
+    }
     function later(ms, fn) {
-        const id = setTimeout(() => { timers.delete(id); fn(); }, ms);
-        timers.add(id);
+        const rec = { fn, id: 0, due: 0, left: Math.max(0, ms) };
+        timers.add(rec);
+        if (!timersPaused) arm(rec, rec.left);
     }
     function clearTimers() {
-        for (const id of timers) clearTimeout(id);
+        timers.forEach((rec) => { if (rec.id) clearTimeout(rec.id); });
         timers.clear();
+    }
+    function pauseTimers() {
+        if (timersPaused) return;
+        timersPaused = true;
+        pauseStart = Date.now();
+        timers.forEach((rec) => {
+            if (rec.id) { clearTimeout(rec.id); rec.id = 0; rec.left = Math.max(0, rec.due - now()); }
+        });
+    }
+    function resumeTimers() {
+        if (!timersPaused) return;
+        clockShift += Date.now() - pauseStart;
+        timersPaused = false;
+        timers.forEach((rec) => arm(rec, rec.left));
     }
 
     /* ---------- best level (localStorage, guarded) ---------- */
@@ -1101,14 +1156,45 @@ export function mount(root, context = {}) {
     });
 
     /* ---------- UI-local state ---------- */
-    let helpOpen = false, cheatsOpen = false;
+    let helpOpen = false, cheatsOpen = false, paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("pokerHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("pokerHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
     let raiseVal = 0, turnKey = "";
     let seatRefs = [], structureSig = "";
     let meCardSig = "e", meBetSig = -1, logSig = "";
     const mySeatOf = (S) => (online ? (S.seatMap[playerIndex] || 0) : 0);
     const inHandP = (p) => !p.out && !p.folded;
+    const uiBlocked = () => helpOpen || cheatsOpen || paused;
     function setOv(name) {
         Object.keys(ovEls).forEach((k) => { ovEls[k].hidden = k !== name; });
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (online) cheatsOpen = false;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function setPaused(on) {
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next && (online || helpOpen || cheatsOpen)) return;
+        if (next === paused) return;
+        paused = next;
+        if (paused) pauseTimers(); else resumeTimers();
+        render();
+    }
+    function restartGame() {
+        if (paused) resumeTimers();
+        paused = false; cheatsOpen = false; helpOpen = false;
+        submitAction({ t: "restart" });
     }
 
     /* ---------- rendering ---------- */
@@ -1350,12 +1436,18 @@ export function mount(root, context = {}) {
         let ov = null;
         if (helpOpen) ov = "help";
         else if (cheatsOpen && !online) ov = "cheats";
+        else if (paused && !online) ov = "pause";
         else if (S.phase === "idle") ov = "start";
         else if (S.phase === "levelEnd") ov = "level";
         else if (S.phase === "over") ov = "over";
         setOv(ov);
         restartBtn.hidden = online && !room.isHost;
         cheatsBtn.hidden = online;
+        pauseBtn.disabled = online;
+        const pLabel = pauseBtn.querySelector(".pk-btn-label");
+        if (pLabel) pLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
     }
 
     function renderCheats(S) {
@@ -1441,22 +1533,29 @@ export function mount(root, context = {}) {
 
     function handleClick(e) {
         if (e.target.closest("[data-exit]")) { onExit(); return; }
+        if (e.target.closest("[data-help]")) { toggleHelp(); return; }
+        if (e.target.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (e.target.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (e.target.closest("[data-pause]")) { setPaused(); return; }
+        if (e.target.closest("[data-restart]")) { restartGame(); return; }
         const inp = e.target.closest("input[data-cheat]");
         if (inp) { game.setCheat(inp.dataset.cheat, inp.checked); return; }
         const b = e.target.closest("button");
         if (!b || b.disabled) return;
         const act = b.dataset.act;
         if (!act) return;
+        if (act === "help") { toggleHelp(); return; }
+        if (act === "cheats") { toggleCheats(); return; }
+        if (act === "closeov") { helpOpen = false; cheatsOpen = false; render(); return; }
+        if (act === "resume") { setPaused(false); return; }
+        if (uiBlocked()) return;
         if (act === "start") submitAction({ t: "start" });
-        else if (act === "restart") submitAction({ t: "restart" });
+        else if (act === "restart") restartGame();
         else if (act === "next") submitAction({ t: "next" });
         else if (act === "level") submitAction({ t: "level" });
         else if (act === "fold" || act === "call" || act === "allin") submitAction({ t: "act", kind: act });
         else if (act === "raise") submitAction({ t: "act", kind: "raise", to: raiseVal });
         else if (act === "preset") setRaise(b.dataset.set);
-        else if (act === "help") { helpOpen = !helpOpen; cheatsOpen = false; render(); }
-        else if (act === "cheats") { cheatsOpen = !cheatsOpen; helpOpen = false; render(); }
-        else if (act === "closeov") { helpOpen = false; cheatsOpen = false; render(); }
         else if (act === "addchips") game.addChips();
         else if (act === "forcefold") game.forceFold();
     }
@@ -1479,26 +1578,33 @@ export function mount(root, context = {}) {
         updateRaiseLabel(S);
     }
     function handleKey(e) {
-        if (!e.key) return;
+        if (!e.key || e.repeat) return;
         const t = e.target;
         const tag = t && t.tagName ? t.tagName.toUpperCase() : "";
         if (tag === "TEXTAREA" || (tag === "INPUT" && t !== slider) || (t && t.isContentEditable)) return;
         const k = e.key.toLowerCase();
+        /* Priority: help -> cheats -> pause -> Escape -> game actions. */
+        if (k === "h" || e.key === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "c" && !online && !helpOpen) { toggleCheats(); e.preventDefault(); return; }
+        if (k === "p" && !online && !helpOpen && !cheatsOpen) { setPaused(); e.preventDefault(); return; }
         if (k === "escape") {
-            if (helpOpen || cheatsOpen) { helpOpen = false; cheatsOpen = false; render(); e.preventDefault(); }
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            e.preventDefault();
             return;
         }
-        if (k === "h" || e.key === "?") { helpOpen = !helpOpen; cheatsOpen = false; render(); e.preventDefault(); return; }
-        if (k === "x" && !online) { cheatsOpen = !cheatsOpen; helpOpen = false; render(); e.preventDefault(); return; }
-        if (helpOpen || cheatsOpen) return;
+        if (uiBlocked()) return;
+        if (k === "x" && !online) { toggleCheats(); e.preventDefault(); return; } /* legacy alias */
+        if (k === "r") { restartGame(); e.preventDefault(); return; }
         const S = game.state;
         if (!S) return;
         const mySeat = mySeatOf(S);
         if (S.phase === "betting" && S.turnIdx === mySeat) {
             const L = legalMoves(S, mySeat);
             if (k === "f") { e.preventDefault(); submitAction({ t: "act", kind: "fold" }); }
-            else if (k === "c") { e.preventDefault(); submitAction({ t: "act", kind: "call" }); }
-            else if (k === "r") { if (L.canRaise) { e.preventDefault(); submitAction({ t: "act", kind: "raise", to: raiseVal }); } }
+            else if (k === "q") { e.preventDefault(); submitAction({ t: "act", kind: "call" }); }
+            else if (k === "b") { if (L.canRaise) { e.preventDefault(); submitAction({ t: "act", kind: "raise", to: raiseVal }); } }
             else if (k === "a") { e.preventDefault(); submitAction({ t: "act", kind: "allin" }); }
             else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
                 if (t === slider) return; /* native range handling */

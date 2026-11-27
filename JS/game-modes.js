@@ -1,0 +1,207 @@
+/* Mode bermain untuk setiap game, dikurasi manual dari source Gaming/*.js.
+ * Flag internal: solo | bot | local2p | online | coop (dipakai dialog launch).
+ * Kategori filter mengikuti tabel "Game mode categories" di halaman Help. */
+export const MODE_OPTIONS = Object.freeze([
+  { value: "all", label: "Semua Mode" },
+  { value: "solo", label: "Solo" },
+  { value: "soloBot", label: "Solo VS Bot" },
+  { value: "coopBot", label: "Coop VS Bot" },
+  { value: "versus", label: "2–4 Player Versus" },
+  { value: "team2v2", label: "2vs2 Team" },
+  { value: "party", label: "Party Games" },
+]);
+
+export const LAUNCH_MODE_INFO = Object.freeze({
+  solo: { value: "solo", icon: "user", title: "Solo", description: "Main sendiri tanpa lawan dan kejar skor terbaikmu." },
+  bot: { value: "ai", icon: "cpu", title: "Solo VS Bot", description: "Hadapi AI lokal di perangkat ini. Mulai sekarang." },
+  local2p: { value: "local", icon: "monitor", title: "2–4 Player Versus (Local)", description: "Bergantian di satu perangkat; pilih mode 2P di menu game bila perlu." },
+  online: { value: "room", icon: "globe", title: "2–4 Player Versus (Online)", description: "Buat room privat dan undang teman dari perangkat lain." },
+  coop: { value: "coop", icon: "users", title: "Coop VS Bot", description: "Kerja sama melawan AI dalam room privat (pilih Co-op di lobby bila tersedia)." },
+});
+
+export const MODE_LABELS = Object.freeze(
+  Object.fromEntries(MODE_OPTIONS.filter((mode) => mode.value !== "all").map((mode) => [mode.value, mode.label]))
+);
+
+/** Label tombol launch, dengan penyesuaian untuk game co-op yang dimainkan online. */
+export function launchModeInfo(mode, flags = []) {
+  const info = LAUNCH_MODE_INFO[mode];
+  if (!info) return null;
+  if (mode === "online" && flags.includes("coop")) {
+    return { ...info, title: "Coop VS Bot (Online)" };
+  }
+  return info;
+}
+
+export const GAME_MODES = Object.freeze({
+  "airplane-combat": ["bot", "online"],
+  "airport-manager": ["bot", "online"],
+  "alien-siege": ["bot", "coop", "online"],
+  "alphabet-learning": ["bot", "online"],
+  "alphabet-match": ["bot", "online"],
+  "arrow-maze": ["bot", "online"],
+  "atom-merge": ["bot", "online"],
+  "badminton": ["bot", "online"],
+  "balloon-pop": ["bot", "online"],
+  "basketball-shot": ["bot", "online"],
+  "battleship": ["bot", "online"],
+  "beat-maker": ["bot", "online"],
+  "blackjack": ["bot", "online"],
+  "block-fill": ["bot", "online"],
+  "block-paint": ["bot", "online"],
+  "block-shift": ["bot", "online"],
+  "boat-slalom": ["bot", "online"],
+  "border-desk": ["solo", "bot", "online"],
+  "bowling": ["bot", "online"],
+  "bubble-shooter": ["bot", "online"],
+  "bunker-prepper": ["bot", "online"],
+  "carrom": ["bot", "online"],
+  "cat-crash": ["solo", "bot", "online"],
+  "cat-vs-dog": ["bot", "online"],
+  "cats-wars": ["bot", "local2p", "online"],
+  "cave-explorer": ["bot", "online"],
+  "checkers": ["bot", "local2p", "online"],
+  "chess": ["bot", "online"],
+  "circuit-sprint": ["bot", "online"],
+  "city-take-over": ["bot", "online"],
+  "clash-village": ["bot", "online"],
+  "coin-flip": ["bot", "online"],
+  "color-block": ["bot", "online"],
+  "color-sort": ["solo", "bot", "online"],
+  "connect-four": ["bot", "online"],
+  "cooking-simulator": ["bot", "online"],
+  "count-master": ["bot", "online"],
+  "count-the-cube": ["bot", "online"],
+  "counting-farm": ["bot", "online"],
+  "crossword-mini": ["bot", "online"],
+  "dice-roller": ["bot", "online"],
+  "domino": ["bot", "online"],
+  "dont-blink": ["bot", "online"],
+  "dots-and-boxes": ["bot", "online"],
+  "drag-strip": ["bot", "online"],
+  "edm-pad": ["solo", "bot", "online"],
+  "emoji-guess": ["bot", "online"],
+  "escape-room": ["bot", "online"],
+  "farkle": ["bot", "online"],
+  "farming-mini": ["bot", "online"],
+  "food-match-swipe": ["bot", "online"],
+  "freecell": ["solo", "bot", "online"],
+  "fruit-slice": ["solo", "bot", "online"],
+  "geography-quiz": ["solo"],
+  "golf-mini": ["solo"],
+  "guess-who": ["solo"],
+  "haunted-house": ["bot", "online"],
+  "hexa-polis": ["bot", "online"],
+  "hill-climb": ["bot", "online"],
+  "hole-io": ["bot", "online"],
+  "jigsaw-puzzle": ["solo", "bot", "online"],
+  "knife-throw": ["solo", "bot", "online"],
+  "lane-rush": ["solo", "bot", "online"],
+  "little-detective": ["solo"],
+  "lost-island": ["bot", "online"],
+  "lucky-wheel": ["bot", "online"],
+  "ludo": ["bot", "online"],
+  "mahjong": ["bot", "online"],
+  "marble-blast": ["solo", "bot", "online"],
+  "math-challenge": ["solo"],
+  "maze-escape": ["bot", "online"],
+  "minesweeper": ["solo"],
+  "mini-city-builder": ["bot", "online"],
+  "mini-dungeon": ["bot", "online"],
+  "mini-gta": ["solo"],
+  "mini-soccer": ["bot", "online"],
+  "mob-control": ["bot", "online"],
+  "monopoly": ["bot", "online"],
+  "music-memory": ["solo"],
+  "nonogram": ["solo"],
+  "number-connect": ["solo", "bot", "online"],
+  "number-hunt": ["solo"],
+  "number-learning": ["bot", "online"],
+  "number-merge": ["solo", "bot", "online"],
+  "odd-one-out": ["bot", "online"],
+  "one-page-quest": ["solo"],
+  "pac-man": ["solo", "bot", "online"],
+  "pairs-memory": ["solo"],
+  "paper-io": ["bot"],
+  "parking-jam": ["solo", "bot", "online"],
+  "pattern-party": ["solo", "bot", "online"],
+  "pemimpin-nusantara": ["solo", "bot", "online"],
+  "periodic-quiz": ["bot", "online"],
+  "petdoku": ["solo", "bot", "online"],
+  "piano-tiles": ["solo", "bot", "online"],
+  "pipe-connect": ["bot", "online"],
+  "poker": ["bot", "online"],
+  "poly-tribes": ["bot", "online"],
+  "pong": ["bot", "online"],
+  "pool": ["solo", "bot", "online"],
+  "rally-racer": ["solo", "bot", "local2p", "online"],
+  "remember-where": ["solo", "bot", "online"],
+  "reversi": ["bot"],
+  "rise-of-empires": ["bot", "online"],
+  "road-crossing": ["bot", "online"],
+  "rock-paper-scissors": ["bot"],
+  "roulette": ["bot", "online"],
+  "screw-out": ["solo", "bot", "online"],
+  "shape-sorter": ["bot", "online"],
+  "shikaku": ["bot", "online"],
+  "ship-combat": ["bot", "online"],
+  "sliding-puzzle": ["solo"],
+  "sling-puck": ["bot", "online"],
+  "slot-machine": ["solo", "bot", "online"],
+  "snake": ["solo", "bot", "online"],
+  "snakes-and-ladders": ["bot", "online"],
+  "snakes-io": ["bot", "online"],
+  "solitaire": ["bot", "online"],
+  "sorry": ["bot", "online"],
+  "space-invaders": ["solo", "bot", "online"],
+  "space-shooter": ["solo", "bot", "online"],
+  "sprout-defense": ["bot", "local2p", "online"],
+  "stack-tower": ["bot", "online"],
+  "star-catcher": ["solo", "bot", "online"],
+  "stickman-beat-em-up": ["bot", "coop", "online"],
+  "stickman-fighter": ["bot", "online"],
+  "stickman-hack-slash": ["bot", "online"],
+  "stickman-ninja": ["solo", "bot", "online"],
+  "stickman-shooter": ["bot", "online"],
+  "stickman-war": ["bot", "online"],
+  "sudoku": ["solo", "bot", "online"],
+  "sword-master": ["solo", "online"],
+  "tank-battle": ["bot", "online"],
+  "tank-combat": ["bot", "online"],
+  "tap-match": ["bot", "online"],
+  "target-24": ["solo"],
+  "tennis": ["bot", "online"],
+  "tetris": ["solo", "bot", "online"],
+  "tic-tac-toe": ["bot", "online"],
+  "tower-guard": ["bot", "online"],
+  "traffic-control": ["solo", "bot", "online"],
+  "true-or-false": ["bot", "online"],
+  "uno": ["bot", "online"],
+  "virtual-piano": ["solo"],
+  "war-of-survivors": ["solo", "bot", "online"],
+  "water-sort": ["solo", "bot", "online"],
+  "whack-a-mole": ["bot", "online"],
+  "word-builder": ["bot", "online"],
+  "word-chain": ["bot", "online"],
+  "word-guess": ["bot", "online"],
+  "word-scramble": ["bot", "online"],
+  "word-search": ["bot", "online"],
+  "wordle": ["bot", "online"],
+  "yahtzee": ["solo", "bot", "online"],
+  "zombie-survival": ["solo", "bot", "online"],
+});
+
+/** Turunan kategori Help dari flag mode mentah sebuah game. */
+export function gameModeCategories(game) {
+  const flags = GAME_MODES[game?.id] || [];
+  const coop = flags.includes("coop");
+  const categories = new Set();
+  for (const flag of flags) {
+    if (flag === "solo") categories.add("solo");
+    else if (flag === "bot") categories.add("soloBot");
+    else if (flag === "coop") categories.add("coopBot");
+    else if (flag === "local2p") categories.add("versus");
+    else if (flag === "online") categories.add(coop ? "coopBot" : "versus");
+  }
+  return [...categories];
+}

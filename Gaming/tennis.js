@@ -4,6 +4,8 @@
   Setelah menambah/mengubah file ini jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "tennis", // harus sama dengan nama file (tanpa .js)
     name: "Tennis",
@@ -226,100 +228,128 @@ export function mount(root, context = {}) {
     /* ---------- shell ---------- */
     root.innerHTML = `
 <style>
-.tn-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#2563eb;--good:#16a34a;--bad:#dc2626;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
-.tn-app .tn-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
-.tn-app .tn-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;font-size:12px;color:var(--mut);letter-spacing:.02em}
+.tn-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--paper:#ffffff;--acc:#2563eb;--good:#16a34a;--bad:#dc2626;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);width:100%}
+.tn-app [hidden]{display:none!important}
+.tn-app *{box-sizing:border-box}
+.tn-app .tn-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.tn-app .tn-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;min-height:32px;font-size:12px;color:var(--mut);letter-spacing:.02em}
 .tn-app .tn-chip b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:700}
 .tn-app .tn-score .tn-num{font-size:16px}
-.tn-app .tn-dot{width:7px;height:7px;border-radius:50%;background:var(--good);display:inline-block}
-.tn-app .tn-spacer{flex:1}
-.tn-app .tn-icon{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer}
-.tn-app .tn-icon:hover{background:#f8fafc}
-.tn-app .tn-icon[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
-.tn-app .tn-panel{position:relative;padding:0}
-.tn-app .tn-courtwrap{position:relative;width:min(100%,470px);margin:0 auto}
-.tn-app .tn-court{display:block;width:100%;border-radius:18px;touch-action:none;cursor:crosshair;border:1px solid var(--line);background:#eef2f6}
-.tn-app .tn-banner{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);background:rgba(15,23,42,.92);color:#fff;font-weight:700;font-size:17px;padding:8px 18px;border-radius:999px;opacity:0;pointer-events:none;white-space:nowrap;z-index:4}
+.tn-app .tn-dot{width:7px;height:7px;border-radius:50%;background:var(--good);display:inline-block;flex:none}
+.tn-app .tn-spacer{flex:1 1 8px}
+.tn-app .tn-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:6px 10px;min-height:34px;font-size:11px;font-weight:600;cursor:pointer;transition:background .16s,border-color .16s}
+.tn-app .tn-btn svg{flex:none;display:block}
+.tn-app .tn-btn:hover{background:#f8fafc;border-color:#94a3b8}
+.tn-app .tn-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.tn-app .tn-btn[aria-pressed="true"],.tn-app .tn-btn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tn-app .tn-btn:disabled{opacity:.45;cursor:not-allowed}
+.tn-app .tn-btn-label{white-space:nowrap}
+.tn-app.game-fill>.tn-panel[data-board]{display:flex;align-items:center;justify-content:center;position:relative;padding:0;min-height:0;border:1px solid var(--line);border-radius:10px;background:#eef2f6;overflow:hidden}
+.tn-app .tn-court{display:block;height:100%;width:auto;max-width:100%;aspect-ratio:600/800;border-radius:9px;touch-action:none;cursor:crosshair;background:#eef2f6}
+.tn-app .tn-banner{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);background:rgba(15,23,42,.92);color:#fff;font-weight:700;font-size:16px;padding:8px 12px;border-radius:9px;opacity:0;pointer-events:none;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;z-index:4}
 .tn-app .tn-banner.good{background:rgba(22,163,74,.94)}
 .tn-app .tn-banner.bad{background:rgba(220,38,38,.92)}
 .tn-app .tn-banner.show{animation:tn-pop 1.15s ease forwards}
 @keyframes tn-pop{0%{opacity:0;transform:translate(-50%,-40%)}15%{opacity:1;transform:translate(-50%,-50%)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-62%)}}
-.tn-app .tn-toast{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:#fff;border:1px solid var(--line);color:var(--ink);font-size:12px;font-weight:600;padding:6px 14px;border-radius:999px;opacity:0;pointer-events:none;white-space:nowrap;box-shadow:0 2px 10px rgba(15,23,42,.08);z-index:4}
+.tn-app .tn-toast{position:absolute;left:50%;top:8px;transform:translateX(-50%);background:#fff;border:1px solid var(--line);color:var(--ink);font-size:12px;font-weight:600;padding:6px 12px;border-radius:9px;opacity:0;pointer-events:none;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;z-index:4}
 .tn-app .tn-toast.show{animation:tn-toast 2.6s ease forwards}
 @keyframes tn-toast{0%{opacity:0;transform:translate(-50%,-6px)}12%{opacity:1;transform:translate(-50%,0)}82%{opacity:1}100%{opacity:0}}
-.tn-app .tn-power{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);width:72%;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:12px;padding:8px 12px;box-shadow:0 2px 10px rgba(15,23,42,.08);z-index:3}
-.tn-app .tn-power-top{display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--mut);margin-bottom:5px}
+.tn-app .tn-power{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);width:80%;max-width:100%;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;padding:8px 12px;z-index:3}
+.tn-app .tn-power-top{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:600;color:var(--mut);margin-bottom:4px}
 .tn-app .tn-power-bar{position:relative;height:10px;border-radius:999px;background:linear-gradient(90deg,#e2e8f0 0 45%,#bbf7d0 45% 85%,#fecaca 85% 100%)}
 .tn-app .tn-power-mark{position:absolute;top:-3px;width:3px;height:16px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
-.tn-app .tn-power-hint{font-size:10.5px;color:var(--mut);margin-top:5px;text-align:center}
-.tn-app .tn-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(248,250,252,.86);backdrop-filter:blur(5px);border-radius:18px;z-index:5}
-.tn-app .tn-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;width:min(88%,340px);box-shadow:0 8px 30px rgba(15,23,42,.1);text-align:center}
-.tn-app .tn-card h3{margin:0 0 6px;font-size:20px}
+.tn-app .tn-power-hint{font-size:10.5px;color:var(--mut);margin-top:4px;text-align:center;line-height:1.4}
+.tn-app .tn-ov{position:absolute;inset:0;display:grid;place-items:center;padding:12px;background:rgba(248,250,252,.86);backdrop-filter:blur(4px);border-radius:10px;z-index:5}
+.tn-app .tn-card{display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;width:min(88%,380px);max-height:100%;text-align:center}
+.tn-app .tn-card h3{margin:0 0 8px;font-size:19px}
 .tn-app .tn-card p{margin:0 0 12px;font-size:13px;color:var(--mut);line-height:1.5}
-.tn-app .tn-btn{display:inline-block;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:999px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;margin:3px}
-.tn-app .tn-btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
-.tn-app .tn-btn:hover{opacity:.9}
-.tn-app .tn-help{max-height:78%;overflow:auto;text-align:left;width:min(92%,380px)}
+.tn-app .tn-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;text-align:left}
+.tn-app .tn-head h3{margin:0;font-size:17px}
+.tn-app .tn-foot{flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px;margin-top:12px;text-align:center}
+.tn-app .tn-card .tn-btn{display:inline-block;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:9px;padding:8px 16px;min-height:44px;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .16s}
+.tn-app .tn-card .tn-btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+.tn-app .tn-card .tn-btn:hover{opacity:.9}
+.tn-app .tn-help,.tn-app .tn-cheats{flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.tn-app .tn-help{padding-right:4px;width:100%}
 .tn-app .tn-help h4{margin:12px 0 4px;font-size:13px}
+.tn-app .tn-help h4:first-child{margin-top:4px}
 .tn-app .tn-help ul{margin:0;padding-left:18px;font-size:12.5px;color:#334155;line-height:1.55}
 .tn-app kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px;background:#f8fafc;font-family:inherit}
-.tn-app .tn-cheats{position:absolute;top:10px;right:10px;z-index:6;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;width:222px;box-shadow:0 8px 30px rgba(15,23,42,.12);text-align:left}
-.tn-app .tn-cheats h4{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
-.tn-app .tn-cheats label{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:4px 0;color:#334155;cursor:pointer}
-.tn-app .tn-cheats input{accent-color:var(--acc)}
-.tn-app .tn-cheat-acts{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
-.tn-app .tn-mini{border:1px solid var(--line);background:#f8fafc;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;color:var(--ink)}
-.tn-app .tn-vpad{display:flex;justify-content:space-between;align-items:center;width:min(100%,470px);margin:12px auto 0;user-select:none;-webkit-user-select:none}
-.tn-app .tn-dpad{display:grid;grid-template-areas:". u ." "l . r" ". d .";gap:6px}
-.tn-app .tn-db{width:48px;height:48px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:16px;color:var(--ink);touch-action:none;cursor:pointer}
+.tn-app .tn-cheats{padding:0 2px}
+.tn-app .tn-cheats label{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:36px;font-size:12.5px;padding:4px 0;color:#334155;cursor:pointer;border-top:1px solid var(--line)}
+.tn-app .tn-cheats input{accent-color:var(--acc);flex:none}
+.tn-app .tn-cheat-acts{display:flex;flex-wrap:wrap;gap:4px}
+.tn-app .tn-mini{border:1px solid var(--line);background:#f8fafc;border-radius:8px;padding:6px 10px;min-height:36px;font-size:11px;font-weight:600;cursor:pointer;color:var(--ink)}
+.tn-app .tn-vpad{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;width:min(100%,470px);margin:8px auto 0;user-select:none;-webkit-user-select:none}
+.tn-app .tn-dpad{display:grid;grid-template-areas:". u ." "l . r" ". d .";gap:8px}
+.tn-app .tn-db{width:48px;height:48px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:16px;color:var(--ink);touch-action:none;cursor:pointer}
 .tn-app .tn-db:active{background:#f1f5f9}
-.tn-app .tn-swing{width:84px;height:84px;border-radius:50%;border:none;background:var(--ink);color:#fff;font-weight:800;font-size:13px;letter-spacing:.06em;touch-action:none;cursor:pointer;box-shadow:0 4px 14px rgba(15,23,42,.25)}
+.tn-app .tn-swing{width:84px;height:84px;border-radius:50%;border:none;background:var(--ink);color:#fff;font-weight:800;font-size:13px;letter-spacing:.06em;touch-action:none;cursor:pointer}
 .tn-app .tn-swing:active{transform:scale(.96)}
 .tn-app .tn-good{color:var(--good)}
 .tn-app .tn-bad{color:var(--bad)}
-@media (prefers-reduced-motion:reduce){.tn-app .tn-banner.show,.tn-app .tn-toast.show{animation-duration:.01s}}
+@media (max-width:560px){
+  .tn-app .tn-banner{font-size:14px}
+  .tn-app .tn-card{padding:12px}
+  .tn-app .tn-power{width:80%}
+}
+@media (pointer:coarse){.tn-app button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.tn-app *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* --- layout redesign overrides (keep last) --- */
+@media (max-width:640px){
+  .tn-app .tn-hud{gap:5px 6px;margin-bottom:6px}
+  .tn-app .tn-hud .tn-chip{padding:4px 6px;font-size:9px;min-height:28px}
+  .tn-app .tn-hud .tn-chip[data-low]{display:none}
+  .tn-app .tn-hud .tn-btn{min-height:32px;padding:5px 9px;font-size:9px;border-radius:8px}
+  .tn-app .tn-hud .tn-btn-label,.tn-app .tn-hud .tn-spacer{display:none}
+  .tn-app.game-fill>.tn-panel[data-board]{flex:0 0 auto;min-height:min(70dvh,620px)}
+  .tn-app .tn-ov{padding:8px}
+  .tn-app .tn-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .tn-app .tn-help,.tn-app .tn-cheats{scrollbar-width:none}
+  .tn-app .tn-help::-webkit-scrollbar,.tn-app .tn-cheats::-webkit-scrollbar{display:none}
+  .tn-app .tn-foot{margin-top:8px}
+  .tn-app .tn-mini{min-height:32px;padding:4px 8px}
+}
 </style>
-<div class="game-app tn-app">
-  <div class="game-intro">
-    <div><h2>Tennis</h2><p>Tenis top-down minimalis - posisikan badan, atur timing ayunan, dan charge servis di zona hijau.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
-  </div>
+<div class="game-app tn-app game-fill" data-tn>
   <div class="tn-hud">
+    <span class="tn-chip tn-status"><i class="tn-dot"></i><b data-status>Siap</b></span>
     <span class="tn-chip tn-score"><i class="tn-dot" data-srv-you hidden></i><b data-name-you>Kamu</b> <b class="tn-num" data-pts-you>0</b><span>&middot;</span><b class="tn-num" data-pts-opp>0</b> <b data-name-opp>CPU</b><i class="tn-dot" data-srv-opp hidden></i></span>
     <span class="tn-chip">Game <b data-games>0-0</b></span>
     <span class="tn-chip" data-state-chip hidden></span>
-    <span class="tn-chip" data-level-chip></span>
+    <span class="tn-chip" data-low data-level-chip></span>
     <span class="tn-chip" data-cheat-chip hidden>CHEAT AKTIF</span>
     <span class="tn-spacer"></span>
-    <button class="tn-icon" type="button" data-help aria-label="Cara bermain">?</button>
-    <button class="tn-icon" type="button" data-padtoggle aria-pressed="false">Pad</button>
-    <button class="tn-icon" type="button" data-cheatbtn aria-pressed="false">Cheat</button>
-    <button class="tn-icon" type="button" data-restart>Ulang</button>
+    <button class="tn-btn" type="button" data-help aria-label="Cara bermain" title="Cara bermain (H)">${iconSVG("helpCircle", { size: 14 })}<span class="tn-btn-label">Bantuan</span></button>
+    <button class="tn-btn" type="button" data-cheats aria-label="Cheat" title="Cheat (C)">${iconSVG("wrench", { size: 14 })}<span class="tn-btn-label">Cheat</span></button>
+    <button class="tn-btn" type="button" data-pause aria-label="Jeda" title="Jeda (P)">${iconSVG("pause", { size: 14 })}<span class="tn-btn-label">Jeda</span></button>
+    <button class="tn-btn" type="button" data-restart aria-label="Ulangi pertandingan" title="Ulangi (R)">${iconSVG("refresh", { size: 14 })}<span class="tn-btn-label">Ulang</span></button>
+    <button class="tn-btn" type="button" data-padtoggle aria-pressed="false" aria-label="Tampilkan tombol sentuh" title="Tombol sentuh">${iconSVG("smartphone", { size: 14 })}<span class="tn-btn-label">Pad</span></button>
+    <button class="tn-btn" type="button" data-exit aria-label="Keluar game" title="Keluar game">${iconSVG("logOut", { size: 14 })}<span class="tn-btn-label">Keluar</span></button>
   </div>
   <section class="game-panel tn-panel" data-board>
-    <div class="tn-courtwrap">
-      <svg class="tn-court" data-court viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Lapangan tenis">
-        <g data-world><g data-static></g><g data-net></g><g data-dyn></g></g>
-      </svg>
-      <div class="tn-banner" data-banner aria-live="polite"></div>
-      <div class="tn-toast" data-toast></div>
-      <div class="tn-power" data-power hidden>
-        <div class="tn-power-top"><span>Power servis</span><span data-power-pct>0%</span></div>
-        <div class="tn-power-bar"><i class="tn-power-mark" data-power-mark style="left:0%"></i></div>
-        <div class="tn-power-hint">Tahan untuk charge &middot; lepas di zona hijau &middot; &larr;/&rarr; untuk arah</div>
+    <svg class="tn-court" data-court viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Lapangan tenis">
+      <g data-world><g data-static></g><g data-net></g><g data-dyn></g></g>
+    </svg>
+    <div class="tn-banner" data-banner aria-live="polite"></div>
+    <div class="tn-toast" data-toast></div>
+    <div class="tn-power" data-power hidden>
+      <div class="tn-power-top"><span>Power servis</span><span data-power-pct>0%</span></div>
+      <div class="tn-power-bar"><i class="tn-power-mark" data-power-mark style="left:0%"></i></div>
+      <div class="tn-power-hint">Tahan untuk charge &middot; lepas di zona hijau &middot; &larr;/&rarr; untuk arah</div>
+    </div>
+    <div class="tn-ov" data-ov-start>
+      <div class="tn-card">
+        <div class="tn-head"><h3>Tennis</h3></div>
+        <p data-start-info></p>
+        <p data-start-best style="font-size:12px"></p>
+        <div class="tn-foot"><button class="tn-btn" type="button" data-start>Mulai pertandingan</button><button class="tn-btn ghost" type="button" data-help>Cara bermain</button></div>
       </div>
-      <div class="tn-ov" data-ov-start>
-        <div class="tn-card">
-          <h3>Tennis</h3>
-          <p data-start-info></p>
-          <p data-start-best style="font-size:12px"></p>
-          <button class="tn-btn" type="button" data-start>Mulai pertandingan</button>
-          <button class="tn-btn ghost" type="button" data-help>Cara bermain</button>
-        </div>
-      </div>
-      <div class="tn-ov" data-ov-help hidden>
-        <div class="tn-card tn-help">
-          <h3>Cara bermain</h3>
+    </div>
+    <div class="tn-ov" data-ov-help hidden>
+      <div class="tn-card">
+        <div class="tn-head"><h3>Cara bermain</h3><button class="tn-btn" type="button" data-help-close aria-label="Tutup">Tutup</button></div>
+        <div class="tn-help">
           <h4>Tujuan</h4>
           <ul><li>Poin &rarr; game &rarr; set. Skor 0/15/30/40, deuce &amp; advantage.</li>
           <li>Pertama ke 4 game (selisih 2, sudden death di 4-4) memenangkan set.</li></ul>
@@ -338,28 +368,42 @@ export function mount(root, context = {}) {
           <h4>Level &amp; online</h4>
           <ul><li>Tiap set menang &rarr; level baru acak (permukaan &amp; gaya bot) yang dijamin bisa diselesaikan.</li>
           <li>Online: posisi (atas/bawah) &amp; servis pertama diundi acak; tampilan diputar agar kamu selalu di bawah.</li>
-          <li>Cheat hanya tersedia offline.</li></ul>
-          <div style="text-align:center;margin-top:14px"><button class="tn-btn" type="button" data-help-close>Mengerti</button></div>
+          <li>Cheat hanya tersedia offline.</li>
+          <li>Tombol: <kbd>H</kbd> bantuan, <kbd>C</kbd> cheat, <kbd>P</kbd> jeda, <kbd>R</kbd> ulang, <kbd>Esc</kbd> tutup.</li></ul>
         </div>
+        <div class="tn-foot"><button class="tn-btn" type="button" data-help-close>Mengerti</button></div>
       </div>
-      <div class="tn-ov" data-ov-over hidden>
-        <div class="tn-card">
-          <h3 data-over-title></h3>
-          <p data-over-sub></p>
+    </div>
+    <div class="tn-ov" data-ov-over hidden>
+      <div class="tn-card">
+        <div class="tn-head"><h3 data-over-title></h3></div>
+        <p data-over-sub></p>
+        <div class="tn-foot">
           <button class="tn-btn" type="button" data-next hidden>Level berikutnya</button>
           <button class="tn-btn ghost" type="button" data-again>Coba lagi</button>
           <button class="tn-btn ghost" type="button" data-reroll hidden>Lawan baru</button>
         </div>
       </div>
-      <div class="tn-cheats" data-cheats hidden>
-        <h4>Cheat <button class="tn-mini" type="button" data-cheats-close>Tutup</button></h4>
-        <label>Auto-pukul <input type="checkbox" data-cheat="auto"></label>
-        <label>Slow motion <input type="checkbox" data-cheat="slow"></label>
-        <label>Jangkauan lebar <input type="checkbox" data-cheat="reach"></label>
-        <label>Servis sempurna <input type="checkbox" data-cheat="perfect"></label>
-        <label>Lari cepat <input type="checkbox" data-cheat="speed"></label>
-        <label>CPU lemah <input type="checkbox" data-cheat="weak"></label>
-        <div class="tn-cheat-acts">
+    </div>
+    <div class="tn-ov" data-ov-pause hidden>
+      <div class="tn-card">
+        <div class="tn-head"><h3>Dijeda</h3></div>
+        <p>Waktu, bot, dan animasi dihentikan. Tekan <kbd>P</kbd> atau lanjutkan untuk bermain.</p>
+        <div class="tn-foot"><button class="tn-btn" type="button" data-resume>Lanjutkan</button></div>
+      </div>
+    </div>
+    <div class="tn-ov" data-ov-cheat hidden>
+      <div class="tn-card">
+        <div class="tn-head"><h3>Cheat</h3><button class="tn-btn" type="button" data-cheats-close aria-label="Tutup">Tutup</button></div>
+        <div class="tn-cheats">
+          <label>Auto-pukul <input type="checkbox" data-cheat="auto"></label>
+          <label>Slow motion <input type="checkbox" data-cheat="slow"></label>
+          <label>Jangkauan lebar <input type="checkbox" data-cheat="reach"></label>
+          <label>Servis sempurna <input type="checkbox" data-cheat="perfect"></label>
+          <label>Lari cepat <input type="checkbox" data-cheat="speed"></label>
+          <label>CPU lemah <input type="checkbox" data-cheat="weak"></label>
+        </div>
+        <div class="tn-foot tn-cheat-acts">
           <button class="tn-mini" type="button" data-cheat-act="point">+Poin</button>
           <button class="tn-mini" type="button" data-cheat-act="game">+Game</button>
           <button class="tn-mini" type="button" data-cheat-act="set">Menang set</button>
@@ -367,17 +411,16 @@ export function mount(root, context = {}) {
         </div>
       </div>
     </div>
-    <div class="tn-vpad" data-vpad hidden>
-      <div class="tn-dpad">
-        <button class="tn-db" type="button" data-vk="up" style="grid-area:u" aria-label="Atas">&#9650;</button>
-        <button class="tn-db" type="button" data-vk="left" style="grid-area:l" aria-label="Kiri">&#9664;</button>
-        <button class="tn-db" type="button" data-vk="right" style="grid-area:r" aria-label="Kanan">&#9654;</button>
-        <button class="tn-db" type="button" data-vk="down" style="grid-area:d" aria-label="Bawah">&#9660;</button>
-      </div>
-      <button class="tn-swing" type="button" data-vk="swing" aria-label="Ayun / Servis">SWING</button>
-    </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar game</button></div>
+  <div class="tn-vpad" data-vpad hidden>
+    <div class="tn-dpad">
+      <button class="tn-db" type="button" data-vk="up" style="grid-area:u" aria-label="Atas">&#9650;</button>
+      <button class="tn-db" type="button" data-vk="left" style="grid-area:l" aria-label="Kiri">&#9664;</button>
+      <button class="tn-db" type="button" data-vk="right" style="grid-area:r" aria-label="Kanan">&#9654;</button>
+      <button class="tn-db" type="button" data-vk="down" style="grid-area:d" aria-label="Bawah">&#9660;</button>
+    </div>
+    <button class="tn-swing" type="button" data-vk="swing" aria-label="Ayun / Servis">SWING</button>
+  </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
@@ -395,6 +438,8 @@ export function mount(root, context = {}) {
     const ovStart = $("[data-ov-start]");
     const ovHelp = $("[data-ov-help]");
     const ovOver = $("[data-ov-over]");
+    const ovPause = $("[data-ov-pause]");
+    const ovCheat = $("[data-ov-cheat]");
     const startInfo = $("[data-start-info]");
     const startBest = $("[data-start-best]");
     const startBtn = $("[data-start]");
@@ -403,8 +448,8 @@ export function mount(root, context = {}) {
     const nextBtn = $("[data-next]");
     const againBtn = $("[data-again]");
     const rerollBtn = $("[data-reroll]");
-    const cheatsEl = $("[data-cheats]");
-    const cheatBtn = $("[data-cheatbtn]");
+    const cheatsBtn = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
     const cheatChip = $("[data-cheat-chip]");
     const padEl = $("[data-vpad]");
     const padToggle = $("[data-padtoggle]");
@@ -423,6 +468,16 @@ export function mount(root, context = {}) {
     let pointer = { down: false, x: 0, y: 0, charging: false };
     let chargingLocal = false, padSwing = false;
     let lastSentDir = { x: 0, y: 0 }, lastDirSend = 0, lastGuestInput = 0, helloSent = false;
+    let helpOpen = false, cheatsOpen = false, paused = false, overVisible = false;
+    let timeShift = 0, pauseStarted = 0, frozenNow = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("tennisHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("tennisHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+    const clock = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+    const nowMs = () => clock() - timeShift;
     const cheats = { auto: false, slow: false, reach: false, perfect: false, speed: false, weak: false };
     const view = { trail: [], rings: [], sparks: [], netT: 0, squash: 0, msgId: 0, toastId: 0, overTimer: 0, vp: [{ x: 300, y: 660 }, { x: 300, y: 140 }], vb: null, staticKey: "" };
     let best = 0;
@@ -733,7 +788,7 @@ export function mount(root, context = {}) {
             case "input": {
                 pl.input.x = clamp(Number(action.dx) || 0, -1, 1);
                 pl.input.y = clamp(Number(action.dy) || 0, -1, 1);
-                if (actor === 1) lastGuestInput = performance.now();
+                if (actor === 1) lastGuestInput = nowMs();
                 break;
             }
             case "swing":
@@ -777,7 +832,7 @@ export function mount(root, context = {}) {
         const pl = S.players[mySide()];
         if (!online && cheats.perfect && S.server === mySide()) return 0.65;
         if (isHost) return pl.charge;
-        const el = Math.min(0.3, (performance.now() - snapAt) / 1000);
+        const el = Math.min(0.3, (nowMs() - snapAt) / 1000);
         return chargingLocal ? clamp(pl.charge + el / CHARGE_TIME, 0, 1) : pl.charge;
     }
     function pressAction() {
@@ -821,7 +876,17 @@ export function mount(root, context = {}) {
         if (!active) return;
         const k = e.code;
         if (k === "ArrowLeft" || k === "ArrowRight" || k === "ArrowUp" || k === "ArrowDown" || k === "Space") e.preventDefault();
-        if (k === "Escape") { closeOverlays(); return; }
+        if (k === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (k === "KeyP" || k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            else if (k === "KeyP") setPaused(true);
+            e.preventDefault(); return;
+        }
+        if (helpOpen || cheatsOpen || paused) return;
+        if (k === "KeyR") { restartMatch(); e.preventDefault(); return; }
         if (k === "Enter" && !ovStart.hidden) { begin(); return; }
         if (k === "Space" && !held[k]) pressAction();
         held[k] = true;
@@ -830,7 +895,7 @@ export function mount(root, context = {}) {
         held[e.code] = false;
         if (e.code === "Space") releaseAction();
     }
-    function onBlur() { held = {}; vpad.up = vpad.down = vpad.left = vpad.right = false; pointer.down = false; }
+    function onBlur() { clearInputs(); }
 
     function onCourtDown(e) {
         if (!active || !S) return;
@@ -1068,7 +1133,8 @@ export function mount(root, context = {}) {
         nextBtn.hidden = online || w !== me;
         againBtn.textContent = online ? "Rematch" : (w === me ? "Ulangi level" : "Coba lagi");
         rerollBtn.hidden = online || w === me;
-        ovOver.hidden = false;
+        overVisible = true;
+        syncOverlays();
     }
 
     function render(now) {
@@ -1076,6 +1142,7 @@ export function mount(root, context = {}) {
         const key = S ? S.level.surf.id : "hard";
         if (key !== view.staticKey) { view.staticKey = key; renderStatic(); }
         updateHud();
+        syncOverlays();
         if (!S) { dynG.innerHTML = ""; return; }
         if (S.msg && S.msg.id !== view.msgId) {
             view.msgId = S.msg.id;
@@ -1099,8 +1166,7 @@ export function mount(root, context = {}) {
             powerMark.style.left = (p * 100).toFixed(1) + "%";
             powerPct.textContent = Math.round(p * 100) + "%";
         }
-        ovStart.hidden = S.phase !== "idle";
-        if (S.phase !== "over") ovOver.hidden = true;
+        if (S.phase !== "over") overVisible = false;
         renderDyn(now);
     }
 
@@ -1114,53 +1180,107 @@ export function mount(root, context = {}) {
     }
 
     /* ---------- controls ---------- */
+    function syncOverlays() {
+        ovHelp.hidden = !helpOpen;
+        ovCheat.hidden = !cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || cheatsOpen || helpOpen;
+        ovStart.hidden = !S || S.phase !== "idle" || cheatsOpen || helpOpen || paused;
+        ovOver.hidden = !overVisible || cheatsOpen || helpOpen || paused;
+        if (cheatsBtn) cheatsBtn.setAttribute("aria-pressed", cheatsOpen ? "true" : "false");
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".tn-btn-label");
+            if (label) label.textContent = paused ? "Lanjut" : "Jeda";
+            pauseBtn.setAttribute("aria-label", paused ? "Lanjutkan" : "Jeda");
+            pauseBtn.setAttribute("title", paused ? "Lanjutkan (P)" : "Jeda (P)");
+            pauseBtn.disabled = !S || S.phase === "idle" || S.phase === "over" || (online && !isHost);
+        }
+    }
+    function clearInputs() {
+        held = {};
+        vpad.up = vpad.down = vpad.left = vpad.right = false;
+        pointer.down = false; pointer.charging = false;
+        chargingLocal = false; padSwing = false;
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        clearInputs();
+        syncOverlays();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        syncOverlays();
+    }
+    function setPaused(on) {
+        if (!S || (online && !isHost) || on === paused) return;
+        if (on && (S.phase === "idle" || S.phase === "over")) return;
+        paused = on;
+        if (paused) {
+            frozenNow = nowMs();
+            pauseStarted = clock();
+            clearInputs();
+            if (view.overTimer) { clearTimeout(view.overTimer); view.overTimer = 0; }
+        } else {
+            /* Resume: geser semua penanda waktu agar tidak loncat setelah jeda. */
+            timeShift += clock() - pauseStarted;
+        }
+        syncOverlays();
+    }
     function begin() {
         if (online && !isHost) return;
+        if (paused) setPaused(false);
         makeMatch(S ? S.levelNum : 1, S ? S.level : generateLevel(1, randSeed()), S ? S.names : defaultNames());
-        ovStart.hidden = true; ovOver.hidden = true;
+        overVisible = false;
+        syncOverlays();
     }
     function nextLevel() {
         const n = S.levelNum + 1;
         makeMatch(n, generateLevel(n, randSeed()), S.names);
         toastMsg("level", -1);
-        ovOver.hidden = true;
+        overVisible = false;
+        syncOverlays();
     }
     function retryLevel() {
-        if (online) { submitAction({ t: "rematch" }); ovOver.hidden = true; return; }
+        if (paused) setPaused(false);
+        if (online) { submitAction({ t: "rematch" }); overVisible = false; syncOverlays(); return; }
         makeMatch(S.levelNum, S.level, S.names);
-        ovOver.hidden = true;
+        overVisible = false;
+        syncOverlays();
     }
     function rerollLevel() {
         makeMatch(S.levelNum, generateLevel(S.levelNum, randSeed()), S.names);
         toastMsg("reroll", -1);
-        ovOver.hidden = true;
+        overVisible = false;
+        syncOverlays();
     }
-    function closeOverlays() { ovHelp.hidden = true; cheatsEl.hidden = true; cheatBtn.setAttribute("aria-pressed", "false"); }
+    function restartMatch() {
+        if (!S) return;
+        if (paused) setPaused(false);
+        if (online && !isHost) submitAction({ t: "rematch" });
+        else makeMatch(S.levelNum, S.level, S.names);
+        overVisible = false;
+        syncOverlays();
+    }
     function setPadVisible(v) { padEl.hidden = !v; padToggle.setAttribute("aria-pressed", v ? "true" : "false"); }
     function updateCheatChip() { cheatChip.hidden = online || !Object.keys(cheats).some((k) => cheats[k]); }
 
     function handleClick(e) {
-        const b = e.target.closest("[data-exit],[data-start],[data-help],[data-help-close],[data-restart],[data-next],[data-again],[data-reroll],[data-cheatbtn],[data-cheats-close],[data-padtoggle],[data-cheat-act]");
+        const b = e.target.closest("[data-exit],[data-start],[data-help],[data-help-close],[data-restart],[data-next],[data-again],[data-reroll],[data-cheats],[data-cheats-close],[data-pause],[data-resume],[data-padtoggle],[data-cheat-act]");
         if (!b) return;
         if (b.hasAttribute("data-exit")) { onExit(); return; }
         if (b.hasAttribute("data-start")) { begin(); return; }
-        if (b.hasAttribute("data-help")) { ovHelp.hidden = false; return; }
-        if (b.hasAttribute("data-help-close")) { ovHelp.hidden = true; return; }
-        if (b.hasAttribute("data-restart")) {
-            if (online && !isHost) submitAction({ t: "rematch" });
-            else makeMatch(S.levelNum, S.level, S.names);
-            ovOver.hidden = true; return;
-        }
+        if (b.hasAttribute("data-help")) { toggleHelp(true); return; }
+        if (b.hasAttribute("data-help-close")) { toggleHelp(false); return; }
+        if (b.hasAttribute("data-restart")) { restartMatch(); return; }
         if (b.hasAttribute("data-next")) { nextLevel(); return; }
         if (b.hasAttribute("data-again")) { retryLevel(); return; }
         if (b.hasAttribute("data-reroll")) { rerollLevel(); return; }
-        if (b.hasAttribute("data-cheatbtn")) {
-            if (online) return;
-            cheatsEl.hidden = !cheatsEl.hidden;
-            cheatBtn.setAttribute("aria-pressed", cheatsEl.hidden ? "false" : "true");
-            return;
-        }
-        if (b.hasAttribute("data-cheats-close")) { cheatsEl.hidden = true; cheatBtn.setAttribute("aria-pressed", "false"); return; }
+        if (b.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (b.hasAttribute("data-cheats-close")) { toggleCheats(false); return; }
+        if (b.hasAttribute("data-pause")) { setPaused(!paused); return; }
+        if (b.hasAttribute("data-resume")) { setPaused(false); return; }
         if (b.hasAttribute("data-padtoggle")) { setPadVisible(padEl.hidden); return; }
         if (b.hasAttribute("data-cheat-act")) {
             if (online || !isHost || !S) return;
@@ -1210,7 +1330,7 @@ export function mount(root, context = {}) {
 
     const coarse = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) || "ontouchstart" in window;
     setPadVisible(coarse);
-    if (online) { cheatBtn.hidden = true; }
+    if (online) { cheatsBtn.hidden = true; }
 
     /* ---------- frame ---------- */
     function frame(t) {
@@ -1219,8 +1339,8 @@ export function mount(root, context = {}) {
         const dt = Math.min(0.033, (t - lastT) / 1000);
         lastT = t;
         if (!active) return;
-        const now = performance.now();
-        if (S) {
+        const now = paused ? frozenNow : nowMs();
+        if (S && !paused) {
             gatherInput(now);
             if (isHost) {
                 if (S.phase !== "idle" && S.phase !== "over") update(dt);
@@ -1233,12 +1353,12 @@ export function mount(root, context = {}) {
             } else {
                 guestAdvance(dt, now);
             }
-            if (S.phase === "over" && ovOver.hidden && !view.overTimer) {
+            if (S.phase === "over" && !overVisible && !view.overTimer) {
                 view.overTimer = setTimeout(() => { view.overTimer = 0; if (S && S.phase === "over") showOver(); }, 900);
             }
             if (S.phase !== "over" && view.overTimer) { clearTimeout(view.overTimer); view.overTimer = 0; }
         }
-        decayView(dt);
+        if (!paused) decayView(dt);
         render(now);
     }
 
@@ -1255,7 +1375,7 @@ export function mount(root, context = {}) {
         } else {
             const u3 = room.onState((nextState) => {
                 if (!nextState) return;
-                S = nextState; snapAt = performance.now();
+                S = nextState; snapAt = nowMs();
                 if (!helloSent) { helloSent = true; room.sendAction({ t: "hello", name: playerName }).catch(console.warn); }
             });
             if (typeof u3 === "function") unsubs.push(u3);
@@ -1266,6 +1386,7 @@ export function mount(root, context = {}) {
     }
     renderStatic();
     updateHud();
+    syncOverlays();
     raf = requestAnimationFrame(frame);
 
     return {

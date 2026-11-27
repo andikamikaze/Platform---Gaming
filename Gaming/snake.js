@@ -3,6 +3,8 @@
    Local: Solo or VS Bot. Online: host-authoritative 1v1 duel.
    Random solvable arenas, randomized fair starts, local cheat overlay. */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "snake", // must match the file name (snake.js)
     name: "Snake",
@@ -56,10 +58,18 @@ export function mount(root, context = {}) {
         ["double", "Double score", "Every food is worth 20 points instead of 10."],
     ];
     let usedCheats = false;
-    let panel = null; // "help" | "cheats" | null
+    let helpOpen = false;
+    let cheatsOpen = false;
+    let pausedFrom = null; // "play" | "count" — modal auto-pause origin
     let pending = null; // guest optimistic direction indicator
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { /* storage blocked */ }
+    try {
+        if (localStorage.getItem("snakeHelpSeen") !== "1") {
+            helpOpen = true;
+            localStorage.setItem("snakeHelpSeen", "1");
+        }
+    } catch (e) { /* storage blocked */ }
     let queues = [[], []]; // authoritative input buffers (host / local only)
     const cache = { seed: -1, size: 0, walls: new Set() };
     let wallSeed = -1;
@@ -71,46 +81,50 @@ export function mount(root, context = {}) {
     /* ---------- shell ---------- */
     root.innerHTML = `
 <style>
-.snk{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--soft:#f8fafc;--acc:#10b981;--acc2:#f59e0b;--bad:#ef4444;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.snk{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--soft:#f8fafc;--acc:#10b981;--bad:#ef4444;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .snk *{box-sizing:border-box}
 .snk [hidden]{display:none !important}
-.snk-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 12px}
-.snk-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--mut);background:#fff;white-space:nowrap}
+.snk-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:10px;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.snk-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:5px 9px;font-size:10.5px;color:var(--mut);background:#fff;white-space:nowrap;text-transform:uppercase;letter-spacing:.03em}
 .snk-chip b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:700}
-.snk-sw{width:8px;height:8px;border-radius:50%;display:inline-block}
-.snk-spacer{flex:1}
-.snk-ibtn{height:34px;min-width:34px;padding:0 11px;border:1px solid var(--line);background:#fff;border-radius:10px;color:var(--ink);cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:inherit}
-.snk-ibtn:hover{background:var(--soft)}
-.snk-ibtn:disabled{opacity:.4;cursor:default}
-.snk-ibtn svg{width:15px;height:15px}
-.snk-panel{padding:0;background:transparent;border:0}
-.snk-boardwrap{position:relative;width:min(100%,620px);margin:0 auto;aspect-ratio:1/1;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.snk-sw{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.snk-spacer{flex:1 1 auto}
+.snk-btn{height:38px;min-width:32px;padding:0 10px;border:1px solid var(--line);background:#fff;border-radius:9px;color:var(--ink);cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.03em;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-family:inherit}
+.snk-btn:hover{background:var(--soft)}
+.snk-btn:disabled{opacity:.4;cursor:default}
+.snk-btn svg{flex:none;width:14px;height:14px;display:block}
+.snk-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.snk-icon-btn svg{flex:none;display:block}
+.snk-btn.on{border-color:var(--acc);color:var(--acc);background:#ecfdf5}
+.snk-board{position:relative;display:grid;place-items:center;width:100%;min-height:0;padding:0;border:0;background:transparent;border-radius:12px;overflow:hidden}
+.snk-boardwrap{position:relative;width:min(100%,620px);max-height:100%;aspect-ratio:1/1;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
 .snk-svg{width:100%;height:100%;display:block;border-radius:10px;touch-action:none;cursor:crosshair;background:var(--soft)}
-.snk-overlay{position:absolute;inset:10px;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.9);backdrop-filter:blur(3px);border-radius:10px;overflow:auto;padding:18px;z-index:3}
-.snk-card{max-width:430px;width:100%;text-align:center;margin:auto}
-.snk-card h3{margin:0 0 6px;font-size:22px;letter-spacing:-.02em}
-.snk-sub{color:var(--mut);font-size:13px;margin:0 0 14px;line-height:1.55}
-.snk-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:0 0 12px;text-align:left}
+.snk-ov{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:12px;background:rgba(248,250,252,.92);backdrop-filter:blur(3px);border-radius:12px}
+.snk-card{display:flex;flex-direction:column;width:min(460px,100%);max-height:100%;overflow:hidden;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.08);text-align:center}
+.snk-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:10px;text-align:left}
+.snk-head h3{margin:0;font-size:17px;letter-spacing:-.02em}
+.snk-tag{font:600 9px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 8px;white-space:nowrap}
+.snk-body{flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.snk-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.snk-sub{color:var(--mut);font-size:12.5px;margin:0 0 12px;line-height:1.55}
+.snk-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0;text-align:left}
 .snk-field{display:flex;flex-direction:column;gap:4px;font-size:10.5px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 .snk-field select{height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-size:13px;padding:0 8px;font-family:inherit;width:100%}
-.snk-btn{height:38px;padding:0 18px;border:1px solid var(--line);background:#fff;border-radius:10px;color:var(--ink);cursor:pointer;font-size:14px;font-weight:600;font-family:inherit}
-.snk-btn:hover{background:var(--soft)}
 .snk-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
 .snk-btn.primary:hover{opacity:.88}
 .snk-btnrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:6px}
-.snk-howto{text-align:left;font-size:12.5px;color:#334155;line-height:1.6;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 12px;background:#fff}
+.snk-howto{text-align:left;font-size:12.5px;color:#334155;line-height:1.6;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:12px 0 0;background:#fff}
 .snk-howto ul{margin:4px 0 0;padding-left:16px}
 .snk-link{background:none;border:0;color:var(--acc);cursor:pointer;font-size:12px;font-weight:700;padding:0;font-family:inherit}
-.snk-fair{font-size:11px;color:var(--mut);margin:12px 0 0;line-height:1.5}
-.snk-count{font-size:64px;font-weight:800;letter-spacing:-.04em;line-height:1.1}
-.snk-toast{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12px;font-weight:600;padding:6px 13px;border-radius:999px;z-index:4;white-space:nowrap;box-shadow:0 4px 14px rgba(15,23,42,.25)}
-.snk-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;flex-wrap:wrap}
-.snk-dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,44px);gap:6px;touch-action:none;user-select:none;-webkit-user-select:none}
-.snk-dbtn{border:1px solid var(--line);background:#fff;border-radius:12px;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.snk-fair,.snk-note{font-size:10.5px;color:var(--mut);margin:12px 0 0;line-height:1.5}
+.snk-count{font-size:60px;font-weight:800;letter-spacing:-.04em;line-height:1.1;text-align:center}
+.snk-toast{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12px;font-weight:600;padding:6px 13px;border-radius:999px;z-index:3;white-space:nowrap;box-shadow:0 4px 14px rgba(15,23,42,.25)}
+.snk-pad{display:flex;justify-content:center;margin-top:6px;touch-action:none;user-select:none;-webkit-user-select:none}
+.snk-dpad{display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(2,40px);gap:5px;touch-action:none;user-select:none;-webkit-user-select:none}
+.snk-dbtn{border:1px solid var(--line);background:#fff;border-radius:11px;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .snk-dbtn:active{background:var(--soft);transform:scale(.94)}
-.snk-dbtn svg{width:20px;height:20px}
-.snk-hints{color:var(--mut);font-size:12px;line-height:1.7;flex:1;min-width:210px}
-.snk-help{text-align:left;font-size:13px;line-height:1.65;color:#334155}
+.snk-dbtn svg{width:18px;height:18px}
+.snk-help{text-align:left;font-size:12.5px;line-height:1.6;color:#334155}
 .snk-help h4{margin:14px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
 .snk-help h4:first-child{margin-top:0}
 .snk-help p{margin:0 0 6px}
@@ -124,42 +138,64 @@ export function mount(root, context = {}) {
 .snk-switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
 .snk-switch:checked{background:var(--acc)}
 .snk-switch:checked::after{left:19px}
-.snk-note{font-size:11px;color:var(--mut);margin:12px 0 0;line-height:1.5}
-.snk-stats{font-size:13px;color:#334155;font-weight:600;margin:0 0 12px}
-.snk-dot--live{background:#10b981 !important}
-.snk-dot--warn{background:#f59e0b !important}
-.snk-dot--end{background:#ef4444 !important}
+.snk-stats{font-size:12.5px;color:#334155;font-weight:600;margin:0 0 12px}
 .snk-win{color:var(--acc)}
 .snk-lose{color:var(--bad)}
 @media (pointer:coarse){
   .snk-dpad{grid-template-columns:repeat(3,56px);grid-template-rows:repeat(2,56px)}
-  .snk-ibtn{height:40px}
-  .snk-btn{height:44px}
 }
-@media (max-width:560px){
+@media (max-width:640px){
   .snk-boardwrap{padding:6px;border-radius:12px}
-  .snk-overlay{inset:6px;padding:12px}
-  .snk-hints{display:none}
+}
+
+/* --- Batch 02 design polish --- */
+.snk :focus-visible,.snk button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.snk-btn{min-height:44px}
+.snk-field select{min-height:44px}
+.snk-grid{gap:12px}
+.snk-toast{box-shadow:none;border:1px solid var(--line)}
+@media (pointer:coarse){.snk button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.snk *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (last: beats pointer:coarse) --- */
+.snk.game-fill > .snk-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.snk-card{display:flex;flex-direction:column;overflow:hidden}
+.snk-head,.snk-foot{flex:none}
+.snk-body{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.snk.game-fill > .snk-board:has(.snk-ov:not([hidden])){min-height:min(70dvh,620px);aspect-ratio:auto}
+.snk .snk-hud{gap:5px;margin-bottom:8px}
+.snk .snk-hud .snk-chip{padding:4px 6px;font-size:9px}
+.snk .snk-hud .snk-chip[data-chip="map"],
+.snk .snk-hud .snk-chip[data-chip="goal"]{display:none}
+.snk .snk-hud .snk-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.snk .snk-hud .snk-btn-label,
+.snk .snk-hud .snk-spacer{display:none}
+.snk .snk-ov{padding:8px}
+.snk .snk-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.snk .snk-body{scrollbar-width:none}
+.snk .snk-body::-webkit-scrollbar{display:none}
+.snk .snk-foot{position:static;margin:10px 0 0;padding-top:10px;border-top:1px solid var(--line)}
+.snk .snk-note{display:none}
+.snk .snk-grid{grid-template-columns:1fr}
 }
 </style>
-<div class="game-app snk">
-  <div class="game-intro">
-    <div><h2>Snake</h2><p>Minimalist snake arena — eat, grow and outlast your rival. Every match builds a fresh, always-solvable map.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
-  </div>
-  <div class="snk-toolbar">
+<div class="game-app snk game-fill" data-snk>
+  <div class="snk-hud">
     <span class="snk-chip"><span class="snk-sw" data-sw="you"></span>You <b data-hud="you">0</b></span>
     <span class="snk-chip" data-chip="rival"><span class="snk-sw" data-sw="rival"></span><span data-hud="rname">Rival</span> <b data-hud="rival">0</b></span>
     <span class="snk-chip" data-chip="best">Best <b data-hud="best">0</b></span>
-    <span class="snk-chip">Map <b data-hud="map">—</b></span>
-    <span class="snk-chip">Goal <b data-hud="goal">—</b></span>
+    <span class="snk-chip" data-chip="map">Map <b data-hud="map">—</b></span>
+    <span class="snk-chip" data-chip="goal">Goal <b data-hud="goal">—</b></span>
+    <span class="snk-chip">Status <b data-hud="status">Ready</b></span>
     <span class="snk-spacer"></span>
-    <button class="snk-ibtn" type="button" data-act="pause" data-btn="pause" title="Pause / resume (Space)" aria-label="Pause or resume"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
-    <button class="snk-ibtn" type="button" data-act="restart" title="Restart match (R)" aria-label="Restart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
-    <button class="snk-ibtn" type="button" data-act="help" title="How to play (H)" aria-label="How to play">?</button>
-    <button class="snk-ibtn" type="button" data-act="cheats" data-btn="cheats" title="Cheats (C)" aria-label="Cheats" ${online ? "hidden" : ""}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg><span data-hud="cheatn"></span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="snk-btn-label">Help</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)" ${online ? "hidden" : ""}>${iconSVG("wrench", { size: 14 })}<span class="snk-btn-label">Cheats</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="snk-btn-label">Pause</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="snk-btn-label">Restart</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="snk-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel snk-panel" data-board>
+  <section class="game-panel snk-board" data-board>
     <div class="snk-boardwrap">
       <svg class="snk-svg" data-svg viewBox="0 0 648 648" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Snake arena">
         <defs>
@@ -173,22 +209,15 @@ export function mount(root, context = {}) {
         <g data-dyn></g>
       </svg>
       <div class="snk-toast" data-toast hidden></div>
-      <div class="snk-overlay" data-ov hidden></div>
     </div>
+    <div class="snk-ov" data-ov hidden></div>
   </section>
-  <div class="snk-foot">
-    <div class="snk-dpad" data-dpad>
-      <button class="snk-dbtn" type="button" data-dir="up" style="grid-column:2;grid-row:1" aria-label="Up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg></button>
-      <button class="snk-dbtn" type="button" data-dir="left" style="grid-column:1;grid-row:2" aria-label="Left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
-      <button class="snk-dbtn" type="button" data-dir="down" style="grid-column:2;grid-row:2" aria-label="Down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10l6 6 6-6"/></svg></button>
-      <button class="snk-dbtn" type="button" data-dir="right" style="grid-column:3;grid-row:2" aria-label="Right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg></button>
-    </div>
-    <div class="snk-hints">
-      <b>Desktop:</b> <kbd>WASD</kbd> / <kbd>arrows</kbd> steer · click the board to steer toward the cursor · <kbd>Space</kbd> pause · <kbd>R</kbd> restart · <kbd>H</kbd> help.<br>
-      <b>Mobile:</b> swipe on the board or use the pad above.
-    </div>
+  <div class="snk-pad" data-dpad>
+    <button class="snk-dbtn" type="button" data-dir="up" style="grid-column:2;grid-row:1" aria-label="Up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg></button>
+    <button class="snk-dbtn" type="button" data-dir="left" style="grid-column:1;grid-row:2" aria-label="Left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
+    <button class="snk-dbtn" type="button" data-dir="down" style="grid-column:2;grid-row:2" aria-label="Down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10l6 6 6-6"/></svg></button>
+    <button class="snk-dbtn" type="button" data-dir="right" style="grid-column:3;grid-row:2" aria-label="Right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg></button>
   </div>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -198,20 +227,19 @@ export function mount(root, context = {}) {
     const dynG = $("[data-dyn]");
     const ov = $("[data-ov]");
     const toastEl = $("[data-toast]");
-    const statusEl = $("[data-status]");
-    const dotEl = $("[data-dot]");
     const hudYou = $('[data-hud="you"]');
     const hudRival = $('[data-hud="rival"]');
     const hudRName = $('[data-hud="rname"]');
     const hudBest = $('[data-hud="best"]');
     const hudMap = $('[data-hud="map"]');
     const hudGoal = $('[data-hud="goal"]');
-    const hudCheatN = $('[data-hud="cheatn"]');
+    const hudStatus = $('[data-hud="status"]');
     const chipRival = $('[data-chip="rival"]');
     const chipBest = $('[data-chip="best"]');
     const swYou = $('[data-sw="you"]');
     const swRival = $('[data-sw="rival"]');
-    const btnPause = $('[data-btn="pause"]');
+    const btnCheats = $("[data-cheats]");
+    const btnPause = $("[data-pause]");
 
     /* ---------- helpers ---------- */
     const X = (i) => i % state.size;
@@ -749,6 +777,13 @@ export function mount(root, context = {}) {
     }
 
     /* ---------- overlay builders ---------- */
+    function card(title, tag, body, foot) {
+        return `<div class="snk-card">
+      <div class="snk-head"><h3>${title}</h3>${tag ? `<span class="snk-tag">${tag}</span>` : ""}</div>
+      <div class="snk-body">${body}</div>
+      ${foot ? `<div class="snk-foot">${foot}</div>` : ""}
+    </div>`;
+    }
     function selHTML(key, label, opts, val) {
         return `<label class="snk-field">${label}<select data-set="${key}">${opts.map(([v, t]) => `<option value="${v}"${v === val ? " selected" : ""}>${t}</option>`).join("")}</select></label>`;
     }
@@ -767,8 +802,7 @@ export function mount(root, context = {}) {
         const goal = state.twoPlayers
             ? `First to length ${state.target} — or the last snake alive — wins.`
             : `Reach length ${state.target} to win.`;
-        return `<div class="snk-card">
-      <h3>Snake</h3>
+        const body = `
       <p class="snk-sub">${state.twoPlayers ? (state.bot ? "Duel the bot" : "1v1 duel") : "Solo run"} on a fresh, always-solvable arena. Eat food to grow; avoid walls, blocks and tails.</p>
       ${setup}
       <div class="snk-howto"><b>Quick start</b>
@@ -779,27 +813,26 @@ export function mount(root, context = {}) {
         </ul>
         <button class="snk-link" type="button" data-act="help">Full guide →</button>
       </div>
-      ${isHost ? `<button class="snk-btn primary" type="button" data-act="start">Start game</button>` : `<p class="snk-sub">Waiting for the host to start…</p>`}
-      <p class="snk-fair">Fair start: spawn sides, player colors and who moves first are re-randomized every match. The first mover gets a one-cell head start.</p>
-    </div>`;
+      <p class="snk-fair">Fair start: spawn sides, player colors and who moves first are re-randomized every match. The first mover gets a one-cell head start.</p>`;
+        const foot = isHost
+            ? `<span class="snk-note">H help · C cheats · P pause</span><button class="snk-btn primary" type="button" data-act="start">Start game</button>`
+            : `<span class="snk-note">Waiting for the host…</span>`;
+        return card("Snake", state.twoPlayers ? (state.bot ? "VS Bot" : "1v1 Duel") : "Solo", body, foot);
     }
     function countHTML() {
         const my = mySlot();
-        return `<div class="snk-card">
-      <div class="snk-count">${state.count}</div>
-      <p class="snk-sub">You are Player ${my + 1} (${my === 0 ? "green" : "amber"}) · spawning on the ${SIDES[state.sides[my]]} side.<br>${state.order[0] === my ? "You move first." : `${rivalName()} moves first.`}</p>
-    </div>`;
+        const body = `<div class="snk-count">${state.count}</div>
+      <p class="snk-sub">You are Player ${my + 1} (${my === 0 ? "green" : "amber"}) · spawning on the ${SIDES[state.sides[my]]} side.<br>${state.order[0] === my ? "You move first." : `${rivalName()} moves first.`}</p>`;
+        return card("Get ready", `Length ${state.target}`, body, "");
     }
     function pausedHTML() {
-        return `<div class="snk-card">
-      <h3>Paused</h3>
-      <p class="snk-sub">Take a breath. ${online ? "Both players are paused." : ""}</p>
-      <div class="snk-btnrow">
+        const body = `<p class="snk-sub">Take a breath. ${online ? "Both players are paused." : ""}</p>`;
+        const foot = `<span class="snk-note">P / Esc to resume</span><span class="snk-btnrow">
         <button class="snk-btn primary" type="button" data-act="pause">Resume</button>
         <button class="snk-btn" type="button" data-act="restart">Restart</button>
         ${isHost ? `<button class="snk-btn" type="button" data-act="menu">Settings</button>` : ""}
-      </div>
-    </div>`;
+      </span>`;
+        return card("Paused", "", body, foot);
     }
     function overHTML() {
         const my = mySlot(), rs = rivalSlot();
@@ -808,19 +841,16 @@ export function mount(root, context = {}) {
         if (state.twoPlayers) stats += ` — ${rivalName()}: ${state.scores[rs]} pts · length ${state.snakes[rs].length}`;
         if (local) stats += ` — Best: ${best}`;
         if (local && usedCheats) stats += ` (cheats used, best not saved)`;
-        return `<div class="snk-card">
-      <h3 class="${win ? "snk-win" : state.winner === -1 ? "" : "snk-lose"}">${overTitle()}</h3>
-      <p class="snk-sub">${endText(state.end)}</p>
-      <p class="snk-stats">${stats}</p>
-      <div class="snk-btnrow">
+        const body = `<p class="snk-sub ${win ? "snk-win" : state.winner === -1 ? "" : "snk-lose"}">${endText(state.end)}</p>
+      <p class="snk-stats">${stats}</p>`;
+        const foot = `<span class="snk-note">R to restart</span><span class="snk-btnrow">
         <button class="snk-btn primary" type="button" data-act="restart">Play again</button>
         ${isHost ? `<button class="snk-btn" type="button" data-act="menu">Settings</button>` : ""}
-      </div>
-    </div>`;
+      </span>`;
+        return card(overTitle(), local ? "Local" : "Online", body, foot);
     }
     function helpHTML() {
-        return `<div class="snk-card snk-help">
-      <h3 style="text-align:center">How to play</h3>
+        const body = `<div class="snk-help">
       <h4>Goal</h4>
       <p>Solo: grow to length ${TARGET_SOLO}. Duel (bot or multiplayer): first to length ${TARGET_DUEL}, or be the last snake alive. If both crash together, the longer snake wins.</p>
       <h4>Controls — desktop</h4>
@@ -845,25 +875,25 @@ export function mount(root, context = {}) {
       <p>Eight layout families (Open Field, Pillars, Crossroads, The Ring, Lanes, Rubble, Labyrinth, Portal Field) are generated randomly at three sizes. Every arena is flood-fill verified: all open cells stay connected, so the food is always reachable and the level is always completable. Portal Field has no walls — edges wrap around.</p>
       <h4>Fair start</h4>
       <p>Every match re-rolls your spawn side, which player you are (P1 green / P2 amber) and who moves first. The first mover gets a one-cell head start.</p>
-      ${local ? `<h4>Cheats</h4><p>Press <kbd>C</kbd> or the bolt button. Cheats work in local play only and disable Best-score saving for that run.</p>` : `<p><b>Note:</b> in multiplayer the match keeps running while this guide is open. Cheats are disabled online.</p>`}
-      <div class="snk-btnrow"><button class="snk-btn primary" type="button" data-act="close">Got it</button></div>
+      ${local ? `<h4>Cheats</h4><p>Press <kbd>C</kbd> or the wrench button. Cheats work in local play only and disable Best-score saving for that run.</p>` : `<p><b>Note:</b> in multiplayer the match keeps running while this guide is open. Cheats are disabled online.</p>`}
     </div>`;
+        const foot = `<span class="snk-note">Press H to reopen this guide</span><button class="snk-btn primary" type="button" data-act="close">Got it</button>`;
+        return card("How to play", local ? "Solo / Bot" : "Online", body, foot);
     }
     function cheatsHTML() {
         const rows = CHEAT_LIST.map(([k, t, d]) =>
             `<div class="snk-cheatrow"><span><b>${t}</b><small>${d}</small></span><input class="snk-switch" type="checkbox" data-cheat="${k}"${cheats[k] ? " checked" : ""} aria-label="${t}"></div>`
         ).join("");
-        return `<div class="snk-card">
-      <h3>Cheats</h3>
-      <p class="snk-sub">Toggle helpers to make the game easier. Local play only.</p>
+        const body = `<p class="snk-sub">Toggle helpers to make the game easier. Local play only.</p>
       <div style="text-align:left">${rows}</div>
-      <p class="snk-note">Using any cheat disables Best-score saving for the current run.</p>
-      <div class="snk-btnrow"><button class="snk-btn primary" type="button" data-act="close">Close</button></div>
-    </div>`;
+      <p class="snk-note">Using any cheat disables Best-score saving for the current run.</p>`;
+        const foot = `<span class="snk-note">Press C to close</span><button class="snk-btn primary" type="button" data-act="close">Close</button>`;
+        return card("Cheats", "Local", body, foot);
     }
     function overlayHTML() {
-        if (panel === "help") return helpHTML();
-        if (panel === "cheats") return cheatsHTML();
+        if (helpOpen) return helpHTML();
+        if (cheatsOpen) return cheatsHTML();
+        if (!state) return card("Snake", "", `<p class="snk-sub">Connecting to the room…</p>`, "");
         if (state.phase === "menu") return menuHTML();
         if (state.phase === "count") return countHTML();
         if (state.phase === "paused") return pausedHTML();
@@ -875,9 +905,9 @@ export function mount(root, context = {}) {
     function render() {
         if (destroyed) return;
         if (!state) {
-            statusEl.textContent = "Connecting…";
+            hudStatus.textContent = "Connecting…";
             ov.hidden = false;
-            ov.innerHTML = `<div class="snk-card"><h3>Snake</h3><p class="snk-sub">Connecting to the room…</p></div>`;
+            ov.innerHTML = helpOpen ? helpHTML() : card("Snake", "", `<p class="snk-sub">Connecting to the room…</p>`, "");
             return;
         }
         ensureCache();
@@ -896,15 +926,20 @@ export function mount(root, context = {}) {
         swYou.style.background = my === 0 ? "#10b981" : "#f59e0b";
         swRival.style.background = my === 0 ? "#f59e0b" : "#10b981";
         const ncheat = Object.values(cheats).filter(Boolean).length;
-        hudCheatN.textContent = ncheat ? String(ncheat) : "";
+        const cheatLabel = btnCheats.querySelector(".snk-btn-label");
+        if (cheatLabel) cheatLabel.textContent = ncheat ? `Cheats ${ncheat}` : "Cheats";
+        btnCheats.classList.toggle("on", ncheat > 0);
         btnPause.disabled = !(state.phase === "playing" || state.phase === "paused");
-        let st = "Ready", dc = "";
-        if (state.phase === "count") { st = "Get ready…"; dc = "snk-dot--warn"; }
-        else if (state.phase === "playing") { st = "Playing"; dc = "snk-dot--live"; }
-        else if (state.phase === "paused") { st = "Paused"; dc = "snk-dot--warn"; }
-        else if (state.phase === "over") { st = overTitle(); dc = state.winner === my ? "snk-dot--live" : "snk-dot--end"; }
-        statusEl.textContent = st;
-        dotEl.className = "game-status-dot" + (dc ? " " + dc : "");
+        const pauseLabel = btnPause.querySelector(".snk-btn-label");
+        const pauseText = state.phase === "paused" ? "Resume" : "Pause";
+        if (pauseLabel) pauseLabel.textContent = pauseText;
+        btnPause.setAttribute("aria-label", pauseText);
+        let st = "Ready";
+        if (state.phase === "count") st = "Get ready…";
+        else if (state.phase === "playing") st = "Playing";
+        else if (state.phase === "paused") st = "Paused";
+        else if (state.phase === "over") st = overTitle();
+        hudStatus.textContent = st;
 
         // static layer: rebuild only when a new arena arrives
         if (wallSeed !== state.seed) {
@@ -963,36 +998,71 @@ export function mount(root, context = {}) {
         dynG.innerHTML = s;
 
         // overlay: rebuild only when its signature changes (keeps selects usable)
-        const sig = [state.phase, panel, state.count, state.winner, state.seed, state.size, state.mapName,
+        const sig = [state.phase, helpOpen, cheatsOpen, state.count, state.winner, state.seed, state.size, state.mapName,
         state.speedKey, state.target, state.twoPlayers, state.bot, my,
         settings.mode, settings.map, settings.size, settings.speed, settings.bot, online, isHost].join("|");
         if (sig !== ovSig) { ovSig = sig; ov.innerHTML = overlayHTML(); }
-        ov.hidden = !(panel || state.phase === "menu" || state.phase === "count" || state.phase === "paused" || state.phase === "over");
+        ov.hidden = !(helpOpen || cheatsOpen || state.phase === "menu" || state.phase === "count" || state.phase === "paused" || state.phase === "over");
         prevPhase = state.phase;
     }
 
     /* ---------- input: mouse / touch / keyboard ---------- */
-    function togglePanel(name) {
-        if (panel === name) panel = null;
-        else {
-            if (name === "help" && local && state && state.phase === "playing") submitAction({ t: "pause" });
-            panel = name;
-        }
+    function autoPauseForModal() {
+        if (!local || !state || pausedFrom) return;
+        if (state.phase === "playing") { submitAction({ t: "pause" }); pausedFrom = "play"; }
+        else if (state.phase === "count") { clearTimer("count"); state.phase = "paused"; publish(); pausedFrom = "count"; }
+    }
+    function resumeAfterModal() {
+        if (helpOpen || cheatsOpen || !pausedFrom || !state) return;
+        const from = pausedFrom;
+        pausedFrom = null;
+        if (from === "count") startCountdown();
+        else if (state.phase === "paused") submitAction({ t: "pause" });
+    }
+    function toggleHelp(on) {
+        const next = typeof on === "boolean" ? on : !helpOpen;
+        if (next === helpOpen) return;
+        if (next) { autoPauseForModal(); cheatsOpen = false; helpOpen = true; }
+        else { helpOpen = false; resumeAfterModal(); }
+        render();
+    }
+    function toggleCheats(on) {
+        if (!local) return;
+        const next = typeof on === "boolean" ? on : !cheatsOpen;
+        if (next === cheatsOpen) return;
+        if (next) { autoPauseForModal(); helpOpen = false; cheatsOpen = true; }
+        else { cheatsOpen = false; resumeAfterModal(); }
+        render();
+    }
+    function closeModal() {
+        if (!helpOpen && !cheatsOpen) return;
+        helpOpen = false;
+        cheatsOpen = false;
+        resumeAfterModal();
         render();
     }
     function handleClick(e) {
         if (destroyed) return;
-        if (e.target.closest("[data-exit]")) { onExit(); return; }
-        const b = e.target.closest("[data-act]");
+        const t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) {
+            if (helpOpen || cheatsOpen) closeModal();
+            else if (state && (state.phase === "playing" || state.phase === "paused")) submitAction({ t: "pause" });
+            return;
+        }
+        if (t.closest("[data-restart]")) { closeModal(); if (state && state.phase !== "menu") submitAction({ t: "restart" }); return; }
+        const b = t.closest("[data-act]");
         if (!b) return;
         const act = b.dataset.act;
-        if (act === "help") { togglePanel("help"); return; }
-        if (act === "cheats") { if (local) togglePanel("cheats"); return; }
-        if (act === "close") { panel = null; render(); return; }
+        if (act === "help") { toggleHelp(); return; }
+        if (act === "close") { closeModal(); return; }
         if (!state) return;
         if (act === "start") submitAction({ t: "start" });
-        else if (act === "restart") submitAction({ t: "restart" });
-        else if (act === "pause") submitAction({ t: "pause" });
+        else if (act === "restart") { closeModal(); submitAction({ t: "restart" }); }
+        else if (act === "pause") { if (helpOpen || cheatsOpen) closeModal(); else submitAction({ t: "pause" }); }
         else if (act === "menu") submitAction({ t: "menu" });
     }
     function handleChange(e) {
@@ -1012,6 +1082,7 @@ export function mount(root, context = {}) {
     }
     let ptr = null;
     function onPointerDown(e) {
+        if (helpOpen || cheatsOpen) return;
         const db = e.target.closest("[data-dir]");
         if (db) { e.preventDefault(); submitAction({ t: "dir", d: db.dataset.dir }); return; }
         if (e.target === svg || svg.contains(e.target)) {
@@ -1020,6 +1091,7 @@ export function mount(root, context = {}) {
         }
     }
     function onPointerUp(e) {
+        if (helpOpen || cheatsOpen) { ptr = null; return; }
         if (!ptr || e.pointerId !== ptr.id) return;
         const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y;
         ptr = null;
@@ -1045,28 +1117,43 @@ export function mount(root, context = {}) {
         ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
     };
     function onKey(e) {
-        if (destroyed || !state) return;
+        if (destroyed) return;
         const t = e.target;
         if (t && /^(SELECT|INPUT|TEXTAREA)$/.test(t.tagName || "")) return;
         if (e.metaKey || e.ctrlKey || e.altKey) return;
-        const dir = KEYS[e.code] || KEYS[e.key];
+        const code = e.code || "";
+        const k = (e.key || "").toLowerCase();
+        // priority 1 — help (works even before the room snapshot arrives)
+        if (code === "KeyH" || k === "h" || k === "?") { e.preventDefault(); toggleHelp(); return; }
+        // priority 2 — cheats
+        if (code === "KeyC" || k === "c") { e.preventDefault(); if (local) toggleCheats(); return; }
+        // priority 3 — pause / Escape (closes an open modal first)
+        if (code === "KeyP" || k === "p" || k === "escape") {
+            e.preventDefault();
+            if (helpOpen || cheatsOpen) { closeModal(); return; }
+            if (state && (state.phase === "playing" || state.phase === "paused")) submitAction({ t: "pause" });
+            return;
+        }
+        // a modal owns the board: no steering or phase actions behind it
+        if (helpOpen || cheatsOpen) {
+            if (k === "enter" || k === " ") { e.preventDefault(); closeModal(); }
+            return;
+        }
+        if (!state) return;
+        // priority 4 — game actions
+        if (code === "KeyR" || k === "r") {
+            if (state.phase !== "menu") submitAction({ t: "restart" });
+            e.preventDefault();
+            return;
+        }
+        const dir = KEYS[code] || KEYS[e.key];
         if (dir) { e.preventDefault(); submitAction({ t: "dir", d: dir }); return; }
-        const k = e.key;
         if (k === " " && t && (t.tagName === "BUTTON" || t.tagName === "A")) return; // focused buttons handle Space natively
         if (k === " ") {
             e.preventDefault();
             if (state.phase === "menu") { if (isHost) submitAction({ t: "start" }); }
             else if (state.phase === "playing" || state.phase === "paused") submitAction({ t: "pause" });
             else if (state.phase === "over") submitAction({ t: "restart" });
-        } else if (k === "p" || k === "P") {
-            if (state.phase === "playing" || state.phase === "paused") submitAction({ t: "pause" });
-        } else if (k === "r" || k === "R") {
-            if (state.phase !== "menu") submitAction({ t: "restart" });
-        } else if (k === "h" || k === "H" || k === "?") togglePanel("help");
-        else if ((k === "c" || k === "C") && local) togglePanel("cheats");
-        else if (k === "Escape") {
-            if (panel) { panel = null; render(); }
-            else if (state.phase === "playing") submitAction({ t: "pause" });
         }
     }
 

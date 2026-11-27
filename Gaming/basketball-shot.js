@@ -1,4 +1,6 @@
 /* ==== games/basketball-shot.js ==== */
+import { iconSVG } from "../JS/icons.js";
+
 /* Template-compatible module: export function mount(root, context).
    Register its metadata + module path in GAMES inside app.js, e.g.:
    { id: "basketball-shot", name: "Basketball Shot", category: "Sports",
@@ -205,8 +207,17 @@ export function mount(root, context = {}) {
     let myAngle = 52, charging = false, phase = 0, power = 0;
     let pending = false, pendingTO = 0;
     let botTimer = 0, botPlan = null, resolveTimer = 0;
-    let cheatOpen = false;
+    let cheatOpen = false, helpOpen = false, paused = false;
+    let frozen = false, freezeAt = 0;
+    const liveTimers = new Set();
     const cheats = { preview: false, slow: false, blind: false };
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("basketballShotHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("basketballShotHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     let flashT = 0, lastPrev = 0;
     let cam = 0, lastCam = -1, raf = 0, lastT = 0;
     let svgDrag = false, helloSent = false;
@@ -217,68 +228,123 @@ export function mount(root, context = {}) {
     root.innerHTML = `
 <style>
 .bsh{--panel:#101a30;--court:#0f1830;--line:#24304d;--ink:#e8eefb;--mut:#8ea0c0;--acc:#fbbf24;--good:#34d399;--bad:#f87171;
-  color:var(--ink);display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0}
+  color:var(--ink);display:flex;flex-direction:column;gap:8px;width:100%;height:100%;min-height:0}
 .bsh *{box-sizing:border-box}
 .bsh [hidden]{display:none!important}
-.bsh .game-intro{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.bsh .game-intro h2{margin:0;font-size:16px;font-weight:700;letter-spacing:.02em}
-.bsh .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 12px;white-space:nowrap}
-.bsh .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
-.bsh .game-panel{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:0;border:0;background:none}
-.bsh-score{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px}
-.bsh-side{display:flex;align-items:center;gap:8px;min-width:0;color:var(--mut)}
-.bsh-side .bsh-dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--mut);flex:none}
+.bsh-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.bsh-info{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1 1 auto;min-width:0}
+.bsh-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.bsh-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--mut);white-space:nowrap}
+.bsh-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+.bsh .game-status{display:inline-flex;align-items:center;gap:7px;min-height:32px}
+.bsh .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--good);flex:none}
+.bsh-spacer{flex:1 1 auto}
+.bsh-btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;min-height:36px;padding:0 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;transition:border-color .16s,background .16s}
+.bsh-btn:hover{border-color:var(--mut)}
+.bsh-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.bsh-btn:disabled{opacity:.35;cursor:default}
+.bsh-btn.acc,.bsh-btn.on{border-color:var(--acc);color:var(--acc)}
+.bsh .bsh-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.bsh .bsh-icon-btn svg{flex:none;display:block}
+.bsh-side{display:inline-flex;align-items:center;gap:6px;min-width:0;color:var(--mut)}
+.bsh-side .bsh-dot{width:8px;height:8px;border-radius:50%;border:1px solid var(--mut);flex:none}
 .bsh-side.on{color:var(--ink)}
 .bsh-side.on .bsh-dot{background:var(--acc);border-color:var(--acc)}
-.bsh-side b{font-size:16px;font-variant-numeric:tabular-nums;color:var(--ink)}
-.bsh-side .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px}
-.bsh-round{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:4px 10px;flex:none}
-.bsh-court{position:relative;flex:1;min-height:180px;border:1px solid var(--line);border-radius:12px;background:var(--court);overflow:hidden}
-.bsh-svg{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none}
-.bsh-flash{position:absolute;left:0;right:0;top:15%;text-align:center;font-size:22px;font-weight:800;color:var(--acc);pointer-events:none;letter-spacing:.02em}
-.bsh-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bsh-btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;height:42px;min-width:42px;padding:0 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
-.bsh-btn:hover{border-color:var(--mut)}
-.bsh-btn:disabled{opacity:.35;cursor:default}
-.bsh-btn.acc{border-color:var(--acc);color:var(--acc)}
-.bsh-angle{min-width:52px;text-align:center;font-size:14px;color:var(--mut);font-variant-numeric:tabular-nums}
-.bsh-angle b{color:var(--ink);font-size:16px}
-.bsh-power{flex:1 1 90px;max-width:180px;height:8px;border-radius:999px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+.bsh-side b{font-size:15px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.bsh-side .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px}
+.bsh-ctrl{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.bsh-angle{min-width:52px;text-align:center;font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums}
+.bsh-angle b{color:var(--ink);font-size:15px}
+.bsh-power{width:96px;height:8px;border-radius:999px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
 .bsh-power i{display:block;height:100%;width:0;background:var(--good)}
 .bsh-power i.mid{background:var(--acc)}
 .bsh-power i.high{background:var(--bad)}
-.bsh-shoot{flex:1 1 120px;max-width:220px;height:46px;letter-spacing:.12em}
+.bsh-shoot{min-width:108px;height:44px;letter-spacing:.1em}
 .bsh-shoot.armed{background:var(--acc);color:#1a1206;border-color:var(--acc)}
+.bsh-board{position:relative;width:100%;flex:1 1 auto;min-height:0;border:1px solid var(--line);border-radius:10px;background:var(--court);overflow:hidden}
+.bsh-svg{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none}
+.bsh-flash{position:absolute;left:0;right:0;top:15%;text-align:center;font-size:22px;font-weight:800;color:var(--acc);pointer-events:none;letter-spacing:.02em}
 .bsh-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(7,11,22,.74);backdrop-filter:blur(3px);z-index:5;padding:16px}
-.bsh-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;min-width:250px;max-width:330px;display:flex;flex-direction:column;gap:12px;text-align:center}
-.bsh-card h3{margin:0;font-size:19px}
+.bsh-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;width:min(420px,100%);max-height:100%;display:flex;flex-direction:column;gap:12px;text-align:center;overflow:hidden}
+.bsh-card h3{margin:0;font-size:18px}
 .bsh-card h3.win{color:var(--good)}
 .bsh-card h3.lose{color:var(--bad)}
-.bsh-card .sub{margin:0;color:var(--mut);font-size:13px}
-.bsh-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;text-align:left}
-.bsh-switch{position:relative;width:40px;height:22px;border-radius:999px;border:1px solid var(--line);background:var(--court);cursor:pointer;flex:none;padding:0}
-.bsh-switch:after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--mut);transition:left .15s,background .15s}
+.bsh-card .sub{margin:0;color:var(--mut);font-size:13px;line-height:1.5}
+.bsh-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+.bsh-head h3{font-size:15px}
+.bsh-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+.bsh-cheats,.bsh-help{display:grid;gap:8px;flex:1 1 auto;min-height:0;overflow:auto}
+.bsh-help{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;text-align:left}
+.bsh-help>div{display:flex;flex-direction:column;min-width:0}
+.bsh-help b{display:block;margin-bottom:5px;color:var(--mut);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+.bsh-help ul{margin:0 0 10px;padding-left:16px;color:var(--mut);font-size:12px;line-height:1.6}
+.bsh-help .bsh-foot{margin-top:auto;padding-top:10px}
+.bsh-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--court);color:var(--ink);font:inherit}
+.bsh-note{color:var(--mut);font-size:11px;line-height:1.5}
+.bsh-card .bsh-btn{min-height:44px}
+.bsh-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;text-align:left;min-height:44px}
+.bsh-switch{position:relative;width:40px;height:22px;border-radius:999px;border:1px solid var(--line);background:var(--court);cursor:pointer;flex:none;padding:0;transition:border-color .16s,background .16s}
+.bsh-switch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.bsh-switch:after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--mut);transition:left .16s,background .16s}
 .bsh-switch[aria-pressed="true"]{border-color:var(--acc);background:rgba(251,191,36,.15)}
 .bsh-switch[aria-pressed="true"]:after{left:20px;background:var(--acc)}
-.bsh .game-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-@media (max-width:600px){
-  .bsh-shoot{max-width:none;height:50px}
-  .bsh-power{max-width:none}
-  .bsh-side .nm{max-width:72px}
+@media (pointer:coarse){.bsh-switch{width:48px;height:28px}.bsh-switch:after{width:22px;height:22px}.bsh-switch[aria-pressed="true"]:after{left:24px}}
+@media (prefers-reduced-motion:reduce){.bsh *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* --- layout redesign overrides (keep last) --- */
+.bsh.game-fill > .bsh-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.bsh.game-fill > .bsh-board:not(:has(.bsh-overlay:not([hidden]))){aspect-ratio:880/520;flex:0 0 auto}
+.bsh.game-fill > .bsh-board:has(.bsh-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.bsh .bsh-hud{gap:5px;margin-bottom:0;flex-direction:column;align-items:stretch}
+.bsh .bsh-info{gap:5px;flex-wrap:wrap}
+.bsh .bsh-tools{gap:5px;flex-wrap:nowrap;justify-content:space-between}
+.bsh .bsh-hud .bsh-chip{padding:4px 6px;font-size:9px}
+.bsh .bsh-hud .bsh-chip[data-hud="first"],.bsh .bsh-hud .game-status{display:none}
+.bsh .bsh-hud .bsh-btn{min-height:32px;padding:5px 4px;font-size:9px}
+.bsh .bsh-hud .bsh-btn-label,.bsh .bsh-spacer{display:none}
+.bsh .bsh-hud .bsh-ctrl{gap:3px}
+.bsh .bsh-angle{min-width:28px;font-size:10px}
+.bsh .bsh-angle b{font-size:12px}
+.bsh .bsh-power{width:32px}
+.bsh .bsh-shoot{min-width:58px;height:32px;padding:0 5px;font-size:10px}
+.bsh .bsh-side .nm{max-width:58px}
+.bsh-overlay{padding:8px}
+.bsh .bsh-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.bsh .bsh-cheats,.bsh .bsh-help{scrollbar-width:none}
+.bsh .bsh-cheats::-webkit-scrollbar,.bsh .bsh-help::-webkit-scrollbar{display:none}
+.bsh .bsh-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.bsh .bsh-note{display:none}
 }
 </style>
-<div class="game-app bsh">
-  <div class="game-intro">
-    <h2>Basketball Shot</h2>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <section class="game-panel" data-board>
-    <div class="bsh-score">
-      <div class="bsh-side" data-side="0"><i class="bsh-dot"></i><span class="nm" data-nm="0">-</span><b data-pts="0">0</b></div>
-      <div class="bsh-round" data-round>Round 1/${ROUNDS}</div>
-      <div class="bsh-side" data-side="1"><b data-pts="1">0</b><span class="nm" data-nm="1">-</span><i class="bsh-dot"></i></div>
+<div class="game-app bsh game-fill" data-bsh>
+  <div class="bsh-hud">
+    <div class="bsh-info">
+    <span class="bsh-chip game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+    <span class="bsh-chip bsh-score">
+      <span class="bsh-side" data-side="0"><i class="bsh-dot"></i><span class="nm" data-nm="0">-</span><b data-pts="0">0</b></span>
+      <span class="bsh-sep">:</span>
+      <span class="bsh-side" data-side="1"><b data-pts="1">0</b><span class="nm" data-nm="1">-</span><i class="bsh-dot"></i></span>
+    </span>
+    <span class="bsh-chip" data-round>Round 1/${ROUNDS}</span>
+    <span class="bsh-chip" data-hud="first">FIRST &mdash;</span>
+    <span class="bsh-spacer"></span>
     </div>
-    <div class="bsh-court">
+    <div class="bsh-tools">
+    <div class="bsh-ctrl">
+      <button class="bsh-btn" type="button" data-hold="dn" aria-label="Angle down">&minus;</button>
+      <span class="bsh-angle"><b data-angle>52</b>&deg;</span>
+      <button class="bsh-btn" type="button" data-hold="up" aria-label="Angle up">+</button>
+      <span class="bsh-power"><i data-power></i></span>
+      <button class="bsh-btn acc bsh-shoot" type="button" data-shoot>SHOOT</button>
+    </div>
+    <button class="bsh-btn bsh-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="bsh-btn-label">Help</span></button>
+    <button class="bsh-btn bsh-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="bsh-btn-label">Cheats</span></button>
+    <button class="bsh-btn bsh-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="bsh-btn-label">Pause</span></button>
+    <button class="bsh-btn bsh-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="bsh-btn-label">Restart</span></button>
+    <button class="bsh-btn bsh-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="bsh-btn-label">Exit game</span></button>
+    </div>
+  </div>
+  <section class="game-panel bsh-board" data-board>
       <svg class="bsh-svg" data-svg viewBox="0 0 ${VW} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Basketball court">
         <rect x="0" y="${FLOOR}" width="${WORLD}" height="${H - FLOOR}" fill="#131f3a"/>
         <line x1="0" y1="${FLOOR}" x2="${WORLD}" y2="${FLOOR}" stroke="#2c3a5c" stroke-width="2"/>
@@ -327,38 +393,66 @@ export function mount(root, context = {}) {
         </g>
       </svg>
       <div class="bsh-flash" data-flash></div>
-      <div class="bsh-overlay" data-over hidden>
+      <div class="bsh-overlay" data-over data-ov="over" hidden>
         <div class="bsh-card">
           <h3 data-over-title></h3>
           <p class="sub" data-over-sub></p>
-          <button class="bsh-btn acc" type="button" data-act="rematch" data-over-rematch>Rematch</button>
-          <p class="sub" data-over-wait hidden>Waiting for host&hellip;</p>
+          <div class="bsh-foot">
+            <span class="bsh-note" data-over-wait hidden>Waiting for host&hellip;</span>
+            <button class="bsh-btn acc" type="button" data-act="rematch" data-over-rematch>Rematch</button>
+          </div>
         </div>
       </div>
-      <div class="bsh-overlay" data-cheats hidden>
+      <div class="bsh-overlay" data-ov="cheat" hidden>
         <div class="bsh-card">
-          <h3>Cheats</h3>
-          <div class="bsh-cheatrow"><span>Trajectory preview</span><button class="bsh-switch" type="button" data-cheat="preview" aria-pressed="false" aria-label="Trajectory preview"></button></div>
-          <div class="bsh-cheatrow"><span>Slow power bar</span><button class="bsh-switch" type="button" data-cheat="slow" aria-pressed="false" aria-label="Slow power bar"></button></div>
-          <div class="bsh-cheatrow"><span>Bot always misses</span><button class="bsh-switch" type="button" data-cheat="blind" aria-pressed="false" aria-label="Bot always misses"></button></div>
-          <button class="bsh-btn acc" type="button" data-act="perfect">Perfect shot</button>
-          <button class="bsh-btn" type="button" data-act="closeCheats">Close</button>
+          <div class="bsh-head"><h3>Cheats</h3><button class="bsh-btn" type="button" data-act="closeCheats">Close</button></div>
+          <div class="bsh-cheats">
+            <div class="bsh-cheatrow"><span>Trajectory preview</span><button class="bsh-switch" type="button" data-cheat="preview" aria-pressed="false" aria-label="Trajectory preview"></button></div>
+            <div class="bsh-cheatrow"><span>Slow power bar</span><button class="bsh-switch" type="button" data-cheat="slow" aria-pressed="false" aria-label="Slow power bar"></button></div>
+            <div class="bsh-cheatrow"><span>Bot always misses</span><button class="bsh-switch" type="button" data-cheat="blind" aria-pressed="false" aria-label="Bot always misses"></button></div>
+          </div>
+          <div class="bsh-foot"><span class="bsh-note">Host / solo only</span><button class="bsh-btn acc" type="button" data-act="perfect">Perfect shot</button></div>
         </div>
       </div>
-    </div>
-    <div class="bsh-controls">
-      <button class="bsh-btn" type="button" data-hold="dn" aria-label="Angle down">&minus;</button>
-      <div class="bsh-angle"><b data-angle>52</b>&deg;</div>
-      <button class="bsh-btn" type="button" data-hold="up" aria-label="Angle up">+</button>
-      <div class="bsh-power"><i data-power></i></div>
-      <button class="bsh-btn acc bsh-shoot" type="button" data-shoot>SHOOT</button>
-    </div>
+      <div class="bsh-overlay" data-ov="pause" hidden>
+        <div class="bsh-card">
+          <div class="bsh-head"><h3>Paused</h3></div>
+          <p class="sub">Flight, timers and the bot are frozen.</p>
+          <div class="bsh-foot"><span class="bsh-note">Press P or Esc to resume</span><button class="bsh-btn acc" type="button" data-resume>Resume</button></div>
+        </div>
+      </div>
+      <div class="bsh-overlay" data-ov="help" hidden>
+        <div class="bsh-card">
+          <div class="bsh-head"><h3>How to play</h3><button class="bsh-btn" type="button" data-help-close>Close</button></div>
+          <div class="bsh-help">
+            <div>
+              <b>Desktop</b>
+              <ul>
+                <li>Move the mouse over the court to aim, hold left click to charge, release to shoot.</li>
+                <li><span class="bsh-kbd">&uarr;</span> / <span class="bsh-kbd">&darr;</span> or <span class="bsh-kbd">W</span> / <span class="bsh-kbd">S</span> adjust the angle.</li>
+                <li><span class="bsh-kbd">Space</span> hold to charge and release to shoot.</li>
+                <li><span class="bsh-kbd">H</span> help &middot; <span class="bsh-kbd">C</span> cheats &middot; <span class="bsh-kbd">P</span> pause &middot; <span class="bsh-kbd">R</span> restart.</li>
+              </ul>
+              <b>Mobile</b>
+              <ul>
+                <li>Drag on the court to aim; use the angle buttons and charge the bar.</li>
+                <li>Tap SHOOT (or drag then release) to take the shot.</li>
+              </ul>
+            </div>
+            <div>
+              <b>Rules</b>
+              <ul>
+                <li>Alternate shots with the bot; five rounds per player, then sudden death up to eight.</li>
+                <li>Shots inside the three-point arc are worth 3, behind it worth 2.</li>
+                <li>Every generated spot is verified solvable &mdash; find the right angle and power.</li>
+                <li>The player with the higher score when the rounds end wins.</li>
+              </ul>
+              <div class="bsh-foot"><span class="bsh-note">Press H to reopen this guide</span><button class="bsh-btn acc" type="button" data-help-close>Got it</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button bsh-btn" type="button" data-act="cheats" data-cheatsbtn>Cheats</button>
-    <button class="game-action-button bsh-btn" type="button" data-act="rematch" data-rematchbtn>Rematch</button>
-    <button class="game-action-button bsh-btn" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ------------------------------- refs ------------------------------- */
@@ -368,6 +462,7 @@ export function mount(root, context = {}) {
     const flashEl = $("[data-flash]");
     const statusEl = $("[data-status]");
     const roundEl = $("[data-round]");
+    const firstEl = $('[data-hud="first"]');
     const nmEls = [$('[data-nm="0"]'), $('[data-nm="1"]')];
     const ptsEls = [$('[data-pts="0"]'), $('[data-pts="1"]')];
     const sideEls = [$('[data-side="0"]'), $('[data-side="1"]')];
@@ -393,9 +488,11 @@ export function mount(root, context = {}) {
     const overSub = $("[data-over-sub]");
     const overRematch = $("[data-over-rematch]");
     const overWait = $("[data-over-wait]");
-    const cheatsEl = $("[data-cheats]");
-    const cheatsBtn = $("[data-cheatsbtn]");
-    const rematchBtn = $("[data-rematchbtn]");
+    const cheatsEl = $('[data-ov="cheat"]');
+    const cheatsBtn = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
+    const helpEl = $('[data-ov="help"]');
+    const pauseEl = $('[data-ov="pause"]');
     const perfectBtn = $('[data-act="perfect"]');
     const switchEls = Array.prototype.slice.call(root.querySelectorAll("[data-cheat]"));
 
@@ -415,7 +512,7 @@ export function mount(root, context = {}) {
         return !!state && state.phase === "aim" && state.winner === -1 &&
             state.turn === mySlot() && !anim.active;
     }
-    function canShoot() { return canAim() && !pending; }
+    function canShoot() { return canAim() && !pending && !frozen; }
     function toast(msg, secs) { flashEl.textContent = msg; flashT = secs || 1.3; }
     function setAngle(a) {
         myAngle = clamp(Math.round(a * 10) / 10, 15, 80);
@@ -438,10 +535,69 @@ export function mount(root, context = {}) {
         charging = false; power = 0;
         shootBtn.classList.remove("armed");
     }
+    /* Pause-aware timers: wall-clock anchors are shifted on resume so that
+       flight resolution, pending shots and the bot do not jump. */
+    function later(fn, ms) {
+        const rec = { fn: fn, due: Date.now() + ms, id: 0 };
+        rec.arm = () => {
+            rec.id = setTimeout(() => {
+                rec.id = 0;
+                if (frozen) return;
+                liveTimers.delete(rec);
+                fn();
+            }, Math.max(0, rec.due - Date.now()));
+        };
+        liveTimers.add(rec);
+        rec.arm();
+        return rec;
+    }
+    function cancelTimer(rec) {
+        if (!rec) return;
+        if (rec.id) clearTimeout(rec.id);
+        rec.id = 0;
+        liveTimers.delete(rec);
+    }
+    function freezeTimers() {
+        if (freezeAt) return;
+        freezeAt = Date.now();
+        liveTimers.forEach((rec) => { if (rec.id) clearTimeout(rec.id); rec.id = 0; });
+    }
+    function thawTimers() {
+        if (!freezeAt) return;
+        const shift = Date.now() - freezeAt;
+        freezeAt = 0;
+        liveTimers.forEach((rec) => { rec.due += shift; rec.arm(); });
+    }
+    function syncFreeze() {
+        const next = paused || helpOpen || cheatOpen;
+        if (next === frozen) return;
+        frozen = next;
+        if (frozen) { cancelCharge(); freezeTimers(); }
+        else { thawTimers(); lastT = 0; }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        syncFreeze();
+        renderStatic();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) helpOpen = false;
+        syncFreeze();
+        renderStatic();
+    }
+    function togglePause(on) {
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) cheatOpen = false;
+        syncFreeze();
+        renderStatic();
+    }
     function clearRoundTimers() {
-        if (resolveTimer) { clearTimeout(resolveTimer); resolveTimer = 0; }
-        if (botTimer) { clearTimeout(botTimer); botTimer = 0; }
-        if (pendingTO) { clearTimeout(pendingTO); pendingTO = 0; }
+        if (resolveTimer) { cancelTimer(resolveTimer); resolveTimer = 0; }
+        if (botTimer) { cancelTimer(botTimer); botTimer = 0; }
+        if (pendingTO) { cancelTimer(pendingTO); pendingTO = 0; }
         botPlan = null; pending = false;
     }
     function resetLocal() {
@@ -474,7 +630,7 @@ export function mount(root, context = {}) {
     }
     function startAnim(shot) {
         pending = false;
-        if (pendingTO) { clearTimeout(pendingTO); pendingTO = 0; }
+        if (pendingTO) { cancelTimer(pendingTO); pendingTO = 0; }
         cancelCharge();
         botPlan = null;
         const a = (shot.angle * Math.PI) / 180, v = launchSpeed(shot.power);
@@ -560,7 +716,7 @@ export function mount(root, context = {}) {
             publish();
             const id = state.shot.id;
             const delay = (sim.steps * DT + (sim.made ? 1.6 : 1.05)) * 1000;
-            resolveTimer = setTimeout(() => {
+            resolveTimer = later(() => {
                 resolveTimer = 0;
                 if (!destroyed && state && state.shot && state.shot.id === id) resolveShot(sim, id);
             }, delay);
@@ -603,8 +759,8 @@ export function mount(root, context = {}) {
         if (online && !room.isHost) {
             if (action.type === "shoot") {
                 pending = true;
-                if (pendingTO) clearTimeout(pendingTO);
-                pendingTO = setTimeout(() => { pending = false; pendingTO = 0; renderStatic(); }, 2500);
+                if (pendingTO) cancelTimer(pendingTO);
+                pendingTO = later(() => { pending = false; pendingTO = 0; renderStatic(); }, 2500);
             }
             room.sendAction(action).catch(console.warn);
             return;
@@ -635,7 +791,7 @@ export function mount(root, context = {}) {
         if (state.phase !== "aim" || state.winner !== -1 || state.turn !== 1) return;
         if (anim.active || botTimer || pending) return;
         botPlan = planBot();
-        botTimer = setTimeout(() => {
+        botTimer = later(() => {
             botTimer = 0;
             if (destroyed || !state || state.phase !== "aim" || state.turn !== 1) { botPlan = null; return; }
             const plan = botPlan || planBot();
@@ -666,6 +822,7 @@ export function mount(root, context = {}) {
             else status = st.turn === mine ? "Your turn" : st.names[st.turn] + " aiming...";
         }
         statusEl.textContent = status;
+        firstEl.textContent = "FIRST " + (st ? st.names[st.first] : "-");
 
         const spot = curSpot();
         const showField = !!st && !!spot && st.phase !== "over";
@@ -681,12 +838,12 @@ export function mount(root, context = {}) {
         playerG.setAttribute("stroke", col);
         playerG.setAttribute("fill", col);
 
-        const my = canAim();
+        const my = canAim() && !frozen;
         holdBtns.forEach((b) => { b.disabled = !my; });
         shootBtn.disabled = !canShoot();
 
         const over = !!st && st.phase === "over";
-        overEl.hidden = !over;
+        overEl.hidden = !over || cheatOpen || helpOpen || paused;
         if (over) {
             const w = st.winner;
             overTitle.textContent = w === "draw" ? "Draw" :
@@ -698,12 +855,18 @@ export function mount(root, context = {}) {
             overWait.hidden = canRestart;
         }
         cheatsBtn.hidden = online;
-        rematchBtn.hidden = online ? !room.isHost : false;
-        cheatsEl.hidden = online || !cheatOpen;
+        cheatsBtn.classList.toggle("on", Object.keys(cheats).some((k) => cheats[k]));
+        const pauseLabel = pauseBtn.querySelector(".bsh-btn-label");
+        if (pauseLabel) pauseLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseEl.hidden = !paused || cheatOpen || helpOpen;
+        cheatsEl.hidden = online || !cheatOpen || helpOpen || paused;
+        helpEl.hidden = !helpOpen;
         switchEls.forEach((sw) => {
             sw.setAttribute("aria-pressed", String(cheats[sw.dataset.cheat]));
         });
-        perfectBtn.disabled = !canShoot();
+        perfectBtn.disabled = online || !canAim() || pending;
+        syncFreeze();
     }
     function camTarget() {
         if (anim.active) return clamp(anim.ball.x - 380, 0, WORLD - VW);
@@ -769,6 +932,7 @@ export function mount(root, context = {}) {
         raf = requestAnimationFrame(frame);
         const dt = lastT ? Math.min(0.05, (t - lastT) / 1000) : 0;
         lastT = t;
+        if (frozen) return; /* overlays/pause freeze flight, bot and charge */
         if (charging) {
             phase += dt / (cheats.slow ? 2.7 : 0.9);
             const pp = phase % 2;
@@ -877,10 +1041,26 @@ export function mount(root, context = {}) {
         if (destroyed || e.ctrlKey || e.metaKey || e.altKey) return;
         const tag = e.target ? e.target.tagName : "";
         if (tag === "INPUT" || tag === "TEXTAREA") return;
-        if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "w" || e.key === "s") {
+        const c = e.code;
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!helpOpen && !paused) toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else togglePause();
             e.preventDefault();
-            if (canAim()) setAngle(myAngle + ((e.key === "ArrowUp" || e.key === "w") ? 1 : -1));
-        } else if (e.key === " " || e.code === "Space") {
+            return;
+        }
+        if (frozen) { e.preventDefault(); return; }
+        if (c === "KeyR") {
+            if (!online || room.isHost) submitAction({ type: "restart" });
+            e.preventDefault();
+            return;
+        }
+        if (c === "ArrowUp" || c === "ArrowDown" || c === "KeyW" || c === "KeyS") {
+            e.preventDefault();
+            if (canAim()) setAngle(myAngle + ((c === "ArrowUp" || c === "KeyW") ? 1 : -1));
+        } else if (c === "Space") {
             e.preventDefault();
             if (e.repeat) return;
             if (state && state.phase === "over") {
@@ -906,8 +1086,19 @@ export function mount(root, context = {}) {
 
     function handleClick(event) {
         if (destroyed) return;
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const sw = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) {
+            if (!online || room.isHost) submitAction({ type: "restart" });
+            return;
+        }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        const sw = t.closest("[data-cheat]");
         if (sw) {
             const k = sw.dataset.cheat;
             if (!online && Object.prototype.hasOwnProperty.call(cheats, k)) {
@@ -916,21 +1107,22 @@ export function mount(root, context = {}) {
             }
             return;
         }
-        const btn = event.target.closest("[data-act]");
+        const btn = t.closest("[data-act]");
         if (!btn) return;
         const a = btn.dataset.act;
         if (a === "rematch") {
             if (!online || room.isHost) submitAction({ type: "restart" });
         } else if (a === "cheats") {
-            if (!online) { cheatOpen = !cheatOpen; renderStatic(); }
+            toggleCheats();
         } else if (a === "closeCheats") {
-            cheatOpen = false; renderStatic();
+            toggleCheats(false);
         } else if (a === "perfect") {
-            if (!online && canShoot()) {
+            if (!online && canAim() && !pending) {
                 const spot = curSpot();
                 const sol = spot ? findSolution(spot.x) : null;
                 if (sol) {
-                    cheatOpen = false;
+                    cheatOpen = false; helpOpen = false; paused = false;
+                    syncFreeze();
                     setAngle(sol.angle);
                     submitAction({ type: "shoot", angle: sol.angle, power: sol.power });
                 }
@@ -975,6 +1167,7 @@ export function mount(root, context = {}) {
             destroyed = true;
             if (raf) cancelAnimationFrame(raf);
             clearRoundTimers();
+            Array.from(liveTimers).forEach(cancelTimer);
             cleanups.forEach((fn) => { try { fn(); } catch (err) { /* ignore */ } });
             root.removeEventListener("click", handleClick);
             root.innerHTML = "";

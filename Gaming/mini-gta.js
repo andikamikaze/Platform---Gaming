@@ -1,7 +1,23 @@
 /* ==== GAME: mini-gta.js ==== */
+/* Mini GTA — open-world driving / shooting / missions.
+   Layout: HUD bar + fill-height board + touch pad (game-layout-redesign).
+   Converted from the classic MGP registrar to ESM so HUD buttons can use iconSVG. */
 
-(() => {
-    "use strict";
+import { iconSVG } from "../JS/icons.js";
+
+export const META = {
+    id: "mini-gta",
+    name: "Mini GTA",
+    category: "action",
+    catLabel: "Action",
+    desc: "Drive, shoot and finish ten jobs across three city districts.",
+    art: `<svg viewBox="0 0 48 48" width="54" height="54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16h31v8H7z"/><path d="M29 24l-4 11h8l4-11"/><path d="M21 24v4h4"/><path d="M33 16v-3"/></svg>`,
+    bg: ["#c7d2fe", "#a5b4fc"],
+};
+
+export function mount(root, context = {}) {
+    const { onExit = () => { } } = context;
+    const app = root;
     const T = 40,
         MW = 60,
         MH = 42,
@@ -620,122 +636,190 @@
                     s.ammo[k] = Math.max(0, data.ammo[k] | 0);
         return s;
     }
-    MGP_REGISTER({
-        id: "mini-gta",
-        name: "Mini GTA",
-        category: "action",
-        catLabel: "Action",
-        desc: "Drive, shoot and finish ten jobs across three city districts.",
-        art: `<svg viewBox="0 0 48 48" width="54" height="54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16h31v8H7z"/><path d="M29 24l-4 11h8l4-11"/><path d="M21 24v4h4"/><path d="M33 16v-3"/></svg>`,
-        bg: ["#c7d2fe", "#a5b4fc"],
-        _test: {
-            T,
-            MW,
-            MH,
-            RX,
-            RY,
-            WEAPONS,
-            VEHS,
-            MISSIONS,
-            POIS,
-            HEAT,
-            COPS_PER,
-            SHOPS,
-            RACE_CPS,
-            DISTS,
-            rng: mulberry32,
-            clamp,
-            dist,
-            districtOf,
-            copCount,
-            fareCalc,
-            raceReward,
-            wantedFromHeat,
-            tileAt,
-            steerSign,
-            vehStep,
-            genCity,
-            defaultState,
-            applySave,
-        },
-        build(app) {
-            app.innerHTML = `
+    app.innerHTML = `
     <style>
-      #mini-gta-app .city { width:100%; height:100%; display:block; background:#22231f; }
-      #mini-gta-app .obj { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:#0b1020d9; color:#fde047; padding:6px 16px; border-radius:10px; font-size:13px; font-weight:700; z-index:3; pointer-events:none; max-width:88%; text-align:center; border:1px solid #ffffff22; }
-      #mini-gta-app .mini { position:absolute; right:10px; bottom:10px; width:150px; height:105px; background:#0b1020dd; border:1px solid #ffffff33; border-radius:8px; z-index:3; pointer-events:none; }
-      #mini-gta-app .toast { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); background:#151d38ee; color:#e5e7eb; padding:7px 16px; border-radius:10px; font-size:13px; font-weight:600; z-index:4; pointer-events:none; opacity:0; transition:opacity .3s; border:1px solid #ffffff22; }
-      #mini-gta-app .toast.show { opacity:1; }
-      #mini-gta-app .arrest { position:absolute; top:44px; left:50%; transform:translateX(-50%); color:#f87171; font-weight:800; font-size:14px; z-index:3; pointer-events:none; }
-      #mini-gta-app .shoplist { display:flex; flex-direction:column; gap:8px; margin:12px 0; width:300px; max-width:80vw; }
-      #mini-gta-app .shoplist button { display:flex; justify-content:space-between; gap:12px; background:#ffffff10; border:1px solid #ffffff22; color:#e5e7eb; border-radius:10px; padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer; }
-      #mini-gta-app .shoplist button:disabled { opacity:.4; cursor:default; }
-      #mini-gta-app .wstars svg { margin:0 1px; vertical-align:-2px; }
-      #mini-gta-app .hint { font-size:12px; color:#9ca3af; }
-      #mini-gta-app .keys { text-align:left; font-size:13px; color:#9ca3af; line-height:1.7; margin:10px 0; }
-      #mini-gta-app .keys b { color:#e5e7eb; }
-    </style>
-    <div class="mgp-hud">
-      <span class="mgp-title">Mini GTA</span>
-      <span class="mgp-chip">Cash <b data-hud="cash">$300</b></span>
-      <span class="mgp-chip">HP <b data-hud="hp">100</b></span>
-      <span class="mgp-chip" data-hud="arm">Armor 0</span>
-      <span class="mgp-chip wstars" data-hud="stars"></span>
-      <span class="mgp-chip"><b data-hud="wep">Pistol</b></span>
-      <span class="mgp-chip" data-hud="tchip" hidden>Time <b data-hud="time">0</b></span>
-      <span class="mgp-spacer"></span>
-      <button class="mgp-btn ghost" data-act="save">Save</button><button class="mgp-btn ghost" data-act="load">Load</button><button class="mgp-btn ghost" data-act="mute">Sound on</button><button class="mgp-btn ghost" data-act="help">Help</button>
-    </div>
-    <div class="mgp-stage">
-      <svg class="city" viewBox="0 0 960 640" preserveAspectRatio="xMidYMid slice"><g data-l="static"></g><g data-l="dyn"></g></svg>
-      <div class="obj" data-obj hidden></div>
-      <div class="arrest" data-arrest hidden>COPS CLOSING IN - BREAK AWAY</div>
-      <svg class="mini" viewBox="0 0 300 210" preserveAspectRatio="none"><g data-l="mstatic"></g><g data-l="mdyn"></g></svg>
-      <div class="toast" data-toast></div>
-      <div class="mgp-overlay" data-ov="start"><div class="mgp-card">
-        <h2 class="mgp-ov-title">Mini GTA</h2>
-        <p class="mgp-ov-sub">Vinnie runs the jobs in this town. Walk, drive, shoot and climb from a nobody to the final job. Watch your wanted stars: five levels of heat bring the whole force down on you.</p>
-        <div class="keys"><b>WASD / Arrows</b> move or drive<br><b>Space</b> attack or fire<br><b>E</b> enter or exit cars, use shop doors<br><b>Q</b> swap weapon - <b>H</b> use medkit</div>
-        <button class="mgp-btn" data-act="start">Start game</button>
-      </div></div>
-      <div class="mgp-overlay" data-ov="brief" hidden><div class="mgp-card">
-        <h2 class="mgp-ov-title" data-b="name"></h2><p class="mgp-ov-sub" data-b="sub"></p>
-        <button class="mgp-btn" data-act="accept">Accept job</button><button class="mgp-btn ghost" data-act="decline">Later</button>
-      </div></div>
-      <div class="mgp-overlay" data-ov="shop" hidden><div class="mgp-card">
-        <h2 class="mgp-ov-title" data-s="title"></h2><div class="shoplist" data-s="list"></div>
-        <button class="mgp-btn" data-act="leave">Leave shop</button>
-      </div></div>
-      <div class="mgp-overlay" data-ov="help" hidden><div class="mgp-card">
-        <h2 class="mgp-ov-title">Controls</h2>
-        <div class="keys"><b>WASD / Arrows</b> move or drive<br><b>Space</b> attack or fire, on foot only<br><b>E</b> enter or exit cars, use shop doors<br><b>Q</b> swap weapon - <b>H</b> use medkit<br><br>Yellow marker: Vinnie's next job.<br>Green markers: side work - street race, taxi, delivery.<br>Colored doors: weapon, vehicle and general shops.<br>Break away from the cops to cool your stars. Getting busted on a marked job fails it.</div>
-        <button class="mgp-btn" data-act="closehelp">Back</button>
-      </div></div>
-      <div class="mgp-overlay" data-ov="over" hidden><div class="mgp-card">
-        <h2 class="mgp-ov-title" data-o="title"></h2><p class="mgp-ov-sub" data-o="sub"></p>
-        <button class="mgp-btn" data-act="restart">Play again</button><button class="mgp-btn ghost" data-o="resume" data-act="resume" hidden>Keep going</button><button class="mgp-btn ghost" data-o="respawn" data-act="respawn" hidden>Respawn</button>
-      </div></div>
-    </div>
-    <div class="mgp-foot">
-      <span class="hint">E enter/exit - Q swap - H medkit - Space fire</span>
-      <div class="mgp-dpad">
-        <span></span><button class="mgp-dbtn" data-k="u" aria-label="up"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg></button><span></span>
-        <button class="mgp-dbtn" data-k="l" aria-label="left"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button><button class="mgp-dbtn" data-k="d" aria-label="down"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6"/></svg></button><button class="mgp-dbtn" data-k="r" aria-label="right"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
+      .gta{--bg:#0d142b;--line:#ffffff22;--ink:#e5e7eb;--mut:#9ca3af;--acc:#facc15}
+      .gta [hidden]{display:none!important}
+      .gta-hud{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:#111a33;font:600 11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+      .gta-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;background:#ffffff10;color:#c3cde2;white-space:nowrap}
+      .gta-chip b{color:#fff;font-variant-numeric:tabular-nums}
+      .gta-obj{max-width:190px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap}
+      .gta-obj:before{content:"OBJ ";color:var(--mut)}
+      .gta-spacer{flex:1 1 auto}
+      .gta-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:32px;padding:6px 9px;border:1px solid #ffffff33;border-radius:9px;background:#ffffff12;color:var(--ink);font:600 10px/1 inherit;letter-spacing:.03em;cursor:pointer;white-space:nowrap}
+      .gta-btn:hover{border-color:var(--acc);color:var(--acc)}
+      .gta-btn.on{border-color:var(--acc);color:var(--acc);background:#facc151c}
+      .gta-btn:disabled{opacity:.45;cursor:default}
+      .gta-btn svg{flex:none;display:block}
+      .gta-btn.primary{background:#4f46e5;border-color:#4f46e5;color:#fff}
+      .gta game-app,.game-app.gta{gap:8px}
+      .game-app.gta > .gta-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+      .gta-board{position:relative;width:100%;aspect-ratio:3/2;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden}
+      .gta-board .city{width:100%;height:100%;display:block;background:#22231f}
+      .gta-board .mini{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));width:min(150px,38vw);aspect-ratio:150/105;height:auto;background:#0b1020dd;border:1px solid #ffffff33;border-radius:10px;z-index:3;pointer-events:none}
+      .gta-board .toast{position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:calc(100% - 16px);background:#151d38ee;color:var(--ink);padding:8px 16px;border-radius:10px;font:600 13px/1.4 inherit;z-index:4;pointer-events:none;opacity:0;transition:opacity .18s;border:1px solid var(--line);box-sizing:border-box;text-align:center}
+      .gta-board .toast.show{opacity:1}
+      .gta-board .arrest{position:absolute;top:12px;left:50%;transform:translateX(-50%);max-width:90%;color:#f87171;font-weight:800;font-size:14px;text-align:center;z-index:3;pointer-events:none}
+      .gta-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:14px;background:rgba(11,16,32,.9);backdrop-filter:blur(3px)}
+      .gta-card{display:flex;flex-direction:column;gap:10px;width:min(460px,100%);max-height:100%;padding:16px;border:1px solid #ffffff22;border-radius:14px;background:#111a33;color:var(--ink);box-shadow:0 12px 32px #0006;text-align:center}
+      .gta-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px}
+      .gta-head h2,.gta-head h3{margin:0;font-size:1.15rem;font-weight:800;color:#fff}
+      .gta-body{flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+      .gta-foot{flex:none;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding-top:4px}
+      .gta-foot .gta-btn{min-height:38px;padding:8px 14px}
+      .gta-win{color:#34d399!important}
+      .gta-lose{color:#fb7185!important}
+      .gta-sub{margin:0;color:var(--mut);font-size:.86rem;line-height:1.55}
+      .gta .keys{text-align:left;font-size:12px;color:var(--mut);line-height:1.7;margin:10px 0}
+      .gta .keys b{color:var(--ink)}
+      .gta-note{font-size:11px;color:var(--mut)}
+      .gta-sep{font:700 9px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--mut);text-transform:uppercase;margin:10px 0 4px}
+      .gta .shoplist{display:flex;flex-direction:column;gap:8px;margin:12px 0;width:min(300px,100%)}
+      .gta .shoplist button{display:flex;justify-content:space-between;gap:12px;min-height:44px;background:#ffffff10;border:1px solid #ffffff22;color:var(--ink);border-radius:10px;padding:8px 12px;font:600 13px/1.4 inherit;cursor:pointer}
+      .gta .shoplist button:disabled{opacity:.4;cursor:default}
+      .gta-cheats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+      .gta-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:8px 10px;border:1px solid #ffffff2e;border-radius:10px;background:#ffffff10;color:var(--ink);font-size:11px;font-weight:600;text-align:left;cursor:pointer}
+      .gta-toggle:hover{border-color:var(--acc)}
+      .gta-toggle.on{border-color:var(--acc);color:var(--acc);background:#facc151c}
+      .gta .wstars svg{margin:0 1px;vertical-align:-2px}
+      .gta-pad{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:#111a33;touch-action:none;user-select:none}
+      .gta-dpad{display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(2,38px);gap:4px}
+      .gta-dpad [data-k="u"]{grid-area:1/2}
+      .gta-dpad [data-k="l"]{grid-area:2/1}
+      .gta-dpad [data-k="d"]{grid-area:2/2}
+      .gta-dpad [data-k="r"]{grid-area:2/3}
+      .gta-pad button{display:grid;place-items:center;border:1px solid #ffffff33;border-radius:10px;background:#ffffff12;color:var(--ink);font:700 10px/1 inherit;cursor:pointer}
+      .gta-dpad button{width:40px;height:38px}
+      .gta-acts{display:flex;flex-wrap:wrap;gap:6px}
+      .gta-acts button{min-width:52px;min-height:38px;padding:4px 8px}
+      .gta-hint{flex:1 1 100%;text-align:center;font-size:10px;color:var(--mut)}
+      @media (max-width:720px){.gta-board .mini{right:8px;bottom:calc(8px + env(safe-area-inset-bottom));width:min(120px,34vw)}}
+      @media (prefers-reduced-motion:reduce){.gta-board .toast{transition:none}}
+      /* design polish */
+      .gta :focus-visible,.gta button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+      @media (pointer:coarse){.gta button:not(:disabled){min-height:44px}}
+      /* fill height + mobile refinements (last wins) */
+      @media (max-width:640px){
+        .gta.game-fill > .gta-board:not(:has(.gta-ov:not([hidden]))){aspect-ratio:3/2;flex:0 0 auto}
+        .gta.game-fill > .gta-board:has(.gta-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+        .gta .gta-hud{gap:4px;padding:6px}
+        .gta .gta-hud .gta-chip{padding:4px 6px;font-size:9px}
+        .gta .gta-hud .gta-chip[data-hud="arm"],.gta .gta-hud .gta-chip[data-hud="med"]{display:none}
+        .gta .gta-obj{max-width:110px}
+        .gta .gta-hud .gta-btn{min-height:32px;padding:5px 8px;font-size:9px}
+        .gta .gta-hud .gta-btn-label,.gta .gta-hud .gta-spacer{display:none}
+        .gta .gta-ov{padding:8px}
+        .gta .gta-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+        .gta .gta-body,.gta .gta-cheats{scrollbar-width:none}
+        .gta .gta-body::-webkit-scrollbar,.gta .gta-cheats::-webkit-scrollbar{display:none}
+        .gta .gta-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+        .gta .gta-note{display:none}
+        .gta .gta-pad{padding:6px;gap:6px}
+        .gta .gta-dpad button{width:38px;height:38px}
+        .gta .gta-acts button{min-width:44px;min-height:38px;font-size:10px}
+      }
+</style>
+    <div class="game-app gta game-fill" data-gta>
+      <div class="gta-hud">
+        <span class="gta-chip">CASH <b data-hud="cash">$300</b></span>
+        <span class="gta-chip">HP <b data-hud="hp">100</b></span>
+        <span class="gta-chip" data-hud="arm">ARMOR 0</span>
+        <span class="gta-chip" data-hud="med" hidden>MED 1</span>
+        <span class="gta-chip wstars" data-hud="stars" aria-label="Wanted level"></span>
+        <span class="gta-chip"><b data-hud="wep">Pistol</b></span>
+        <span class="gta-chip" data-hud="tchip" hidden>TIME <b data-hud="time">0</b></span>
+        <span class="gta-chip gta-obj" data-hud="obj" hidden></span>
+        <span class="gta-spacer"></span>
+        <button class="gta-btn" type="button" data-act="save" aria-label="Save game" title="Save game">${iconSVG("save", { size: 14 })}<span class="gta-btn-label">Save</span></button>
+        <button class="gta-btn" type="button" data-act="load" aria-label="Load game" title="Load game">${iconSVG("download", { size: 14 })}<span class="gta-btn-label">Load</span></button>
+        <button class="gta-btn" type="button" data-act="mute" aria-label="Toggle sound" title="Toggle sound">${iconSVG("volume", { size: 14 })}<span class="gta-btn-label" data-hud="sound">Sound on</span></button>
+        <button class="gta-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="gta-btn-label">Help</span></button>
+        <button class="gta-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="gta-btn-label">Cheats</span></button>
+        <button class="gta-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="gta-btn-label" data-hud="pauselabel">Pause</span></button>
+        <button class="gta-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="gta-btn-label">Restart</span></button>
+        <button class="gta-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="gta-btn-label">Exit game</span></button>
       </div>
-      <button class="mgp-btn ghost" data-k="fire">Fire</button><button class="mgp-btn ghost" data-k="use">Use</button><button class="mgp-btn ghost" data-k="swap">Swap</button>
+      <section class="game-panel gta-board" data-board>
+        <svg class="city" viewBox="0 0 960 640" preserveAspectRatio="xMidYMid slice"><g data-l="static"></g><g data-l="dyn"></g></svg>
+        <div class="arrest" data-arrest hidden>COPS CLOSING IN - BREAK AWAY</div>
+        <svg class="mini" viewBox="0 0 300 210" preserveAspectRatio="none"><g data-l="mstatic"></g><g data-l="mdyn"></g></svg>
+        <div class="toast" data-toast></div>
+        <div class="gta-ov" data-ov="start"><div class="gta-card">
+          <div class="gta-head"><h2>Mini GTA</h2></div>
+          <div class="gta-body"><p class="gta-sub">Vinnie runs the jobs in this town. Walk, drive, shoot and climb from a nobody to the final job. Watch your wanted stars: five levels of heat bring the whole force down on you.</p>
+          <div class="keys"><b>WASD / Arrows</b> move or drive<br><b>Space</b> attack or fire<br><b>E</b> enter or exit cars, shop doors<br><b>Q</b> swap weapon · <b>M</b> medkit<br><b>H</b> help · <b>C</b> cheats · <b>P</b> pause · <b>R</b> restart</div></div>
+          <div class="gta-foot"><button class="gta-btn primary" type="button" data-act="start">Start game</button></div>
+        </div></div>
+        <div class="gta-ov" data-ov="brief" hidden><div class="gta-card">
+          <div class="gta-head"><h2 data-b="name"></h2></div>
+          <div class="gta-body"><p class="gta-sub" data-b="sub"></p></div>
+          <div class="gta-foot"><button class="gta-btn primary" type="button" data-act="accept">Accept job</button><button class="gta-btn" type="button" data-act="decline">Later</button></div>
+        </div></div>
+        <div class="gta-ov" data-ov="shop" hidden><div class="gta-card">
+          <div class="gta-head"><h2 data-s="title"></h2></div>
+          <div class="gta-body"><div class="shoplist" data-s="list"></div></div>
+          <div class="gta-foot"><button class="gta-btn primary" type="button" data-act="leave">Leave shop</button></div>
+        </div></div>
+        <div class="gta-ov" data-ov="pause" hidden><div class="gta-card">
+          <div class="gta-head"><h3>Paused</h3></div>
+          <div class="gta-body"><p class="gta-sub">The city is frozen. Press P or Resume to continue.</p></div>
+          <div class="gta-foot"><button class="gta-btn primary" type="button" data-act="unpause">Resume</button></div>
+        </div></div>
+        <div class="gta-ov" data-ov="cheat" hidden><div class="gta-card">
+          <div class="gta-head"><h3>Cheats</h3><button class="gta-btn" type="button" data-cheats-close>Close</button></div>
+          <div class="gta-body"><div class="gta-cheats" data-cheatgrid></div><div class="gta-sep">Quick actions</div><div class="gta-cheats" data-cheatacts></div></div>
+          <div class="gta-foot"><span class="gta-note">Press C to close</span><button class="gta-btn primary" type="button" data-cheats-close>Done</button></div>
+        </div></div>
+        <div class="gta-ov" data-ov="help" hidden><div class="gta-card">
+          <div class="gta-head"><h3>How to play</h3><button class="gta-btn" type="button" data-help-close>Close</button></div>
+          <div class="gta-body"><div class="keys"><b>WASD / Arrows</b> move or drive<br><b>Space</b> attack or fire, on foot only<br><b>E</b> enter or exit cars, use shop doors<br><b>Q</b> swap weapon · <b>M</b> use medkit<br><br>Yellow marker: Vinnie's next job.<br>Green markers: side work - street race, taxi, delivery.<br>Colored doors: weapon, vehicle and general shops.<br>Break away from the cops to cool your stars. Getting busted on a marked job fails it.<br><br><b>H</b> help · <b>C</b> cheats · <b>P</b> pause · <b>R</b> restart</div></div>
+          <div class="gta-foot"><span class="gta-note">Press H to reopen this guide</span><button class="gta-btn primary" type="button" data-help-close>Got it</button></div>
+        </div></div>
+        <div class="gta-ov" data-ov="over" hidden><div class="gta-card">
+          <div class="gta-head"><h2 data-o="title"></h2></div>
+          <div class="gta-body"><p class="gta-sub" data-o="sub"></p></div>
+          <div class="gta-foot"><button class="gta-btn primary" type="button" data-act="restart">Play again</button><button class="gta-btn" data-o="resume" data-act="resume" type="button" hidden>Keep going</button><button class="gta-btn" data-o="respawn" data-act="respawn" type="button" hidden>Respawn</button></div>
+        </div></div>
+      </section>
+      <div class="gta-pad">
+        <div class="gta-dpad">
+          <button type="button" data-k="u" aria-label="Up">${iconSVG("arrowUp", { size: 16 })}</button>
+          <button type="button" data-k="l" aria-label="Left">${iconSVG("arrowLeft", { size: 16 })}</button>
+          <button type="button" data-k="d" aria-label="Down">${iconSVG("arrowDown", { size: 16 })}</button>
+          <button type="button" data-k="r" aria-label="Right">${iconSVG("arrowRight", { size: 16 })}</button>
+        </div>
+        <div class="gta-acts">
+          <button type="button" data-k="fire" aria-label="Fire">FIRE</button>
+          <button type="button" data-k="use" aria-label="Use / enter car">USE</button>
+          <button type="button" data-k="swap" aria-label="Swap weapon">SWAP</button>
+          <button type="button" data-k="med" aria-label="Use medkit">MED</button>
+        </div>
+        <span class="gta-hint">E use · Q swap · M medkit · Space fire</span>
+      </div>
     </div>`;
             const $ = (s) => app.querySelector(s);
             const hud = {
                 cash: $('[data-hud="cash"]'),
                 hp: $('[data-hud="hp"]'),
                 arm: $('[data-hud="arm"]'),
+                med: $('[data-hud="med"]'),
                 stars: $('[data-hud="stars"]'),
                 wep: $('[data-hud="wep"]'),
                 tchip: $('[data-hud="tchip"]'),
                 time: $('[data-hud="time"]'),
-                obj: $("[data-obj]"),
+                obj: $('[data-hud="obj"]'),
+                sound: $('[data-hud="sound"]'),
+                pauselabel: $('[data-hud="pauselabel"]'),
                 arrest: $("[data-arrest]"),
                 toast: $("[data-toast]"),
+            };
+            const btn = {
+                help: $("[data-help]"),
+                cheats: $("[data-cheats]"),
+                pause: $("[data-pause]"),
+                restart: $("[data-restart]"),
+                exit: $("[data-exit]"),
+                mute: $('[data-act="mute"]'),
             };
             const svg = app.querySelector(".city");
             const statG = app.querySelector('[data-l="static"]'),
@@ -746,9 +830,13 @@
                 start: $('[data-ov="start"]'),
                 brief: $('[data-ov="brief"]'),
                 shop: $('[data-ov="shop"]'),
+                pause: $('[data-ov="pause"]'),
+                cheat: $('[data-ov="cheat"]'),
                 help: $('[data-ov="help"]'),
                 over: $('[data-ov="over"]'),
             };
+            const cheatGrid = $("[data-cheatgrid]"),
+                cheatActs = $("[data-cheatacts]");
             const bName = $('[data-b="name"]'),
                 bSub = $('[data-b="sub"]'),
                 sTitle = $('[data-s="title"]'),
@@ -761,8 +849,13 @@
             const G = { pickups: [], vehs: [], npcs: [], bullets: [], fxs: [] };
             const K = { u: 0, d: 0, l: 0, r: 0, fire: 0 };
             let active = false,
+                destroyed = false,
                 running = false,
                 paused = true,
+                phase = "start",
+                helpOpen = false,
+                cheatsOpen = false,
+                userPaused = false,
                 iv = 0,
                 lastT = 0,
                 hudT = 0;
@@ -775,6 +868,25 @@
                 sideCd = 0;
             let AC = null,
                 muted = false;
+            const cheat = { god: false, noHeat: false, noCops: false, infiniteAmmo: false };
+            let seenHelp = true;
+            try { seenHelp = localStorage.getItem("miniGtaHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+            if (!seenHelp) {
+                helpOpen = true;
+                try { localStorage.setItem("miniGtaHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+            }
+            const CHEAT_TOGGLES = [
+                ["god", "Invincible"],
+                ["noHeat", "No wanted level"],
+                ["noCops", "No cop spawns"],
+                ["infiniteAmmo", "Infinite ammo"],
+            ];
+            const CHEAT_ACTS = [
+                ["heal", "Full health + armor"],
+                ["cash", "+1000 cash"],
+                ["cool", "Clear heat"],
+                ["finish", "Finish current job"],
+            ];
             function beep(f, d, type, v, slide) {
                 if (muted) return;
                 try {
@@ -816,14 +928,88 @@
                 siren: () => beep(720, 0.3, "square", 0.04, -320),
                 door: () => beep(300, 0.06, "sine", 0.05, 90),
             };
+            function syncUI() {
+                const suppress = helpOpen || cheatsOpen;
+                ov.start.hidden = phase !== "start" || suppress;
+                ov.brief.hidden = phase !== "brief" || suppress;
+                ov.shop.hidden = phase !== "shop" || suppress;
+                ov.over.hidden = phase !== "over" || suppress;
+                ov.pause.hidden = !userPaused || suppress;
+                ov.cheat.hidden = !cheatsOpen || helpOpen;
+                ov.help.hidden = !helpOpen;
+                paused = helpOpen || cheatsOpen || userPaused || phase !== "play";
+                hud.pauselabel.textContent = userPaused ? "Resume" : "Pause";
+                btn.pause.setAttribute("aria-label", userPaused ? "Resume" : "Pause");
+                btn.pause.classList.toggle("on", userPaused);
+                btn.cheats.classList.toggle("on", cheatsOpen);
+                btn.help.classList.toggle("on", helpOpen);
+            }
             function hideOvs() {
-                for (const k in ov) ov[k].hidden = true;
-                paused = false;
+                phase = "play";
+                syncUI();
             }
             function showOv(el) {
-                for (const k in ov) ov[k].hidden = true;
-                el.hidden = false;
-                paused = true;
+                phase = el.dataset.ov || "play";
+                syncUI();
+            }
+            function toggleHelp(on) {
+                helpOpen = typeof on === "boolean" ? on : !helpOpen;
+                if (helpOpen) cheatsOpen = false;
+                syncUI();
+            }
+            function toggleCheats(on) {
+                cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+                if (cheatsOpen) {
+                    helpOpen = false;
+                    renderCheats();
+                }
+                syncUI();
+            }
+            function togglePause() {
+                if (helpOpen) { toggleHelp(false); lastT = Date.now(); return; }
+                if (cheatsOpen) { toggleCheats(false); lastT = Date.now(); return; }
+                if (phase !== "play") return;
+                userPaused = !userPaused;
+                lastT = Date.now();
+                clearK();
+                syncUI();
+            }
+            function startGame() {
+                init();
+                phase = "play";
+                helpOpen = cheatsOpen = userPaused = false;
+                running = true;
+                clearK();
+                lastT = Date.now();
+                syncUI();
+            }
+            function renderCheats() {
+                cheatGrid.innerHTML = CHEAT_TOGGLES.map(([k, label]) =>
+                    '<button class="gta-toggle' + (cheat[k] ? " on" : "") + '" type="button" data-cheat="' + k + '" aria-pressed="' + cheat[k] + '">' + label + "<em>" + (cheat[k] ? "ON" : "OFF") + "</em></button>"
+                ).join("");
+                cheatActs.innerHTML = CHEAT_ACTS.map(([k, label]) =>
+                    '<button class="gta-toggle" type="button" data-cheatact="' + k + '">' + label + "</button>"
+                ).join("");
+            }
+            function runCheatAct(k) {
+                if (k === "heal") {
+                    G.hp = 100;
+                    G.armor = 120;
+                    toast("Health restored.");
+                } else if (k === "cash") {
+                    G.money += 1000;
+                    G.earned += 1000;
+                    toast("+$1000 added.");
+                } else if (k === "cool") {
+                    G.heat = 0;
+                    toast("Heat cleared.");
+                } else if (k === "finish") {
+                    if (G.mission) {
+                        completeMission();
+                        if (running) hideOvs();
+                    } else toast("No active job.");
+                }
+                updateHud();
             }
             function toast(msg) {
                 hud.toast.textContent = msg;
@@ -834,7 +1020,7 @@
             function showOver(kind, title, sub) {
                 oTitle.textContent = title;
                 oTitle.className =
-                    "mgp-ov-title " + (kind === "win" ? "mgp-win" : "mgp-lose");
+                    "gta-title " + (kind === "win" ? "mgp-win gta-win" : "mgp-lose gta-lose");
                 oSub.textContent = sub;
                 oResume.hidden = kind !== "fail";
                 oRespawn.hidden = kind !== "dead";
@@ -1055,93 +1241,124 @@
                 KeyD: "r",
                 Space: "fire",
             };
-            document.addEventListener("keydown", (e) => {
-                if (!active) return;
+            const clearK = () => {
+                K.u = K.d = K.l = K.r = K.fire = 0;
+            };
+            function onKeyDown(e) {
+                if (!active || destroyed) return;
                 if (KM[e.code]) {
                     e.preventDefault();
-                    K[KM[e.code]] = 1;
+                    if (phase === "play" && !helpOpen && !cheatsOpen && !userPaused)
+                        K[KM[e.code]] = 1;
                 }
                 if (e.repeat) return;
+                /* keyboard priority: help -> cheats -> pause/escape -> actions */
+                if (e.code === "KeyH") { e.preventDefault(); toggleHelp(); return; }
+                if (e.code === "KeyC") {
+                    e.preventDefault();
+                    if (helpOpen) toggleHelp(false); else toggleCheats();
+                    return;
+                }
+                if (e.code === "KeyP") { e.preventDefault(); togglePause(); return; }
+                if (e.code === "Escape") {
+                    e.preventDefault();
+                    if (helpOpen) toggleHelp(false);
+                    else if (cheatsOpen) toggleCheats(false);
+                    else if (userPaused) { userPaused = false; syncUI(); lastT = Date.now(); }
+                    else if (phase === "play") togglePause();
+                    return;
+                }
+                if (e.code === "KeyR") { e.preventDefault(); startGame(); return; }
+                if (helpOpen || cheatsOpen || userPaused) return;
+                if (e.code === "Enter") {
+                    e.preventDefault();
+                    if (phase === "start") startGame();
+                    else if (phase === "brief") {
+                        if (pendingM) { startMission(pendingM); pendingM = null; }
+                        hideOvs();
+                        running = true;
+                    } else if (phase === "shop") { hideOvs(); running = true; }
+                    else if (phase === "over") startGame();
+                    return;
+                }
+                if (phase !== "play") return;
                 if (e.code === "KeyE") doUse();
-                if (e.code === "KeyQ") swapWeapon();
-                if (e.code === "KeyH") useMedkit();
-            });
-            document.addEventListener("keyup", (e) => {
+                else if (e.code === "KeyQ") swapWeapon();
+                else if (e.code === "KeyM") useMedkit();
+            }
+            function onKeyUp(e) {
                 if (active && KM[e.code]) K[KM[e.code]] = 0;
-            });
-            app.addEventListener("pointerdown", (e) => {
-                if (!active) return;
+            }
+            function onPointerDown(e) {
+                if (!active || !running || paused) return;
                 const b = e.target.closest("[data-k]");
                 if (!b) return;
                 e.preventDefault();
                 const k = b.dataset.k;
-                if (k === "use") {
-                    doUse();
-                    return;
-                }
-                if (k === "swap") {
-                    swapWeapon();
-                    return;
-                }
+                if (k === "use") { doUse(); return; }
+                if (k === "swap") { swapWeapon(); return; }
+                if (k === "med") { useMedkit(); return; }
                 K[k] = 1;
-            });
-            const clearK = () => {
-                K.u = K.d = K.l = K.r = K.fire = 0;
-            };
-            app.addEventListener("pointerup", () => {
-                if (active) clearK();
-            });
-            app.addEventListener("pointerleave", () => {
-                if (active) clearK();
-            });
-            app.addEventListener("pointercancel", () => {
-                if (active) clearK();
-            });
-            app.addEventListener("click", (e) => {
-                if (!active) return;
+            }
+            const onPointerUp = () => { if (active) clearK(); };
+            function onClick(e) {
+                if (!active || destroyed) return;
                 const buy = e.target.closest("[data-buy]");
-                if (buy) {
-                    buyItem(buy.dataset.buy);
+                if (buy) { buyItem(buy.dataset.buy); return; }
+                const ch = e.target.closest("[data-cheat]");
+                if (ch) {
+                    cheat[ch.dataset.cheat] = !cheat[ch.dataset.cheat];
+                    renderCheats();
                     return;
                 }
+                const ca = e.target.closest("[data-cheatact]");
+                if (ca) { runCheatAct(ca.dataset.cheatact); return; }
+                if (e.target.closest("[data-help]")) { toggleHelp(); return; }
+                if (e.target.closest("[data-help-close]")) { toggleHelp(false); return; }
+                if (e.target.closest("[data-cheats]")) { toggleCheats(); return; }
+                if (e.target.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+                if (e.target.closest("[data-pause]")) { togglePause(); return; }
+                if (e.target.closest("[data-restart]")) { startGame(); return; }
+                if (e.target.closest("[data-exit]")) { onExit(); return; }
                 const b = e.target.closest("[data-act]");
                 if (!b) return;
                 const a = b.dataset.act;
-                if (a === "start" || a === "restart") {
-                    init();
+                if (a === "start" || a === "restart") startGame();
+                else if (a === "resume" || a === "respawn" || a === "unpause") {
+                    if (a === "respawn") respawn();
+                    userPaused = false;
                     hideOvs();
                     running = true;
-                } else if (a === "resume") {
-                    hideOvs();
-                    running = true;
-                } else if (a === "respawn") {
-                    respawn();
-                    hideOvs();
-                    running = true;
+                    lastT = Date.now();
                 } else if (a === "accept") {
-                    if (pendingM) {
-                        startMission(pendingM);
-                        pendingM = null;
-                    }
+                    if (pendingM) { startMission(pendingM); pendingM = null; }
                     hideOvs();
                     running = true;
+                    lastT = Date.now();
                 } else if (a === "decline") {
                     pendingM = null;
                     offerCd = 5;
                     hideOvs();
-                } else if (a === "leave" || a === "closehelp") {
+                    running = true;
+                    lastT = Date.now();
+                } else if (a === "leave") {
                     hideOvs();
-                } else if (a === "save") {
-                    doSave();
-                } else if (a === "load") {
-                    doLoad();
-                } else if (a === "mute") {
+                    running = true;
+                    lastT = Date.now();
+                } else if (a === "save") doSave();
+                else if (a === "load") doLoad();
+                else if (a === "mute") {
                     muted = !muted;
-                    b.textContent = muted ? "Sound off" : "Sound on";
-                } else if (a === "help") {
-                    showOv(ov.help);
+                    hud.sound.textContent = muted ? "Sound off" : "Sound on";
                 }
-            });
+            }
+            document.addEventListener("keydown", onKeyDown);
+            document.addEventListener("keyup", onKeyUp);
+            app.addEventListener("pointerdown", onPointerDown);
+            app.addEventListener("pointerup", onPointerUp);
+            app.addEventListener("pointerleave", onPointerUp);
+            app.addEventListener("pointercancel", onPointerUp);
+            app.addEventListener("click", onClick);
             function doUse() {
                 if (!active || !running || paused) return;
                 if (G.car) {
@@ -1233,6 +1450,7 @@
                 toast("Medkit used.");
             }
             function addHeat(h) {
+                if (cheat.noHeat) return;
                 const w0 = wantedFromHeat(G.heat);
                 G.heat = Math.min(130, G.heat + h);
                 G.lastCrime = G.time;
@@ -1269,12 +1487,12 @@
                     SFX.hit();
                     return;
                 }
-                if ((G.ammo[w.id] || 0) <= 0) {
+                if (!cheat.infiniteAmmo && (G.ammo[w.id] || 0) <= 0) {
                     toast("Out of ammo for the " + w.label + ".");
                     G.fireCd = 0.4;
                     return;
                 }
-                G.ammo[w.id]--;
+                if (!cheat.infiniteAmmo) G.ammo[w.id]--;
                 G.fireCd = w.cd;
                 const base = Math.atan2(G.dirY, G.dirX);
                 for (let i = 0; i < w.pel; i++) {
@@ -1335,6 +1553,7 @@
                 else if (byPlayer && n.kind === "civ") addHeat(HEAT.hitciv);
             }
             function dmgPlayer(d) {
+                if (cheat.god) return;
                 if (G.armor > 0) {
                     const a = Math.min(G.armor, d * 0.6);
                     G.armor -= a;
@@ -1704,7 +1923,7 @@
                     if (d < 34 && !G.car) close = true;
                 }
                 copCd -= dt;
-                if (cops < copCount(w) && copCd <= 0) {
+                if (!cheat.noCops && cops < copCount(w) && copCd <= 0) {
                     spawnCop();
                     copCd = 1.1;
                 }
@@ -2434,10 +2653,9 @@
             function updateHud() {
                 hud.cash.textContent = "$" + G.money;
                 hud.hp.textContent = Math.max(0, Math.ceil(G.hp));
-                hud.arm.textContent =
-                    "Armor " +
-                    Math.ceil(G.armor) +
-                    (G.medkits ? " / Med " + G.medkits : "");
+                hud.arm.textContent = "ARMOR " + Math.ceil(G.armor);
+                hud.med.textContent = "MED " + G.medkits;
+                hud.med.hidden = G.medkits <= 0;
                 const w = WEAPONS[G.cur];
                 hud.wep.textContent =
                     w.label + (w.pel ? " " + (G.ammo[w.id] || 0) : "");
@@ -2509,23 +2727,33 @@
             renderStatic();
             init();
             updateHud();
+            syncUI();
+            active = true;
+            lastT = Date.now();
+            iv = setInterval(loop, 33);
+            mount._test = {
+                T, MW, MH, RX, RY, WEAPONS, VEHS, MISSIONS, POIS, HEAT, COPS_PER, SHOPS,
+                RACE_CPS, DISTS, rng: mulberry32, clamp, dist, districtOf, copCount,
+                fareCalc, raceReward, wantedFromHeat, tileAt, steerSign, vehStep,
+                genCity, defaultState, applySave,
+            };
             return {
-                open() {
-                    active = true;
-                    if (!iv) {
-                        lastT = Date.now();
-                        iv = setInterval(loop, 33);
-                    }
-                },
-                close() {
+                destroy() {
+                    destroyed = true;
                     active = false;
                     clearK();
                     if (iv) {
                         clearInterval(iv);
                         iv = 0;
                     }
+                    if (toastTO) clearTimeout(toastTO);
+                    document.removeEventListener("keydown", onKeyDown);
+                    document.removeEventListener("keyup", onKeyUp);
+                    app.removeEventListener("pointerdown", onPointerDown);
+                    app.removeEventListener("pointerup", onPointerUp);
+                    app.removeEventListener("pointerleave", onPointerUp);
+                    app.removeEventListener("pointercancel", onPointerUp);
+                    app.removeEventListener("click", onClick);
                 },
             };
-        },
-    });
-})();
+        }

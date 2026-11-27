@@ -4,6 +4,8 @@
  * Setelah menyalin/mengubah file ini, jalankan: node tools/build-games-manifest.mjs
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "cat-vs-dog", // harus sama dengan nama file (tanpa .js)
     name: "Cat vs Dog",
@@ -127,13 +129,53 @@ export function mount(root, context = {}) {
     let botTimer = null, resolveTimer = null;
     let drag = null;
     let destroyed = false;
+    let helpOpen = false, cheatsOpen = false, paused = false;
     const timers = new Set();
+    const timerRec = new Map();
+    let deferredTimers = [];
     const unsubs = [];
 
-    function later(fn, ms) {
-        const id = setTimeout(() => { timers.delete(id); if (!destroyed) fn(); }, ms);
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("catVsDogHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("catVsDogHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
+    /* Timer dengan penanda Date.now(): pause membekukan sisa delay, resume
+       menjadwalkan ulang sehingga tidak ada aksi yang "loncat". */
+    function later(fn, ms, key) {
+        if (paused) { deferredTimers.push({ wait: ms, fn, key }); return null; }
+        const id = setTimeout(() => {
+            timers.delete(id); timerRec.delete(id);
+            if (!destroyed) fn();
+        }, ms);
         timers.add(id);
+        timerRec.set(id, { due: Date.now() + ms, fn, key });
         return id;
+    }
+    function clearTimers() {
+        for (const id of timers) clearTimeout(id);
+        timers.clear(); timerRec.clear(); deferredTimers = [];
+        botTimer = null; resolveTimer = null;
+    }
+    function pauseTimers() {
+        const now = Date.now();
+        for (const [id, rec] of timerRec) {
+            clearTimeout(id);
+            deferredTimers.push({ wait: Math.max(0, rec.due - now), fn: rec.fn, key: rec.key });
+        }
+        timers.clear(); timerRec.clear();
+        botTimer = null; resolveTimer = null;
+    }
+    function resumeTimers() {
+        const queue = deferredTimers;
+        deferredTimers = [];
+        for (const t of queue) {
+            const id = later(t.fn, t.wait, t.key);
+            if (t.key === "bot") botTimer = id;
+            else if (t.key === "resolve") resolveTimer = id;
+        }
     }
 
     const uid = Math.random().toString(36).slice(2, 7);
@@ -142,83 +184,116 @@ export function mount(root, context = {}) {
     root.innerHTML = `
 <style>
 .cvd{--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;--acc:#6366f1;color:var(--ink)}
-.cvd .game-intro p{color:var(--mut)}
-.cvd .game-panel{padding:0;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:#fff}
-.cvd-hud{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
-.cvd-side{display:flex;flex-direction:column;gap:5px;min-width:0}
-.cvd-right{align-items:flex-end;text-align:right}
-.cvd-name{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--mut);white-space:nowrap}
-.cvd-right .cvd-name{flex-direction:row-reverse}
+.cvd [hidden]{display:none!important}
+.cvd-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.cvd-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--mut);white-space:nowrap}
+.cvd-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.cvd-status-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;flex:none}
+.cvd-side{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.cvd-name{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--mut);white-space:nowrap}
 .cvd-dot{width:7px;height:7px;border-radius:50%;background:#cbd5e1;flex:none;transition:background .2s}
 .cvd-dot.on{background:var(--acc)}
-.cvd-hpbar{width:100%;max-width:180px;height:6px;border-radius:3px;background:#eef2f7;overflow:hidden}
+.cvd-hpbar{width:58px;height:5px;border-radius:3px;background:#eef2f7;overflow:hidden;flex:none}
 .cvd-hpbar i{display:block;height:100%;border-radius:3px;background:#34d399;transition:width .35s}
-.cvd-right .cvd-hpbar i{margin-left:auto}
 .cvd-hpbar.lo i{background:#ef4444}
-.cvd-hpnum{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
-.cvd-wind{display:flex;flex-direction:column;align-items:center;gap:2px}
-.cvd-lbl{font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8}
-.cvd-windrow{display:flex;align-items:center;gap:6px;min-height:14px}
-.cvd-wval{font-size:12px;color:#0284c7;font-variant-numeric:tabular-nums}
-.cvd-stage{position:relative;background:#f8fafc}
-.cvd-stage svg{display:block;width:100%;aspect-ratio:900/420;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
-.cvd-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;border-top:1px solid var(--line);flex-wrap:wrap}
-.cvd-read{display:flex;gap:8px}
-.cvd-read b{min-width:52px;text-align:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;font-variant-numeric:tabular-nums;background:#f8fafc}
-.cvd-barbtns{display:flex;gap:8px}
-.cvd-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:border-color .15s,color .15s}
+.cvd-hpnum{min-width:22px;text-align:right;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+.cvd-windrow{display:inline-flex;align-items:center;gap:5px;min-height:12px}
+.cvd-wval{font-size:11px;color:#0284c7;font-variant-numeric:tabular-nums}
+.cvd-spacer{flex:1 1 auto}
+.cvd-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:7px 12px;font-size:11px;font-weight:600;cursor:pointer;transition:border-color .15s,color .15s}
 .cvd-btn:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
 .cvd-btn:disabled{opacity:.4;cursor:default}
+.cvd-btn.on{border-color:var(--acc);color:var(--acc);background:#eef0ff}
+.cvd-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.cvd-icon-btn svg{flex:none;display:block}
 .cvd-ghost{color:var(--mut)}
-.cvd-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(248,250,252,.88);backdrop-filter:blur(3px);z-index:5}
-.cvd-ov[hidden]{display:none}
-.cvd-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 26px;text-align:center;box-shadow:0 8px 30px rgba(15,23,42,.06);max-width:min(92%,360px)}
-.cvd-card h3{margin:0 0 6px;font-size:17px}
-.cvd-card p{margin:0 0 14px;font-size:12px;color:var(--mut)}
+.cvd-board{position:relative;width:100%;aspect-ratio:900/420;padding:0;border:1px solid var(--line);border-radius:16px;background:#f8fafc;overflow:hidden}
+.cvd-board > svg{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
+.cvd-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(248,250,252,.88);backdrop-filter:blur(3px)}
+.cvd-card{display:flex;flex-direction:column;width:min(92%,380px);max-height:100%;padding:18px 20px;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:#fff;text-align:center;box-shadow:0 8px 30px rgba(15,23,42,.06)}
+.cvd-card.wide{width:min(94%,560px)}
+.cvd-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:10px;text-align:left}
+.cvd-head h3{margin:0;font-size:16px}
+.cvd-body{flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.cvd-body > p{margin:0 0 12px;font-size:12px;line-height:1.6;color:var(--mut)}
+.cvd-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:12px;text-align:left}
 .cvd-picks{display:flex;gap:10px;justify-content:center}
 .cvd-pick{display:flex;flex-direction:column;align-items:center;gap:6px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:14px 20px;font-size:12px;font-weight:600;color:var(--ink);cursor:pointer}
 .cvd-pick:hover{border-color:var(--acc)}
 .cvd-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.cvd-cheats .cvd-card{text-align:left;width:min(92%,320px)}
-.cvd-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
-.cvd-cheatrow:last-of-type{border-bottom:0}
+.cvd-cheats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.cvd-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;font-size:12px}
 .cvd-switch{appearance:none;-webkit-appearance:none;width:34px;height:20px;border-radius:10px;background:#e2e8f0;position:relative;cursor:pointer;transition:background .15s;flex:none;margin:0}
 .cvd-switch:checked{background:var(--acc)}
 .cvd-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
 .cvd-switch:checked::after{left:16px}
-.cvd-note{font-size:10px;color:#94a3b8;margin:10px 0 0}
-.cvd-cheatacts{display:flex;gap:8px;margin-top:12px}
+.cvd-note{font-size:10px;color:#94a3b8;margin:8px 0 0}
+.cvd-cheatacts{display:flex;gap:8px;margin-top:10px}
+.cvd-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.cvd-help b{display:block;margin-bottom:6px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.cvd-help ul{margin:0 0 12px;padding-left:16px;font-size:11px;line-height:1.7;color:var(--mut)}
+.cvd-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#f8fafc;color:var(--ink);font:inherit}
 .cvd-pop{font:700 15px system-ui,sans-serif;fill:#0f172a;paint-order:stroke;stroke:#fff;stroke-width:3px;text-anchor:middle;pointer-events:none;animation:cvd-rise .9s ease-out forwards}
 @keyframes cvd-rise{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-28px)}}
 .cvd-shake{animation:cvd-shake .4s ease}
 @keyframes cvd-shake{0%,100%{transform:translateX(0)}30%{transform:translateX(-5px)}70%{transform:translateX(5px)}}
 .cvd-charge{font:800 12px system-ui,sans-serif;fill:#ef4444;text-anchor:middle;paint-order:stroke;stroke:#fff;stroke-width:3px}
-@media (max-width:560px){.cvd-hud{padding:10px 12px;gap:8px}.cvd-name{font-size:11px}.cvd-bar{padding:8px 12px}}
+
+/* --- Batch 02 design polish --- */
+.cvd :focus-visible,.cvd button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.cvd-btn,.cvd-pick{min-height:44px}
+.cvd-card{box-shadow:none}
+@media (pointer:coarse){.cvd button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.cvd *,.cvd *::before,.cvd *::after{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (letak terakhir) --- */
+.cvd.game-fill > .cvd-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.cvd .cvd-head,.cvd .cvd-foot{flex:none}
+.cvd .cvd-body,.cvd .cvd-cheats,.cvd .cvd-help{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.cvd.game-fill > .cvd-board:not(:has(.cvd-ov:not([hidden]))){aspect-ratio:900/420;flex:0 0 auto}
+.cvd.game-fill > .cvd-board:has(.cvd-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.cvd .cvd-hud{gap:5px;margin-bottom:8px}
+.cvd .cvd-hud .cvd-chip{padding:4px 6px;font-size:9px}
+.cvd .cvd-hud .cvd-name,.cvd .cvd-hud .cvd-hpnum{display:none}
+.cvd .cvd-hud .cvd-hpbar{width:40px}
+.cvd .cvd-hud .cvd-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.cvd .cvd-hud .cvd-btn-label,.cvd .cvd-hud .cvd-spacer{display:none}
+.cvd .cvd-ov{padding:8px}
+.cvd .cvd-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.cvd .cvd-body,.cvd .cvd-cheats,.cvd .cvd-help{scrollbar-width:none}
+.cvd .cvd-body::-webkit-scrollbar,.cvd .cvd-cheats::-webkit-scrollbar,.cvd .cvd-help::-webkit-scrollbar{display:none}
+.cvd .cvd-help{grid-template-columns:1fr}
+.cvd .cvd-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.cvd .cvd-note{display:none}
+}
 </style>
-<div class="game-app cvd">
-  <div class="game-intro">
-    <div><h2>Cat vs Dog</h2><p>Duel halaman — kucing vs anjing.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-status-dot></i><span data-status>Menyiapkan…</span></span>
+<div class="game-app cvd game-fill" data-cvd>
+  <div class="cvd-hud">
+    <span class="cvd-chip status"><i class="cvd-status-dot" data-status-dot></i><b data-status>Menyiapkan…</b></span>
+    <span class="cvd-chip cvd-side">
+      <span class="cvd-name"><i class="cvd-dot" data-dot="L"></i><span data-name="L">Kucing</span></span>
+      <span class="cvd-hpbar"><i data-hp="L" style="width:100%"></i></span>
+      <b class="cvd-hpnum" data-hpnum="L">100</b>
+    </span>
+    <span class="cvd-chip">ANGIN <span class="cvd-windrow" data-wind></span></span>
+    <span class="cvd-chip cvd-side">
+      <b class="cvd-hpnum" data-hpnum="R">100</b>
+      <span class="cvd-hpbar"><i data-hp="R" style="width:100%"></i></span>
+      <span class="cvd-name"><span data-name="R">Anjing</span><i class="cvd-dot" data-dot="R"></i></span>
+    </span>
+    <span class="cvd-chip" data-hud="angle">ANGLE <b data-ang>45°</b></span>
+    <span class="cvd-chip" data-hud="power">POWER <b data-pow>70</b></span>
+    <button class="cvd-btn cvd-ability" type="button" data-ability aria-label="Ability" title="Ability (A)">${iconSVG("target", { size: 14 })}<span data-ability-label>Ability</span></button>
+    <span class="cvd-spacer"></span>
+    <button class="cvd-btn cvd-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="cvd-btn-label">Help</span></button>
+    <button class="cvd-btn cvd-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="cvd-btn-label">Cheats</span></button>
+    <button class="cvd-btn cvd-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="cvd-btn-label">Pause</span></button>
+    <button class="cvd-btn cvd-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="cvd-btn-label">Restart</span></button>
+    <button class="cvd-btn cvd-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cvd-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="cvd-hud">
-      <div class="cvd-side">
-        <span class="cvd-name"><i class="cvd-dot" data-dot="L"></i><span data-name="L">Kucing</span></span>
-        <span class="cvd-hpbar"><i data-hp="L" style="width:100%"></i></span>
-        <b class="cvd-hpnum" data-hpnum="L">100</b>
-      </div>
-      <div class="cvd-wind">
-        <span class="cvd-lbl">Angin</span>
-        <span class="cvd-windrow" data-wind></span>
-      </div>
-      <div class="cvd-side cvd-right">
-        <span class="cvd-name"><i class="cvd-dot" data-dot="R"></i><span data-name="R">Anjing</span></span>
-        <span class="cvd-hpbar"><i data-hp="R" style="width:100%"></i></span>
-        <b class="cvd-hpnum" data-hpnum="R">100</b>
-      </div>
-    </div>
-    <div class="cvd-stage">
-      <svg data-svg viewBox="150 0 900 420" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Arena Cat vs Dog">
+  <section class="game-panel cvd-board" data-board>
+    <svg data-svg viewBox="150 0 900 420" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Arena Cat vs Dog">
         <defs>
           <linearGradient id="cvd-sky-${uid}" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stop-color="#f8fafc"/><stop offset="1" stop-color="#eef2f7"/>
@@ -247,8 +322,8 @@ export function mount(root, context = {}) {
       </svg>
       <div class="cvd-ov" data-ov="pick" hidden>
         <div class="cvd-card">
-          <h3>Pilih karakter</h3>
-          <div class="cvd-picks">
+          <div class="cvd-head"><h3>Pilih karakter</h3><span class="cvd-note">Cat vs Dog</span></div>
+          <div class="cvd-body cvd-picks">
             <button class="cvd-pick" type="button" data-pick="cat">
               <svg viewBox="0 0 48 48" width="42" height="42" aria-hidden="true"><circle cx="24" cy="27" r="13" fill="#fbbf24"/><path d="M16 19l-2-9 8 4M32 19l2-9-8 4" fill="#fbbf24" stroke="#d97706" stroke-width="1.5"/><circle cx="19" cy="26" r="2" fill="#0f172a"/><circle cx="29" cy="26" r="2" fill="#0f172a"/><path d="M20 33q4 4 8 0" fill="none" stroke="#0f172a" stroke-width="1.8"/></svg>
               Kucing
@@ -261,44 +336,75 @@ export function mount(root, context = {}) {
         </div>
       </div>
       <div class="cvd-ov" data-ov="wait" hidden>
-        <div class="cvd-card"><h3>Menunggu host…</h3></div>
+        <div class="cvd-card">
+          <div class="cvd-head"><h3>Menunggu host…</h3></div>
+          <div class="cvd-body"><p>Lawan akan mengirim state pertandingan.</p></div>
+        </div>
       </div>
       <div class="cvd-ov" data-ov="over" hidden>
         <div class="cvd-card">
-          <h3 data-over-title></h3>
-          <p data-over-sub></p>
-          <div class="cvd-row">
-            <button class="cvd-btn" type="button" data-act="rematch">Rematch</button>
-            <button class="cvd-btn cvd-ghost" type="button" data-act="repick" data-repick>Ganti karakter</button>
+          <div class="cvd-head"><h3 data-over-title></h3><span class="cvd-note">Hasil</span></div>
+          <div class="cvd-body"><p data-over-sub></p></div>
+          <div class="cvd-foot">
+            <span class="cvd-note">Satu pertandingan lagi?</span>
+            <span class="cvd-row">
+              <button class="cvd-btn" type="button" data-act="rematch">Rematch</button>
+              <button class="cvd-btn cvd-ghost" type="button" data-act="repick" data-repick>Ganti karakter</button>
+            </span>
           </div>
         </div>
       </div>
-      <div class="cvd-ov cvd-cheats" data-ov="cheats" hidden>
+      <div class="cvd-ov" data-ov="cheats" hidden>
+        <div class="cvd-card wide">
+          <div class="cvd-head"><h3>Cheats</h3><button class="cvd-btn" type="button" data-close aria-label="Close cheats">Tutup</button></div>
+          <div class="cvd-body">
+            <div class="cvd-cheats">
+              <label class="cvd-cheatrow">HP abadi<input class="cvd-switch" type="checkbox" data-cheat="god"></label>
+              <label class="cvd-cheatrow">One-hit KO<input class="cvd-switch" type="checkbox" data-cheat="ohko"></label>
+              <label class="cvd-cheatrow">Angin selalu 0<input class="cvd-switch" type="checkbox" data-cheat="noWind"></label>
+              <label class="cvd-cheatrow">Lintasan penuh<input class="cvd-switch" type="checkbox" data-cheat="fullAim"></label>
+              <label class="cvd-cheatrow">Ability selalu siap<input class="cvd-switch" type="checkbox" data-cheat="ready"></label>
+              <label class="cvd-cheatrow" data-botmiss-row>Bot sering meleset<input class="cvd-switch" type="checkbox" data-cheat="botMiss"></label>
+            </div>
+            <p class="cvd-note" data-cheat-note hidden>Mode online: cheat HP/damage hanya berlaku di sisi host.</p>
+          </div>
+          <div class="cvd-foot"><span class="cvd-note">C / Esc untuk menutup</span><button class="cvd-btn" type="button" data-act="autoaim">Auto-aim</button></div>
+        </div>
+      </div>
+      <div class="cvd-ov" data-ov="pause" hidden>
         <div class="cvd-card">
-          <h3>Cheats</h3>
-          <label class="cvd-cheatrow">HP abadi<input class="cvd-switch" type="checkbox" data-cheat="god"></label>
-          <label class="cvd-cheatrow">One-hit KO<input class="cvd-switch" type="checkbox" data-cheat="ohko"></label>
-          <label class="cvd-cheatrow">Angin selalu 0<input class="cvd-switch" type="checkbox" data-cheat="noWind"></label>
-          <label class="cvd-cheatrow">Lintasan penuh<input class="cvd-switch" type="checkbox" data-cheat="fullAim"></label>
-          <label class="cvd-cheatrow">Ability selalu siap<input class="cvd-switch" type="checkbox" data-cheat="ready"></label>
-          <label class="cvd-cheatrow" data-botmiss-row>Bot sering meleset<input class="cvd-switch" type="checkbox" data-cheat="botMiss"></label>
-          <div class="cvd-cheatacts">
-            <button class="cvd-btn" type="button" data-act="autoaim">Auto-aim</button>
-            <button class="cvd-btn cvd-ghost" type="button" data-act="cheats-close">Tutup</button>
-          </div>
-          <p class="cvd-note" data-cheat-note hidden>Mode online: cheat HP/damage hanya berlaku di sisi host.</p>
+          <div class="cvd-head"><h3>Paused</h3><span class="cvd-note">Solo</span></div>
+          <div class="cvd-body"><p>Bola, bot dan timer dibekukan. Tekan <span class="cvd-kbd">P</span> atau <span class="cvd-kbd">Esc</span> untuk lanjut.</p></div>
+          <div class="cvd-foot"><span class="cvd-note">Pertandingan ditahan</span><button class="cvd-btn" type="button" data-resume>Resume</button></div>
         </div>
       </div>
-    </div>
-    <div class="cvd-bar">
-      <span class="cvd-read"><b data-ang>45°</b><b data-pow>70</b></span>
-      <span class="cvd-barbtns">
-        <button class="cvd-btn" type="button" data-ability disabled>Ability</button>
-        <button class="cvd-btn cvd-ghost" type="button" data-act="cheats">Cheats</button>
-      </span>
-    </div>
+      <div class="cvd-ov" data-ov="help" hidden>
+        <div class="cvd-card wide">
+          <div class="cvd-head"><h3>How to play</h3><button class="cvd-btn" type="button" data-help-close aria-label="Close help">Tutup</button></div>
+          <div class="cvd-body cvd-help">
+            <div>
+              <b>Kontrol</b>
+              <ul>
+                <li><span class="cvd-kbd">←</span> / <span class="cvd-kbd">→</span> sudut, <span class="cvd-kbd">↑</span> / <span class="cvd-kbd">↓</span> kekuatan (Shift = 5).</li>
+                <li><span class="cvd-kbd">Space</span> / <span class="cvd-kbd">Enter</span> lempar · <span class="cvd-kbd">A</span> ability.</li>
+                <li>Seret di arena untuk bidik, lepas untuk melempar; scroll mengubah kekuatan.</li>
+                <li><span class="cvd-kbd">H</span> help · <span class="cvd-kbd">C</span> cheats · <span class="cvd-kbd">P</span> pause · <span class="cvd-kbd">R</span> restart.</li>
+              </ul>
+            </div>
+            <div>
+              <b>Aturan</b>
+              <ul>
+                <li>Pilih kucing atau anjing; giliran pertama diacak.</li>
+                <li>Lempar ke lawan sambil memperhitungkan angin dan tembok tengah.</li>
+                <li>Kucing: Nine Lives memulihkan 22 HP. Anjing: Power Bark menggandakan damage.</li>
+                <li>Ability memiliki cooldown beberapa giliran; cheats tersedia di mode solo.</li>
+              </ul>
+              <div class="cvd-foot"><span class="cvd-note">Tekan H untuk membuka lagi</span><button class="cvd-btn" type="button" data-help-close>Mengerti</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
@@ -314,10 +420,15 @@ export function mount(root, context = {}) {
     const angEl = $("[data-ang]");
     const powEl = $("[data-pow]");
     const abilityBtn = $("[data-ability]");
+    const abilityLabel = $("[data-ability-label]");
+    const pauseBtn = $("[data-pause]");
+    const cheatsBtn = $("[data-cheats]");
     const ovPick = $('[data-ov="pick"]');
     const ovWait = $('[data-ov="wait"]');
     const ovOver = $('[data-ov="over"]');
     const ovCheats = $('[data-ov="cheats"]');
+    const ovPause = $('[data-ov="pause"]');
+    const ovHelp = $('[data-ov="help"]');
     const overTitle = $("[data-over-title]");
     const overSub = $("[data-over-sub]");
     const repickBtn = $("[data-repick]");
@@ -409,14 +520,32 @@ export function mount(root, context = {}) {
         }
         if (!my || !state || state.phase === "pick") {
             abilityBtn.disabled = true;
-            abilityBtn.textContent = "Ability";
+            abilityLabel.textContent = "Ability";
         } else {
             const ch = CHAR_OF[my], ab = ABILITY[ch], cd = state.cd[my];
             const ready = cd <= 0 || cheats.ready;
-            const usable = canAim() && ready && !(ch === "dog" && state.charged[my]);
+            const usable = canAim() && ready && !(ch === "dog" && state.charged[my]) && !helpOpen && !cheatsOpen && !paused;
             abilityBtn.disabled = !usable;
-            abilityBtn.textContent = ab.label + (cd > 0 && !cheats.ready ? " (" + cd + ")" : "");
+            abilityLabel.textContent = ab.label + (cd > 0 && !cheats.ready ? " (" + cd + ")" : "");
         }
+        abilityBtn.setAttribute("aria-label", abilityLabel.textContent);
+        if (cheatsBtn) {
+            const active = Object.keys(cheats).filter((k) => cheats[k]).length;
+            cheatsBtn.classList.toggle("on", active > 0);
+            const label = cheatsBtn.querySelector(".cvd-btn-label");
+            if (label) label.textContent = active > 0 ? "Cheats " + active : "Cheats";
+            cheatsBtn.hidden = online;
+        }
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".cvd-btn-label");
+            const text = paused ? "Resume" : "Pause";
+            if (label) label.textContent = text;
+            pauseBtn.setAttribute("aria-label", text);
+            pauseBtn.setAttribute("title", text + " (P)");
+            pauseBtn.hidden = online;
+        }
+        const restartBtn = root.querySelector("[data-restart]");
+        if (restartBtn) restartBtn.hidden = online;
     }
     function renderStatus() {
         let text = "Menyiapkan…", tone = "#94a3b8";
@@ -432,9 +561,12 @@ export function mount(root, context = {}) {
         statusDot.style.background = tone;
     }
     function renderOverlays() {
-        ovPick.hidden = !(state && state.phase === "pick" && !online);
-        ovWait.hidden = !(online && !state);
-        ovOver.hidden = !(state && state.phase === "over");
+        ovPick.hidden = !(state && state.phase === "pick" && !online) || helpOpen || cheatsOpen || paused;
+        ovWait.hidden = !(online && !state) || helpOpen || cheatsOpen;
+        ovOver.hidden = !(state && state.phase === "over") || helpOpen || cheatsOpen || paused;
+        ovCheats.hidden = !cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || helpOpen || cheatsOpen || online;
+        ovHelp.hidden = !helpOpen;
         if (state && state.phase === "over") {
             overTitle.textContent = NAME_OF[state.winner] + " menang";
             overSub.textContent = "Sisa HP: " + state.hp[state.winner];
@@ -486,6 +618,9 @@ export function mount(root, context = {}) {
     }
     function frame(t) {
         raf = requestAnimationFrame(frame);
+        /* Overlay/pause membekukan animasi; lastT dikosongkan supaya penanda
+           performance.now() bergeser saat resume (tidak ada loncatan dt). */
+        if (paused || helpOpen || cheatsOpen) { lastT = 0; return; }
         if (!lastT) { lastT = t; return; }
         const dt = Math.min(0.05, (t - lastT) / 1000);
         lastT = t;
@@ -521,8 +656,7 @@ export function mount(root, context = {}) {
         };
     }
     function resetBattle(randomizeSides) {
-        if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (resolveTimer) { clearTimeout(resolveTimer); resolveTimer = null; }
+        clearTimers();
         const keep = !randomizeSides && state && state.sideOf;
         // posisi pemain diacak saat mulai / rematch online; giliran pertama selalu acak
         const sideOf = keep ? state.sideOf.slice() : (Math.random() < 0.5 ? ["L", "R"] : ["R", "L"]);
@@ -540,7 +674,7 @@ export function mount(root, context = {}) {
         state.shot = { id: ++state.shotN, from: side, angle, power, wind: state.wind };
         state.phase = "fly";
         publish();
-        resolveTimer = later(() => { resolveTimer = null; resolveFlight(sim); }, sim.t * 1000 + 150);
+        resolveTimer = later(() => { resolveTimer = null; resolveFlight(sim); }, sim.t * 1000 + 150, "resolve");
     }
     function resolveFlight(sim) {
         if (!state || state.phase !== "fly" || !state.shot) return;
@@ -613,26 +747,62 @@ export function mount(root, context = {}) {
 
     /* ================= bot (mode AI saja) ================= */
     function scheduleBot() {
-        if (online || !state || state.phase !== "aim" || !state.sideOf) return;
+        if (online || helpOpen || cheatsOpen || paused || !state || state.phase !== "aim" || !state.sideOf) return;
         if (state.turn !== state.sideOf[1] || botTimer) return;
-        botTimer = later(() => { botTimer = null; botMove(); }, 900 + Math.random() * 600);
+        botTimer = later(() => { botTimer = null; botMove(); }, 900 + Math.random() * 600, "bot");
     }
     function botMove() {
-        if (!state || state.phase !== "aim" || state.turn !== state.sideOf[1]) return;
+        if (helpOpen || cheatsOpen || paused || !state || state.phase !== "aim" || state.turn !== state.sideOf[1]) return;
         const side = state.sideOf[1], ch = CHAR_OF[side];
         if (state.cd[side] <= 0 && ((ch === "cat" && state.hp[side] <= 60) || (ch === "dog" && !state.charged[side]))) {
             applyAction({ type: "ability" }, 1);
-            botTimer = later(() => { botTimer = null; botMove(); }, 650);
+            botTimer = later(() => { botTimer = null; botMove(); }, 650, "bot");
             return;
         }
         const plan = planShot(side, state.wind, 2, cheats.botMiss ? 30 : 5);
         applyAction({ type: "throw", angle: plan.angle, power: plan.power }, 1);
     }
 
+    /* ================= overlay & kontrol HUD ================= */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        drag = null;
+        render();
+    }
+    function setPaused(on) {
+        if (online || !state || destroyed) return;
+        on = typeof on === "boolean" ? on : !paused;
+        if (paused === on) return;
+        paused = on;
+        if (paused) { drag = null; pauseTimers(); }
+        else resumeTimers();
+        render();
+    }
+    function restart() {
+        if (online) return;
+        clearTimers();
+        paused = false; cheatsOpen = false; helpOpen = false;
+        drag = null; flight = null; fxSeen = 0; acc = 0; lastT = 0;
+        cam = CAM_MAX / 2; aim = { angle: 45, power: 70 };
+        projG.innerHTML = "";
+        state = freshPick();
+        render();
+    }
+
     /* ================= input: klik / sentuh (seret untuk bidik, lepas untuk lempar) ================= */
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { if (!online) { cheatsOpen = !cheatsOpen; render(); } return; }
+        if (t.closest("[data-close]")) { cheatsOpen = false; render(); return; }
+        if (t.closest("[data-pause]")) { setPaused(); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-restart]")) { restart(); return; }
+        if (helpOpen || cheatsOpen || paused) return;
         const pick = t.closest("[data-pick]");
         if (pick) { submitAction({ type: "pick", char: pick.dataset.pick }); return; }
         const act = t.closest("[data-act]");
@@ -640,8 +810,6 @@ export function mount(root, context = {}) {
             const a = act.dataset.act;
             if (a === "rematch") submitAction({ type: "rematch" });
             else if (a === "repick") submitAction({ type: "repick" });
-            else if (a === "cheats") ovCheats.hidden = !ovCheats.hidden;
-            else if (a === "cheats-close") ovCheats.hidden = true;
             else if (a === "autoaim" && canAim()) {
                 const p = planShot(mySide(), state.wind, 0, 0);
                 aim.angle = p.angle; aim.power = p.power;
@@ -673,7 +841,7 @@ export function mount(root, context = {}) {
         renderRead(); renderAim();
     }
     function onPointerDown(e) {
-        if (!canAim()) return;
+        if (helpOpen || cheatsOpen || paused || !canAim()) return;
         drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
         svg.setPointerCapture(e.pointerId);
         aimFromEvent(e);
@@ -691,19 +859,35 @@ export function mount(root, context = {}) {
         if (fire) submitAction({ type: "throw", angle: aim.angle, power: aim.power });
     }
     function onWheel(e) {
-        if (!canAim()) return;
+        if (helpOpen || cheatsOpen || paused || !canAim()) return;
         e.preventDefault();
         aim.power = clamp(aim.power + (e.deltaY < 0 ? 2 : -2), 20, 100);
         renderRead(); renderAim();
     }
-    /* keyboard desktop: panah = bidik (Shift = langkah 5), Space/Enter = lempar, A = ability, C = cheats */
+    /* keyboard: prioritas H help → C cheats → P pause → Escape → aksi game.
+       Panah = bidik (Shift = langkah 5), Space/Enter = lempar, A = ability, R = restart. */
     function onKey(e) {
         if (destroyed) return;
-        if (e.code === "Escape") { ovCheats.hidden = true; return; }
-        if (e.code === "KeyC") { ovCheats.hidden = !ovCheats.hidden; return; }
+        const t = e.target;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+        const c = e.code;
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!online && !helpOpen) { cheatsOpen = !cheatsOpen; render(); } e.preventDefault(); return; }
+        if (c === "KeyP") { if (!helpOpen) setPaused(); e.preventDefault(); return; }
+        if (c === "KeyR") { if (!helpOpen && !cheatsOpen) restart(); e.preventDefault(); return; }
+        if (c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (paused) setPaused(false);
+            else drag = null;
+            e.preventDefault();
+            return;
+        }
+        if (helpOpen || cheatsOpen || paused) return;
+        if (c === "Enter" && state && state.phase === "over") { submitAction({ type: "rematch" }); e.preventDefault(); return; }
         if (!canAim()) return;
         const step = e.shiftKey ? 5 : 1;
-        switch (e.code) {
+        switch (c) {
             case "ArrowLeft": e.preventDefault(); aim.angle = clamp(aim.angle - step, 10, 85); break;
             case "ArrowRight": e.preventDefault(); aim.angle = clamp(aim.angle + step, 10, 85); break;
             case "ArrowUp": e.preventDefault(); aim.power = clamp(aim.power + step, 20, 100); break;
@@ -747,8 +931,7 @@ export function mount(root, context = {}) {
         destroy() {
             destroyed = true;
             if (raf) cancelAnimationFrame(raf);
-            timers.forEach(clearTimeout);
-            timers.clear();
+            clearTimers();
             document.removeEventListener("keydown", onKey);
             root.removeEventListener("click", handleClick);
             root.removeEventListener("change", handleChange);

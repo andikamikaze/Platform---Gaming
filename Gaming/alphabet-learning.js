@@ -7,6 +7,8 @@
    11 tipe soal, semuanya dijamin punya tepat satu jawaban benar.
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "alphabet-learning",
     name: "Alphabet Learning",
@@ -231,6 +233,13 @@ export function mount(root, context = {}) {
     let tickTimer = null, advanceTimer = null, botTimer = null, autoTimer = null;
     let renderKey = "", menuKey = "", overKey = "", focusIdx = 0;
     let cheatOpen = false, writeOpen = false, soundOn = true, guideLetter = "A";
+    let helpOpen = false, paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("alphabetLearningHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("alphabetLearningHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     const cheats = { reveal: false, auto: false, freeze: false, botweak: false };
 
     const seatOf = (base) => (state && state.seatSwap ? 1 - base : base);
@@ -250,89 +259,123 @@ export function mount(root, context = {}) {
     /* ---------- shell (minimalist) ---------- */
     root.innerHTML = `
 <style>
-.alx{--ink:#171a20;--mut:#8a919e;--line:#e7e9ee;--bg:#f7f8fa;--card:#fff;--acc:#10b981;--bad:#ef4444;--r:14px;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.alx{--ink:#171a20;--mut:#8a919e;--line:#e7e9ee;--bg:#f7f8fa;--card:#fff;--acc:#10b981;--bad:#ef4444;--r:12px;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .alx *{box-sizing:border-box}
-.alx button{font:inherit;color:inherit;cursor:pointer}
+.alx button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
 .alx :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-.alx .alx-intro{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
-.alx .alx-intro h2{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px}
-.alx .alx-sub{margin:2px 0 0;font-size:12px;color:var(--mut);min-height:14px}
-.alx .alx-status{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;white-space:nowrap;background:var(--card)}
-.alx .alx-status i{width:8px;height:8px;border-radius:50%;background:var(--mut)}
-.alx .alx-status.live i{background:var(--acc);animation:alxPulse 1.2s ease infinite}
-.alx .alx-panel{position:relative;margin-top:10px;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);min-height:430px;display:flex;flex-direction:column;gap:12px}
-.alx .alx-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
-.alx .alx-chip{border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--mut);background:var(--card)}
+.alx-app{--ink:#171a20;--mut:#8a919e;--line:#e7e9ee;--bg:#f7f8fa;--card:#fff;--acc:#10b981;--bad:#ef4444;--r:12px;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.alx-board{position:relative;padding:0;overflow:hidden}
+.alx-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:8px;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.alx-app .alx-status{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;white-space:nowrap;background:var(--card)}
+.alx-app .alx-status i{width:8px;height:8px;border-radius:50%;background:var(--mut)}
+.alx-app .alx-status.live i{background:var(--acc);animation:alxPulse 1.2s ease infinite}
+.alx-app .alx-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;min-height:32px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation}
+.alx-app .alx-btn svg{flex:none;display:block}
+.alx-app .alx-btn.on{border-color:var(--acc);color:var(--acc)}
+.alx-app .alx-btn:disabled{opacity:.4;cursor:default}
+.alx-spacer{flex:1 1 auto}
+.alx-subchip{font-size:12px;color:var(--mut)}
+.alx-panel{position:relative;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;gap:12px}
+.alx .alx-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.alx .alx-chip{border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--mut);background:var(--card)}
 .alx .alx-chip b{color:var(--ink);font-weight:700}
 .alx .alx-chip.turn{border-color:var(--acc);color:var(--acc)}
 .alx .alx-chip.turn b{color:var(--acc)}
-.alx .alx-card{text-align:center;padding:14px 8px 6px}
-.alx .alx-tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut);margin-bottom:6px}
+.alx .alx-card{text-align:center;padding:12px 8px 4px}
+.alx .alx-tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut);margin-bottom:8px}
 .alx .alx-display{font-size:clamp(56px,16vw,88px);font-weight:800;line-height:1.05;letter-spacing:1px}
 .alx .alx-display.word{font-size:clamp(28px,7vw,42px)}
 .alx .alx-display.name{font-size:clamp(30px,8vw,46px);letter-spacing:.5px}
-.alx .alx-prompt{margin-top:8px;font-size:13px;color:var(--mut);font-weight:600}
-.alx .alx-opts{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.alx .alx-opt{position:relative;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:16px 8px;min-height:64px;font-size:26px;font-weight:700;transition:border-color .15s,background .15s,opacity .15s}
-.alx .alx-opt:hover{border-color:var(--ink)}
-.alx .alx-opt .num{position:absolute;top:6px;left:9px;font-size:10px;font-weight:600;color:var(--mut)}
+.alx .alx-prompt{margin-top:8px;font-size:13px;color:var(--mut);font-weight:600;line-height:1.4}
+.alx .alx-opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.alx .alx-opt{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--card);padding:12px 8px;min-height:64px;font-size:26px;font-weight:700;transition:border-color .16s,background .16s,opacity .16s;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.alx .alx-opt:hover:not(:disabled){border-color:var(--ink)}
+.alx .alx-opt .num{position:absolute;top:8px;left:9px;font-size:10px;font-weight:600;color:var(--mut)}
 .alx .alx-opt .val.sm{font-size:18px}
 .alx .alx-opt.good{border-color:var(--acc);background:#ecfdf5;color:#065f46}
 .alx .alx-opt.bad{border-color:var(--bad);background:#fef2f2;color:#7f1d1d}
 .alx .alx-opt.hint{outline:2px dashed var(--acc);outline-offset:2px}
 .alx .alx-opt.dim{opacity:.55}
-.alx .alx-fb{min-height:20px;text-align:center;font-size:13px;font-weight:600;color:var(--mut)}
+.alx .alx-fb{min-height:24px;text-align:center;font-size:13px;font-weight:600;color:var(--mut);line-height:1.4}
 .alx .alx-fb.good{color:var(--acc)}
 .alx .alx-fb.bad{color:var(--bad)}
-.alx .alx-trace{display:flex;flex-direction:column;align-items:center;gap:10px}
-.alx .alx-tsvg{width:min(230px,62vw);height:auto;touch-action:none;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.alx .alx-trace{display:flex;flex-direction:column;align-items:center;gap:12px}
+.alx .alx-tsvg{width:min(230px,62vw);height:auto;touch-action:none;border:1px solid var(--line);border-radius:10px;background:var(--bg);max-width:100%}
 .alx .alx-tsvg.dim{opacity:.5}
 .alx .alx-guide{stroke:#e2e5ea;stroke-width:9;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .alx .alx-ink{stroke:var(--ink);stroke-width:9;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .alx .alx-tsvg.done .alx-ink{stroke:var(--acc)}
-.alx .alx-trow{display:flex;align-items:center;gap:10px;width:min(260px,70vw)}
+.alx .alx-trow{display:flex;align-items:center;gap:12px;width:min(260px,70vw);max-width:100%}
 .alx .alx-tbar{flex:1;height:6px;border-radius:999px;background:var(--line);overflow:hidden}
-.alx .alx-tbar i{display:block;height:100%;width:0;background:var(--acc);transition:width .15s}
+.alx .alx-tbar i{display:block;height:100%;width:0;background:var(--acc);transition:width .16s}
 .alx .alx-tpct{font-size:12px;color:var(--mut);min-width:42px;text-align:right;font-weight:600}
-.alx .alx-vpad{display:none;grid-template-columns:repeat(5,1fr);gap:6px}
-.alx .alx-vpad button{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 0;font-size:16px;font-weight:700}
+.alx .alx-vpad{display:none;grid-template-columns:1fr;justify-items:center;gap:8px}
+.alx .alx-vpad button{border:1px solid var(--line);border-radius:8px;background:var(--card);min-height:44px;padding:8px 0;font-size:16px;font-weight:700}
 .alx .alx-vpad button small{display:block;font-size:10px;color:var(--mut);font-weight:600;margin-top:2px}
 @media (pointer:coarse),(max-width:560px){.alx .alx-vpad{display:grid}}
-.alx .alx-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:rgba(247,248,250,.94);backdrop-filter:blur(4px);border-radius:inherit}
-.alx .alx-dialog{width:min(92%,340px);background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:10px;text-align:center;box-shadow:0 8px 30px rgba(23,26,32,.06)}
+.alx .alx-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;overflow:auto;padding:12px;background:rgba(247,248,250,.94);border-radius:inherit}
+.alx .alx-dialog{width:min(92%,340px);max-height:100%;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;text-align:center}
 .alx .alx-dialog h3{margin:0;font-size:18px;font-weight:700}
-.alx .alx-dialog p{margin:0;font-size:13px;color:var(--mut)}
-.alx .alx-btn{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 14px;font-size:14px;font-weight:600;transition:border-color .15s}
+.alx .alx-dialog p{margin:0;font-size:13px;color:var(--mut);line-height:1.5}
+.alx .alx-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;text-align:left}
+.alx .alx-help b{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.alx .alx-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;color:var(--mut)}
+.alx .alx-btn{border:1px solid var(--line);border-radius:8px;background:var(--card);min-height:44px;padding:8px 16px;font-size:14px;font-weight:600;transition:border-color .16s}
 .alx .alx-btn:hover{border-color:var(--ink)}
-.alx .alx-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.alx .alx-btn.primary{background:var(--ink);border-color:var(--ink);color:var(--card)}
 .alx .alx-btn:disabled{opacity:.4;cursor:default}
-.alx .alx-cheats .alx-crow{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;font-weight:600;padding:8px 0;border-bottom:1px solid var(--line)}
+.alx .alx-cheats .alx-crow{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:13px;font-weight:600;min-height:44px;padding:8px 0;border-bottom:1px solid var(--line)}
 .alx .alx-cheats .alx-crow:last-of-type{border-bottom:0}
-.alx .alx-toggle{min-width:62px;border:1px solid var(--line);border-radius:999px;background:var(--card);padding:5px 10px;font-size:12px;font-weight:700}
+.alx .alx-toggle{min-width:64px;min-height:44px;border:1px solid var(--line);border-radius:8px;background:var(--card);padding:8px 12px;font-size:12px;font-weight:700}
 .alx .alx-toggle.on{background:var(--acc);border-color:var(--acc);color:#fff}
-.alx .alx-mini{border:1px solid var(--line);border-radius:8px;background:var(--card);padding:5px 12px;font-size:12px;font-weight:700}
+.alx .alx-mini{min-height:44px;border:1px solid var(--line);border-radius:8px;background:var(--card);padding:8px 12px;font-size:12px;font-weight:700}
 .alx .alx-dlg-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .alx .alx-write{width:min(94%,360px)}
-.alx .alx-gsvg{width:min(200px,56vw);height:auto;border:1px solid var(--line);border-radius:12px;background:var(--bg);margin:0 auto}
+.alx .alx-gsvg{width:min(200px,56vw);height:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin:0 auto;max-width:100%}
 .alx .alx-gstroke{stroke:var(--ink);stroke-width:8;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .alx .alx-gnum circle{fill:var(--acc)}
 .alx .alx-gnum text{fill:#fff;font-size:9px;font-weight:700;text-anchor:middle;dominant-baseline:central}
 .alx .alx-gnum{opacity:0}
-.alx .alx-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.alx .alx-actions .game-action-button{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:9px 14px;font-size:13px;font-weight:600}
+.alx .alx-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.alx .alx-actions .game-action-button{border:1px solid var(--line);border-radius:8px;background:var(--card);min-height:44px;padding:8px 12px;font-size:13px;font-weight:600}
 .alx .alx-actions .game-action-button:hover{border-color:var(--ink)}
 @keyframes alxDraw{to{stroke-dashoffset:0}}
 @keyframes alxFade{to{opacity:1}}
 @keyframes alxPulse{50%{opacity:.35}}
-@media (prefers-reduced-motion:reduce){.alx .alx-gstroke,.alx .alx-gnum{animation-duration:.01s!important;animation-delay:0s!important}}
+@media (max-width:640px){
+.alx-app .alx-hud{gap:5px 8px;padding:6px 8px;margin-bottom:6px}
+.alx-app .alx-hud .alx-btn{min-width:28px;min-height:28px;padding:4px 6px;font-size:10px}
+.alx-app .alx-hud .alx-btn-label,.alx-app .alx-spacer,.alx-app .alx-subchip{display:none}
+.alx-panel{flex:0 0 auto;min-height:min(70dvh,620px);padding:12px}
+.alx .alx-vpad button{max-width:160px}
+.alx .alx-ov{padding:8px}
+}
+@media (max-width:480px){
+.alx .alx-display{font-size:clamp(52px,15vw,72px)}
+.alx .alx-opts{gap:8px}
+.alx .alx-opt{min-height:56px;font-size:24px}
+.alx .alx-dialog{width:min(96%,360px);padding:12px}
+.alx .alx-tsvg{width:min(210px,60vw)}
+.alx .alx-vpad{gap:6px}
+}
+@media (prefers-reduced-motion:reduce){.alx *{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
 </style>
-<div class="game-app alx">
-  <div class="game-intro alx-intro">
-    <div><h2>Alphabet Learning</h2><p class="alx-sub" data-sub></p></div>
-    <span class="game-status alx-status" data-statuswrap><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <section class="game-panel alx-panel" data-board>
+<div class="game-app alx alx-app game-fill">
+  <div class="alx-hud">
+    <span class="alx-status" data-statuswrap><i></i><span data-status>Ready</span></span>
+    <span class="alx-subchip" data-sub></span>
     <div class="alx-chips" data-chips></div>
+    <span class="alx-spacer"></span>
+    <button class="alx-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="alx-btn-label">Help</span></button>
+    <button class="alx-btn" type="button" data-act="cheat" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="alx-btn-label">Cheats</span></button>
+    <button class="alx-btn" type="button" data-act="menu" data-menu-btn aria-label="Menu" title="Menu (M)">${iconSVG("menu", { size: 14 })}<span class="alx-btn-label">Menu</span></button>
+    <button class="alx-btn" type="button" data-act="write" aria-label="Write" title="Write (W)">${iconSVG("pencil", { size: 14 })}<span class="alx-btn-label">Write</span></button>
+    <button class="alx-btn" type="button" data-act="sound" data-sound-btn aria-label="Sound" title="Sound (S)">${iconSVG("volume", { size: 14 })}<span class="alx-btn-label">Sound</span></button>
+    <button class="alx-btn" type="button" data-act="pause" data-pause-btn aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="alx-btn-label">Pause</span></button>
+    <button class="alx-btn" type="button" data-act="restart" aria-label="Restart" title="Restart">${iconSVG("refresh", { size: 14 })}<span class="alx-btn-label">Restart</span></button>
+    <button class="alx-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="alx-btn-label">Exit</span></button>
+  </div>
+  <section class="game-panel alx-panel alx-board" data-board>
     <div class="alx-card">
       <span class="alx-tag" data-tag hidden></span>
       <div class="alx-display" data-display>A</div>
@@ -342,10 +385,6 @@ export function mount(root, context = {}) {
     <div class="alx-trace" data-trace hidden></div>
     <div class="alx-fb" data-fb aria-live="polite"></div>
     <div class="alx-vpad" data-vpad>
-      <button type="button" data-vpick="0">1<small></small></button>
-      <button type="button" data-vpick="1">2<small></small></button>
-      <button type="button" data-vpick="2">3<small></small></button>
-      <button type="button" data-vpick="3">4<small></small></button>
       <button type="button" data-act="cheat-skip">Skip</button>
     </div>
     <div class="alx-ov" data-ov="menu" hidden><div class="alx-dialog" data-menu></div></div>
@@ -376,14 +415,47 @@ export function mount(root, context = {}) {
         <button type="button" class="alx-btn primary" data-act="write-close">Done</button>
       </div>
     </div>
+    <div class="alx-ov" data-ov="help" hidden>
+      <div class="alx-dialog">
+        <div class="alx-dlg-head"><h3>How to play</h3><button type="button" class="alx-mini" data-act="help-close">Close</button></div>
+        <div class="alx-help">
+          <div>
+            <b>Goal</b>
+            <ul>
+              <li>Learn all 26 letters, or score 20 correct answers in 60 seconds.</li>
+              <li>Race mode: first player to 7 correct answers wins.</li>
+              <li>Every question has exactly one correct answer.</li>
+            </ul>
+            <b>Desktop</b>
+            <ul>
+              <li><kbd>1</kbd>–<kbd>4</kbd> pick an answer; arrow keys move focus.</li>
+              <li><kbd>M</kbd> menu · <kbd>W</kbd> write · <kbd>C</kbd> cheats · <kbd>S</kbd> sound · <kbd>P</kbd> pause · <kbd>H</kbd> help.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap an answer card directly; use <b>Skip</b> to pass a question.</li>
+              <li>The writing pad traces letters with a finger or mouse.</li>
+            </ul>
+            <b>Tips</b>
+            <ul>
+              <li>There are 11 question types: matching, case, order, names, words, vowels and tracing.</li>
+              <li>Cheats are client-side helpers and can be toggled from the HUD.</li>
+            </ul>
+            <button type="button" class="alx-btn primary" data-act="help-close">Got it</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="alx-ov" data-ov="pause" hidden>
+      <div class="alx-dialog">
+        <div class="alx-dlg-head"><h3>Paused</h3></div>
+        <p>The question timer and turns are stopped.</p>
+        <button type="button" class="alx-btn primary" data-act="resume">Resume <kbd>P</kbd></button>
+      </div>
+    </div>
   </section>
-  <div class="game-actions alx-actions">
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-    <button class="game-action-button" type="button" data-act="menu" data-menu-btn>Menu</button>
-    <button class="game-action-button" type="button" data-act="write">Write</button>
-    <button class="game-action-button" type="button" data-act="sound" data-sound-btn>Sound: On</button>
-    <button class="game-action-button" type="button" data-act="cheat">Cheats</button>
-  </div>
 </div>`;
 
     const $ = (s, r) => (r || root).querySelector(s);
@@ -393,9 +465,28 @@ export function mount(root, context = {}) {
     const fbEl = $("[data-fb]"), vpadEl = $("[data-vpad]");
     const ovMenu = $('[data-ov="menu"]'), ovOver = $('[data-ov="over"]');
     const ovCheat = $('[data-ov="cheat"]'), ovWrite = $('[data-ov="write"]');
+    const ovHelp = $('[data-ov="help"]'), ovPause = $('[data-ov="pause"]');
     const menuBox = $("[data-menu]"), overBox = $("[data-over]");
     const guideBox = $("[data-guide]"), practiceBox = $("[data-practice]"), wLetterEl = $("[data-wletter]");
     const soundBtn = $("[data-sound-btn]"), menuBtn = $("[data-menu-btn]");
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatOpen = false; writeOpen = false; paused = false; }
+        render();
+    }
+    function togglePause(on) {
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) {
+            clearTimeout(advanceTimer); advanceTimer = null;
+            clearTimeout(botTimer); botTimer = null;
+            clearTimeout(autoTimer); autoTimer = null;
+        } else if (state && state.phase === "play") {
+            scheduleBot(); scheduleAuto();
+            if (state.locked) scheduleAdvance(300);
+        }
+        render();
+    }
 
     /* ---------- suara (ucapkan nama huruf / kata) ---------- */
     function say(text) {
@@ -689,14 +780,35 @@ export function mount(root, context = {}) {
             fbEl.className = "alx-fb bad";
         } else { fbEl.textContent = ""; fbEl.className = "alx-fb"; }
 
-        ovMenu.hidden = !(!s || s.phase === "menu");
-        ovOver.hidden = !(s && s.phase === "over");
-        ovCheat.hidden = !cheatOpen;
-        ovWrite.hidden = !writeOpen;
+        const panelHidden = helpOpen || paused;
+        ovMenu.hidden = panelHidden || !(!s || s.phase === "menu");
+        ovOver.hidden = panelHidden || !(s && s.phase === "over");
+        ovCheat.hidden = panelHidden || !cheatOpen;
+        ovWrite.hidden = panelHidden || !writeOpen;
+        ovHelp.hidden = !helpOpen;
+        ovPause.hidden = !paused;
         if (!ovMenu.hidden) buildMenu();
         if (!ovOver.hidden) buildOver();
 
-        soundBtn.textContent = "Sound: " + (soundOn ? "On" : "Off");
+        if (soundBtn.dataset.iconState !== String(soundOn)) {
+            soundBtn.dataset.iconState = String(soundOn);
+            const label = soundBtn.querySelector(".alx-btn-label");
+            if (label) label.textContent = soundOn ? "Sound" : "Muted";
+            const ico = soundBtn.querySelector("svg");
+            if (ico) ico.outerHTML = iconSVG(soundOn ? "volume" : "volumeX", { size: 14 });
+        }
+        soundBtn.classList.toggle("on", soundOn);
+        const pauseBtn = $("[data-pause-btn]");
+        if (pauseBtn) {
+            const want = paused ? "play" : "pause";
+            if (pauseBtn.dataset.iconState !== want) {
+                pauseBtn.dataset.iconState = want;
+                const ico = pauseBtn.querySelector("svg");
+                if (ico) ico.outerHTML = iconSVG(want, { size: 14 });
+                const label = pauseBtn.querySelector(".alx-btn-label");
+                if (label) label.textContent = paused ? "Resume" : "Pause";
+            }
+        }
         menuBtn.hidden = online && !room.isHost;
         root.querySelectorAll("[data-cheat]").forEach((b) => {
             const on = cheats[b.dataset.cheat];
@@ -737,7 +849,7 @@ export function mount(root, context = {}) {
     function startTick() {
         if (tickTimer) clearInterval(tickTimer);
         tickTimer = setInterval(() => {
-            if (!state || state.phase !== "play" || state.mode !== "challenge" || cheats.freeze) return;
+            if (!state || state.phase !== "play" || state.mode !== "challenge" || cheats.freeze || paused) return;
             state.timeLeft = Math.max(0, state.timeLeft - 0.25);
             if (state.timeLeft <= 0) finish(null);
             else render();
@@ -916,6 +1028,7 @@ export function mount(root, context = {}) {
 
     /* ---------- input: mouse / touch ---------- */
     function handleClick(event) {
+        if (event.target.closest("[data-help]")) { toggleHelp(); return; }
         if (event.target.closest("[data-exit]")) { stopAllTimers(); onExit(); return; }
         const pick = event.target.closest("[data-pick],[data-vpick]");
         if (pick) { pickByIndex(Number(pick.dataset.pick ?? pick.dataset.vpick)); return; }
@@ -928,6 +1041,10 @@ export function mount(root, context = {}) {
         switch (act.dataset.act) {
             case "menu": if (!online || room.isHost) submitAction({ type: "menu" }); break;
             case "again": submitAction({ type: "again" }); break;
+            case "restart": submitAction({ type: "again" }); break;
+            case "help-close": toggleHelp(false); break;
+            case "pause": togglePause(); break;
+            case "resume": togglePause(false); break;
             case "write": openWrite(); break;
             case "sound": soundOn = !soundOn; if (!soundOn && typeof speechSynthesis !== "undefined") speechSynthesis.cancel(); render(); break;
             case "cheat": cheatOpen = !cheatOpen; render(); break;
@@ -947,6 +1064,14 @@ export function mount(root, context = {}) {
     function handleKey(e) {
         if (!state || e.metaKey || e.ctrlKey || e.altKey) return;
         const k = e.key;
+        if (helpOpen) {
+            if (k === "Escape" || k === "h" || k === "H" || k === "Enter") toggleHelp(false);
+            return;
+        }
+        if (paused) {
+            if (k === "p" || k === "P" || k === "Escape" || k === "Enter") togglePause(false);
+            return;
+        }
         if (writeOpen) {
             if (k === "Escape") { writeOpen = false; render(); }
             else if (k === "r" || k === "R") buildGuide();
@@ -971,6 +1096,8 @@ export function mount(root, context = {}) {
         else if (k === "c" || k === "C") { cheatOpen = true; render(); }
         else if (k === "w" || k === "W") openWrite();
         else if (k === "s" || k === "S") { soundOn = !soundOn; render(); }
+        else if (k === "h" || k === "H") { toggleHelp(); }
+        else if (k === "p" || k === "P") { togglePause(); }
     }
 
     root.addEventListener("click", handleClick);

@@ -4,6 +4,8 @@
   - Setelah mengubah file ini, jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "number-connect",
     name: "Number Connect",
@@ -28,33 +30,97 @@ export function mount(root, context = {}) {
     let sel = [];                       // path pilihan {r,c}
     let cursor = { r: 0, c: 0 };        // cursor keyboard / virtual pad
     let hint = null;                    // {a,b} highlight saran
-    let overlay = null;                 // "start" | "help" | "cheat" | "round" | null
+    let overlay = null;                 // "start" | "round" | null
+    let cheatsOpen = false, helpOpen = false, paused = false;
     let dragging = false, gesture = "", downCell = null, dragMoved = false;
     let builtKey = "";                  // cache rebuild tile SVG
     let prevStatus = "", prevRound = 0, prevSwap = null, seatNoted = false;
     let padOn = false, padConsumed = false;
-    let botTimer = null, noteTimer = null;
     const padHold = { delay: null, repeat: null };
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { /* private mode */ }
 
+    /* Timer sadar-pause: anchor due berbasis Date.now() digeser saat resume
+       sehingga bot dan notifikasi tidak loncat setelah jeda. */
+    const timers = new Map();
+    let deferredTimers = [];
+    let pauseStart = 0, pauseOffset = 0;
+    const nowMs = () => Date.now() - pauseOffset;
+
+    function later(key, fn, ms) {
+        clearTimer(key);
+        if (paused) { deferredTimers.push({ key, fn, wait: Math.max(0, ms) }); return; }
+        const id = setTimeout(() => {
+            timers.delete(key);
+            if (!disposed && !paused) fn();
+        }, ms);
+        timers.set(key, { id, due: nowMs() + ms, fn });
+    }
+    function clearTimer(key) {
+        const rec = timers.get(key);
+        if (rec) { clearTimeout(rec.id); timers.delete(key); }
+        deferredTimers = deferredTimers.filter((t) => t.key !== key);
+    }
+    function clearTimers() {
+        for (const rec of timers.values()) clearTimeout(rec.id);
+        timers.clear();
+        deferredTimers = [];
+    }
+    function pauseTimers() {
+        const now = nowMs();
+        for (const [key, rec] of timers) {
+            clearTimeout(rec.id);
+            deferredTimers.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        timers.clear();
+    }
+    function resumeTimers() {
+        const queue = deferredTimers;
+        deferredTimers = [];
+        for (const t of queue) later(t.key, t.fn, t.wait);
+    }
+
+    /* Panduan internal sekali per instalasi (modal How to play). */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("numberConnectHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("numberConnectHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+
     /* ================= shell + scoped minimalist styles ================= */
     root.innerHTML = `
 <style>
-.ncx{color:#0f172a;font-variant-numeric:tabular-nums}
-.ncx .game-intro p{color:#64748b}
-.ncx-score{display:flex;gap:10px;align-items:stretch;margin:10px 0}
-.ncx-pcard{flex:1;min-width:0;border:1px solid #e2e8f0;border-radius:12px;background:#fff;padding:8px 12px;transition:border-color .2s}
-.ncx-pcard.on{border-color:#0d9488;box-shadow:inset 0 0 0 1px #0d9488}
-.ncx-pname{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ncx-pname b{color:#0f172a;font-weight:600}
-.ncx-pscore{font-size:22px;font-weight:700;line-height:1.2}
-.ncx-psub{font-size:11px;color:#94a3b8}
-.ncx-mid{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:84px;text-align:center}
-.ncx-chip{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}
-.ncx-chip b{color:#0f172a;font-size:13px;margin-left:4px}
-.ncx-stage{position:relative;display:flex;justify-content:center;padding:6px 0}
-.ncx svg.ncx-svg{width:100%;max-width:432px;height:auto;touch-action:none;-webkit-user-select:none;user-select:none;display:block}
+.ncx{--acc:#0d9488;--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;--surface:#fff;--bg:#f8fafc;
+  width:100%;min-width:0;max-width:100%;display:flex;flex-direction:column;gap:10px;
+  color:var(--ink);font:13px/1.45 inherit;font-variant-numeric:tabular-nums;
+  -webkit-tap-highlight-color:transparent}
+.ncx *,.ncx *::before,.ncx *::after{box-sizing:border-box}
+.ncx [hidden]{display:none!important}
+.ncx :is(button,[role="button"]):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* one HUD row: all match info left, icon controls right */
+.ncx-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ncx-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--mut);white-space:nowrap;min-height:0}
+.ncx-chip b{color:var(--ink);font-weight:700}
+.ncx-chip small{font-size:9px;color:#94a3b8}
+.ncx-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex:none}
+.ncx.wait .ncx-dot{background:#f59e0b;animation:ncx-pulse 1s ease-in-out infinite}
+@keyframes ncx-pulse{50%{opacity:.3}}
+.ncx-pchip.on{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.ncx-spacer{flex:1 1 auto;min-width:6px}
+.ncx-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:6px 10px;min-height:32px;font:inherit;font-size:10px;font-weight:700;letter-spacing:.03em;cursor:pointer;touch-action:manipulation}
+.ncx-btn:hover:not(:disabled){background:var(--bg);border-color:#cbd5e1}
+.ncx-btn:disabled{opacity:.4;cursor:default}
+.ncx-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.ncx-btn.primary:hover:not(:disabled){background:#0f766e}
+.ncx-btn.ghost{color:var(--mut)}
+.ncx-btn.on{border-color:var(--acc);color:var(--acc);background:#f0fdfa}
+.ncx-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ncx-icon-btn svg{flex:none;display:block}
+.ncx-btn-label{white-space:nowrap}
+/* fill-height board; SVG keeps its square drawing via xMidYMid meet */
+.ncx.game-fill>.ncx-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+.ncx svg.ncx-svg{display:block;width:100%;height:100%;max-width:none;touch-action:none;-webkit-user-select:none;user-select:none}
 .ncx svg.ncx-live{cursor:pointer}
 .ncx .ncx-cell{fill:#f8fafc}
 .ncx .ncx-tile rect{stroke:rgba(15,23,42,.10);stroke-width:1}
@@ -68,170 +134,180 @@ export function mount(root, context = {}) {
 .ncx .ncx-cursor{fill:none;stroke:#94a3b8;stroke-width:1.5;stroke-dasharray:4 4;pointer-events:none}
 .ncx .ncx-hint{fill:none;stroke:#f59e0b;stroke-width:2;stroke-dasharray:5 4;pointer-events:none}
 .ncx .ncx-hintline{fill:none;stroke:#f59e0b;stroke-width:2;stroke-dasharray:5 4;opacity:.7;pointer-events:none}
-.ncx-bar{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;margin:10px 0 4px}
-.ncx-btn{border:1px solid #e2e8f0;background:#fff;color:#0f172a;border-radius:10px;padding:8px 13px;font-size:13px;font-family:inherit;cursor:pointer;touch-action:manipulation}
-.ncx-btn:hover:not(:disabled){background:#f8fafc}
-.ncx-btn:focus-visible{outline:2px solid #0d9488;outline-offset:2px}
-.ncx-btn:disabled{opacity:.35;cursor:default}
-.ncx-btn.primary{background:#0d9488;border-color:#0d9488;color:#fff}
-.ncx-btn.primary:hover:not(:disabled){background:#0f766e}
-.ncx-btn.ghost{border-color:transparent;color:#64748b}
-.ncx-btn.ghost:hover:not(:disabled){color:#0f172a}
-.ncx-btn.toggled{border-color:#0d9488;color:#0d9488}
-.ncx-pad{display:none;justify-content:center;gap:26px;align-items:center;margin:8px 0 2px}
-.ncx-pad.show{display:flex}
-.ncx-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:4px}
-.ncx-padbtn{border:1px solid #e2e8f0;background:#fff;border-radius:10px;color:#334155;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}
-.ncx-padbtn:active{background:#ccfbf1;border-color:#0d9488}
-.ncx-padacts{display:grid;grid-template-columns:repeat(2,72px);gap:6px}
-.ncx-padacts .ncx-padbtn{height:46px}
-.ncx-padacts .go{background:#0d9488;border-color:#0d9488;color:#fff}
-.ncx-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.88);backdrop-filter:blur(2px);padding:12px}
-.ncx-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.10);padding:18px;max-width:350px;width:100%;max-height:100%;overflow:auto}
-.ncx-card h3{margin:0 0 8px;font-size:17px}
-.ncx-card h4{margin:12px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}
-.ncx-card p,.ncx-card li{font-size:13px;color:#475569;line-height:1.5;margin:4px 0}
-.ncx-card ul{margin:4px 0;padding-left:18px}
-.ncx-card kbd{border:1px solid #e2e8f0;border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px;background:#f8fafc;font-family:inherit}
-.ncx-cardrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+/* overlays are flex columns: fixed head/foot, scrollable body */
+.ncx-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.9);backdrop-filter:blur(2px);padding:12px}
+.ncx-card{width:min(420px,100%);max-height:100%;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 12px rgba(15,23,42,.10);padding:16px;display:flex;flex-direction:column;overflow:hidden;gap:10px}
+.ncx-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.ncx-head h3{margin:0;font-size:16px;font-weight:700;line-height:1.25}
+.ncx-x{min-width:34px;min-height:34px;background:none;border:0;color:var(--mut);font-size:20px;line-height:1;cursor:pointer;padding:2px 6px}
+.ncx-x:hover{color:var(--ink)}
+.ncx-body{flex:1 1 auto;min-height:0;overflow:auto}
+.ncx-body h4{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}
+.ncx-body h4:first-child{margin-top:0}
+.ncx-body p,.ncx-body li{font-size:13px;color:#475569;line-height:1.5;margin:4px 0}
+.ncx-body ul{margin:4px 0;padding-left:18px}
+.ncx-body kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px;background:var(--bg);font-family:inherit}
+.ncx-foot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end;flex:none;padding-top:10px;border-top:1px solid #f1f5f9}
 .ncx-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9}
 .ncx-cheatrow:last-of-type{border-bottom:0}
-.ncx-cheatrow div b{font-size:13px;display:block}
+.ncx-cheatrow div b{font-size:13px;display:block;color:var(--ink)}
 .ncx-cheatrow div span{font-size:11px;color:#94a3b8}
-.ncx-cheatrow .ncx-btn{flex:none;padding:6px 11px;font-size:12px}
-.ncx-note{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);background:#0f172a;color:#f8fafc;font-size:12px;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:7;max-width:92%;text-align:center}
+.ncx-cheatrow .ncx-btn{flex:none}
+.ncx-note{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);background:#0f172a;color:#f8fafc;font-size:11px;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:7;max-width:92%;text-align:center}
 .ncx-note.show{opacity:.94}
-.ncx .game-status-dot{background:#0d9488}
-.ncx.wait .game-status-dot{background:#f59e0b;animation:ncx-pulse 1s ease-in-out infinite}
-@keyframes ncx-pulse{50%{opacity:.3}}
-.ncx .game-actions{margin-top:8px}
-@media (max-width:520px){
-  .ncx-pscore{font-size:18px}
-  .ncx-mid{min-width:64px}
-  .ncx-btn{padding:7px 10px;font-size:12px}
+/* virtual pad is a sibling AFTER the board, never on top of it */
+.ncx-pad{flex:none;display:none;justify-content:center;gap:26px;align-items:center;margin:0}
+.ncx-pad.show{display:flex}
+.ncx-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:4px}
+.ncx-padbtn{border:1px solid var(--line);background:#fff;border-radius:10px;color:#334155;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.ncx-padbtn:active{background:#ccfbf1;border-color:var(--acc)}
+.ncx-padacts{display:grid;grid-template-columns:repeat(2,72px);gap:6px}
+.ncx-padacts .ncx-padbtn{height:46px}
+.ncx-padacts .go{background:var(--acc);border-color:var(--acc);color:#fff}
+@media (prefers-reduced-motion:reduce){
+  .ncx .ncx-pop,.ncx.wait .ncx-dot{animation:none}
+  .ncx *,.ncx *::before,.ncx *::after{transition-duration:.01ms!important}
+}
+/* ==== layout overrides last (beat pointer:coarse 44px defaults) ==== */
+@media (max-width:640px){
+  .ncx{gap:6px}
+  .ncx.game-fill>.ncx-board:not(:has(.ncx-ov:not([hidden]))){aspect-ratio:1;flex:0 0 auto}
+  .ncx.game-fill>.ncx-board:has(.ncx-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .ncx .ncx-hud{gap:5px}
+  .ncx .ncx-hud .ncx-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .ncx .ncx-hud .ncx-chip[data-hud="first"],.ncx .ncx-hud .ncx-chip[data-hud="bestwrap"]{display:none}
+  .ncx .ncx-hud .ncx-pchip small{display:none}
+  .ncx .ncx-hud .ncx-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .ncx .ncx-hud .ncx-btn-label,.ncx .ncx-hud .ncx-spacer{display:none}
+  .ncx .ncx-ov{padding:8px}
+  .ncx .ncx-card{width:100%;height:100%;max-height:100%;padding:12px}
+  .ncx .ncx-body{scrollbar-width:none}
+  .ncx .ncx-body::-webkit-scrollbar{display:none}
+  .ncx .ncx-foot{position:static;padding-top:8px;justify-content:center}
+  .ncx .ncx-note{display:none}
   .ncx-dpad{grid-template-columns:repeat(3,42px);grid-template-rows:repeat(3,42px)}
 }
-@media (prefers-reduced-motion:reduce){
-  .ncx .ncx-pop{animation:none}
-  .ncx.wait .game-status-dot{animation:none}
+@media (pointer:coarse){
+  .ncx .ncx-hud .ncx-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .ncx .ncx-card .ncx-x,.ncx .ncx-card .ncx-btn{min-height:40px}
 }
 </style>
-<div class="game-app ncx">
-  <div class="game-intro">
-    <div><h2>Number Connect</h2><p>Chain equal adjacent tiles — only the last tile doubles, once. First to the target wins the round.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app ncx game-fill" data-ncx>
+  <div class="ncx-hud">
+    <span class="ncx-chip ncx-status" data-hud="status"><i class="ncx-dot"></i><span data-status>Ready</span></span>
+    <span class="ncx-chip ncx-pchip" data-card="0"><b data-pname="0">P1</b> <b data-pscore="0">0</b><small data-psub="0">R0·W0</small></span>
+    <span class="ncx-chip ncx-pchip" data-card="1"><b data-pname="1">P2</b> <b data-pscore="1">0</b><small data-psub="1">R0·W0</small></span>
+    <span class="ncx-chip" data-hud="first">FIRST —</span>
+    <span class="ncx-chip">LV <b data-hud="level">1</b></span>
+    <span class="ncx-chip">TGT <b data-hud="target">64</b></span>
+    <span class="ncx-chip" data-hud="bestwrap">BEST <b data-hud="best">0</b></span>
+    <span class="ncx-spacer"></span>
+    <button class="ncx-btn ncx-icon-btn" type="button" data-act="undo" aria-label="Undo step" title="Undo step">${iconSVG("reply", { size: 14 })}<span class="ncx-btn-label">Undo</span></button>
+    <button class="ncx-btn ncx-icon-btn" type="button" data-act="clear" aria-label="Clear selection" title="Clear selection">${iconSVG("x", { size: 14 })}<span class="ncx-btn-label">Clear</span></button>
+    <button class="ncx-btn ncx-icon-btn primary" type="button" data-act="confirm" aria-label="Merge selection" title="Merge (Enter)">${iconSVG("check", { size: 14 })}<span class="ncx-btn-label">Merge</span></button>
+    <button class="ncx-btn ncx-icon-btn primary" type="button" data-act="next" data-next aria-label="Next round" title="Next round" hidden>${iconSVG("next", { size: 14 })}<span class="ncx-btn-label">Next</span></button>
+    <button class="ncx-btn ncx-icon-btn" type="button" data-act="pad" aria-pressed="false" aria-label="Virtual pad" title="Toggle virtual pad">${iconSVG("grid", { size: 14 })}<span class="ncx-btn-label">Pad</span></button>
+    <button class="ncx-btn ncx-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ncx-btn-label">Help</span></button>
+    <button class="ncx-btn ncx-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ncx-btn-label">Cheats</span></button>
+    <button class="ncx-btn ncx-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="ncx-btn-label">Pause</span></button>
+    <button class="ncx-btn ncx-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ncx-btn-label">Restart</span></button>
+    <button class="ncx-btn ncx-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ncx-btn-label">Exit game</span></button>
   </div>
 
-  <div class="ncx-score">
-    <div class="ncx-pcard" data-card="0">
-      <div class="ncx-pname" data-pname="0">P1</div>
-      <div class="ncx-pscore" data-pscore="0">0</div>
-      <div class="ncx-psub" data-psub="0">Round 0 · Wins 0</div>
-    </div>
-    <div class="ncx-mid">
-      <span class="ncx-chip">Level<b data-hud="level">1</b></span>
-      <span class="ncx-chip">Target<b data-hud="target">64</b></span>
-      <span class="ncx-chip">Best<b data-hud="best">0</b></span>
-    </div>
-    <div class="ncx-pcard" data-card="1">
-      <div class="ncx-pname" data-pname="1">P2</div>
-      <div class="ncx-pscore" data-pscore="1">0</div>
-      <div class="ncx-psub" data-psub="1">Round 0 · Wins 0</div>
-    </div>
-  </div>
-
-  <section class="game-panel ncx-stage" data-board>
-    <svg class="ncx-svg" viewBox="0 0 402 402" role="img" aria-label="Number Connect board">
+  <section class="game-panel ncx-board" data-board>
+    <svg class="ncx-svg" viewBox="0 0 402 402" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Number Connect board">
       <g data-layer="bg"></g>
       <g data-layer="tiles"></g>
       <g data-layer="path"></g>
     </svg>
 
-    <div class="ncx-ov" data-ovz="start" hidden>
+    <div class="ncx-ov" data-ov="start" hidden>
       <div class="ncx-card" role="dialog" aria-label="Start">
-        <h3>Number Connect</h3>
-        <ul>
-          <li>Connect <b>2 or more equal tiles</b>, up / down / left / right only.</li>
-          <li>Only the <b>last tile doubles (×2 once)</b>. The rest stay on the board — nothing is removed or refilled.</li>
-          <li>Create the <b>target tile</b> to win the round. If the board freezes, the higher round score wins.</li>
-        </ul>
-        <p>A coin flip decides who moves first.</p>
-        <div class="ncx-cardrow">
-          <button class="ncx-btn primary" type="button" data-act="start-bot">Play vs Bot</button>
-          <button class="ncx-btn" type="button" data-act="start-solo">Play solo</button>
+        <div class="ncx-head"><h3>Number Connect</h3></div>
+        <div class="ncx-body">
+          <ul>
+            <li>Connect <b>2 or more equal tiles</b>, up / down / left / right only.</li>
+            <li>Only the <b>last tile doubles (×2 once)</b>. The rest stay on the board — nothing is removed or refilled.</li>
+            <li>Create the <b>target tile</b> to win the round. If the board freezes, the higher round score wins.</li>
+          </ul>
+          <p>A coin flip decides who moves first.</p>
+        </div>
+        <div class="ncx-foot">
           <button class="ncx-btn ghost" type="button" data-act="help">How to play</button>
+          <button class="ncx-btn" type="button" data-act="start-solo">Play solo</button>
+          <button class="ncx-btn primary" type="button" data-act="start-bot">Play vs Bot</button>
         </div>
       </div>
     </div>
 
-    <div class="ncx-ov" data-ovz="help" hidden>
+    <div class="ncx-ov" data-ov="help" hidden>
       <div class="ncx-card" role="dialog" aria-label="How to play">
-        <h3>How to play</h3>
-        <h4>Goal</h4>
-        <p>Be the first to build a tile worth the target: 64, then 128, 256, then 512 from level 4 on. Every board is generated with a verified solution.</p>
-        <h4>Merging</h4>
-        <ul>
-          <li>Chain <b>two or more equal</b> tiles. Steps are orthogonal only — <b>no diagonals</b>.</li>
-          <li>On confirm, <b>only the last tile is multiplied by 2, exactly once</b> — a longer chain never multiplies more.</li>
-          <li>Connected tiles are <b>not deleted</b> and no new tiles drop in. You score the new value.</li>
-        </ul>
-        <h4>Turns &amp; rounds</h4>
-        <ul>
-          <li>One merge per turn. A <b>coin flip</b> picks who starts each round.</li>
-          <li>Online: your slot (P1 / P2) is <b>drawn at random</b> at match start and re-drawn on restart.</li>
-          <li>Reach the target to win instantly. If no adjacent equal pair remains, the higher <b>round score</b> takes the round.</li>
-        </ul>
-        <h4>Mouse</h4>
-        <p>Drag through tiles and release to merge, or click tile by tile — click the last tile again (or Confirm) to merge. Click the previous tile to step back.</p>
-        <h4>Keyboard</h4>
-        <p><kbd>Arrows</kbd>/<kbd>WASD</kbd> move cursor · <kbd>Space</kbd> pick / extend · <kbd>Enter</kbd> merge · <kbd>Backspace</kbd> undo step · <kbd>Esc</kbd> clear · <kbd>C</kbd> cheats · <kbd>H</kbd> help</p>
-        <h4>Touch</h4>
-        <p>Tap or drag tiles, or use the virtual pad: arrows move the cursor, <b>Pick</b> selects, <b>Merge</b> confirms, <b>Undo</b> steps back, <b>Clear</b> resets.</p>
-        <div class="ncx-cardrow"><button class="ncx-btn primary" type="button" data-act="ov-close">Got it</button></div>
-      </div>
-    </div>
-
-    <div class="ncx-ov" data-ovz="cheat" hidden>
-      <div class="ncx-card" role="dialog" aria-label="Cheats">
-        <h3>Cheats</h3>
-        <p>Helpers below. In online matches they apply to <b>you</b>. Cheats marked * do not use your turn.</p>
-        <div class="ncx-cheatrow"><div><b>Hint</b><span>Highlight a strong merge *</span></div><button class="ncx-btn" type="button" data-cheat="hint">Show</button></div>
-        <div class="ncx-cheatrow"><div><b>Best move</b><span>Play the strongest merge for you</span></div><button class="ncx-btn" type="button" data-cheat="best">Play</button></div>
-        <div class="ncx-cheatrow"><div><b>Free ×2</b><span>Double the dashed cursor tile, no rules *</span></div><button class="ncx-btn" type="button" data-cheat="double">×2</button></div>
-        <div class="ncx-cheatrow"><div><b>+500 points</b><span>Add 500 to your score *</span></div><button class="ncx-btn" type="button" data-cheat="score">Add</button></div>
-        <div class="ncx-cheatrow"><div><b>Instant target</b><span>Place the target on the cursor tile and win *</span></div><button class="ncx-btn" type="button" data-cheat="target">Win</button></div>
-        <div class="ncx-cheatrow"><div><b>Reshuffle</b><span>Fresh verified-solvable board, same level *</span></div><button class="ncx-btn" type="button" data-cheat="reshuffle">New board</button></div>
-        <div class="ncx-cheatrow"><div><b>Skip level</b><span>Jump to the next level, no win credited *</span></div><button class="ncx-btn" type="button" data-cheat="skip">Skip</button></div>
-        <div class="ncx-cardrow"><button class="ncx-btn ghost" type="button" data-act="ov-close">Close</button></div>
-      </div>
-    </div>
-
-    <div class="ncx-ov" data-ovz="round" hidden>
-      <div class="ncx-card" role="dialog" aria-label="Round result">
-        <h3 data-round="title">Round over</h3>
-        <p data-round="sub">…</p>
-        <p data-round="wins"></p>
-        <div class="ncx-cardrow">
-          <button class="ncx-btn primary" type="button" data-act="next">Next round</button>
-          <button class="ncx-btn" type="button" data-act="restart">Restart match</button>
-          <button class="ncx-btn ghost" type="button" data-act="ov-close">View board</button>
+        <div class="ncx-head"><h3>How to play</h3><button class="ncx-x" type="button" data-help-close aria-label="Close">&times;</button></div>
+        <div class="ncx-body">
+          <h4>Goal</h4>
+          <p>Be the first to build a tile worth the target: 64, then 128, 256, then 512 from level 4 on. Every board is generated with a verified solution.</p>
+          <h4>Merging</h4>
+          <ul>
+            <li>Chain <b>two or more equal</b> tiles. Steps are orthogonal only — <b>no diagonals</b>.</li>
+            <li>On confirm, <b>only the last tile is multiplied by 2, exactly once</b> — a longer chain never multiplies more.</li>
+            <li>Connected tiles are <b>not deleted</b> and no new tiles drop in. You score the new value.</li>
+          </ul>
+          <h4>Turns &amp; rounds</h4>
+          <ul>
+            <li>One merge per turn. A <b>coin flip</b> picks who starts each round.</li>
+            <li>Online: your slot (P1 / P2) is <b>drawn at random</b> at match start and re-drawn on restart.</li>
+            <li>Reach the target to win instantly. If no adjacent equal pair remains, the higher <b>round score</b> takes the round.</li>
+          </ul>
+          <h4>Mouse</h4>
+          <p>Drag through tiles and release to merge, or click tile by tile — click the last tile again (or Merge) to merge. Click the previous tile to step back.</p>
+          <h4>Keyboard</h4>
+          <p><kbd>Arrows</kbd>/<kbd>WASD</kbd> move cursor · <kbd>Space</kbd> pick / extend · <kbd>Enter</kbd> merge · <kbd>Backspace</kbd> undo step · <kbd>H</kbd> help · <kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>R</kbd> restart · <kbd>Esc</kbd> close / clear</p>
+          <h4>Touch</h4>
+          <p>Tap or drag tiles, or use the virtual pad: arrows move the cursor, <b>Pick</b> selects, <b>Merge</b> confirms, <b>Undo</b> steps back, <b>Clear</b> resets.</p>
         </div>
+        <div class="ncx-foot"><button class="ncx-btn primary" type="button" data-help-close>Got it</button></div>
+      </div>
+    </div>
+
+    <div class="ncx-ov" data-ov="cheat" hidden>
+      <div class="ncx-card" role="dialog" aria-label="Cheats">
+        <div class="ncx-head"><h3>Cheats</h3><button class="ncx-x" type="button" data-cheats-close aria-label="Close">&times;</button></div>
+        <div class="ncx-body">
+          <p>Helpers below. In online matches they apply to <b>you</b>. Cheats marked * do not use your turn.</p>
+          <div class="ncx-cheatrow"><div><b>Hint</b><span>Highlight a strong merge *</span></div><button class="ncx-btn" type="button" data-cheat="hint">Show</button></div>
+          <div class="ncx-cheatrow"><div><b>Best move</b><span>Play the strongest merge for you</span></div><button class="ncx-btn" type="button" data-cheat="best">Play</button></div>
+          <div class="ncx-cheatrow"><div><b>Free ×2</b><span>Double the dashed cursor tile, no rules *</span></div><button class="ncx-btn" type="button" data-cheat="double">×2</button></div>
+          <div class="ncx-cheatrow"><div><b>+500 points</b><span>Add 500 to your score *</span></div><button class="ncx-btn" type="button" data-cheat="score">Add</button></div>
+          <div class="ncx-cheatrow"><div><b>Instant target</b><span>Place the target on the cursor tile and win *</span></div><button class="ncx-btn" type="button" data-cheat="target">Win</button></div>
+          <div class="ncx-cheatrow"><div><b>Reshuffle</b><span>Fresh verified-solvable board, same level *</span></div><button class="ncx-btn" type="button" data-cheat="reshuffle">New board</button></div>
+          <div class="ncx-cheatrow"><div><b>Skip level</b><span>Jump to the next level, no win credited *</span></div><button class="ncx-btn" type="button" data-cheat="skip">Skip</button></div>
+        </div>
+        <div class="ncx-foot"><button class="ncx-btn" type="button" data-cheats-close>Close</button></div>
+      </div>
+    </div>
+
+    <div class="ncx-ov" data-ov="round" hidden>
+      <div class="ncx-card" role="dialog" aria-label="Round result">
+        <div class="ncx-head"><h3 data-round="title">Round over</h3></div>
+        <div class="ncx-body"><p data-round="sub">…</p><p data-round="wins"></p></div>
+        <div class="ncx-foot">
+          <button class="ncx-btn ghost" type="button" data-act="ov-close">View board</button>
+          <button class="ncx-btn" type="button" data-act="restart">Restart match</button>
+          <button class="ncx-btn primary" type="button" data-act="next">Next round</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ncx-ov" data-ov="pause" hidden>
+      <div class="ncx-card" role="dialog" aria-label="Paused">
+        <div class="ncx-head"><h3>Paused</h3></div>
+        <div class="ncx-body"><p>The board and the bot timer are frozen. Your progress is safe.</p></div>
+        <div class="ncx-foot"><button class="ncx-btn primary" type="button" data-resume>Resume</button></div>
       </div>
     </div>
 
     <div class="ncx-note" data-note aria-live="polite"></div>
   </section>
-
-  <div class="ncx-bar">
-    <button class="ncx-btn" type="button" data-act="undo">Undo</button>
-    <button class="ncx-btn" type="button" data-act="clear">Clear</button>
-    <button class="ncx-btn primary" type="button" data-act="confirm">Confirm</button>
-    <button class="ncx-btn primary" type="button" data-act="next" data-next hidden>Next round</button>
-    <button class="ncx-btn ghost" type="button" data-act="cheat">Cheats</button>
-    <button class="ncx-btn ghost" type="button" data-act="help">How to play</button>
-    <button class="ncx-btn ghost" type="button" data-act="pad" aria-pressed="false">Pad</button>
-    <button class="ncx-btn ghost" type="button" data-act="restart">Restart</button>
-  </div>
 
   <div class="ncx-pad" data-padwrap>
     <div class="ncx-dpad">
@@ -252,18 +328,17 @@ export function mount(root, context = {}) {
       <button class="ncx-padbtn" type="button" data-pad="clear">Clear</button>
     </div>
   </div>
-
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ================= refs ================= */
     const $ = (s, r) => (r || root).querySelector(s);
+    const appEl = $(".ncx");
+    const board = $("[data-board]");
     const svg = $(".ncx-svg");
     const gBg = $('[data-layer="bg"]');
     const gTiles = $('[data-layer="tiles"]');
     const gPath = $('[data-layer="path"]');
     const statusEl = $("[data-status]");
-    const statusWrap = $(".game-status");
     const noteEl = $("[data-note]");
     const padWrap = $("[data-padwrap]");
     const btnConfirm = $('[data-act="confirm"]');
@@ -271,11 +346,14 @@ export function mount(root, context = {}) {
     const btnUndo = $('[data-act="undo"]');
     const btnNext = $("[data-next]");
     const btnPad = $('[data-act="pad"]');
+    const btnPause = $('[data-pause]');
+    const btnCheats = $('[data-cheats]');
     const ovz = {
-        start: $('[data-ovz="start"]'),
-        help: $('[data-ovz="help"]'),
-        cheat: $('[data-ovz="cheat"]'),
-        round: $('[data-ovz="round"]'),
+        start: $('[data-ov="start"]'),
+        help: $('[data-ov="help"]'),
+        cheat: $('[data-ov="cheat"]'),
+        round: $('[data-ov="round"]'),
+        pause: $('[data-ov="pause"]'),
     };
     const NS = "http://www.w3.org/2000/svg";
     const mk = (tag, attrs, parent) => {
@@ -401,9 +479,9 @@ export function mount(root, context = {}) {
     }
 
     function findSolution(grid, target, rollouts = 40, cap = 320, budgetMs = 260) {
-        const t0 = Date.now();
+        const t0 = nowMs();
         for (let t = 0; t < rollouts; t++) {
-            if (Date.now() - t0 > budgetMs) return null;
+            if (nowMs() - t0 > budgetMs) return null;
             const g = cloneGrid(grid);
             const moves = [];
             for (let s = 0; s < cap; s++) {
@@ -424,8 +502,8 @@ export function mount(root, context = {}) {
     }
 
     function generateBoard(level, target) {
-        const t0 = Date.now();
-        for (let att = 0; att < 10 && Date.now() - t0 < 400; att++) {
+        const t0 = nowMs();
+        for (let att = 0; att < 10 && nowMs() - t0 < 400; att++) {
             const g = [];
             for (let r = 0; r < N; r++) {
                 const row = [];
@@ -471,7 +549,7 @@ export function mount(root, context = {}) {
     const mySeat = () => (online && state?.swap ? 1 - baseIndex : baseIndex); // undian posisi acak
     const nameOf = (seat) => (state?.names?.[seat] || "Player " + (seat + 1));
     const canAct = () =>
-        Boolean(state) && state.status === "playing" &&
+        Boolean(state) && state.status === "playing" && !paused && !helpOpen && !cheatsOpen &&
         (state.vs === "solo" || state.turn === mySeat());
 
     function startRound(lv) {
@@ -594,14 +672,26 @@ export function mount(root, context = {}) {
     function updateControls() {
         const ok = canAct();
         btnConfirm.disabled = !(ok && sel.length >= 2);
-        btnClear.disabled = !(sel.length > 0);
-        btnUndo.disabled = !(sel.length > 0);
-        btnNext.hidden = !(state && state.status === "round");
+        btnClear.disabled = !(sel.length > 0 || !ok);
+        btnUndo.disabled = !(sel.length > 0 || !ok);
+        btnNext.hidden = !(state && state.status === "round") || cheatsOpen || helpOpen || paused;
         svg.classList.toggle("ncx-live", ok);
+        // update the label span, never button.textContent — the icon must survive
+        const pLabel = btnPause.querySelector(".ncx-btn-label");
+        if (pLabel) pLabel.textContent = paused ? "Resume" : "Pause";
+        btnPause.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        btnPause.title = paused ? "Resume (P)" : "Pause (P)";
+        btnPause.disabled = online;
+        btnCheats.classList.toggle("on", cheatsOpen);
     }
 
     function renderOverlays() {
-        for (const k in ovz) ovz[k].hidden = overlay !== k;
+        // help > cheats > pause > round/start — overlays suppress each other
+        ovz.help.hidden = !helpOpen;
+        ovz.cheat.hidden = !cheatsOpen || helpOpen;
+        ovz.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ovz.start.hidden = overlay !== "start" || cheatsOpen || helpOpen || paused;
+        ovz.round.hidden = overlay !== "round" || cheatsOpen || helpOpen || paused;
         if (overlay === "round" && state) {
             const w = state.winner, tgt = targetFor(state.level);
             const solo = state.vs === "solo";
@@ -659,13 +749,13 @@ export function mount(root, context = {}) {
             const card = $('[data-card="' + s + '"]');
             card.hidden = state.vs === "solo" && s === 1;
             card.classList.toggle("on", state.status === "playing" && state.vs !== "solo" && state.turn === s);
-            $('[data-pname="' + s + '"]').innerHTML =
-                "P" + (s + 1) + " · <b></b>" + (s === me ? " (You)" : "");
-            $('[data-pname="' + s + '"] b').textContent = nameOf(s);
+            $('[data-pname="' + s + '"]').textContent =
+                "P" + (s + 1) + " · " + nameOf(s) + (s === me ? " (You)" : "");
             $('[data-pscore="' + s + '"]').textContent = state.scores[s];
             $('[data-psub="' + s + '"]').textContent =
-                "Round " + state.roundScores[s] + " · Wins " + state.wins[s];
+                "R" + state.roundScores[s] + "·W" + state.wins[s];
         }
+        $('[data-hud="first"]').textContent = "FIRST " + nameOf(state.first);
         $('[data-hud="level"]').textContent = state.level;
         $('[data-hud="target"]').textContent = targetFor(state.level);
         const mine = state.scores[me] || 0;
@@ -676,14 +766,14 @@ export function mount(root, context = {}) {
         $('[data-hud="best"]').textContent = best;
 
         let status, wait = false;
-        if (state.status === "ready") status = "Choose a mode to start";
+        if (paused) status = "Paused";
+        else if (state.status === "ready") status = "Choose a mode to start";
         else if (state.status === "round") status = "Round over";
         else if (state.vs === "solo" || state.turn === me) status = "Your turn";
         else if (state.vs === "bot") { status = "Bot is thinking…"; wait = true; }
         else { status = "Waiting for " + nameOf(1 - me) + "…"; wait = true; }
         statusEl.textContent = status;
-        statusWrap.parentElement.classList.toggle("wait", wait);
-        root.querySelector(".ncx").classList.toggle("wait", wait);
+        appEl.classList.toggle("wait", wait);
 
         updateControls();
         renderOverlays();
@@ -692,17 +782,15 @@ export function mount(root, context = {}) {
     function note(msg) {
         noteEl.textContent = msg;
         noteEl.classList.add("show");
-        clearTimeout(noteTimer);
-        noteTimer = setTimeout(() => noteEl.classList.remove("show"), 2600);
+        later("note", () => noteEl.classList.remove("show"), 2600);
     }
 
     /* ================= networking / turn flow ================= */
     function scheduleBot() {
-        clearTimeout(botTimer);
-        botTimer = null;
-        if (online || !state || state.vs !== "bot") return;
+        clearTimer("bot");
+        if (paused || online || !state || state.vs !== "bot") return;
         if (state.status !== "playing" || state.turn !== 1) return;
-        botTimer = setTimeout(() => {
+        later("bot", () => {
             if (disposed || !state || state.status !== "playing" || state.turn !== 1) return;
             const mv = botPick(state.grid, targetFor(state.level));
             if (mv) applyAction({ type: "merge", path: mv }, 1);
@@ -885,19 +973,19 @@ export function mount(root, context = {}) {
 
     function doCheat(kind) {
         if (!state) return;
+        if (paused) { note("Resume the game first"); return; }
+        cheatsOpen = false; // tutup panel cheat sebelum mengeeks aksi/giliran
+        render();
         if (kind === "hint") {
             if (state.status !== "playing") { note("Start a round first"); return; }
             const mv = bestMoveFor(state.grid, targetFor(state.level));
             if (!mv) { note("No merge available — try Reshuffle"); return; }
             hint = { a: mv[0], b: mv[1] };
-            overlay = null;
-            renderOverlays(); renderPath();
+            renderPath();
             note("Hint: merge the highlighted pair");
             return;
         }
         if (kind === "best" && !canAct()) { note("Best move needs your turn"); return; }
-        overlay = null;
-        renderOverlays();
         submitAction({ type: "cheat", kind, cell: { r: cursor.r, c: cursor.c } });
         const labels = {
             best: "Cheat: best move played", double: "Cheat: tile doubled",
@@ -907,16 +995,16 @@ export function mount(root, context = {}) {
         note(labels[kind] || "Cheat applied");
     }
 
-    function openOverlay(name) {
-        overlay = overlay === name ? null : name;
-        renderOverlays();
-    }
-
     /* ================= pointer input (drag + click-click) ================= */
     function cellAt(e) {
+        // board mengisi tinggi window; SVG menjaga rasio 1:1 via xMidYMid meet,
+        // jadi hitung area gambar sebenarnya (letterbox kiri/atas mungkin ada).
         const rect = svg.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width) * VW;
-        const y = ((e.clientY - rect.top) / rect.height) * VW;
+        const scale = Math.min(rect.width, rect.height) / VW || 1;
+        const ox = (rect.width - VW * scale) / 2;
+        const oy = (rect.height - VW * scale) / 2;
+        const x = (e.clientX - rect.left - ox) / scale;
+        const y = (e.clientY - rect.top - oy) / scale;
         const c = Math.floor((x - PAD) / STEP);
         const r = Math.floor((y - PAD) / STEP);
         if (x < PAD || y < PAD || c < 0 || c >= N || r < 0 || r >= N) return null;
@@ -987,22 +1075,73 @@ export function mount(root, context = {}) {
     svg.addEventListener("pointerup", onPointerUp);
     svg.addEventListener("pointercancel", onPointerCancel);
 
-    /* ================= keyboard (desktop) ================= */
+    /* ================= overlay toggles + keyboard (desktop) ================= */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) {
+            pauseStart = Date.now();
+            pauseTimers();
+            stopPadHold();
+        } else {
+            if (pauseStart) pauseOffset += Date.now() - pauseStart;
+            pauseStart = 0;
+            resumeTimers();
+        }
+        render();
+    }
+    function restartMatch() {
+        helpOpen = false;
+        cheatsOpen = false;
+        if (paused) togglePause(false);
+        submitAction({ type: "restart" });
+    }
     const onKey = (e) => {
         if (disposed || !state || e.defaultPrevented) return;
         const t = e.target;
         if (t && t.closest && t.closest("input,textarea,select,[contenteditable]")) return;
-        const k = e.key;
-        if (k === "Escape") {
-            if (overlay) { overlay = null; renderOverlays(); }
-            else if (sel.length) clearSel();
-            e.preventDefault();
-            return;
+        const k = e.key, code = e.code || "";
+        /* priority: help -> cheats -> pause -> Escape -> restart -> game actions */
+        if (code === "KeyH" || k === "h" || k === "H" || k === "?") {
+            if (!e.repeat) toggleHelp();
+            e.preventDefault(); return;
         }
-        if (k === "c" || k === "C") { openOverlay("cheat"); e.preventDefault(); return; }
-        if (k === "h" || k === "H" || k === "?") { openOverlay("help"); e.preventDefault(); return; }
-        if (overlay) {
+        if (code === "KeyC" || k === "c" || k === "C") {
+            if (!e.repeat && !helpOpen) toggleCheats();
+            e.preventDefault(); return;
+        }
+        if (code === "KeyP" || k === "p" || k === "P") {
+            if (!e.repeat && !helpOpen && !cheatsOpen) togglePause();
+            e.preventDefault(); return;
+        }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            else if (overlay === "round") { overlay = null; renderOverlays(); }
+            else if (sel.length) clearSel();
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR" || k === "r" || k === "R") {
+            if (!e.repeat) restartMatch();
+            e.preventDefault(); return;
+        }
+        if (t && t.tagName === "BUTTON") return; // native activation on focused HUD buttons
+        if (helpOpen || cheatsOpen || paused || overlay) {
             if (overlay === "round" && k === "Enter") { submitAction({ type: "next" }); e.preventDefault(); }
+            else e.preventDefault();
             return;
         }
         const dirs = {
@@ -1066,7 +1205,14 @@ export function mount(root, context = {}) {
     /* ================= click routing ================= */
     function handleClick(event) {
         const el = event.target;
+        if (el.closest("[data-help]")) { toggleHelp(); return; }
+        if (el.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (el.closest("[data-exit]")) { onExit(); return; }
+        if (el.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (el.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (el.closest("[data-pause]")) { togglePause(); return; }
+        if (el.closest("[data-resume]")) { togglePause(false); return; }
+        if (el.closest("[data-restart]")) { restartMatch(); return; }
         const pad = el.closest("[data-pad]");
         if (pad) {
             if (padConsumed) { padConsumed = false; return; } // sudah diproses pointerdown
@@ -1081,8 +1227,7 @@ export function mount(root, context = {}) {
             if (act === "confirm") submitMerge();
             else if (act === "clear") clearSel();
             else if (act === "undo") undoSel();
-            else if (act === "cheat") openOverlay("cheat");
-            else if (act === "help") openOverlay("help");
+            else if (act === "help") toggleHelp(true);
             else if (act === "ov-close") { overlay = null; renderOverlays(); }
             else if (act === "pad") {
                 padOn = !padOn;
@@ -1090,13 +1235,14 @@ export function mount(root, context = {}) {
                 btnPad.classList.toggle("toggled", padOn);
                 btnPad.setAttribute("aria-pressed", String(padOn));
             }
-            else if (act === "restart") submitAction({ type: "restart" });
+            else if (act === "restart") restartMatch();
             else if (act === "next") submitAction({ type: "next" });
             else if (act === "start-bot") submitAction({ type: "start", opponent: "bot" });
             else if (act === "start-solo") submitAction({ type: "start", opponent: "solo" });
             return;
         }
-        if (el.classList && el.classList.contains("ncx-ov")) { overlay = null; renderOverlays(); }
+        // klik di luar kartu menutup panel cheat (bukan modal start yang wajib dipilih)
+        if (el.classList && el.classList.contains("ncx-ov") && cheatsOpen) toggleCheats(false);
     }
     root.addEventListener("click", handleClick);
 
@@ -1126,8 +1272,7 @@ export function mount(root, context = {}) {
     return {
         destroy() {
             disposed = true;
-            clearTimeout(botTimer);
-            clearTimeout(noteTimer);
+            clearTimers();
             stopPadHold();
             root.removeEventListener("click", handleClick);
             document.removeEventListener("keydown", onKey);

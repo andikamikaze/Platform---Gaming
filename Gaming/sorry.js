@@ -1,4 +1,6 @@
 /* ==== GAME: sorry.js ==== */
+import { iconSVG } from "../JS/icons.js";
+
 /* =====================================================================
    SORRY! — Ludo x UNO hybrid (template baru: META + mount)
    - Mode "ai"  : kamu (human) vs bot Blue, giliran pertama acak.
@@ -24,7 +26,13 @@ export function mount(root, context = {}) {
     let state = null;
 
     const youName = playerName || "You";
-    const ui = { help: false, cheats: false }; // overlay lokal per-klien (tidak diserialisasi)
+    const ui = { help: false, cheats: false, paused: false }; // overlay lokal per-klien (tidak diserialisasi)
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("sorryHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        ui.help = true;
+        try { localStorage.setItem("sorryHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     /* ---------------- konstanta papan ---------------- */
     const CELL = 36;
@@ -52,103 +60,148 @@ export function mount(root, context = {}) {
     /* ---------------- shell (design minimalis) ---------------- */
     root.innerHTML = `
   <style>
-    .sorry-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#4f46e5;--soft:#f8fafc;color:var(--ink);}
-    .sorry-app [hidden]{display:none!important;}
-    .sorry-app .s-stage{position:relative;padding:4px 0;}
-    .sorry-app .s-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;}
-    .sorry-app .s-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);
-      padding:4px 11px;border:1px solid var(--line);border-radius:999px;background:#fff;}
-    .sorry-app .s-chip b{color:var(--ink);font-weight:600;}
-    .sorry-app .s-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;flex:none;}
-    .sorry-app .s-msg{font-size:12.5px;color:var(--mut);min-height:18px;margin:0 0 10px;}
-    .sorry-app .s-wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;}
-    .sorry-app .s-board{flex:1 1 340px;min-width:270px;max-width:540px;user-select:none;}
-    .sorry-app .s-board svg{display:block;width:100%;height:auto;}
-    .sorry-app .s-side{flex:0 0 208px;display:flex;flex-direction:column;gap:10px;max-width:100%;}
-    .sorry-app .s-deck{display:flex;gap:10px;align-items:center;padding:12px 14px;border-radius:14px;
-      background:#fff;border:1px solid var(--line);cursor:default;user-select:none;transition:border-color .2s, box-shadow .2s;}
-    .sorry-app .s-deck svg{width:26px;height:26px;flex:none;color:var(--mut);}
-    .sorry-app .s-deck b{display:block;font-size:13.5px;}
-    .sorry-app .s-deck span{font-size:11px;color:var(--mut);}
-    .sorry-app .s-deck.hot{cursor:pointer;border-color:var(--acc);animation:sDeck 1.2s ease-in-out infinite;}
-    .sorry-app .s-deck.hot svg{color:var(--acc);}
-    .sorry-app .s-card{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;
-      padding:9px 11px;background:#fff;min-height:62px;}
-    .sorry-app .s-ic{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#eef2ff;color:var(--acc);}
-    .sorry-app .s-ic svg{width:24px;height:24px;}
-    .sorry-app .s-c-swipe .s-ic{background:#fef3c7;color:#b45309;}
-    .sorry-app .s-c-sorry .s-ic{background:#fee2e2;color:#b91c1c;}
-    .sorry-app .s-c-split .s-ic{background:#ccfbf1;color:#0f766e;}
-    .sorry-app .s-tx b{display:block;font-size:12.5px;line-height:1.3;}
-    .sorry-app .s-tx span{color:var(--mut);font-size:11px;line-height:1.35;display:block;}
-    .sorry-app .s-split{display:flex;gap:8px;}
-    .sorry-app .s-split .s-btn{flex:1;}
-    .sorry-app .s-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;
-      padding:8px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s, background .15s;}
-    .sorry-app .s-btn:hover:not(:disabled){border-color:var(--acc);color:var(--acc);}
-    .sorry-app .s-btn:disabled{opacity:.4;cursor:default;}
-    .sorry-app .s-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff;}
-    .sorry-app .s-btn.primary:hover:not(:disabled){background:#4338ca;color:#fff;}
-    .sorry-app .s-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
-    .sorry-app .s-tip{color:var(--mut);font-size:11px;line-height:1.5;}
-    .sorry-app .s-keys{color:var(--mut);font-size:11px;line-height:2;}
-    .sorry-app .s-kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;
-      font-size:10.5px;background:var(--soft);font-family:inherit;}
-    .sorry-app .sorry-pawn{transition:transform .45s cubic-bezier(.4,.1,.2,1);}
-    .sorry-app .sorry-pawn.hopping{transition:transform .16s linear;}
-    .sorry-app .sorry-pawn .ring{opacity:0;}
-    .sorry-app .sorry-pawn.movable,.sorry-app .sorry-pawn.target{cursor:pointer;}
-    .sorry-app .sorry-pawn.movable .ring,.sorry-app .sorry-pawn.target .ring{opacity:1;
-      animation:sPulse .95s ease-in-out infinite;transform-box:fill-box;transform-origin:center;}
-    .sorry-app .sorry-pawn.target .ring{stroke-dasharray:4 4;}
-    .sorry-app .sorry-pawn.movable:hover .body,.sorry-app .sorry-pawn.target:hover .body{filter:brightness(1.12);}
-    /* virtual pad: hanya tampil di perangkat sentuh / layar kecil */
-    .sorry-app .s-pad{display:none;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px;}
-    .sorry-app .s-pad .s-btn{min-height:48px;font-size:13px;}
-    .sorry-app .s-pad-split{display:none;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
-    @media (pointer:coarse),(max-width:720px){
-      .sorry-app .s-pad{display:grid;}
-      .sorry-app .s-pad-split.on{display:grid;}
-      .sorry-app .s-keys{display:none;}
-      .sorry-app .s-side{flex:1 1 100%;}
-    }
-    /* overlay / modal */
-    .sorry-app .s-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(15,23,42,.42);
-      backdrop-filter:blur(2px);z-index:30;border-radius:14px;}
-    .sorry-app .s-modal{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;
-      max-width:340px;width:calc(100% - 36px);box-shadow:0 20px 50px rgba(15,23,42,.18);text-align:center;}
-    .sorry-app .s-modal.wide{max-width:430px;text-align:left;max-height:min(72vh,540px);overflow:auto;}
-    .sorry-app .s-modal h3{margin:0 0 6px;font-size:18px;}
-    .sorry-app .s-modal p{margin:0 0 14px;font-size:12.5px;color:var(--mut);line-height:1.55;}
-    .sorry-app .s-bigic{width:64px;height:64px;border-radius:16px;display:grid;place-items:center;margin:0 auto 12px;
-      background:#eef2ff;color:var(--acc);}
-    .sorry-app .s-bigic svg{width:42px;height:42px;}
-    .sorry-app .s-modal h4{margin:14px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);}
-    .sorry-app .s-modal ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.7;color:var(--ink);}
-    .sorry-app .s-cheatgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;}
-    .sorry-app .s-cheatgrid .s-btn{padding:8px 4px;font-size:12px;}
-    .sorry-app .s-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
-    .sorry-app .s-win{color:#15803d;} .sorry-app .s-lose{color:#b91c1c;}
-    .sorry-app .game-actions{display:flex;gap:8px;flex-wrap:wrap;}
-    @keyframes sDeck{0%,100%{box-shadow:0 0 0 0 rgba(79,70,229,.35);}50%{box-shadow:0 0 0 7px rgba(79,70,229,0);}}
-    @keyframes sPulse{0%,100%{opacity:.25;transform:scale(1);}50%{opacity:1;transform:scale(1.28);}}
-  </style>
-  <div class="game-app sorry-app">
-    <div class="game-intro">
-      <div><h2>Sorry</h2><p>Duel Ludo × UNO minimalis. Draw kartu, bawa 3 pawn ke bendera. Lawan AI atau teman.</p></div>
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+/* Sorry! — indigo/violet accents and card colors kept; board and rail reflow. */
+.sorry-app{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#4f46e5;--soft:#f8fafc;color:var(--ink);width:100%;max-width:900px;margin:0 auto;padding:2px;display:flex;flex-direction:column;gap:12px;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.sorry-app *{box-sizing:border-box}
+.sorry-app [hidden]{display:none!important}
+.sorry-app :is(button,input,select):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sorry-app .s-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;row-gap:8px;margin-bottom:8px}
+.sorry-app .s-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);padding:5px 11px;min-height:28px;border:1px solid var(--line);border-radius:999px;background:#fff;white-space:nowrap}
+.sorry-app .s-chip b{color:var(--ink);font-weight:600}
+.sorry-app .s-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;flex:none}
+.sorry-app .s-msg{font-size:12.5px;color:var(--mut);min-height:18px;margin:0 0 8px}
+.sorry-app .s-wrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;min-width:0}
+.sorry-app .s-board{flex:1 1 340px;min-width:0;max-width:540px;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.sorry-app .s-board svg{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--line)}
+.sorry-app .s-side{flex:0 0 208px;display:flex;flex-direction:column;gap:10px;max-width:100%;min-width:0}
+.sorry-app .s-deck{display:flex;gap:10px;align-items:center;min-height:56px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid var(--line);cursor:default;user-select:none;transition:border-color .2s, box-shadow .2s}
+.sorry-app .s-deck svg{width:26px;height:26px;flex:none;color:var(--mut)}
+.sorry-app .s-deck b{display:block;font-size:13.5px}
+.sorry-app .s-deck span{font-size:11px;color:var(--mut)}
+.sorry-app .s-deck.hot{cursor:pointer;border-color:var(--acc);animation:sDeck 1.2s ease-in-out infinite}
+.sorry-app .s-deck.hot svg{color:var(--acc)}
+.sorry-app .s-card{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:9px 11px;background:#fff;min-height:62px}
+.sorry-app .s-ic{flex:none;width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#eef2ff;color:var(--acc)}
+.sorry-app .s-ic svg{width:24px;height:24px}
+.sorry-app .s-c-swipe .s-ic{background:#fef3c7;color:#b45309}
+.sorry-app .s-c-sorry .s-ic{background:#fee2e2;color:#b91c1c}
+.sorry-app .s-c-split .s-ic{background:#ccfbf1;color:#0f766e}
+.sorry-app .s-tx b{display:block;font-size:12.5px;line-height:1.3}
+.sorry-app .s-tx span{color:var(--mut);font-size:11px;line-height:1.35;display:block}
+.sorry-app .s-split{display:flex;gap:8px}
+.sorry-app .s-split .s-btn{flex:1}
+.sorry-app .s-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:8px 12px;min-height:36px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s, background .15s}
+.sorry-app .s-btn:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+.sorry-app .s-btn:disabled{opacity:.4;cursor:default}
+.sorry-app .s-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.sorry-app .s-btn.primary:hover:not(:disabled){background:#4338ca;color:#fff}
+.sorry-app .s-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sorry-app .s-tip{color:var(--mut);font-size:11px;line-height:1.5}
+.sorry-app .s-keys{color:var(--mut);font-size:11px;line-height:2}
+.sorry-app .s-kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:10.5px;background:var(--soft);font-family:inherit}
+.sorry-app .sorry-pawn{transition:transform .45s cubic-bezier(.4,.1,.2,1)}
+.sorry-app .sorry-pawn.hopping{transition:transform .16s linear}
+.sorry-app .sorry-pawn .ring{opacity:0}
+.sorry-app .sorry-pawn.movable,.sorry-app .sorry-pawn.target{cursor:pointer}
+.sorry-app .sorry-pawn.movable .ring,.sorry-app .sorry-pawn.target .ring{opacity:1;animation:sPulse .95s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.sorry-app .sorry-pawn.target .ring{stroke-dasharray:4 4}
+.sorry-app .sorry-pawn.movable:hover .body,.sorry-app .sorry-pawn.target:hover .body{filter:brightness(1.12)}
+/* virtual pad: touch / narrow screens only */
+.sorry-app .s-pad{display:none;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.sorry-app .s-pad .s-btn{min-height:48px;font-size:13px}
+.sorry-app .s-pad-split{display:none;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+@media (pointer:coarse),(max-width:720px){
+  .sorry-app .s-pad{display:grid}
+  .sorry-app .s-pad-split.on{display:grid}
+  .sorry-app .s-keys{display:none}
+  .sorry-app .s-side{flex:1 1 100%}
+}
+/* overlay / modal */
+.sorry-app .s-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(15,23,42,.42);backdrop-filter:blur(2px);z-index:30;border-radius:12px;padding:12px}
+.sorry-app .s-modal{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;max-width:340px;width:100%;box-shadow:0 10px 30px rgba(15,23,42,.14);text-align:center;max-height:100%;overflow:auto}
+.sorry-app .s-modal.wide{max-width:430px;text-align:left;max-height:min(72dvh,540px);overflow:auto}
+.sorry-app .s-modal h3{margin:0 0 6px;font-size:18px}
+.sorry-app .s-modal p{margin:0 0 14px;font-size:12.5px;color:var(--mut);line-height:1.55}
+.sorry-app .s-bigic{width:64px;height:64px;border-radius:16px;display:grid;place-items:center;margin:0 auto 12px;background:#eef2ff;color:var(--acc)}
+.sorry-app .s-bigic svg{width:42px;height:42px}
+.sorry-app .s-modal h4{margin:12px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.sorry-app .s-modal ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.7;color:var(--ink)}
+.sorry-app .s-cheatgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.sorry-app .s-cheatgrid .s-btn{padding:8px 4px;font-size:12px}
+.sorry-app .s-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.sorry-app .s-win{color:#15803d}
+.sorry-app .s-lose{color:#b91c1c}
+@keyframes sDeck{0%,100%{box-shadow:0 0 0 0 rgba(79,70,229,.35)}50%{box-shadow:0 0 0 7px rgba(79,70,229,0)}}
+@keyframes sPulse{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:1;transform:scale(1.28)}}
+@media (pointer:coarse){
+  .sorry-app .s-btn{min-height:44px}
+  .sorry-app .s-chip{min-height:44px;padding:8px 12px}
+}
+@media (prefers-reduced-motion:reduce){.sorry-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- layout redesign: HUD bar + fill board + overlay modals (last) --- */
+.sorry-app.game-fill > .s-board-area{flex:1 1 auto;min-height:0;aspect-ratio:auto;display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--soft);position:relative;min-width:0;overflow:hidden}
+.sorry-app .s-board-area > .s-msg{flex:none;margin:0;min-height:17px}
+.sorry-app .s-wrap{flex:1 1 auto;min-height:0;align-items:center;justify-content:center;gap:14px}
+.sorry-app .s-board svg{aspect-ratio:468/324;height:auto;background:#fff}
+.sorry-app .s-spacer{flex:1 1 auto}
+.sorry-app .s-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sorry-app .s-icon-btn svg{flex:none;display:block}
+.sorry-app .s-hud .s-btn{min-height:30px;padding:6px 8px;font-size:10px}
+.sorry-app .s-hud .s-chip{padding:5px 8px;font-size:11px;min-height:26px}
+.sorry-app .s-hud-actions{display:flex;align-items:center;gap:6px;flex:none}
+.sorry-app .s-chip[data-el="statusChip"]{max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.sorry-app .s-modal{display:flex;flex-direction:column;overflow:hidden;max-height:100%}
+.sorry-app .s-modal.wide{max-width:460px;max-height:100%;overflow:hidden}
+.sorry-app .s-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.sorry-app .s-head h3{margin:0}
+.sorry-app .s-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+.sorry-app .s-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:12px}
+.sorry-app .s-foot .s-btn{min-height:36px}
+.sorry-app .s-note{font-size:11px;color:var(--mut)}
+@media (max-width:640px){
+  .sorry-app.game-fill > .s-board-area:not(:has(.s-ov:not([hidden]))){aspect-ratio:auto;flex:1 1 auto}
+  .sorry-app.game-fill > .s-board-area:has(.s-ov:not([hidden])){flex:1 1 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .sorry-app .s-hud{gap:5px;row-gap:5px;margin-bottom:0}
+  .sorry-app .s-hud .s-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .sorry-app .s-hud .s-chip[data-hud="seat"],
+  .sorry-app .s-hud .s-chip[data-hud="h1"],
+  .sorry-app .s-hud .s-chip[data-hud="level"],
+  .sorry-app .s-hud .s-chip[data-el="statusChip"]{display:none}
+  .sorry-app .s-hud .s-btn{min-height:32px;padding:5px 7px;font-size:9px}
+  .sorry-app .s-hud .s-btn-label,
+  .sorry-app .s-hud .s-spacer{display:none}
+  .sorry-app .s-ov{padding:8px}
+  .sorry-app .s-modal{max-width:100%;max-height:100%;padding:14px;border-radius:12px}
+  .sorry-app .s-modal.wide{width:100%;height:100%;max-height:100%}
+  .sorry-app .s-scroll{scrollbar-width:none}
+  .sorry-app .s-scroll::-webkit-scrollbar{display:none}
+  .sorry-app .s-foot{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+  .sorry-app .s-note{display:none}
+  .sorry-app .s-pad,.sorry-app .s-pad-split{margin-top:8px}
+}
+</style>
+  <div class="game-app sorry-app game-fill" data-sorry>
+    <div class="s-hud">
+      <span class="s-chip" data-hud="turn"><i class="s-dot" data-el="turndot"></i>TURN <b data-el="turn">–</b></span>
+      <span class="s-chip" data-hud="seat">YOU <b data-el="seat">–</b></span>
+      <span class="s-chip" data-hud="h0">HOME <b data-el="h0">0/3</b></span>
+      <span class="s-chip" data-hud="h1">FOE <b data-el="h1">0/3</b></span>
+      <span class="s-chip" data-hud="cards">CARDS <b data-el="cards">0</b></span>
+      <span class="s-chip" data-hud="level">LV <b data-el="level">–</b></span>
+      <span class="s-chip" data-el="statusChip"><span data-status>Ready</span></span>
+      <span class="s-spacer"></span>
+      <div class="s-hud-actions">
+        <button class="s-btn s-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="s-btn-label">Help</span></button>
+        <button class="s-btn s-icon-btn" type="button" data-cheats data-el="cheatBtn" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="s-btn-label">Cheats</span></button>
+        <button class="s-btn s-icon-btn" type="button" data-pause aria-label="Pause" title="Pause or Resume (P)">${iconSVG("pause", { size: 14 })}<span class="s-btn-label">Pause</span></button>
+        <button class="s-btn s-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="s-btn-label">Restart</span></button>
+        <button class="s-btn s-icon-btn" type="button" data-newlevel aria-label="New level" title="New level (N)">${iconSVG("sparkles", { size: 14 })}<span class="s-btn-label">New level</span></button>
+        <button class="s-btn s-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="s-btn-label">Exit</span></button>
+      </div>
     </div>
-    <section class="game-panel" data-board>
-      <div class="s-stage">
-        <div class="s-hud">
-          <span class="s-chip"><i class="s-dot" data-el="turndot"></i>Turn <b data-el="turn">–</b></span>
-          <span class="s-chip">You <b data-el="seat">–</b></span>
-          <span class="s-chip">Your home <b data-el="h0">0/3</b></span>
-          <span class="s-chip">Foe home <b data-el="h1">0/3</b></span>
-          <span class="s-chip">Cards <b data-el="cards">0</b></span>
-          <span class="s-chip">Level <b data-el="level">–</b></span>
-        </div>
-        <p class="s-msg" data-el="msg"></p>
+    <section class="game-panel s-board-area" data-board>
+      <p class="s-msg" data-el="msg"></p>
         <div class="s-wrap">
           <div class="s-board"><svg viewBox="0 0 468 324" font-family="inherit" role="img" aria-label="Sorry board"></svg></div>
           <aside class="s-side">
@@ -169,17 +222,6 @@ export function mount(root, context = {}) {
             </div>
           </aside>
         </div>
-        <div class="s-pad" data-el="pad">
-          <button class="s-btn primary" type="button" data-pad="draw" data-el="padDraw">Draw</button>
-          <button class="s-btn" type="button" data-pad="0" data-el="pad0">Pawn 1</button>
-          <button class="s-btn" type="button" data-pad="1" data-el="pad1">Pawn 2</button>
-          <button class="s-btn" type="button" data-pad="2" data-el="pad2">Pawn 3</button>
-        </div>
-        <div class="s-pad-split" data-el="padSplit" hidden>
-          <button class="s-btn" type="button" data-split="1+3">Split 1 + 3</button>
-          <button class="s-btn" type="button" data-split="2+2">Split 2 + 2</button>
-        </div>
-
         <div class="s-ov" data-ov="wait" hidden><div class="s-modal"><h3>Menunggu host…</h3><p>Host sedang menyiapkan level dan mengacak kursi.</p></div></div>
 
         <div class="s-ov" data-ov="card" hidden>
@@ -194,61 +236,66 @@ export function mount(root, context = {}) {
 
         <div class="s-ov" data-ov="help" hidden>
           <div class="s-modal wide">
-            <h3>How to play</h3>
-            <p>Bawa ketiga pawn kamu dari pen ke bendera HOME sebelum lawan. Setiap giliran: draw 1 kartu, lalu mainkan.</p>
-            <h4>Kartu</h4>
-            <ul>
-              <li><b>Move 1–4</b> — majukan 1 pawn sejumlah angka. Dari pen, langkah pertama masuk track.</li>
-              <li><b>Swipe</b> — tukar posisi pawn kamu di track dengan pawn lawan terdekat.</li>
-              <li><b>Sorry</b> — kirim 1 pawn lawan (track / cabang) kembali ke pen.</li>
-              <li><b>Split</b> — bagi 4 langkah: 1+3 atau 2+2, boleh pada pawn yang sama.</li>
-            </ul>
-            <h4>Aturan gerak</h4>
-            <ul>
-              <li>Masuk jalur HOME hanya lewat gate berwarna kamu.</li>
-              <li>Harus mendarat <b>tepat</b> di bendera; kelebihan langkah memantul mundur.</li>
-              <li>Kartu tanpa sasaran valid otomatis dibuang (giliran lewat).</li>
-            </ul>
-            <h4>Level</h4>
-            <ul>
-              <li>Tiap level = seed acak: komposisi deck, posisi awal, dan giliran pertama.</li>
-              <li>Generator memvalidasi via BFS bahwa semua pawn <b>pasti bisa</b> mencapai HOME.</li>
-              <li>Tekan <span class="s-kbd">N</span> / tombol <b>New level</b> untuk level baru.</li>
-            </ul>
-            <h4>Kontrol</h4>
-            <ul>
-              <li>Desktop: klik deck / pawn, <span class="s-kbd">Space</span> draw, <span class="s-kbd">1–3</span> pilih pawn (pawn lawan saat Sorry), <span class="s-kbd">Z</span>/<span class="s-kbd">X</span> split.</li>
-              <li>Mobile: gunakan virtual button di bawah papan.</li>
-              <li>Multiplayer: kursi Red/Blue diacak; giliran pertama acak. Cheat hanya untuk mode AI.</li>
-            </ul>
-            <div class="s-row" style="margin-top:14px"><button class="s-btn primary" type="button" data-act="closehelp">Got it</button></div>
+            <div class="s-head"><h3>How to play</h3><button class="s-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+            <div class="s-scroll">
+              <p>Bawa ketiga pawn kamu dari pen ke bendera HOME sebelum lawan. Setiap giliran: draw 1 kartu, lalu mainkan.</p>
+              <h4>Kartu</h4>
+              <ul>
+                <li><b>Move 1–4</b> — majukan 1 pawn sejumlah angka. Dari pen, langkah pertama masuk track.</li>
+                <li><b>Swipe</b> — tukar posisi pawn kamu di track dengan pawn lawan terdekat.</li>
+                <li><b>Sorry</b> — kirim 1 pawn lawan (track / cabang) kembali ke pen.</li>
+                <li><b>Split</b> — bagi 4 langkah: 1+3 atau 2+2, boleh pada pawn yang sama.</li>
+              </ul>
+              <h4>Aturan gerak</h4>
+              <ul>
+                <li>Masuk jalur HOME hanya lewat gate berwarna kamu.</li>
+                <li>Harus mendarat <b>tepat</b> di bendera; kelebihan langkah memantul mundur.</li>
+                <li>Kartu tanpa sasaran valid otomatis dibuang (giliran lewat).</li>
+              </ul>
+              <h4>Level</h4>
+              <ul>
+                <li>Tiap level = seed acak: komposisi deck, posisi awal, dan giliran pertama.</li>
+                <li>Generator memvalidasi via BFS bahwa semua pawn <b>pasti bisa</b> mencapai HOME.</li>
+                <li>Tekan <span class="s-kbd">N</span> / tombol <b>New level</b> untuk level baru.</li>
+              </ul>
+              <h4>Kontrol</h4>
+              <ul>
+                <li>Desktop: klik deck / pawn, <span class="s-kbd">Space</span> draw, <span class="s-kbd">1–3</span> pilih pawn (pawn lawan saat Sorry), <span class="s-kbd">Z</span>/<span class="s-kbd">X</span> split.</li>
+                <li><span class="s-kbd">H</span> help · <span class="s-kbd">C</span> cheats · <span class="s-kbd">P</span> pause · <span class="s-kbd">R</span> restart · <span class="s-kbd">Esc</span> tutup overlay.</li>
+                <li>Mobile: gunakan virtual button di bawah papan.</li>
+                <li>Multiplayer: kursi Red/Blue diacak; giliran pertama acak. Cheat hanya untuk mode AI.</li>
+              </ul>
+            </div>
+            <div class="s-foot"><span class="s-note">Press H to reopen this guide</span><button class="s-btn primary" type="button" data-help-close>Got it</button></div>
           </div>
         </div>
 
         <div class="s-ov" data-ov="cheats" hidden>
           <div class="s-modal wide">
-            <h3>Cheats <span style="font-size:11px;color:var(--mut)">(mode AI saja)</span></h3>
-            <p>Menggunakan cheat menandai hasil akhir sebagai "cheated".</p>
-            <h4>Kartu berikutnya (draw kamu)</h4>
-            <div class="s-cheatgrid">
-              <button class="s-btn" type="button" data-cheat="next-1">Move 1</button>
-              <button class="s-btn" type="button" data-cheat="next-2">Move 2</button>
-              <button class="s-btn" type="button" data-cheat="next-3">Move 3</button>
-              <button class="s-btn" type="button" data-cheat="next-4">Move 4</button>
-              <button class="s-btn" type="button" data-cheat="next-swipe">Swipe</button>
-              <button class="s-btn" type="button" data-cheat="next-sorry">Sorry</button>
-              <button class="s-btn" type="button" data-cheat="next-split">Split</button>
+            <div class="s-head"><h3>Cheats <span style="font-size:11px;color:var(--mut)">(mode AI saja)</span></h3><button class="s-btn" type="button" data-close-cheats aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+            <div class="s-scroll">
+              <p>Menggunakan cheat menandai hasil akhir sebagai "cheated".</p>
+              <h4>Kartu berikutnya (draw kamu)</h4>
+              <div class="s-cheatgrid">
+                <button class="s-btn" type="button" data-cheat="next-1">Move 1</button>
+                <button class="s-btn" type="button" data-cheat="next-2">Move 2</button>
+                <button class="s-btn" type="button" data-cheat="next-3">Move 3</button>
+                <button class="s-btn" type="button" data-cheat="next-4">Move 4</button>
+                <button class="s-btn" type="button" data-cheat="next-swipe">Swipe</button>
+                <button class="s-btn" type="button" data-cheat="next-sorry">Sorry</button>
+                <button class="s-btn" type="button" data-cheat="next-split">Split</button>
+              </div>
+              <h4>Aksi instan</h4>
+              <div class="s-cheatgrid">
+                <button class="s-btn" type="button" data-cheat="home-0">Pawn 1 → Home</button>
+                <button class="s-btn" type="button" data-cheat="home-1">Pawn 2 → Home</button>
+                <button class="s-btn" type="button" data-cheat="home-2">Pawn 3 → Home</button>
+                <button class="s-btn" type="button" data-cheat="resetfoe">Reset Blue</button>
+                <button class="s-btn" type="button" data-cheat="skipfoe">Skip giliran Blue</button>
+                <button class="s-btn" type="button" data-cheat="win">Instant win</button>
+              </div>
             </div>
-            <h4>Aksi instan</h4>
-            <div class="s-cheatgrid">
-              <button class="s-btn" type="button" data-cheat="home-0">Pawn 1 → Home</button>
-              <button class="s-btn" type="button" data-cheat="home-1">Pawn 2 → Home</button>
-              <button class="s-btn" type="button" data-cheat="home-2">Pawn 3 → Home</button>
-              <button class="s-btn" type="button" data-cheat="resetfoe">Reset Blue</button>
-              <button class="s-btn" type="button" data-cheat="skipfoe">Skip giliran Blue</button>
-              <button class="s-btn" type="button" data-cheat="win">Instant win</button>
-            </div>
-            <div class="s-row"><button class="s-btn" type="button" data-act="closecheats">Close</button></div>
+            <div class="s-foot"><span class="s-note">Press C to toggle cheats</span><button class="s-btn" type="button" data-close-cheats>Close</button></div>
           </div>
         </div>
 
@@ -263,40 +310,101 @@ export function mount(root, context = {}) {
             <p data-el="ovWait" hidden style="margin:10px 0 0">Host yang mengontrol restart.</p>
           </div>
         </div>
-      </div>
+
+        <div class="s-ov" data-ov="pause" hidden>
+          <div class="s-modal">
+            <h3>Paused</h3>
+            <p>Timer, bot, dan animasi dihentikan. Lanjutkan saat siap.</p>
+            <div class="s-row"><button class="s-btn primary" type="button" data-resume>Resume</button></div>
+          </div>
+        </div>
     </section>
-    <div class="game-actions">
-      <button class="game-action-button" type="button" data-exit>Exit game</button>
-      <button class="game-action-button" type="button" data-act="restart">Restart</button>
-      <button class="game-action-button" type="button" data-act="newlevel">New level</button>
-      <button class="game-action-button" type="button" data-act="help">How to play</button>
-      <button class="game-action-button" type="button" data-act="cheats" data-el="cheatBtn">Cheats</button>
+    <div class="s-pad" data-el="pad">
+      <button class="s-btn primary" type="button" data-pad="draw" data-el="padDraw">Draw</button>
+      <button class="s-btn" type="button" data-pad="0" data-el="pad0">Pawn 1</button>
+      <button class="s-btn" type="button" data-pad="1" data-el="pad1">Pawn 2</button>
+      <button class="s-btn" type="button" data-pad="2" data-el="pad2">Pawn 3</button>
+    </div>
+    <div class="s-pad-split" data-el="padSplit" hidden>
+      <button class="s-btn" type="button" data-split="1+3">Split 1 + 3</button>
+      <button class="s-btn" type="button" data-split="2+2">Split 2 + 2</button>
     </div>
   </div>`;
 
     /* ---------------- referensi DOM ---------------- */
     const $ = (sel) => root.querySelector(sel);
+    const app = $("[data-sorry]");
+    const board = $("[data-board]");
     const svg = $(".s-board svg");
     const deckEl = $('[data-el="deck"]');
     const cardSlot = $('[data-el="cardslot"]');
     const splitBox = $('[data-el="split"]');
     const padSplit = $('[data-el="padSplit"]');
     const statusEl = $("[data-status]");
+    const pbtn = $("[data-pause]");
     const ov = {
         wait: $('[data-ov="wait"]'), card: $('[data-ov="card"]'),
         help: $('[data-ov="help"]'), cheats: $('[data-ov="cheats"]'), over: $('[data-ov="over"]'),
+        pause: $('[data-ov="pause"]'),
     };
     const el = {};
     ["turn", "turndot", "seat", "h0", "h1", "cards", "level", "msg", "cardIcon", "cardTitle", "cardName", "cardHint",
         "cardBtn", "cardWait", "ovTitle", "ovSub", "ovRestart", "ovNew", "ovWait", "padDraw", "pad0", "pad1", "pad2", "cheatBtn"]
         .forEach((k) => (el[k] = $('[data-el="' + k + '"]')));
 
-    /* ---------------- timer (logika hanya di host) ---------------- */
+    /* ---------------- timer (logika hanya di host, pause-aware) ---------------- */
     let logicTimer = null;
-    const clearLogic = () => { if (logicTimer) { clearTimeout(logicTimer); logicTimer = null; } };
-    const schedule = (fn, ms) => { clearLogic(); logicTimer = setTimeout(() => { logicTimer = null; fn(); }, ms); };
+    const timers = new Map(); // id -> { fn, kind, remaining, startedAt, handle }
+    let timerSeq = 0;
+    const fireTimer = (id) => {
+        const rec = timers.get(id);
+        if (!rec || ui.paused) return;
+        timers.delete(id);
+        rec.fn();
+    };
+    const arm = (fn, ms, kind) => {
+        const id = ++timerSeq;
+        const rec = { id, fn, kind, remaining: Math.max(0, ms), startedAt: Date.now(), handle: null };
+        timers.set(id, rec);
+        if (!ui.paused) rec.handle = setTimeout(() => fireTimer(id), rec.remaining);
+        return id;
+    };
+    const disarm = (id) => {
+        const rec = timers.get(id);
+        if (!rec) return;
+        if (rec.handle) clearTimeout(rec.handle);
+        timers.delete(id);
+    };
+    const clearLogic = () => {
+        timers.forEach((rec, id) => { if (rec.kind === "logic") disarm(id); });
+        logicTimer = null;
+    };
+    const schedule = (fn, ms) => {
+        clearLogic();
+        logicTimer = arm(() => { logicTimer = null; fn(); }, ms, "logic");
+    };
     const visTimers = new Set(); // timer animasi visual (per klien, tidak memengaruhi state)
-    const later = (fn, ms) => { const t = setTimeout(() => { visTimers.delete(t); fn(); }, ms); visTimers.add(t); return t; };
+    const later = (fn, ms) => {
+        const id = arm(() => { visTimers.delete(id); fn(); }, ms, "vis");
+        visTimers.add(id);
+        return id;
+    };
+    const pauseTimers = () => {
+        const now = Date.now();
+        timers.forEach((rec) => {
+            if (rec.handle) clearTimeout(rec.handle);
+            rec.remaining = Math.max(0, rec.remaining - (now - rec.startedAt));
+            rec.handle = null;
+        });
+    };
+    const resumeTimers = () => {
+        const now = Date.now();
+        timers.forEach((rec) => {
+            rec.startedAt = now;
+            rec.handle = setTimeout(() => fireTimer(rec.id), rec.remaining);
+        });
+    };
+    const clearAllTimers = () => { timers.forEach((_, id) => disarm(id)); };
 
     /* ---------------- util papan ---------------- */
     const cellStr = (c, r, fill, stroke, sw) =>
@@ -387,7 +495,7 @@ export function mount(root, context = {}) {
     const hopActive = {}; // id pawn -> token
     const hopTok = {};
     function cancelHops() {
-        visTimers.forEach(clearTimeout); visTimers.clear();
+        visTimers.forEach(disarm); visTimers.clear();
         Object.keys(hopActive).forEach((id) => delete hopActive[id]);
         pawnEls.forEach((g) => g.classList.remove("hopping"));
     }
@@ -874,12 +982,22 @@ export function mount(root, context = {}) {
         return set;
     }
     function render() {
-        ov.wait.hidden = !online || Boolean(state);
+        const blocked = ui.help || ui.cheats || ui.paused;
+        ov.wait.hidden = !online || Boolean(state) || blocked;
         ov.help.hidden = !ui.help;
-        ov.cheats.hidden = !ui.cheats || online;
+        ov.cheats.hidden = !ui.cheats || online || ui.help;
+        ov.pause.hidden = !ui.paused || ui.help || ui.cheats;
+        if (pbtn) {
+            const label = pbtn.querySelector(".s-btn-label");
+            if (label) label.textContent = ui.paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", ui.paused ? "Resume" : "Pause");
+            pbtn.disabled = !state || (online && !isHost);
+        }
         el.cheatBtn.disabled = online;
         el.cheatBtn.title = online ? "Cheat dinonaktifkan di multiplayer" : "Buka cheat overlay (C)";
         if (!state) {
+            ov.card.hidden = true;
+            ov.over.hidden = true;
             statusEl.textContent = online ? "Menunggu host…" : "Ready";
             return;
         }
@@ -947,7 +1065,7 @@ export function mount(root, context = {}) {
 
         // modal draw card
         const reveal = state.phase === "reveal" && state.card;
-        ov.card.hidden = !reveal;
+        ov.card.hidden = !reveal || blocked;
         if (reveal) {
             const c = state.card;
             el.cardIcon.innerHTML = cardIcon(c);
@@ -963,7 +1081,7 @@ export function mount(root, context = {}) {
 
         // overlay menang / kalah
         const over = state.phase === "over";
-        ov.over.hidden = !over;
+        ov.over.hidden = !over || blocked;
         if (over) {
             const win = state.winner === me;
             el.ovTitle.textContent = win ? "You win!" : nameOf(state.winner) + " wins!";
@@ -985,31 +1103,62 @@ export function mount(root, context = {}) {
         const sorry = state?.phase === "choose" && state.pick?.kind === "sorry";
         return sorry ? 1 - mySeat() : mySeat();
     };
+    /* ---------------- overlay toggle: help > cheats > pause ---------------- */
+    function toggleHelp(on) {
+        ui.help = typeof on === "boolean" ? on : !ui.help;
+        if (ui.help) ui.cheats = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online || ui.help) return;
+        ui.cheats = typeof on === "boolean" ? on : !ui.cheats;
+        if (ui.cheats) ui.help = false;
+        render();
+    }
+    function togglePause(on) {
+        if (!state || (online && !isHost)) return;
+        const next = typeof on === "boolean" ? on : !ui.paused;
+        if (next === ui.paused) return;
+        if (next) pauseTimers(); else resumeTimers();
+        ui.paused = next;
+        render();
+    }
+    function restartGame(newLevel) {
+        ui.help = ui.cheats = ui.paused = false;
+        clearAllTimers();
+        submitAction({ type: "restart", newLevel: Boolean(newLevel) });
+    }
+
     function handleClick(e) {
-        if (e.target.closest("[data-exit]")) { onExit(); return; }
-        const act = e.target.closest("[data-act]");
+        const t = e.target;
+        if (t.closest("[data-help]")) return toggleHelp();
+        if (t.closest("[data-help-close]")) return toggleHelp(false);
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) return toggleCheats();
+        if (t.closest("[data-close-cheats]")) return toggleCheats(false);
+        if (t.closest("[data-pause]") || t.closest("[data-resume]")) return togglePause();
+        if (t.closest("[data-restart]")) return restartGame(false);
+        if (t.closest("[data-newlevel]")) return restartGame(true);
+        if (ui.help || ui.cheats || ui.paused) return;
+        const act = t.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
             if (a === "draw") return submitAction({ type: "draw" });
             if (a === "play") return submitAction({ type: "play" });
-            if (a === "restart") return submitAction({ type: "restart" });
-            if (a === "newlevel") return submitAction({ type: "restart", newLevel: true });
-            if (a === "help") { ui.help = !ui.help; ui.cheats = false; return render(); }
-            if (a === "cheats") { if (online) return; ui.cheats = !ui.cheats; ui.help = false; return render(); }
-            if (a === "closehelp") { ui.help = false; return render(); }
-            if (a === "closecheats") { ui.cheats = false; return render(); }
+            if (a === "restart") return restartGame(false);
+            if (a === "newlevel") return restartGame(true);
         }
-        const sp = e.target.closest("[data-split]");
+        const sp = t.closest("[data-split]");
         if (sp) return submitAction({ type: "split", mode: sp.dataset.split });
-        const pad = e.target.closest("[data-pad]");
+        const pad = t.closest("[data-pad]");
         if (pad) {
             const v = pad.dataset.pad;
             if (v === "draw") return submitAction({ type: "draw" });
             return submitAction({ type: "pick", pl: currentPickPl(), pi: +v });
         }
-        const ch = e.target.closest("[data-cheat]");
-        if (ch) { if (!online) applyAction({ type: "cheat", op: ch.dataset.cheat }, 0); return; }
-        const pawn = e.target.closest(".sorry-pawn");
+        const ch = t.closest("[data-cheat]");
+        if (ch) { if (!online) submitAction({ type: "cheat", op: ch.dataset.cheat }); return; }
+        const pawn = t.closest(".sorry-pawn");
         if (pawn) return submitAction({ type: "pick", pl: +pawn.dataset.p, pi: +pawn.dataset.i });
     }
 
@@ -1022,21 +1171,28 @@ export function mount(root, context = {}) {
     }
     function onKey(e) {
         if (!root.isConnected) return;
-        const k = e.key;
-        if (k === "Escape") { if (ui.help || ui.cheats) { ui.help = ui.cheats = false; render(); } return; }
         if (e.ctrlKey || e.metaKey || e.altKey) return;
-        if (k === "h" || k === "H") { ui.help = !ui.help; ui.cheats = false; return render(); }
-        if ((k === "c" || k === "C") && !online) { ui.cheats = !ui.cheats; ui.help = false; return render(); }
-        if (ui.help || ui.cheats || !state) return;
-        if (k === "r" || k === "R") return submitAction({ type: "restart" });
-        if (k === "n" || k === "N") return submitAction({ type: "restart", newLevel: true });
-        if (e.code === "Space") { e.preventDefault(); return routePrimary(); }
-        if (k === "Enter" && (e.target === document.body || e.target === deckEl)) return routePrimary();
+        const c = e.code;
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheats) toggleCheats(false);
+            else if (c === "KeyP") togglePause();
+            else if (ui.paused) togglePause(false);
+            e.preventDefault(); return;
+        }
+        if (ui.help || ui.cheats || ui.paused || !state) return;
+        if (c === "KeyR") { e.preventDefault(); return restartGame(false); }
+        if (c === "KeyN") { e.preventDefault(); return restartGame(true); }
+        if (c === "Space") { e.preventDefault(); return routePrimary(); }
+        if (c === "Enter" && (e.target === document.body || e.target === deckEl)) { e.preventDefault(); return routePrimary(); }
         if (state.phase === "reveal" || state.phase === "over") return;
+        const k = e.key;
         if (k >= "1" && k <= "3") return submitAction({ type: "pick", pl: currentPickPl(), pi: +k - 1 });
         if (state.phase === "splitpick") {
-            if (k === "z" || k === "Z") return submitAction({ type: "split", mode: "1+3" });
-            if (k === "x" || k === "X") return submitAction({ type: "split", mode: "2+2" });
+            if (c === "KeyZ") return submitAction({ type: "split", mode: "1+3" });
+            if (c === "KeyX") return submitAction({ type: "split", mode: "2+2" });
         }
     }
 
@@ -1063,7 +1219,7 @@ export function mount(root, context = {}) {
 
     return {
         destroy() {
-            clearLogic();
+            clearAllTimers();
             cancelHops();
             root.removeEventListener("click", handleClick);
             document.removeEventListener("keydown", onKey);

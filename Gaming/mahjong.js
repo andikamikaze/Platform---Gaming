@@ -3,6 +3,8 @@
    node tools/build-games-manifest.mjs
 ==================================================================== */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "mahjong",
     name: "Mahjong",
@@ -235,13 +237,50 @@ export function mount(root, context = {}) {
     const HUMAN = 0, BOT = 1;
     const rand = Math.random;
     let seenEv = 0, hintIds = [], pendingShake = [], cursorId = null;
-    let botTimer = null, hintTimer = null;
-    const timers = new Set(), unsubs = [];
+    let alive = true, helpOpen = false, cheatsOpen = false, paused = false;
+    const unsubs = [];
 
-    function later(fn, ms) {
-        const id = setTimeout(() => { timers.delete(id); fn(); }, ms);
-        timers.add(id);
-        return id;
+    /* UI lokal: help/cheat/pause saling menekan. Timer dijeda dengan anchor
+       Date.now() agar sisa delay tidak loncat saat dilanjutkan. */
+    const timers = new Map();
+    let deferred = [], seq = 0;
+    let pauseStart = 0, pauseOffset = 0;
+    const perfNow = () => performance.now() - pauseOffset;
+
+    function clearT(key) {
+        const rec = timers.get(key);
+        if (rec) { clearTimeout(rec.id); timers.delete(key); }
+        deferred = deferred.filter((t) => t.key !== key);
+    }
+    function setT(key, fn, ms) {
+        clearT(key);
+        if (paused) { deferred.push({ key, fn, wait: Math.max(0, ms) }); return key; }
+        const id = setTimeout(() => {
+            timers.delete(key);
+            if (alive && !paused) fn();
+        }, ms);
+        timers.set(key, { id, due: Date.now() + ms, fn });
+        return key;
+    }
+    function later(fn, ms) { return setT("t" + (++seq), fn, ms); }
+    function pauseTimers() {
+        const now = Date.now();
+        for (const [key, rec] of timers) {
+            clearTimeout(rec.id);
+            deferred.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        timers.clear();
+    }
+    function resumeTimers() {
+        const queue = deferred;
+        deferred = [];
+        for (const t of queue) setT(t.key, t.fn, t.wait);
+    }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("mahjongHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("mahjongHelpSeen", "1"); } catch (_) { /* storage blocked */ }
     }
     function mySlot() {
         if (!online) return HUMAN;
@@ -251,23 +290,34 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.mjx{max-width:680px;margin:0 auto;color:#0f172a;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.mjx{--acc:#4f46e5;width:100%;height:100%;min-height:0;margin:0 auto;padding:2px;display:flex;flex-direction:column;gap:10px;outline:none;color:#0f172a;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .mjx *,.mjx *::before,.mjx *::after{box-sizing:border-box}
-.mjx .mjx-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
-.mjx .mjx-head h2{margin:0;font-size:17px;font-weight:650;letter-spacing:.2px}
-.mjx .mjx-you{margin-left:8px;font-size:12px;font-weight:500;color:#64748b}
-.mjx .mjx-score{display:flex;align-items:stretch;justify-content:space-between;gap:8px;margin-bottom:10px}
-.mjx .mjx-side{--c:#4f46e5;display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:9px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:11px;transition:border-color .15s,box-shadow .15s}
-.mjx .mjx-side[data-side="1"]{--c:#d97706}
-.mjx .mjx-side.on{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
-.mjx .mjx-side i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
-.mjx .mjx-side b{font-size:12.5px;font-weight:600;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mjx .mjx-side span{margin-left:auto;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
-.mjx .mjx-mid{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:58px;color:#94a3b8;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px}
-.mjx .mjx-mid b{font-size:17px;color:#0f172a;font-variant-numeric:tabular-nums}
-.mjx .mjx-stage{position:relative}
-.mjx .mjx-panel{padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px}
-.mjx svg.mjx-board{display:block;width:100%;height:auto;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.mjx [hidden]{display:none!important}
+.mjx :is(button,select,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* HUD: semua info di satu baris, board hanya arena. */
+.mjx .mjx-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.mjx .mjx-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;min-height:30px;border:1px solid #e2e8f0;border-radius:999px;background:#fff;color:#475569;white-space:nowrap}
+.mjx .mjx-chip b{font-variant-numeric:tabular-nums}
+.mjx .mjx-chip.mjx-side{--c:#4f46e5}
+.mjx .mjx-chip.mjx-side[data-side="1"]{--c:#d97706}
+.mjx .mjx-chip.mjx-side.on{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
+.mjx .mjx-chip.mjx-side i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
+.mjx .mjx-chip.mjx-side b{font-size:11px;font-weight:600;color:#334155}
+.mjx .mjx-chip.mjx-side span{font-size:13px;font-weight:700;color:#0f172a;font-variant-numeric:tabular-nums}
+.mjx .mjx-spacer{flex:1 1 auto;min-width:6px}
+.mjx .mjx-btn{font:inherit;font-size:11px;padding:6px 10px;min-height:32px;border-radius:9px;border:1px solid #e2e8f0;background:#fff;color:#334155;cursor:pointer;transition:border-color .15s,background .15s}
+.mjx .mjx-btn:hover:not(:disabled){border-color:#94a3b8}
+.mjx .mjx-btn:active:not(:disabled){background:#f1f5f9}
+.mjx .mjx-btn:disabled{opacity:.4;cursor:default}
+.mjx .mjx-btn b{font-weight:700;color:#0f172a}
+.mjx .mjx-btn.primary{background:#0f172a;border-color:#0f172a;color:#fff}
+.mjx .mjx-btn.primary:hover:not(:disabled){background:#1e293b}
+.mjx .mjx-btn.on{border-color:var(--acc);color:var(--acc)}
+.mjx .mjx-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.mjx .mjx-icon-btn svg{flex:none;display:block}
+.mjx .mjx-btn-label{white-space:nowrap}
+.mjx.game-fill>.mjx-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden}
+.mjx svg.mjx-board{display:block;width:100%;height:100%;max-width:100%;max-height:100%;touch-action:manipulation;-webkit-user-select:none;user-select:none}
 .mjx .tile .fx{transform-box:fill-box;transform-origin:center;transition:transform .12s ease}
 .mjx .tile .face{fill:#fff;stroke:#cbd5e1;stroke-width:1.4;transition:stroke .12s}
 .mjx .tile.locked{opacity:.42}
@@ -285,16 +335,7 @@ export function mount(root, context = {}) {
 @keyframes mjx-pulse{from{stroke-opacity:.25}to{stroke-opacity:1}}
 @keyframes mjx-shake{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
 @keyframes mjx-gone{to{opacity:0;transform:translateY(-8px) scale(.6)}}
-.mjx .mjx-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-.mjx .mjx-btn{flex:1 1 auto;min-width:84px;min-height:44px;padding:10px 12px;font:inherit;font-size:13px;font-weight:600;color:#334155;background:#fff;border:1px solid #e2e8f0;border-radius:11px;cursor:pointer;transition:border-color .15s,background .15s}
-.mjx .mjx-btn:hover:not(:disabled){border-color:#94a3b8}
-.mjx .mjx-btn:active:not(:disabled){background:#f1f5f9}
-.mjx .mjx-btn:disabled{opacity:.4;cursor:default}
-.mjx .mjx-btn b{font-weight:700;color:#0f172a}
-.mjx .mjx-btn.primary{background:#0f172a;border-color:#0f172a;color:#fff}
-.mjx .mjx-btn.primary:hover:not(:disabled){background:#1e293b}
-.mjx button:focus-visible,.mjx input:focus-visible{outline:2px solid #0f172a;outline-offset:2px}
-.mjx .mjx-pad{display:none;margin:12px auto 0;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(3,46px);gap:6px;justify-content:center}
+.mjx .mjx-pad{display:none;margin:8px auto 0;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(3,46px);gap:6px;justify-content:center}
 .mjx .mjx-pad .mjx-btn{min-width:0;padding:0;font-size:15px}
 .mjx .mjx-pad [data-act="up"]{grid-area:1/2}
 .mjx .mjx-pad [data-act="left"]{grid-area:2/1}
@@ -302,67 +343,149 @@ export function mount(root, context = {}) {
 .mjx .mjx-pad [data-act="right"]{grid-area:2/3}
 .mjx .mjx-pad [data-act="down"]{grid-area:3/2}
 @media (hover:none),(pointer:coarse),(max-width:640px){.mjx .mjx-pad{display:grid}}
-.mjx .mjx-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.88);backdrop-filter:blur(3px);border-radius:14px}
-.mjx .mjx-ov[hidden]{display:none}
-.mjx .mjx-card{width:min(92%,320px);padding:20px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.10);text-align:center}
-.mjx .mjx-card h3{margin:0 0 4px;font-size:17px}
-.mjx .mjx-card p{margin:0 0 14px;font-size:13px;color:#64748b}
-.mjx .mjx-card .row{display:flex;gap:8px}
-.mjx .mjx-cheats{text-align:left}
-.mjx .mjx-cheats h3{text-align:center;margin-bottom:10px}
-.mjx .mjx-switch{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 2px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:550;color:#334155;cursor:pointer}
+/* Overlays: card = flex column with sticky head/foot and scrollable body. */
+.mjx .mjx-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(248,250,252,.88);backdrop-filter:blur(3px);border-radius:14px}
+.mjx .mjx-card{width:min(92%,380px);max-height:100%;padding:16px 18px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 4px 12px rgba(15,23,42,.10);display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.mjx .mjx-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.mjx .mjx-head h3{margin:0;font-size:16px;font-weight:650}
+.mjx .mjx-card p{margin:0;font-size:12.5px;color:#64748b;line-height:1.5}
+.mjx .mjx-stats,.mjx .mjx-cheat-body,.mjx .mjx-help{flex:1 1 auto;min-height:0;overflow:auto}
+.mjx .mjx-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.mjx .mjx-help b{display:block;margin:0 0 5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.07em;color:#64748b;text-transform:uppercase}
+.mjx .mjx-help ul{margin:0 0 10px;padding-left:16px;font-size:11.5px;line-height:1.55}
+.mjx .mjx-kbd{display:inline-block;padding:1px 5px;border:1px solid #cbd5e1;border-bottom-width:2px;border-radius:5px;font:600 10px/1.4 ui-monospace,monospace}
+.mjx .mjx-cheat-body{display:flex;flex-direction:column}
+.mjx .mjx-switch{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 2px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:550;color:#334155;cursor:pointer}
 .mjx .mjx-switch input{appearance:none;-webkit-appearance:none;flex:none;width:36px;height:20px;margin:0;border-radius:999px;background:#e2e8f0;position:relative;cursor:pointer;transition:background .15s}
 .mjx .mjx-switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.25);transition:left .15s}
 .mjx .mjx-switch input:checked{background:#059669}
 .mjx .mjx-switch input:checked::after{left:18px}
-.mjx .mjx-cheats .mjx-btn{width:100%;margin-top:8px;flex:none}
-.mjx .game-actions{margin-top:12px}
+.mjx .mjx-cheat-body .mjx-btn{width:100%;margin-top:6px;flex:none}
+.mjx .mjx-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;flex-wrap:wrap;padding-top:8px;border-top:1px solid #f1f5f9}
+.mjx .mjx-note{font-size:10.5px;color:#64748b}
 @media (prefers-reduced-motion:reduce){.mjx *{animation:none!important;transition:none!important}}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.mjx{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.mjx *,.mjx *::before,.mjx *::after{box-sizing:border-box}
+.mjx :where(svg,canvas,img){max-width:100%}
+.mjx :where(button,[role="button"],select,input){touch-action:manipulation}
+.mjx :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.mjx :is([class*="card"],[class*="panel"],[class*="sheet"]){border-radius:12px;box-shadow:none}
+.mjx :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.mjx :where([class*="chip"],[class*="note"]){font-size:12px;line-height:1.45}
+@media (pointer:coarse){
+  .mjx :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+/* Mobile overrides LAST: beat pointer:coarse 44px and trailing polish blocks. */
+@media (max-width:640px){
+  .mjx.game-fill>.mjx-panel:not(:has(.mjx-ov:not([hidden]))){aspect-ratio:540/312;flex:0 0 auto}
+  .mjx.game-fill>.mjx-panel:has(.mjx-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .mjx{gap:6px}
+  .mjx .mjx-hud{gap:4px}
+  .mjx .mjx-hud .mjx-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .mjx .mjx-hud .mjx-chip[data-you]{display:none}
+  .mjx .mjx-hud .mjx-btn-label,.mjx .mjx-hud .mjx-spacer{display:none}
+  .mjx .mjx-hud .mjx-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+  .mjx-ov{padding:8px}
+  .mjx .mjx-card{width:100%;height:100%;max-height:100%;padding:12px}
+  .mjx .mjx-help{grid-template-columns:1fr;gap:8px}
+  .mjx .mjx-stats,.mjx .mjx-cheat-body,.mjx .mjx-help{scrollbar-width:none}
+  .mjx .mjx-stats::-webkit-scrollbar,.mjx .mjx-cheat-body::-webkit-scrollbar,.mjx .mjx-help::-webkit-scrollbar{display:none}
+  .mjx .mjx-foot{padding-top:8px;border-top:1px solid #e2e8f0}
+  .mjx .mjx-note{display:none}
+}
+@media (pointer:coarse){
+  .mjx .mjx-hud .mjx-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+  .mjx .mjx-card .mjx-btn.primary{min-height:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .mjx *,.mjx *::before,.mjx *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
 </style>
-<div class="game-app mjx">
-  <div class="game-intro mjx-head">
-    <div><h2>Mahjong<span class="mjx-you" data-you></span></h2></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status aria-live="polite">…</span></span>
+<div class="game-app mjx game-fill" data-mjx>
+  <div class="mjx-hud">
+    <span class="mjx-chip mjx-side" data-side="0"><i></i><b data-name="0">P1</b><span data-sc="0">0</span></span>
+    <span class="mjx-chip mjx-side" data-side="1"><i></i><b data-name="1">P2</b><span data-sc="1">0</span></span>
+    <span class="mjx-chip">TILE <b data-left>72</b></span>
+    <span class="mjx-chip" data-status aria-live="polite">…</span>
+    <span class="mjx-chip" data-you hidden></span>
+    <span class="mjx-spacer"></span>
+    <button class="mjx-btn mjx-icon-btn" type="button" data-act="hint" aria-label="Hint" title="Hint (I)">${iconSVG("lightbulb", { size: 14 })}<span class="mjx-btn-label">Hint <b data-hintn>3</b></span></button>
+    <button class="mjx-btn mjx-icon-btn" type="button" data-act="shuffle" aria-label="Shuffle" title="Shuffle (S)">${iconSVG("layers", { size: 14 })}<span class="mjx-btn-label">Kocok <b data-shufn>2</b></span></button>
+    <button class="mjx-btn mjx-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="mjx-btn-label">Help</span></button>
+    <button class="mjx-btn mjx-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="mjx-btn-label">Cheats</span></button>
+    <button class="mjx-btn mjx-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="mjx-btn-label">Pause</span></button>
+    <button class="mjx-btn mjx-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="mjx-btn-label">Restart</span></button>
+    <button class="mjx-btn mjx-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="mjx-btn-label">Exit game</span></button>
   </div>
-  <div class="mjx-score">
-    <div class="mjx-side" data-side="0"><i></i><b data-name="0">P1</b><span data-sc="0">0</span></div>
-    <div class="mjx-mid"><b data-left>72</b>tile</div>
-    <div class="mjx-side" data-side="1"><i></i><b data-name="1">P2</b><span data-sc="1">0</span></div>
-  </div>
-  <div class="mjx-stage">
-    <section class="game-panel mjx-panel" data-board>
-      <svg class="mjx-board" data-svg viewBox="0 0 540 312" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Papan mahjong">
-        <g data-gtiles></g><g data-gghost></g>
-      </svg>
-    </section>
+  <section class="game-panel mjx-panel" data-board>
+    <svg class="mjx-board" data-svg viewBox="0 0 540 312" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Papan mahjong">
+      <g data-gtiles></g><g data-gghost></g>
+    </svg>
     <div class="mjx-ov" data-ov="over" hidden>
       <div class="mjx-card">
-        <h3 data-ovtitle></h3>
-        <p data-ovsub></p>
-        <div class="row">
+        <div class="mjx-head"><h3 data-ovtitle></h3></div>
+        <div class="mjx-stats"><p data-ovsub></p></div>
+        <div class="mjx-foot">
+          <span class="mjx-note">Tekan R untuk ulang</span>
           <button type="button" class="mjx-btn primary" data-act="restart">Main lagi</button>
           <button type="button" class="mjx-btn" data-exit>Keluar</button>
         </div>
       </div>
     </div>
-    <div class="mjx-ov" data-ov="cheat" hidden>
-      <div class="mjx-card mjx-cheats">
-        <h3>Cheat</h3>
-        <label class="mjx-switch">Giliran ganda<input type="checkbox" data-cheat="double"></label>
-        <label class="mjx-switch">Hint &amp; kocok tanpa batas<input type="checkbox" data-cheat="infinite"></label>
-        <label class="mjx-switch">Tandai semua pasangan<input type="checkbox" data-cheat="reveal"></label>
-        <button type="button" class="mjx-btn" data-act="cheat-skip">Lompati giliran bot</button>
-        <button type="button" class="mjx-btn" data-act="cheat-sweep">Sapu bersih papan</button>
-        <button type="button" class="mjx-btn primary" data-act="cheat-close">Tutup</button>
+    <div class="mjx-ov" data-ov="pause" hidden>
+      <div class="mjx-card">
+        <div class="mjx-head"><h3>Dijeda</h3></div>
+        <div class="mjx-stats"><p>Papan, bot, dan timer dibekukan.</p></div>
+        <div class="mjx-foot"><span class="mjx-note">Tekan P atau Esc untuk lanjut</span><button class="mjx-btn primary" type="button" data-resume>Lanjutkan</button></div>
       </div>
     </div>
-  </div>
-  <div class="mjx-controls">
-    <button type="button" class="mjx-btn" data-act="hint">Hint <b data-hintn>3</b></button>
-    <button type="button" class="mjx-btn" data-act="shuffle">Kocok <b data-shufn>2</b></button>
-    <button type="button" class="mjx-btn" data-act="cheat" data-cheatbtn>Cheat</button>
-    <button type="button" class="mjx-btn" data-act="restart">Ulang</button>
-  </div>
+    <div class="mjx-ov" data-ov="cheat" hidden>
+      <div class="mjx-card mjx-cheats">
+        <div class="mjx-head"><h3>Cheat</h3><button class="mjx-btn" type="button" data-cheat-close aria-label="Close">Close</button></div>
+        <div class="mjx-cheat-body">
+          <label class="mjx-switch">Giliran ganda<input type="checkbox" data-cheat="double"></label>
+          <label class="mjx-switch">Hint &amp; kocok tanpa batas<input type="checkbox" data-cheat="infinite"></label>
+          <label class="mjx-switch">Tandai semua pasangan<input type="checkbox" data-cheat="reveal"></label>
+          <button type="button" class="mjx-btn" data-act="cheat-skip">Lompati giliran bot</button>
+          <button type="button" class="mjx-btn" data-act="cheat-sweep">Sapu bersih papan</button>
+        </div>
+        <div class="mjx-foot"><span class="mjx-note">Hanya mode vs bot</span></div>
+      </div>
+    </div>
+    <div class="mjx-ov" data-ov="help" hidden>
+      <div class="mjx-card">
+        <div class="mjx-head"><h3>Cara bermain</h3><button class="mjx-btn" type="button" data-help-close aria-label="Close">Close</button></div>
+        <div class="mjx-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Klik dua tile bebas dengan simbol sama untuk mengambil pasangannya.</li>
+              <li><span class="mjx-kbd">← ↑ → ↓</span> pindah kursor, <span class="mjx-kbd">Enter</span> pilih tile.</li>
+              <li><span class="mjx-kbd">H</span> bantuan · <span class="mjx-kbd">C</span> cheat · <span class="mjx-kbd">P</span> jeda · <span class="mjx-kbd">R</span> ulang</li>
+              <li><span class="mjx-kbd">I</span> hint · <span class="mjx-kbd">S</span> kocok · <span class="mjx-kbd">Esc</span> tutup panel</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap tile bebas berganda, lalu gunakan pad di bawah papan untuk navigasi.</li>
+              <li>Tombol Help, Cheats, Pause, Restart, dan Exit ada di bar atas.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Aturan</b>
+            <ul>
+              <li>Tile bebas jika tidak tertutup tile di layer atas dan sisi kiri atau kanannya terbuka.</li>
+              <li>Pasangan yang cocok memberi poin sesuai angka di tile; salah pasang memindahkan giliran.</li>
+              <li>Bergiliran dengan bot; siapa pun yang mengumpulkan poin lebih banyak saat papan habis menang.</li>
+              <li>Hint dan kocok terbatas. Jika tidak ada pasangan, papan otomatis diacak ulang.</li>
+              <li>Cheat hanya tersedia saat melawan bot.</li>
+            </ul>
+            <div class="mjx-foot"><span class="mjx-note">Tekan H untuk membuka panduan ini</span><button class="mjx-btn primary" type="button" data-help-close>Mengerti</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
   <div class="mjx-pad">
     <button type="button" class="mjx-btn" data-act="up" aria-label="Atas">&#9650;</button>
     <button type="button" class="mjx-btn" data-act="left" aria-label="Kiri">&#9664;</button>
@@ -370,22 +493,24 @@ export function mount(root, context = {}) {
     <button type="button" class="mjx-btn" data-act="right" aria-label="Kanan">&#9654;</button>
     <button type="button" class="mjx-btn" data-act="down" aria-label="Bawah">&#9660;</button>
   </div>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const svg = $("[data-svg]"), gTiles = $("[data-gtiles]"), gGhost = $("[data-gghost]");
     const el = {
-        you: $("[data-you]"), status: $("[data-status]"), dot: $("[data-dot]"), left: $("[data-left]"),
+        you: $("[data-you]"), status: $("[data-status]"), left: $("[data-left]"),
         sc: [$('[data-sc="0"]'), $('[data-sc="1"]')],
         name: [$('[data-name="0"]'), $('[data-name="1"]')],
         side: [$('.mjx-side[data-side="0"]'), $('.mjx-side[data-side="1"]')],
         hintn: $("[data-hintn]"), shufn: $("[data-shufn]"),
         hintBtn: $('[data-act="hint"]'), shufBtn: $('[data-act="shuffle"]'),
-        cheatBtn: $("[data-cheatbtn]"),
-        ovOver: $('[data-ov="over"]'), ovTitle: $("[data-ovtitle]"), ovSub: $("[data-ovsub]"),
-        ovCheat: $('[data-ov="cheat"]'),
+        ovTitle: $("[data-ovtitle]"), ovSub: $("[data-ovsub]"),
     };
+    const ov = {
+        over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'), help: $('[data-ov="help"]'),
+    };
+    const pauseBtn = $("[data-pause]"), cheatsBtn = $("[data-cheats]"), restartBtn = $("[data-restart]");
 
     /* ---------- state (serializable, host otoritatif) ---------- */
     function freshState() {
@@ -523,10 +648,14 @@ export function mount(root, context = {}) {
         }
     }
 
+    function canBot() {
+        return !online && !paused && !helpOpen && !cheatsOpen &&
+            Boolean(state) && state.status === "play" && state.turn === BOT;
+    }
     function publish() {
         render();
         if (online && isHost) room.publishState(state).catch(console.warn);
-        if (!online) scheduleBot();
+        if (canBot()) scheduleBot();
     }
     function submitAction(a) {
         if (!state) return;
@@ -536,14 +665,13 @@ export function mount(root, context = {}) {
 
     /* ---------- bot ---------- */
     function scheduleBot() {
-        if (botTimer) { clearTimeout(botTimer); timers.delete(botTimer); botTimer = null; }
-        if (online || !state || state.status !== "play" || state.turn !== BOT) return;
+        clearT("bot");
+        if (!canBot()) return;
         const delay = state.sel != null ? 380 + rand() * 250 : 700 + rand() * 700;
-        botTimer = later(botStep, delay);
+        setT("bot", botStep, delay);
     }
     function botStep() {
-        botTimer = null;
-        if (!state || state.status !== "play" || state.turn !== BOT) return;
+        if (!canBot()) return;
         if (state.cheats.skip) {
             state.cheats.skip = false;
             state.turn = HUMAN;
@@ -586,8 +714,8 @@ export function mount(root, context = {}) {
             pendingShake = ev.ids.slice();
         } else if (ev.type === "hint") {
             hintIds = ev.ids.slice();
-            if (hintTimer) { clearTimeout(hintTimer); timers.delete(hintTimer); }
-            hintTimer = later(() => { hintIds = []; hintTimer = null; render(); }, 2100);
+            clearT("hint");
+            setT("hint", () => { hintIds = []; render(); }, 2100);
         } else if (ev.type === "shuffle" || ev.type === "rescue") {
             hintIds = [];
         }
@@ -629,8 +757,12 @@ export function mount(root, context = {}) {
     function render() {
         if (!state) {
             el.status.textContent = online ? "Menunggu host…" : "…";
-            el.cheatBtn.hidden = online;
-            root.querySelectorAll(".mjx-btn").forEach((b) => { b.disabled = true; });
+            el.hintBtn.disabled = true;
+            el.shufBtn.disabled = true;
+            cheatsBtn.disabled = true;
+            pauseBtn.disabled = true;
+            restartBtn.disabled = true;
+            syncUI();
             return;
         }
         const ev = state.ev;
@@ -638,11 +770,10 @@ export function mount(root, context = {}) {
         if (ev.n > seenEv) { seenEv = ev.n; onEvent(ev); }
 
         const me = mySlot(), turn = state.turn, play = state.status === "play";
-        const myTurn = play && (turn === me || (!online && me === HUMAN && state.cheats.double));
+        const myTurn = play && !paused && (turn === me || (!online && me === HUMAN && state.cheats.double));
         const names = online ? ["P1", "P2"] : [playerName || "Kamu", "Bot"];
         if (online) names[me] = playerName || "Kamu";
 
-        root.querySelectorAll(".mjx-btn").forEach((b) => { b.disabled = false; });
         el.name[0].textContent = names[0];
         el.name[1].textContent = names[1];
         el.sc[0].textContent = state.scores[0];
@@ -650,22 +781,30 @@ export function mount(root, context = {}) {
         el.side[0].classList.toggle("on", play && turn === 0);
         el.side[1].classList.toggle("on", play && turn === 1);
         el.left.textContent = state.tiles.length;
-        el.you.textContent = online ? "· kamu " + (me === 0 ? "P1" : "P2") : "· vs Bot";
+        el.you.textContent = online ? "kamu " + (me === 0 ? "P1" : "P2") : "vs Bot";
+        el.you.hidden = false;
 
         const result = !play
             ? (state.winner === -1 ? "Seri" : state.winner === me ? "Kamu menang" : names[state.winner] + " menang")
             : "";
-        el.status.textContent = !play ? result : myTurn ? "Giliranmu" : online ? "Giliran lawan…" : "Bot berpikir…";
-        el.dot.style.background = play ? (turn === 0 ? "#4f46e5" : "#d97706") : "#94a3b8";
+        el.status.textContent = !play ? result
+            : paused ? "Dijeda"
+                : myTurn ? "Giliranmu" : online ? "Giliran lawan…" : "Bot berpikir…";
 
         const inf = !online && state.cheats.infinite;
         el.hintn.textContent = inf ? "∞" : state.hints[me];
         el.shufn.textContent = inf ? "∞" : state.shuffles[me];
-        el.hintBtn.disabled = !myTurn || (!inf && state.hints[me] <= 0);
-        el.shufBtn.disabled = !myTurn || (!inf && state.shuffles[me] <= 0) || state.tiles.length < 2;
-        el.cheatBtn.hidden = online;
-        el.cheatBtn.disabled = !play;
+        const blocked = helpOpen || cheatsOpen || paused;
+        el.hintBtn.disabled = !myTurn || blocked || (!inf && state.hints[me] <= 0);
+        el.shufBtn.disabled = !myTurn || blocked || (!inf && state.shuffles[me] <= 0) || state.tiles.length < 2;
+        cheatsBtn.hidden = online;
+        pauseBtn.hidden = online;
+        cheatsBtn.disabled = !play;
+        pauseBtn.disabled = !play;
+        cheatsBtn.classList.toggle("on", cheatsOpen);
+        restartBtn.disabled = false;
         const canRestart = !online || isHost;
+        restartBtn.hidden = !canRestart;
         root.querySelectorAll('[data-act="restart"]').forEach((b) => { b.hidden = !canRestart; });
         root.querySelectorAll("[data-cheat]").forEach((c) => { c.checked = Boolean(state.cheats[c.dataset.cheat]); });
 
@@ -675,10 +814,8 @@ export function mount(root, context = {}) {
             el.ovTitle.textContent = result;
             el.ovSub.textContent = state.scores[0] + " – " + state.scores[1] + " · " + state.moves + " langkah" +
                 (state.tiles.length ? " · sisa " + state.tiles.length + " tile" : "");
-            el.ovOver.hidden = false;
-        } else {
-            el.ovOver.hidden = true;
         }
+        syncUI();
 
         if (pendingShake.length) {
             pendingShake.forEach((id) => {
@@ -687,6 +824,47 @@ export function mount(root, context = {}) {
             });
             pendingShake = [];
         }
+    }
+
+    /* Overlays suppress each other: help > cheats > pause > result.
+       Label spans are updated so the inline icon is never destroyed. */
+    function syncUI() {
+        const resultOpen = Boolean(state && state.status !== "play");
+        ov.over.hidden = !resultOpen || cheatsOpen || helpOpen || paused;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+        const label = pauseBtn.querySelector(".mjx-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+    }
+    function armBot() { if (canBot()) scheduleBot(); }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+        if (!helpOpen) armBot();
+    }
+    function toggleCheats(on) {
+        if (online || !state || state.status !== "play") return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+        if (!cheatsOpen) armBot();
+    }
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) { pauseStart = performance.now(); pauseTimers(); }
+        else {
+            if (pauseStart) pauseOffset += performance.now() - pauseStart;
+            pauseStart = 0;
+            resumeTimers();
+        }
+        render();
+        armBot();
     }
 
     /* ---------- input: mouse / touch / keyboard / pad virtual ---------- */
@@ -720,21 +898,37 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(e) {
-        if (e.target.closest("[data-exit]")) { onExit(); return; }
-        const btn = e.target.closest("[data-act]");
+        const t = e.target;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheats(false); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-pause]")) { togglePause(); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-restart]")) {
+            if (paused) togglePause(false);
+            submitAction({ type: "restart" });
+            root.focus({ preventScroll: true });
+            return;
+        }
+        const btn = t.closest("[data-act]");
         if (btn) {
             const a = btn.dataset.act;
             if (a === "hint" || a === "shuffle") { if (!btn.disabled) submitAction({ type: a }); }
-            else if (a === "restart") submitAction({ type: "restart" });
-            else if (a === "cheat") { if (!online && state && state.status === "play") el.ovCheat.hidden = false; }
-            else if (a === "cheat-close") el.ovCheat.hidden = true;
-            else if (a === "cheat-skip") { submitAction({ type: "cheat", key: "skip" }); el.ovCheat.hidden = true; }
-            else if (a === "cheat-sweep") { submitAction({ type: "cheat", key: "sweep" }); el.ovCheat.hidden = true; }
-            else if (a === "up" || a === "down" || a === "left" || a === "right") moveCursor(a);
-            else if (a === "ok") pickCursor();
+            else if (a === "restart") {
+                if (paused) togglePause(false);
+                submitAction({ type: "restart" });
+            } else if (a === "cheat-skip") { submitAction({ type: "cheat", key: "skip" }); toggleCheats(false); }
+            else if (a === "cheat-sweep") { submitAction({ type: "cheat", key: "sweep" }); toggleCheats(false); }
+            else if (!helpOpen && !cheatsOpen && !paused) {
+                if (a === "up" || a === "down" || a === "left" || a === "right") moveCursor(a);
+                else if (a === "ok") pickCursor();
+            }
             return;
         }
-        const tile = e.target.closest(".tile");
+        if (helpOpen || cheatsOpen || paused) return;
+        const tile = t.closest(".tile");
         if (tile && tile.dataset.id && state && state.status === "play") {
             const id = tile.dataset.id;
             const i = state.tiles.findIndex((t) => t.id === id);
@@ -750,42 +944,70 @@ export function mount(root, context = {}) {
     }
 
     function handleChange(e) {
+        if (helpOpen || paused) return;
         const c = e.target.closest("[data-cheat]");
         if (c) submitAction({ type: "cheat", key: c.dataset.cheat, value: c.checked });
     }
 
     function onKey(e) {
-        if (!root.isConnected || !state) return;
-        if (e.key === "Escape") {
-            if (!el.ovCheat.hidden) { el.ovCheat.hidden = true; e.preventDefault(); }
-            return;
-        }
-        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        if (!alive || !root.isConnected || !state) return;
+        const k = e.key, code = e.code || "", kk = k.length === 1 ? k.toLowerCase() : k;
         const tag = (e.target && e.target.tagName) || "";
         if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
-        if (!el.ovCheat.hidden) return;
-        const k = e.key;
+        /* Prioritas: help -> cheats -> pause -> Escape -> restart -> aksi game. */
+        if (code === "KeyH" || k === "?" || kk === "h") {
+            if (!e.repeat) toggleHelp();
+            e.preventDefault(); return;
+        }
+        if (code === "KeyC" || kk === "c") {
+            if (!e.repeat && !helpOpen) toggleCheats();
+            e.preventDefault(); return;
+        }
+        if (code === "KeyP" || kk === "p") {
+            if (!e.repeat && !helpOpen && !cheatsOpen) togglePause();
+            e.preventDefault(); return;
+        }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            else if (state.sel != null) { state.sel = null; render(); }
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR" || kk === "r") {
+            if (!e.repeat && !helpOpen && !cheatsOpen) {
+                if (paused) togglePause(false);
+                submitAction({ type: "restart" });
+            }
+            e.preventDefault(); return;
+        }
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        if (tag === "BUTTON") return;
+        if (helpOpen || cheatsOpen || paused) { e.preventDefault(); return; }
+        if (code === "KeyI" || kk === "i") {
+            if (!e.repeat && !el.hintBtn.disabled) submitAction({ type: "hint" });
+            e.preventDefault(); return;
+        }
+        if (code === "KeyS" || kk === "s") {
+            if (!e.repeat && !el.shufBtn.disabled) submitAction({ type: "shuffle" });
+            e.preventDefault(); return;
+        }
         if (k === "ArrowUp" || k === "ArrowDown" || k === "ArrowLeft" || k === "ArrowRight") {
             e.preventDefault();
             moveCursor(k.slice(5).toLowerCase());
             return;
         }
         if (k === "Enter" || k === " ") {
-            if (tag === "BUTTON") return;
             e.preventDefault();
             pickCursor();
-            return;
         }
-        if (k === "h" || k === "H") { if (!el.hintBtn.disabled) submitAction({ type: "hint" }); }
-        else if (k === "s" || k === "S") { if (!el.shufBtn.disabled) submitAction({ type: "shuffle" }); }
-        else if (k === "c" || k === "C") { if (!online && state.status === "play") el.ovCheat.hidden = !el.ovCheat.hidden; }
-        else if (k === "r" || k === "R") { if (!online || isHost) submitAction({ type: "restart" }); }
     }
 
     /* ---------- init ---------- */
+    root.tabIndex = 0;
     root.addEventListener("click", handleClick);
     root.addEventListener("change", handleChange);
-    document.addEventListener("keydown", onKey);
+    root.addEventListener("keydown", onKey);
 
     if (online) {
         const offRoom = room.onRoom((nextRoom) => { roomData = nextRoom; render(); });
@@ -805,16 +1027,18 @@ export function mount(root, context = {}) {
         publish();
     }
     void roomData;
+    root.focus({ preventScroll: true });
+    if (helpOpen) render(); /* panel bantuan pertama tampil di atas papan */
 
     return {
         destroy() {
+            alive = false;
             root.removeEventListener("click", handleClick);
             root.removeEventListener("change", handleChange);
-            document.removeEventListener("keydown", onKey);
-            if (botTimer) clearTimeout(botTimer);
-            if (hintTimer) clearTimeout(hintTimer);
-            timers.forEach((id) => clearTimeout(id));
+            root.removeEventListener("keydown", onKey);
+            for (const rec of timers.values()) clearTimeout(rec.id);
             timers.clear();
+            deferred = [];
             unsubs.forEach((fn) => { try { fn(); } catch (err) { /* noop */ } });
         },
     };

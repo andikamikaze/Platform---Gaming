@@ -138,14 +138,16 @@ async function dashboardChecks() {
 
   await step("play-page", async () => {
     await page.evaluate(() => globalThis.__MGP_TEST__.navigate("play"));
-    await page.locator("#playSearch").fill("snake");
-    await page.waitForTimeout(200);
-    const matches = await page.locator("#playGrid .picker-card").count();
-    if (matches === 0 || matches >= GAMES.length) errors.push(`Play search tidak bekerja: ${matches} kartu`);
-    await page.locator("#playSearch").fill("");
-    const recentEmpty = await page.locator("#playRecentEmpty").isVisible();
-    if (!recentEmpty) errors.push("Empty state recent tidak tampil saat riwayat kosong");
-    return `${matches} hasil untuk "snake"`;
+    const headings = await page.locator("#page-play .recent-panel h2").allTextContents();
+    if (!headings.some((text) => /recently played/i.test(text)) || !headings.some((text) => /favorites/i.test(text))) {
+      errors.push(`Halaman Play tidak punya panel recent/favorites: ${headings.join(", ")}`);
+    }
+    if (await page.locator("#playSearch").count() || await page.locator("#playGrid").count()) {
+      errors.push("Halaman Play masih menyisakan picker search lama");
+    }
+    if (!await page.locator("#playRecentEmpty").isVisible()) errors.push("Empty state recent tidak tampil saat riwayat kosong");
+    if (!await page.locator("#playFavoritesEmpty").isVisible()) errors.push("Empty state favorites tidak tampil saat belum ada favorit");
+    return "panel recent & favorites";
   });
 
   await step("create-room-dialog", async () => {
@@ -153,10 +155,13 @@ async function dashboardChecks() {
     await page.locator('.room-create-section [data-action="create-room"]').click();
     const opened = await page.locator("#launchDialog").isVisible();
     if (!opened) errors.push("Tombol Create room tidak membuka dialog launch");
-    const options = await page.locator("#launchGameSelect option").count();
-    if (options === 0) errors.push("Dialog launch tidak memiliki pilihan game");
+    const modes = await page.locator("#launchDialog [data-launch-mode]").count();
+    if (modes !== 2) errors.push(`Dialog launch harus punya 2 mode, dapat ${modes}`);
+    if (await page.locator("#launchGameSelect").count()) errors.push("Dropdown pilihan game masih ada di dialog launch");
+    const title = (await page.locator("#launchTitle").textContent() || "").trim();
+    if (!/^Play \S/.test(title)) errors.push(`Judul dialog launch tidak menyebut game: ${title}`);
     await page.locator('[data-close="launchDialog"]').click();
-    return `${options} game di dialog`;
+    return `${modes} mode · ${title}`;
   });
 
   await step("progress-page", async () => {

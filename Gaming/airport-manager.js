@@ -8,6 +8,8 @@
  *           Slot pemain (0/1) diacak tiap game oleh host.
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "airport-manager",
     name: "Airport Manager",
@@ -371,6 +373,10 @@ export function mount(root, context = {}) {
     let prevTurn = -1;
     let prevResult = false;
     let cheatsOpen = false;
+    let helpOpen = false;
+    let paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("airportManagerHelpSeen") === "1"; } catch (err) { seenHelp = true; }
     let tickId = null, lastT = 0, lastPub = 0, botAt = 0;
     const planeEls = new Map();
     const offs = [];
@@ -378,17 +384,29 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.am-app{--acc:#6366f1;--ink:#334155;--mut:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+.am-app{--acc:#6366f1;--ink:#334155;--mut:#64748b;--line:#e2e8f0;--bg:#f8fafc;color:var(--ink)}
+.am-app *{box-sizing:border-box}
 .am-app [hidden]{display:none!important}
-.am-app .am-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
-.am-app .am-chip{font-size:12px;font-weight:600;color:var(--mut);background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 10px;white-space:nowrap}
-.am-app .am-chip b{color:var(--ink)}
-.am-app .am-turn{flex:1;min-width:130px;display:flex;align-items:center;gap:8px}
+.am-app .am-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.am-app .am-chip{font-size:12px;font-weight:600;line-height:1.4;color:var(--mut);background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:6px 10px;white-space:nowrap}
+.am-app .am-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+.am-app .am-turn{flex:1 1 160px;min-width:0;display:flex;align-items:center;gap:8px}
 .am-app .am-turnlbl{font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap}
-.am-app .am-turnbar{flex:1;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
-.am-app .am-turnbar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s linear}
-.am-app .am-stage{position:relative;width:100%;max-width:880px;margin:0 auto;aspect-ratio:880/520;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--bg);touch-action:manipulation}
-.am-app svg{width:100%;height:100%;display:block}
+.am-app .am-turnbar{flex:1;min-width:32px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.am-app .am-turnbar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s linear}
+.am-board{position:relative;width:100%;aspect-ratio:880/520;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg);touch-action:manipulation}
+.am-svg{width:100%;height:100%;display:block}
+.am-app .am-spacer{flex:1 1 auto}
+.am-app .am-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.am-app .am-icon-btn svg{flex:none;display:block}
+.am-app .am-card{display:flex;flex-direction:column;text-align:left;overflow:hidden;max-height:100%}
+.am-app .am-card .am-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.am-app .am-card .am-head h3{margin:0}
+.am-app .am-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.am-app .am-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;min-height:0;overflow:auto}
+.am-app .am-help b{display:block;margin-bottom:6px;font-size:10px;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+.am-app .am-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;color:var(--mut)}
+.am-app .am-cheats{display:flex;flex-direction:column;gap:6px;width:100%;min-height:0;overflow:auto}
 .am-app .am-plane{transition:transform .3s linear;cursor:pointer}
 .am-app .am-pbody{transition:transform .3s linear}
 .am-app .am-divert{opacity:.45}
@@ -399,93 +417,172 @@ export function mount(root, context = {}) {
 .am-app .am-picked rect{stroke:var(--acc);stroke-width:2.5}
 @keyframes am-pulse{50%{opacity:.5}}
 .am-app .am-pad{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px;user-select:none}
-.am-app .am-group{display:flex;gap:6px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px}
-.am-app .am-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-size:12px;font-weight:700;border-radius:9px;padding:7px 10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:border-color .15s,color .15s,background .15s;touch-action:manipulation}
+.am-app .am-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px}
+.am-app .am-btn{appearance:none;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:12.5px;font-weight:700;border-radius:8px;padding:8px 12px;min-height:40px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:border-color .15s,color .15s,background .15s;touch-action:manipulation}
 .am-app .am-btn:not(:disabled):hover{border-color:var(--acc);color:var(--acc)}
+.am-app .am-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .am-app .am-btn:disabled{opacity:.35;cursor:default}
 .am-app .am-btn.am-primary{background:var(--acc);border-color:var(--acc);color:#fff}
 .am-app .am-btn.am-primary:not(:disabled):hover{color:#fff;opacity:.9}
 .am-app .am-btn.am-on{background:var(--acc);border-color:var(--acc);color:#fff}
-.am-app kbd{font-size:10px;font-weight:600;background:#f1f5f9;border:1px solid var(--line);border-radius:4px;padding:1px 4px;color:var(--mut)}
-.am-app .am-selinfo{font-size:12px;font-weight:700;color:var(--ink);min-width:118px;text-align:center}
-.am-app .am-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.88);backdrop-filter:blur(3px)}
-.am-app .am-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 26px;text-align:center;max-width:320px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
-.am-app .am-card h3{margin:0 0 6px;font-size:20px;color:var(--ink)}
-.am-app .am-card p{margin:0 0 14px;font-size:13px;color:var(--mut)}
+.am-app kbd{font-size:10px;font-weight:600;background:var(--line);border:1px solid var(--line);border-radius:4px;padding:1px 4px;color:var(--mut)}
+.am-app .am-selinfo{font-size:12px;font-weight:700;color:var(--ink);min-width:112px;text-align:center}
+.am-app .am-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.88);backdrop-filter:blur(3px);padding:12px}
+.am-app .am-card{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:16px 20px;width:min(560px,100%);box-shadow:0 4px 16px rgba(15,23,42,.06)}
+.am-app .am-card h3{margin:0 0 8px;font-size:20px;color:var(--ink)}
+.am-app .am-card p{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--mut)}
 .am-app .am-win{color:#059669!important}
 .am-app .am-lose{color:#dc2626!important}
-.am-app .am-cheats{position:absolute;top:10px;right:10px;width:190px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px;box-shadow:0 10px 30px rgba(15,23,42,.1)}
-.am-app .am-cheats .am-btn{justify-content:flex-start}
+.am-app .am-cheats .am-btn{justify-content:flex-start;text-align:left}
 @media (pointer:coarse){.am-app .am-btn{min-height:44px;min-width:44px}.am-app kbd{display:none}}
-@media (max-width:640px){.am-app kbd{display:none}.am-app .am-selinfo{min-width:96px}}
+@media (max-width:640px){.am-app kbd{display:none}.am-app .am-selinfo{min-width:96px}.am-app .am-pad{gap:6px}.am-app .am-group{gap:4px}}
+@media (prefers-reduced-motion:reduce){.am-app *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (keep last) --- */
+@media (max-width:640px){
+.am-app .am-board:not(:has(.am-overlay:not([hidden]))){aspect-ratio:880/520;flex:0 0 auto}
+.am-app .am-board:has(.am-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.am-app .am-hud{gap:5px;margin-bottom:8px}
+.am-app .am-chip{padding:4px 6px;font-size:9px}
+.am-app .am-turn{flex:0 0 auto;min-width:0;gap:4px}
+.am-app .am-turnlbl{font-size:9px}
+.am-app .am-turnbar{flex:0 0 36px;width:36px}
+.am-app .am-hud .am-btn{min-width:28px;min-height:32px;padding:5px 7px;font-size:9px}
+.am-app .am-hud .am-btn-label,.am-app .am-spacer{display:none}
+.am-app .am-overlay{padding:8px}
+.am-app .am-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.am-app .am-help,.am-app .am-cheats{scrollbar-width:none}
+.am-app .am-help::-webkit-scrollbar,.am-app .am-cheats::-webkit-scrollbar{display:none}
+}
 </style>
-<div class="game-app am-app">
-  <div class="game-intro">
-    <div><h2>Airport Manager</h2><p data-sub>—</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Menunggu</span></span>
+<div class="game-app am-app game-fill" data-am>
+  <div class="am-hud">
+    <span class="am-chip">Handled <b data-hud="handled">0</b>/<b data-hud="total">0</b></span>
+    <span class="am-chip">Delays <b data-hud="delays">0</b>/${MAX_DELAYS}</span>
+    <span class="am-chip" data-hud="score">—</span>
+    <span class="am-chip" data-hud="shift">Shift —</span>
+    <span class="am-turn"><span class="am-turnlbl" data-turnlbl>—</span><span class="am-turnbar"><i data-turnbar></i></span></span>
+    <span class="am-spacer"></span>
+    <button class="am-btn am-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="am-btn-label">Help</span></button>
+    <button class="am-btn am-icon-btn" type="button" data-cheatbtn aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="am-btn-label">Cheats</span></button>
+    <button class="am-btn am-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="am-btn-label">Pause</span></button>
+    <button class="am-btn am-icon-btn" type="button" data-restart aria-label="Restart" title="Restart">${iconSVG("refresh", { size: 14 })}<span class="am-btn-label">Restart</span></button>
+    <button class="am-btn am-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="am-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="am-hud">
-      <span class="am-chip">Tangani <b data-hud="handled">0</b>/<b data-hud="total">0</b></span>
-      <span class="am-chip">Delay <b data-hud="delays">0</b>/${MAX_DELAYS}</span>
-      <span class="am-chip" data-hud="score">—</span>
-      <span class="am-turn"><span class="am-turnlbl" data-turnlbl>—</span><span class="am-turnbar"><i data-turnbar></i></span></span>
+  <section class="game-panel am-board" data-board>
+    <svg class="am-svg" viewBox="0 0 880 520" data-svg aria-hidden="true"></svg>
+    <div class="am-overlay" data-wait hidden><div class="am-card"><div class="am-head"><h3>Waiting for host…</h3></div></div></div>
+    <div class="am-overlay" data-overlay hidden>
+      <div class="am-card">
+        <div class="am-head"><h3 data-ov-title>—</h3></div>
+        <p data-ov-sub>—</p>
+        <div class="am-actions"><button class="am-btn am-primary" type="button" data-act="restart">Play again <kbd>R</kbd></button></div>
+      </div>
     </div>
-    <div class="am-stage">
-      <svg viewBox="0 0 880 520" data-svg aria-hidden="true"></svg>
-      <div class="am-overlay" data-wait hidden><div class="am-card"><h3>Menunggu host…</h3></div></div>
-      <div class="am-overlay" data-overlay hidden>
-        <div class="am-card">
-          <h3 data-ov-title>—</h3>
-          <p data-ov-sub>—</p>
-          <button class="am-btn am-primary" type="button" data-act="restart">Main lagi <kbd>R</kbd></button>
+    <div class="am-overlay" data-cheats hidden>
+      <div class="am-card">
+        <div class="am-head"><h3>Cheats</h3><button class="am-btn" type="button" data-cheat-close>Close</button></div>
+        <div class="am-cheats">
+          <button class="am-btn" type="button" data-act="cheat-key" data-key="freeze">Frozen patience</button>
+          <button class="am-btn" type="button" data-act="cheat-key" data-key="fast">Fast unload</button>
+          <button class="am-btn" type="button" data-act="cheat-key" data-key="slow">Slow motion</button>
+          <button class="am-btn" type="button" data-act="cheat-key" data-key="reset">Reset delays</button>
+          <button class="am-btn" type="button" data-act="cheat-key" data-key="auto">Auto-clear best</button>
+          <button class="am-btn" type="button" data-act="cheat-key" data-key="win">Instant win</button>
         </div>
       </div>
-      <div class="am-cheats" data-cheats hidden>
-        <button class="am-btn" type="button" data-act="cheat-key" data-key="freeze">Kesabaran beku</button>
-        <button class="am-btn" type="button" data-act="cheat-key" data-key="fast">Bongkar kilat</button>
-        <button class="am-btn" type="button" data-act="cheat-key" data-key="slow">Slow motion</button>
-        <button class="am-btn" type="button" data-act="cheat-key" data-key="reset">Reset delay</button>
-        <button class="am-btn" type="button" data-act="cheat-key" data-key="auto">Auto-clear terbaik</button>
-        <button class="am-btn" type="button" data-act="cheat-key" data-key="win">Menang instan</button>
-        <button class="am-btn" type="button" data-act="cheat-close">Tutup</button>
+    </div>
+    <div class="am-overlay" data-ov="pause" hidden>
+      <div class="am-card">
+        <div class="am-head"><h3>Paused</h3></div>
+        <p>The turn timer is stopped.</p>
+        <div class="am-actions"><button class="am-btn am-primary" type="button" data-resume>Resume <kbd>P</kbd></button></div>
       </div>
     </div>
-    <div class="am-pad">
-      <div class="am-group">
-        <button class="am-btn" type="button" data-act="prev" aria-label="Pesawat sebelumnya">◀</button>
-        <span class="am-selinfo" data-selinfo>—</span>
-        <button class="am-btn" type="button" data-act="next" aria-label="Pesawat berikutnya">▶</button>
-      </div>
-      <div class="am-group">
-        <button class="am-btn" type="button" data-act="runway" data-id="0">R1 <kbd>1</kbd></button>
-        <button class="am-btn" type="button" data-act="runway" data-id="1">R2 <kbd>2</kbd></button>
-      </div>
-      <div class="am-group">
-        <button class="am-btn" type="button" data-act="gate" data-id="0">G1 <kbd>Q</kbd></button>
-        <button class="am-btn" type="button" data-act="gate" data-id="1">G2 <kbd>W</kbd></button>
-        <button class="am-btn" type="button" data-act="gate" data-id="2">G3 <kbd>E</kbd></button>
-      </div>
-      <div class="am-group">
-        <button class="am-btn" type="button" data-act="depart">Depart <kbd>⏎</kbd></button>
-        <button class="am-btn" type="button" data-act="skip">Lewati <kbd>␣</kbd></button>
-        <button class="am-btn" type="button" data-act="cheat" data-cheatbtn>Cheat <kbd>C</kbd></button>
+    <div class="am-overlay" data-ov="help" hidden>
+      <div class="am-card">
+        <div class="am-head"><h3>How to play</h3><button class="am-btn" type="button" data-help-close>Close</button></div>
+        <div class="am-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><kbd>Tab</kbd> / <kbd>←</kbd><kbd>→</kbd> — select a plane</li>
+              <li><kbd>1</kbd> / <kbd>2</kbd> — runway R1 / R2</li>
+              <li><kbd>Q</kbd> / <kbd>W</kbd> / <kbd>E</kbd> — gates G1–G3</li>
+              <li><kbd>Enter</kbd> — depart · <kbd>Space</kbd> / <kbd>S</kbd> — skip turn</li>
+              <li><kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>H</kbd> help · <kbd>R</kbd> restart</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap a plane, then choose a free runway and gate</li>
+              <li>Use the buttons below to depart or skip the turn</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Clear all flights without exceeding ${MAX_DELAYS} delays.</li>
+              <li>Each turn lasts 12 seconds and auto-skips when time runs out.</li>
+              <li>A runway and a gate must both be free before a landing is cleared.</li>
+              <li>Turns alternate with the bot; the first player is random.</li>
+              <li>Cheats are available in solo mode only.</li>
+            </ul>
+            <div class="am-actions"><button class="am-btn am-primary" type="button" data-help-close>Got it</button></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="am-pad">
+    <div class="am-group">
+      <button class="am-btn" type="button" data-act="prev" aria-label="Previous plane">◀</button>
+      <span class="am-selinfo" data-selinfo>—</span>
+      <button class="am-btn" type="button" data-act="next" aria-label="Next plane">▶</button>
+    </div>
+    <div class="am-group">
+      <button class="am-btn" type="button" data-act="runway" data-id="0">R1 <kbd>1</kbd></button>
+      <button class="am-btn" type="button" data-act="runway" data-id="1">R2 <kbd>2</kbd></button>
+    </div>
+    <div class="am-group">
+      <button class="am-btn" type="button" data-act="gate" data-id="0">G1 <kbd>Q</kbd></button>
+      <button class="am-btn" type="button" data-act="gate" data-id="1">G2 <kbd>W</kbd></button>
+      <button class="am-btn" type="button" data-act="gate" data-id="2">G3 <kbd>E</kbd></button>
+    </div>
+    <div class="am-group">
+      <button class="am-btn" type="button" data-act="depart">Depart <kbd>⏎</kbd></button>
+      <button class="am-btn" type="button" data-act="skip">Skip <kbd>␣</kbd></button>
+    </div>
+  </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const svgEl = $('[data-svg]');
-    const elSub = $('[data-sub]'), elStatus = $('[data-status]');
     const elHandled = $('[data-hud="handled"]'), elTotal = $('[data-hud="total"]');
     const elDelays = $('[data-hud="delays"]'), elScore = $('[data-hud="score"]');
+    const elShift = $('[data-hud="shift"]');
     const elTurnLbl = $('[data-turnlbl]'), elTurnBar = $('[data-turnbar]');
-    const elWait = $('[data-wait]'), elOverlay = $('[data-overlay]');
     const elOvTitle = $('[data-ov-title]'), elOvSub = $('[data-ov-sub]');
     const elCheats = $('[data-cheats]'), elCheatBtn = $('[data-cheatbtn]');
     const elSelInfo = $('[data-selinfo]');
+    const ov = {
+        wait: $('[data-wait]'),
+        result: $('[data-overlay]'),
+        cheats: elCheats,
+        pause: $('[data-ov="pause"]'),
+        help: $('[data-ov="help"]'),
+    };
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        if (online && !room.isHost) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { cheatsOpen = false; helpOpen = false; }
+        render();
+    }
 
     /* ---- scenery top-down minimalis ---- */
     function buildScenery() {
@@ -606,28 +703,38 @@ export function mount(root, context = {}) {
 
     /* ---- render keseluruhan ---- */
     function render() {
+        const panelOpen = helpOpen || cheatsOpen || paused;
+        ov.help.hidden = !helpOpen;
+        ov.cheats.hidden = !cheatsOpen || online;
+        ov.pause.hidden = !paused;
+        const pauseBtn = $('[data-pause]');
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector('.am-btn-label');
+            if (label) label.textContent = paused ? 'Resume' : 'Pause';
+            pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+            pauseBtn.disabled = online && !room.isHost;
+        }
         if (!state) {
-            elWait.hidden = !online;
-            elStatus.textContent = 'Menunggu host';
+            ov.wait.hidden = !online || panelOpen;
+            ov.result.hidden = true;
             root.querySelectorAll('.am-btn').forEach((b) => { b.disabled = true; });
             return;
         }
-        elWait.hidden = true;
+        ov.wait.hidden = true;
         if (state.turn !== prevTurn) { resetSel(); prevTurn = state.turn; }
         const sp = selPlane();
         if (sel.plane >= 0 && (!sp || !selectable(sp) || !isMine())) resetSel();
 
         const me = mySlot(), other = 1 - me;
-        elSub.textContent = `Shift #${state.code} · ${state.total} penerbangan`;
+        elShift.textContent = `Shift #${state.code}`;
         elHandled.textContent = String(state.handled);
         elTotal.textContent = String(state.total);
         elDelays.textContent = String(state.delays);
-        elScore.innerHTML = `Kamu <b>${state.scores[me]}</b> · ${online ? 'Lawan' : 'Bot'} <b>${state.scores[other]}</b>`;
+        elScore.innerHTML = `You <b>${state.scores[me]}</b> · ${online ? 'Opponent' : 'Bot'} <b>${state.scores[other]}</b>`;
 
         const mine = isMine();
-        const turnLbl = state.result ? 'Selesai' : mine ? 'Giliranmu' : online ? 'Giliran lawan' : 'Giliran Bot';
+        const turnLbl = state.result ? 'Finished' : mine ? 'Your turn' : online ? "Opponent's turn" : "Bot's turn";
         elTurnLbl.textContent = turnLbl;
-        elStatus.textContent = turnLbl;
         const remain = state.result ? 0 : Math.max(0, state.turnEndsAt - state.time);
         elTurnBar.style.width = `${Math.min(100, (remain / TURN_MS) * 100)}%`;
         elTurnBar.style.background = mine ? '#6366f1' : '#94a3b8';
@@ -636,31 +743,31 @@ export function mount(root, context = {}) {
         syncTargets();
 
         /* pad / virtual buttons */
+        const locked = panelOpen || !!state.result;
         const s2 = selPlane();
-        const holdingSel = !!(mine && s2 && s2.phase === 'holding');
-        const parkedSel = !!(mine && s2 && (s2.phase === 'unload' || s2.phase === 'ready'));
-        root.querySelectorAll('[data-act="prev"],[data-act="next"]').forEach((b) => { b.disabled = !mine || selectables().length === 0; });
+        const holdingSel = !!(mine && s2 && s2.phase === 'holding' && !locked);
+        const parkedSel = !!(mine && s2 && (s2.phase === 'unload' || s2.phase === 'ready') && !locked);
+        root.querySelectorAll('[data-act="prev"],[data-act="next"]').forEach((b) => { b.disabled = locked || !mine || selectables().length === 0; });
         root.querySelectorAll('[data-act="runway"]').forEach((b) => {
             const id = Number(b.dataset.id);
-            b.disabled = !holdingSel || !canClearLanding(state, s2.id, id);
+            b.disabled = locked || !holdingSel || !canClearLanding(state, s2.id, id);
             b.classList.toggle('am-on', holdingSel && sel.runway === id);
         });
         root.querySelectorAll('[data-act="gate"]').forEach((b) => {
             const id = Number(b.dataset.id);
-            b.disabled = !holdingSel || !canAssignGate(state, s2.id, id);
+            b.disabled = locked || !holdingSel || !canAssignGate(state, s2.id, id);
             b.classList.toggle('am-on', holdingSel && sel.gate === id);
         });
-        root.querySelector('[data-act="depart"]').disabled = !parkedSel;
-        root.querySelector('[data-act="skip"]').disabled = !mine;
+        root.querySelector('[data-act="depart"]').disabled = locked || !parkedSel;
+        root.querySelector('[data-act="skip"]').disabled = locked || !mine;
         elCheatBtn.hidden = online;
         elSelInfo.textContent = s2
             ? s2.phase === 'holding'
                 ? `${s2.callsign} · R${sel.runway >= 0 ? sel.runway + 1 : '–'} · G${sel.gate >= 0 ? sel.gate + 1 : '–'}`
-                : `${s2.callsign} · ${s2.phase === 'ready' ? 'siap' : 'bongkar'}`
+                : `${s2.callsign} · ${s2.phase === 'ready' ? 'ready' : 'unloading'}`
             : '—';
 
-        /* cheat panel (hanya mode AI) */
-        elCheats.hidden = online || !cheatsOpen || !!state.result;
+        /* cheats (hanya mode AI) */
         elCheats.querySelectorAll('[data-key]').forEach((b) => {
             const k = b.dataset.key;
             b.classList.toggle('am-on', !!state.cheats[k]);
@@ -670,20 +777,20 @@ export function mount(root, context = {}) {
         if (state.result) {
             const w = state.result.winner;
             const title = online
-                ? w == null ? 'Seri' : `${w === me ? playerName : 'Lawan'} menang`
-                : w === me ? 'Menang!' : w == null ? 'Seri' : 'Kalah';
+                ? w == null ? 'Draw' : `${w === me ? playerName : 'Opponent'} wins`
+                : w === me ? 'You win!' : w == null ? 'Draw' : 'You lose';
             elOvTitle.textContent = title;
             elOvTitle.className = w == null ? '' : w === me ? 'am-win' : 'am-lose';
             const reasons = {
-                done: 'Semua penerbangan selesai.',
-                delays: 'Terlalu banyak delay.',
-                collision: 'Tabrakan di runway.',
-                cheat: 'Cheat aktif.',
+                done: 'All flights completed.',
+                delays: 'Too many delays.',
+                collision: 'Runway collision.',
+                cheat: 'Cheat used.',
             };
-            elOvSub.textContent = `${reasons[state.result.reason] || ''} Skor ${state.scores[me]}–${state.scores[other]}.`;
-            elOverlay.hidden = false;
+            elOvSub.textContent = `${reasons[state.result.reason] || ''} Score ${state.scores[me]}–${state.scores[other]}.`;
+            ov.result.hidden = panelOpen;
         } else {
-            elOverlay.hidden = true;
+            ov.result.hidden = true;
         }
     }
 
@@ -699,6 +806,8 @@ export function mount(root, context = {}) {
         prevResult = false;
         botAt = 0;
         cheatsOpen = false;
+        helpOpen = false;
+        paused = false;
         planeEls.forEach((n) => n.remove());
         planeEls.clear();
     }
@@ -771,6 +880,7 @@ export function mount(root, context = {}) {
         const now = Date.now();
         const dt = Math.min(120, now - lastT);
         lastT = now;
+        if (paused) return;
         stepWorld(state, dt);
         /* bot hanya di mode AI */
         if (!online && !state.result) {
@@ -833,6 +943,15 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
+        if (event.target.closest('[data-help]')) { toggleHelp(); return; }
+        if (event.target.closest('[data-help-close]')) { toggleHelp(false); return; }
+        if (event.target.closest('[data-pause]')) { togglePause(); return; }
+        if (event.target.closest('[data-resume]')) { togglePause(false); return; }
+        if (event.target.closest('[data-restart]')) { submitAction({ type: 'restart' }); return; }
+        if (event.target.closest('[data-cheatbtn]')) {
+            if (!online && !helpOpen && !paused) { cheatsOpen = !cheatsOpen; render(); }
+            return;
+        }
         if (event.target.closest('[data-exit]')) { onExit(); return; }
         const btn = event.target.closest('[data-act]');
         if (!btn || btn.disabled) return;
@@ -851,7 +970,7 @@ export function mount(root, context = {}) {
     }
 
     function onSvg(e) {
-        if (!state || state.result) return;
+        if (!state || state.result || paused || helpOpen || cheatsOpen) return;
         const planeEl = e.target.closest ? e.target.closest('[data-plane]') : null;
         if (planeEl) {
             const p = state.planes.find((q) => q.id === Number(planeEl.dataset.plane));
@@ -871,7 +990,24 @@ export function mount(root, context = {}) {
         const k = e.key;
         const over = !!state && !!state.result;
         let handled = true;
-        if (k === 'Tab') cycle(e.shiftKey ? -1 : 1);
+        if (k === 'h' || k === 'H') toggleHelp();
+        else if (helpOpen) {
+            if (k === 'Escape' || k === 'Enter' || k === ' ') toggleHelp(false);
+            else handled = false;
+        }
+        else if (k === 'c' || k === 'C') {
+            if (!online && state && !over) { cheatsOpen = !cheatsOpen; render(); }
+        }
+        else if (cheatsOpen) {
+            if (k === 'Escape' || k === 'Enter') { cheatsOpen = false; render(); }
+            else handled = false;
+        }
+        else if (k === 'p' || k === 'P') togglePause();
+        else if (paused) {
+            if (k === 'Escape' || k === 'Enter' || k === ' ') togglePause(false);
+            else handled = false;
+        }
+        else if (k === 'Tab') cycle(e.shiftKey ? -1 : 1);
         else if (k === 'ArrowRight') cycle(1);
         else if (k === 'ArrowLeft') cycle(-1);
         else if (k === '1' || k === '2') pickRunway(Number(k) - 1);
@@ -882,8 +1018,7 @@ export function mount(root, context = {}) {
         else if (k === ' ') { if (over) submitAction({ type: 'restart' }); else doSkip(); }
         else if (k === 's' || k === 'S') doSkip();
         else if (k === 'r' || k === 'R') { if (over) submitAction({ type: 'restart' }); else handled = false; }
-        else if (k === 'c' || k === 'C') { if (!online && state && !state.result) { cheatsOpen = !cheatsOpen; render(); } }
-        else if (k === 'Escape') { if (cheatsOpen) { cheatsOpen = false; render(); } else { resetSel(); render(); } }
+        else if (k === 'Escape') { resetSel(); render(); }
         else handled = false;
         if (handled) e.preventDefault();
     }
@@ -911,6 +1046,13 @@ export function mount(root, context = {}) {
         render();
         lastT = Date.now();
         tickId = setInterval(tick, 80);
+    }
+
+    /* panduan internal hanya otomatis pada peluncuran pertama */
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("airportManagerHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+        render();
     }
 
     return {

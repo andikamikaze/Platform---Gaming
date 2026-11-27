@@ -13,6 +13,8 @@
    mouse/keyboard on desktop, drag + release on touch.
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "atom-merge",
     name: "Atom Merge",
@@ -106,11 +108,21 @@ export function mount(root, context = {}) {
     root.innerHTML = `
 <style>
 .am{display:flex;flex-direction:column;gap:10px}
+.am-app{color:#e5e9f0}
 .am [hidden]{display:none!important}
 .am :where(h2){margin:0;font-size:1.05rem;font-weight:650;letter-spacing:.02em}
 .am :where(.game-intro){display:flex;align-items:center;justify-content:space-between;gap:10px}
 .am :where(.game-actions){display:flex;gap:8px;flex-wrap:wrap}
 .am :where(.game-action-button){padding:8px 14px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:transparent;color:inherit;font:inherit;font-size:.8rem;cursor:pointer}
+.am-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.am-spacer{flex:1 1 auto}
+.am-app .am-hbtn{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;min-height:30px;border:1px solid rgba(128,128,128,.35);border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation}
+.am-app .am-hbtn svg{flex:none;display:block}
+.am-app .am-hbtn.on{border-color:#34d399;color:#34d399}
+.am-app .am-hbtn:disabled{opacity:.4;cursor:default}
+.am-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;text-align:left}
+.am-help b{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.6}
+.am-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;opacity:.8}
 .am-meta{display:flex;align-items:stretch;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .am-player{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid rgba(128,128,128,.25);border-radius:12px;min-width:168px;transition:border-color .2s}
 .am-player.is-active{border-color:currentColor}
@@ -131,8 +143,8 @@ export function mount(root, context = {}) {
 .am-tier.is-reached{opacity:1}
 .am-tier.is-current{border-color:currentColor}
 .am-sep{opacity:.3;font-size:.7rem}
-.am .game-panel{position:relative;padding:0;overflow:hidden}
-.am-svg{display:block;width:100%;height:auto;aspect-ratio:520/420;max-height:62vh;max-width:calc(62vh*1.2381);margin:0 auto;touch-action:none;-webkit-user-select:none;user-select:none}
+.am .game-panel{position:relative;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:0}
+.am-svg{display:block;width:100%;height:auto;aspect-ratio:520/420;max-height:100%;margin:0 auto;touch-action:none;-webkit-user-select:none;user-select:none}
 .am-svg.is-mine{cursor:crosshair}
 .am-arena{fill:rgba(128,128,128,.05);stroke:rgba(128,128,128,.4);stroke-width:1.5}
 .am-danger{stroke:#e07070;stroke-width:1.2;stroke-dasharray:5 6;opacity:.5}
@@ -144,7 +156,7 @@ export function mount(root, context = {}) {
 .am-warn .am-skin{stroke:#e07070;stroke-width:2.5;animation:am-warn .5s ease-in-out infinite}
 @keyframes am-warn{50%{stroke-opacity:.3}}
 .am-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(128,128,128,.14);backdrop-filter:blur(3px)}
-.am-card{display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center;padding:18px 22px;border-radius:14px;border:1px solid rgba(128,128,128,.25);background:#fff;color:#20263b;max-width:min(92%,340px);box-shadow:0 8px 30px rgba(0,0,0,.12)}
+.am-card{display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center;padding:18px 22px;border-radius:14px;border:1px solid rgba(128,128,128,.25);background:#fff;color:#20263b;max-width:min(92%,340px);box-shadow:0 4px 12px rgba(0,0,0,.12)}
 .am-card h3{margin:0;font-size:1rem}
 .am-card p{margin:0;font-size:.8rem;opacity:.7}
 .am-wait{font-size:.72rem;opacity:.55}
@@ -160,33 +172,73 @@ export function mount(root, context = {}) {
 .am-cbtn{flex:1;padding:7px 9px;font-size:.72rem;border-radius:9px;border:1px solid rgba(0,0,0,.18);background:rgba(128,128,128,.08);cursor:pointer;color:inherit;white-space:nowrap}
 .am-cbtn.is-on{background:#20263b;color:#fff;border-color:#20263b}
 @media (max-width:560px){.am-player{min-width:0;flex:1}.am-queue{order:-1;width:100%}}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.am{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.am *,.am *::before,.am *::after{box-sizing:border-box}
+.am :where(svg,canvas,img){max-width:100%;height:auto}
+.am :where(button,[role="button"],select,input){touch-action:manipulation}
+.am :where(button,[role="button"],select,input):focus-visible{outline:2px solid currentColor;outline-offset:2px}
+/* 4px spacing grid: HUD/control rows wrap instead of overflowing on narrow screens. */
+.am :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+/* Thin borders and calm surfaces instead of heavy elevation. */
+.am :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+/* Clear type hierarchy: 12px metadata, compact headings. */
+.am :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.am :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .am :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .am :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .am :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .am :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .am *,.am *::before,.am *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* --- layout redesign overrides (keep last) --- */
+@media (max-width:640px){
+.am-app .am-hud{gap:5px 8px;margin-bottom:6px}
+.am-app .am-hbtn{min-width:28px;min-height:28px;padding:4px 6px;font-size:10px}
+.am-app .am-hbtn .am-hlbl,.am-app .am-spacer{display:none}
+.am-app .game-panel{flex:0 0 auto;min-height:min(70dvh,620px)}
+.am-player{min-width:0;padding:4px 8px}
+.am-pname{max-width:72px}
+.am-tier{min-width:34px;padding:3px 5px}
+.am-card{padding:14px}
+}
 </style>
-<div class="game-app am">
-  <div class="game-intro">
-    <div><h2>Atom Merge</h2></div>
+<div class="game-app am am-app game-fill">
+  <div class="am-hud">
     <span class="game-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Ready</span></span>
+    <div class="am-meta">
+      <div class="am-player" data-player="0">
+        <span class="am-pdot"></span><span class="am-pseat">P1</span>
+        <span class="am-pname" data-pname>-</span>
+        <span class="am-pscore" data-pscore>0</span>
+        <span class="am-pbest" data-pbest>-</span>
+      </div>
+      <div class="am-queue">
+        <span class="am-q"><em>Drop</em><b data-q-cur>H</b></span>
+        <span class="am-q"><em>Next</em><b data-q-next>H</b></span>
+      </div>
+      <div class="am-player" data-player="1">
+        <span class="am-pdot"></span><span class="am-pseat">P2</span>
+        <span class="am-pname" data-pname>-</span>
+        <span class="am-pscore" data-pscore>0</span>
+        <span class="am-pbest" data-pbest>-</span>
+      </div>
+    </div>
+    <div class="am-tiers" data-tiers aria-label="Periodic tiers"></div>
+    <span class="am-spacer"></span>
+    <button class="am-btn am-hbtn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="am-hlbl">Help</span></button>
+    <button class="am-btn am-hbtn" type="button" data-cheat-open ${online ? "hidden" : ""} aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="am-hlbl">Cheats</span></button>
+    <button class="am-btn am-hbtn" type="button" data-pause-btn aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="am-hlbl">Pause</span></button>
+    <button class="am-btn am-hbtn" type="button" data-restart data-restart-hud ${isGuest ? "hidden" : ""} aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="am-hlbl">Restart</span></button>
+    <button class="am-btn am-hbtn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="am-hlbl">Exit</span></button>
   </div>
-
-  <div class="am-meta">
-    <div class="am-player" data-player="0">
-      <span class="am-pdot"></span><span class="am-pseat">P1</span>
-      <span class="am-pname" data-pname>-</span>
-      <span class="am-pscore" data-pscore>0</span>
-      <span class="am-pbest" data-pbest>-</span>
-    </div>
-    <div class="am-queue">
-      <span class="am-q"><em>Drop</em><b data-q-cur>H</b></span>
-      <span class="am-q"><em>Next</em><b data-q-next>H</b></span>
-    </div>
-    <div class="am-player" data-player="1">
-      <span class="am-pdot"></span><span class="am-pseat">P2</span>
-      <span class="am-pname" data-pname>-</span>
-      <span class="am-pscore" data-pscore>0</span>
-      <span class="am-pbest" data-pbest>-</span>
-    </div>
-  </div>
-
-  <div class="am-tiers" data-tiers aria-label="Periodic tiers"></div>
 
   <section class="game-panel" data-board>
     <svg class="am-svg" viewBox="0 0 520 420" role="img" aria-label="Atom Merge arena">
@@ -222,13 +274,39 @@ export function mount(root, context = {}) {
         </div></div>
       </div>
     </div>
+    <div class="am-overlay" data-ov="help" hidden>
+      <div class="am-card">
+        <h3>How to play</h3>
+        <div class="am-help">
+          <div>
+            <b>Goal</b>
+            <ul>
+              <li>Merge matching atoms: H → He → Li → Be → B → C.</li>
+              <li>Create Carbon to win; letting atoms rest above the red line loses.</li>
+              <li>The drop order is fixed: H, H, He, He, Li, Li — every game is solvable.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Controls</b>
+            <ul>
+              <li>Move the pointer or drag to aim, release/click to drop.</li>
+              <li>← / → aim · Space or Enter drop.</li>
+              <li>C cheats · P pause · R restart · H help.</li>
+            </ul>
+            <p>Cheats are available in solo mode only.</p>
+            <button class="game-action-button" type="button" data-help-close>Got it</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="am-overlay" data-ov="pause" hidden>
+      <div class="am-card">
+        <h3>Paused</h3>
+        <p>The simulation and the bot are stopped.</p>
+        <button class="game-action-button" type="button" data-resume>Resume <kbd>P</kbd></button>
+      </div>
+    </div>
   </section>
-
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-cheat-open ${online ? "hidden" : ""}>Cheats</button>
-    <button class="game-action-button" type="button" data-restart ${isGuest ? "hidden" : ""}>Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -254,6 +332,8 @@ export function mount(root, context = {}) {
     const resultSub = $("[data-result-sub]");
     const resultWait = $("[data-result-wait]");
     const cheatOverlay = $("[data-cheats]");
+    const ovHelp = $('[data-ov="help"]'), ovPause = $('[data-ov="pause"]');
+    const pauseBtn = $("[data-pause-btn]"), hudRestart = $("[data-restart-hud]");
     const playerRefs = [0, 1].map((i) => {
         const box = $('[data-player="' + i + '"]');
         return {
@@ -286,6 +366,13 @@ export function mount(root, context = {}) {
     let aimX = W / 2;
     let shownEl = -1;
     let cheatOpen = false;
+    let helpOpen = false, paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("atomMergeHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("atomMergeHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     let pointerAiming = false;
     let botDelay = 0;
     let rafId = 0;
@@ -293,6 +380,18 @@ export function mount(root, context = {}) {
     let lastPub = 0;
     const atomEls = new Map(); // atom id -> svg group
     const disp = new Map();    // guest-side interpolated positions
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        if (isGuest) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { cheatOpen = false; pointerAiming = false; }
+        render();
+    }
 
     const currentEl = () => (state.override !== null ? state.override : SEQ[state.seq % SEQ.length]);
     const mySeat = () => {
@@ -363,8 +462,22 @@ export function mount(root, context = {}) {
     }
 
     function render() {
+        ovHelp.hidden = !helpOpen;
+        ovPause.hidden = !paused || helpOpen;
+        if (pauseBtn) {
+            pauseBtn.disabled = isGuest;
+            const want = paused ? "play" : "pause";
+            if (pauseBtn.dataset.iconState !== want) {
+                pauseBtn.dataset.iconState = want;
+                const ico = pauseBtn.querySelector("svg");
+                if (ico) ico.outerHTML = iconSVG(want, { size: 14 });
+                const label = pauseBtn.querySelector(".am-hlbl");
+                if (label) label.textContent = paused ? "Resume" : "Pause";
+            }
+        }
+        if (hudRestart) hudRestart.disabled = isGuest;
         const st = state;
-        const mine = myTurn();
+        const mine = myTurn() && !paused && !helpOpen;
         svg.classList.toggle("is-mine", mine);
 
         /* status */
@@ -409,10 +522,14 @@ export function mount(root, context = {}) {
 
         renderDropper();
         renderAtoms();
+        if (paused || helpOpen) {
+            dropG.setAttribute("opacity", "0");
+            guide.setAttribute("opacity", "0");
+        }
 
         /* result overlay */
         const over = !!st && st.phase === "over";
-        resultEl.hidden = !over;
+        resultEl.hidden = !over || helpOpen || paused;
         if (over) {
             resultTitle.textContent = st.names[st.winner] + " wins";
             resultSub.textContent =
@@ -423,7 +540,7 @@ export function mount(root, context = {}) {
         }
 
         /* cheat overlay */
-        cheatOverlay.hidden = !cheatOpen || online;
+        cheatOverlay.hidden = !cheatOpen || online || helpOpen || paused;
         if (cheatOpen && st) {
             cheatElBtns.forEach((b, i) => b.classList.toggle("is-on", st.override === i));
             togGrav.classList.toggle("is-on", !!st.lowGrav);
@@ -669,6 +786,8 @@ export function mount(root, context = {}) {
             case "restart":
                 if (online && actor !== state.hostSeat) return; // host-only restart
                 newGame();
+                helpOpen = false; paused = false;
+                render();
                 break;
             case "cheat":
                 if (online) return;
@@ -692,9 +811,9 @@ export function mount(root, context = {}) {
         const offX = (rect.width - W * scale) / 2;
         return (e.clientX - rect.left - offX) / scale;
     }
-    const onPointerMove = (e) => { if (myTurn() && !cheatOpen) aimX = svgX(e); };
+    const onPointerMove = (e) => { if (myTurn() && !cheatOpen && !paused && !helpOpen) aimX = svgX(e); };
     const onPointerDown = (e) => {
-        if (!myTurn() || cheatOpen) return;
+        if (!myTurn() || cheatOpen || paused || helpOpen) return;
         pointerAiming = true;
         aimX = svgX(e);
         if (svg.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch (err) { /* noop */ } }
@@ -702,7 +821,7 @@ export function mount(root, context = {}) {
     const onPointerUp = (e) => {
         if (!pointerAiming) return;
         pointerAiming = false;
-        if (!myTurn() || cheatOpen) return;
+        if (!myTurn() || cheatOpen || paused || helpOpen) return;
         aimX = svgX(e);
         submitAction({ type: "drop", x: aimX });
     };
@@ -721,6 +840,14 @@ export function mount(root, context = {}) {
         const tag = t && t.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
         if (tag === "BUTTON" && (e.key === " " || e.key === "Enter")) return; // let native click work
+        if (helpOpen) {
+            if (e.key === "Escape" || e.key === "h" || e.key === "H" || e.key === "Enter" || e.key === " ") toggleHelp(false);
+            return;
+        }
+        if (paused) {
+            if (e.key === "p" || e.key === "P" || e.key === "Escape" || e.key === "Enter" || e.key === " ") togglePause(false);
+            return;
+        }
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
             if (!myTurn() || cheatOpen) return;
             e.preventDefault();
@@ -729,6 +856,10 @@ export function mount(root, context = {}) {
             if (!myTurn() || cheatOpen) return;
             e.preventDefault();
             submitAction({ type: "drop", x: aimX });
+        } else if (e.key === "h" || e.key === "H") {
+            toggleHelp();
+        } else if (e.key === "p" || e.key === "P") {
+            togglePause();
         } else if (e.key === "c" || e.key === "C") {
             if (!online) { cheatOpen = !cheatOpen; render(); }
         } else if (e.key === "r" || e.key === "R") {
@@ -741,6 +872,10 @@ export function mount(root, context = {}) {
 
     function handleClick(event) {
         const t = event.target;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-pause-btn]")) { togglePause(); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
         if (t.closest("[data-restart]")) { submitAction({ type: "restart" }); return; }
         if (t.closest("[data-cheat-open]")) { if (!online) { cheatOpen = !cheatOpen; render(); } return; }
@@ -773,10 +908,10 @@ export function mount(root, context = {}) {
         if (!(dt > 0)) dt = 0.016;
         if (dt > 0.032) dt = 0.032;
         if (state) {
-            if (isHost && state.phase === "playing" && state.resolving) {
+            if (!paused && isHost && state.phase === "playing" && state.resolving) {
                 simulate(dt);
                 syncNet(false);
-            } else if (!online && state.phase === "playing" && !state.resolving && state.turn === BOT_SEAT) {
+            } else if (!paused && !online && state.phase === "playing" && !state.resolving && state.turn === BOT_SEAT) {
                 botDelay -= dt;
                 if (botDelay <= 0) doDrop(botAim());
             }

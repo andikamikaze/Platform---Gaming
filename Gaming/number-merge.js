@@ -1,4 +1,5 @@
 /* ==== GAME: number-merge.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
   NUMBER MERGE - drop-merge tower, 5 kolom x 8 baris.
   Mengikuti template game baru: export META + export mount(root, context).
@@ -213,31 +214,45 @@ export function mount(root, context = {}) {
     const online = mode === "room" && Boolean(room);
     let roomData = (room && room.room) || null;
     let state = null;
-    let overlay = online ? "wait" : "start";
+    let overlay = online ? "wait" : "start"; /* main phase: start | wait | over | null */
+    let cheatsOpen = false, helpOpen = false, paused = false;
     let aim = 2, eraseMode = false, hoverCell = null, hintCol = -1;
     let seenMove = -1, prevStatus = "", mounted = true;
     let storedBest = 0;
     try { storedBest = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { }
-    const timers = [], offs = [];
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("number-merge-help-seen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("number-merge-help-seen", "1"); } catch (e) { /* storage blocked */ }
+    }
+    const timers = [], offs = [], pending = [];
     let botTimer = 0, toastTimer = 0, holdTimer = 0, holdIval = 0;
 
+    const modalOpen = () => Boolean(overlay) || cheatsOpen || helpOpen || paused;
     const cancel = (t) => { clearTimeout(t); const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); };
+    /* Pausable delay: while paused, callbacks are stashed and replayed on resume. */
     const later = (fn, ms) => {
-        const t = setTimeout(() => { const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); if (mounted) fn(); }, ms);
+        if (paused) { pending.push({ fn, ms }); return 0; }
+        const t = setTimeout(() => {
+            const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1);
+            if (!mounted) return;
+            if (paused) pending.push({ fn, ms }); else fn();
+        }, ms);
         timers.push(t); return t;
     };
-    const clearTimers = () => { timers.forEach(clearTimeout); timers.length = 0; botTimer = 0; toastTimer = 0; };
+    const clearTimers = () => { timers.forEach(clearTimeout); timers.length = 0; pending.length = 0; botTimer = 0; toastTimer = 0; };
     const clearBot = () => { if (botTimer) { cancel(botTimer); botTimer = 0; } };
 
     /* ---------- shell + gaya minimal (scoped .nm-game) ---------- */
     root.innerHTML = `
-<div class="game-app nm-game">
+<div class="game-app nm-game game-fill" data-nm>
 <style>
-.nm-game{--nm-bg:#f8fafc;--nm-card:#fff;--nm-line:#e2e8f0;--nm-ink:#0f172a;--nm-mut:#64748b;--nm-acc:#4f46e5;--nm-accsoft:#eef2ff;--nm-p2:#d97706;--nm-bad:#dc2626;--nm-ok:#059669;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--nm-ink)}
+.nm-game{--nm-bg:#f8fafc;--nm-card:#fff;--nm-line:#e2e8f0;--nm-ink:#0f172a;--nm-mut:#64748b;--nm-acc:#4f46e5;--nm-accsoft:#eef2ff;--nm-p2:#d97706;--nm-bad:#dc2626;--nm-ok:#059669;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--nm-ink);display:flex;flex-direction:column;gap:8px;width:100%;max-width:560px;margin:0 auto;min-height:0;-webkit-tap-highlight-color:transparent}
 .nm-game *{box-sizing:border-box}
-.nm-game .nm-shell{max-width:clamp(300px,calc((100vh - 240px) * 0.5704),420px);margin:0 auto;display:flex;flex-direction:column;gap:10px}
-.nm-game .nm-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.nm-game .nm-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0}
+.nm-game [hidden]{display:none!important}
+.nm-game .nm-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.nm-game .nm-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0;align-items:center}
 .nm-game .nm-chip{display:inline-flex;align-items:center;gap:6px;background:var(--nm-card);border:1px solid var(--nm-line);border-radius:999px;padding:5px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--nm-mut);white-space:nowrap}
 .nm-game .nm-chip b{font-size:13px;color:var(--nm-ink);font-variant-numeric:tabular-nums;letter-spacing:0}
 .nm-game .nm-chip .nm-dot{width:8px;height:8px;border-radius:50%;background:var(--nm-acc);flex:none}
@@ -245,12 +260,20 @@ export function mount(root, context = {}) {
 .nm-game .nm-chip.on{border-color:var(--nm-acc);box-shadow:0 0 0 2px var(--nm-accsoft);color:var(--nm-ink)}
 .nm-game .nm-chip.p2.on{border-color:var(--nm-p2);box-shadow:0 0 0 2px #fef3c7}
 .nm-game .nm-nextval{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 4px;border-radius:6px;font-size:12px;font-weight:700}
-.nm-game .nm-tools{display:flex;gap:6px}
-.nm-game .nm-ico{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;background:var(--nm-card);border:1px solid var(--nm-line);border-radius:10px;color:var(--nm-mut);cursor:pointer;padding:0}
-.nm-game .nm-ico:hover{color:var(--nm-ink);border-color:#cbd5e1}
-.nm-game .nm-ico:disabled{opacity:.4;cursor:default}
-.nm-game .nm-boardbox{position:relative;background:var(--nm-card);border:1px solid var(--nm-line);border-radius:18px;padding:6px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
-.nm-game .nm-svg{display:block;width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
+.nm-game .nm-spacer{flex:1 1 auto}
+.nm-game .nm-tools{display:flex;gap:6px;flex-wrap:wrap}
+.nm-game .nm-btn{appearance:none;border:1px solid var(--nm-line);background:var(--nm-card);color:var(--nm-ink);border-radius:10px;font:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;padding:8px 10px;min-height:32px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.nm-game .nm-icon-btn{padding:5px 9px}
+.nm-game .nm-icon-btn svg{flex:none;display:block}
+.nm-game .nm-btn:hover{border-color:#cbd5e1;background:#f8fafc}
+.nm-game .nm-btn:disabled{opacity:.4;cursor:default}
+.nm-game .nm-btn.on{border-color:var(--nm-acc);background:var(--nm-accsoft);color:var(--nm-acc)}
+.nm-game .nm-btn.primary{background:var(--nm-acc);border-color:var(--nm-acc);color:#fff}
+.nm-game .nm-btn.primary:hover{background:#4338ca}
+.nm-game .nm-btn.block{width:100%}
+/* board: flex-filling host, SVG keeps its 332x582 ratio and stays centred */
+.nm-game .nm-board{position:relative;width:100%;min-height:0;flex:1 1 auto;display:flex;align-items:center;justify-content:center;background:var(--nm-card);border:1px solid var(--nm-line);border-radius:16px;padding:6px;box-shadow:0 1px 2px rgba(15,23,42,.05);overflow:hidden}
+.nm-game .nm-svg{display:block;height:100%;max-height:100%;width:auto;max-width:100%;aspect-ratio:332/582;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
 .nm-game.nm-erase .nm-svg{cursor:crosshair}
 .nm-game .nm-colbg{fill:#f8fafc;stroke:#eef2f7;stroke-width:1}
 .nm-game .nm-colbg.aim{fill:var(--nm-accsoft);stroke:#c7d2fe}
@@ -272,22 +295,19 @@ export function mount(root, context = {}) {
 @keyframes nmPop{0%{transform:scale(.5)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
 @keyframes nmBlink{50%{opacity:.35}}
 .nm-game .nm-pad{display:flex;gap:8px}
-.nm-game .nm-btn{appearance:none;border:1px solid var(--nm-line);background:var(--nm-card);color:var(--nm-ink);border-radius:12px;font:inherit;font-size:13px;font-weight:600;padding:10px 14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
-.nm-game .nm-btn:hover{border-color:#cbd5e1;background:#f8fafc}
-.nm-game .nm-btn:disabled{opacity:.45;cursor:default}
-.nm-game .nm-btn.primary{background:var(--nm-acc);border-color:var(--nm-acc);color:#fff}
-.nm-game .nm-btn.primary:hover{background:#4338ca}
-.nm-game .nm-btn.block{width:100%}
 .nm-game .nm-pad .nm-btn{flex:1;min-height:46px}
 .nm-game .nm-pad .drop{flex:1.6}
 .nm-game .nm-cols{display:flex;gap:6px}
 .nm-game .nm-cols .nm-btn{flex:1;min-height:40px;padding:8px 0;font-variant-numeric:tabular-nums}
 .nm-game .nm-keys{margin:0;font-size:11px;color:var(--nm-mut);text-align:center;line-height:1.7}
 @media (pointer:coarse){.nm-game .nm-keys{display:none}}
-.nm-game .nm-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(248,250,252,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:18px}
-.nm-game .nm-ov[hidden]{display:none}
-.nm-game .nm-card{background:var(--nm-card);border:1px solid var(--nm-line);border-radius:16px;box-shadow:0 16px 40px rgba(15,23,42,.12);padding:18px;width:100%;max-width:330px;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px}
-.nm-game .nm-card h3{margin:0;font-size:17px}
+.nm-game .nm-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(248,250,252,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:16px}
+.nm-game .nm-card{background:var(--nm-card);border:1px solid var(--nm-line);border-radius:14px;box-shadow:0 4px 12px rgba(15,23,42,.12);padding:16px;width:100%;max-width:330px;max-height:100%;overflow:hidden;display:flex;flex-direction:column;gap:10px}
+.nm-game .nm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.nm-game .nm-head h3{margin:0;font-size:17px}
+.nm-game .nm-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none}
+.nm-game .nm-foot .rows{width:100%}
+.nm-game .nm-body{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px}
 .nm-game .nm-card .sub{margin:0;font-size:12.5px;color:var(--nm-mut);line-height:1.55}
 .nm-game .nm-card .rows{display:flex;flex-direction:column;gap:8px}
 .nm-game .nm-mode{flex-direction:column;align-items:flex-start;gap:2px;padding:11px 14px}
@@ -302,49 +322,103 @@ export function mount(root, context = {}) {
 .nm-game .nm-cheatgrid .nm-btn{padding:8px 0;font-size:12px}
 .nm-game .nm-note{font-size:11px;color:var(--nm-mut);margin:0;line-height:1.5}
 .nm-game .nm-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:var(--nm-p2);background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:.05em}
-.nm-game .nm-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;background:var(--nm-ink);color:#fff;font-size:12px;font-weight:600;border-radius:999px;padding:7px 14px;box-shadow:0 8px 20px rgba(15,23,42,.25);white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
-.nm-game .nm-toast[hidden]{display:none}
+.nm-game .nm-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;background:var(--nm-ink);color:#fff;font-size:12px;font-weight:600;border-radius:999px;padding:7px 14px;box-shadow:0 4px 12px rgba(15,23,42,.25);white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
 .nm-game .nm-scoreline{font-size:13px;font-weight:600;margin:0}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.nm-game{min-width:0;max-width:100%;overflow-x:clip}
+.nm-game *,.nm-game *::before,.nm-game *::after{box-sizing:border-box}
+.nm-game :where(svg,canvas,img){max-width:100%;height:auto}
+.nm-game :where(button,[role="button"],select,input){touch-action:manipulation}
+.nm-game :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--nm-acc);outline-offset:2px}
+.nm-game :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"]){flex-wrap:wrap;min-width:0;gap:8px}
+.nm-game :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+.nm-game :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.nm-game :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .nm-game :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .nm-game :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"]){gap:8px}
+}
+@media (max-width:480px){
+  .nm-game :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .nm-game :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .nm-game *,.nm-game *::before,.nm-game *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* ==== layout contract: HUD + fill board + modal overlays (must be LAST) ==== */
+.nm-game.game-fill{display:flex;flex-direction:column;gap:8px;min-height:0;width:100%;max-width:560px;margin:0 auto}
+.nm-game.game-fill > .game-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.nm-game .nm-hud .nm-btn{min-width:0;min-height:32px;padding:5px 9px;font-size:9px}
+.nm-game .nm-hud .nm-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.nm-game .nm-hud .nm-icon-btn svg{flex:none;display:block}
+.nm-game .nm-card.nm-modal{display:flex;flex-direction:column;overflow:hidden}
+.nm-game .nm-head,.nm-game .nm-foot{flex:none}
+.nm-game .nm-body{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+  .nm-game.game-fill > .game-panel[data-board]:not(:has(.nm-ov:not([hidden]))){flex:0 0 auto;aspect-ratio:332/582;min-height:0}
+  .nm-game.game-fill > .game-panel[data-board]:has(.nm-ov:not([hidden])){flex:0 0 auto;aspect-ratio:auto;min-height:min(70dvh,620px)}
+  .nm-game .nm-hud{gap:5px;margin-bottom:6px}
+  .nm-game .nm-hud .nm-chips{gap:5px}
+  .nm-game .nm-hud .nm-chip{padding:4px 6px;font-size:9px}
+  .nm-game .nm-hud .nm-chip.nm-status,.nm-game .nm-hud .nm-chip.nm-state{display:none}
+  .nm-game .nm-hud .nm-btn{min-width:0;min-height:32px;padding:5px 9px;font-size:9px}
+  .nm-game .nm-hud .nm-btn-label,.nm-game .nm-hud .nm-spacer{display:none}
+  .nm-game .nm-pad .nm-btn{min-height:44px}
+  .nm-game .nm-ov{padding:8px}
+  .nm-game .nm-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .nm-game .nm-body{scrollbar-width:none}
+  .nm-game .nm-body::-webkit-scrollbar{display:none}
+  .nm-game .nm-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--nm-line)}
+  .nm-game .nm-note{display:none}
+  .nm-game .nm-keys{display:none}
+}
 </style>
-<div class="game-intro">
-  <div><h2>Number Merge</h2><p>Drop blocks into the tower. Equal numbers connect from all four sides and merge, doubling once per matching block. Build the 2048 tile.</p></div>
-  <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-</div>
-<section class="game-panel" data-board>
-  <div class="nm-shell">
-    <div class="nm-hud">
-      <div class="nm-chips" data-chips></div>
-      <div class="nm-tools">
-        <button class="nm-ico" type="button" data-act="menu" aria-label="Game modes" title="Game modes"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg></button>
-        <button class="nm-ico" type="button" data-act="help" aria-label="How to play" title="How to play"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.7 2.7 0 0 1 5.3.7c0 1.8-2.7 2.3-2.7 3.6"/><path d="M12 17h.01"/></svg></button>
-        <button class="nm-ico" type="button" data-act="cheats" aria-label="Cheats" title="Cheats"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 17 7"/><path d="M15 5l1.2-2.4L17.4 5l2.4 1.2-2.4 1.2-1.2 2.4-1.2-2.4L12.6 6.2z"/><path d="M19 13l.7 1.4 1.4.7-1.4.7-.7 1.4-.7-1.4-1.4-.7 1.4-.7z"/></svg></button>
-        <button class="nm-ico" type="button" data-act="restart" aria-label="Restart" title="Restart"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
-      </div>
-    </div>
-    <div class="nm-boardbox">
-      <svg class="nm-svg" data-svg viewBox="0 0 332 582" role="img" aria-label="Number Merge tower">
-        <g data-g="cols"></g><g data-g="tiles"></g><g data-g="fx"></g>
-      </svg>
-      <div class="nm-ov" data-ov hidden><div class="nm-card" data-card role="dialog" aria-modal="true"></div></div>
-      <div class="nm-toast" data-toast hidden aria-live="polite"></div>
-    </div>
-    <div class="nm-pad">
-      <button class="nm-btn" type="button" data-act="pad-left" aria-label="Aim left"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg></button>
-      <button class="nm-btn primary drop" type="button" data-act="drop"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Drop</button>
-      <button class="nm-btn" type="button" data-act="pad-right" aria-label="Aim right"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l6 6-6 6"/></svg></button>
-    </div>
-    <div class="nm-cols">
-      <button class="nm-btn" type="button" data-act="col" data-c="0">1</button>
-      <button class="nm-btn" type="button" data-act="col" data-c="1">2</button>
-      <button class="nm-btn" type="button" data-act="col" data-c="2">3</button>
-      <button class="nm-btn" type="button" data-act="col" data-c="3">4</button>
-      <button class="nm-btn" type="button" data-act="col" data-c="4">5</button>
-    </div>
-    <p class="nm-keys">Hover to aim, click to drop, scroll to switch column<br>
-      <span class="nm-kbd">&#8592;</span> <span class="nm-kbd">&#8594;</span> aim &middot; <span class="nm-kbd">Space</span> drop &middot; <span class="nm-kbd">1&ndash;5</span> column &middot; <span class="nm-kbd">H</span> hint &middot; <span class="nm-kbd">U</span> undo &middot; <span class="nm-kbd">R</span> restart</p>
+<div class="nm-hud">
+  <div class="nm-chips" data-chips></div>
+  <span class="nm-spacer"></span>
+  <div class="nm-tools">
+    <button class="nm-btn nm-icon-btn" type="button" data-act="menu" aria-label="Game modes" title="Game modes (M)">${iconSVG("grid", { size: 14 })}<span class="nm-btn-label">Modes</span></button>
+    <button class="nm-btn nm-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="nm-btn-label">Help</span></button>
+    <button class="nm-btn nm-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="nm-btn-label">Cheats</span></button>
+    <button class="nm-btn nm-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="nm-btn-label">Pause</span></button>
+    <button class="nm-btn nm-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="nm-btn-label">Restart</span></button>
+    <button class="nm-btn nm-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="nm-btn-label">Exit game</span></button>
   </div>
+</div>
+<section class="game-panel nm-board" data-board>
+  <svg class="nm-svg" data-svg viewBox="0 0 332 582" role="img" aria-label="Number Merge tower">
+    <g data-g="cols"></g><g data-g="tiles"></g><g data-g="fx"></g>
+  </svg>
+  <div class="nm-toast" data-toast hidden aria-live="polite"></div>
+  <div class="nm-ov" data-ov="start" hidden></div>
+  <div class="nm-ov" data-ov="wait" hidden></div>
+  <div class="nm-ov" data-ov="over" hidden></div>
+  <div class="nm-ov" data-ov="pause" hidden>
+    <div class="nm-card" role="dialog" aria-modal="true">
+      <div class="nm-head"><h3>Paused</h3></div>
+      <div class="nm-body"><p class="sub">The board, bot and timers are frozen. Press P or Resume to continue.</p></div>
+      <div class="nm-foot"><button class="nm-btn primary" type="button" data-resume>Resume</button></div>
+    </div>
+  </div>
+  <div class="nm-ov" data-ov="cheat" hidden></div>
+  <div class="nm-ov" data-ov="help" hidden></div>
 </section>
-<div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+<div class="nm-pad">
+  <button class="nm-btn" type="button" data-act="pad-left" aria-label="Aim left">${iconSVG("arrowLeft", { size: 18 })}</button>
+  <button class="nm-btn primary drop" type="button" data-act="drop">${iconSVG("arrowDown", { size: 18 })}<span class="nm-btn-label">Drop</span></button>
+  <button class="nm-btn" type="button" data-act="pad-right" aria-label="Aim right">${iconSVG("arrowRight", { size: 18 })}</button>
+</div>
+<div class="nm-cols">
+  <button class="nm-btn" type="button" data-act="col" data-c="0">1</button>
+  <button class="nm-btn" type="button" data-act="col" data-c="1">2</button>
+  <button class="nm-btn" type="button" data-act="col" data-c="2">3</button>
+  <button class="nm-btn" type="button" data-act="col" data-c="3">4</button>
+  <button class="nm-btn" type="button" data-act="col" data-c="4">5</button>
+</div>
+<p class="nm-keys">Hover to aim, click to drop, scroll to switch column<br>
+  <span class="nm-kbd">&#8592;</span> <span class="nm-kbd">&#8594;</span> aim &middot; <span class="nm-kbd">Space</span> drop &middot; <span class="nm-kbd">1&ndash;5</span> column &middot; <span class="nm-kbd">G</span> hint &middot; <span class="nm-kbd">U</span> undo &middot; <span class="nm-kbd">H</span> help &middot; <span class="nm-kbd">C</span> cheats &middot; <span class="nm-kbd">P</span> pause &middot; <span class="nm-kbd">R</span> restart</p>
 </div>`;
 
     /* ---------- referensi DOM ---------- */
@@ -359,15 +433,22 @@ export function mount(root, context = {}) {
     const gameEl = $(".nm-game") || root;
     const svg = $("[data-svg]");
     const gCols = $('[data-g="cols"]'), gTiles = $('[data-g="tiles"]'), gFx = $('[data-g="fx"]');
-    const chipsEl = $("[data-chips]"), statusEl = $("[data-status]");
-    const ovEl = $("[data-ov]"), cardEl = $("[data-card]"), toastEl = $("[data-toast]");
-    const toolMenu = $('[data-act="menu"]'), toolCheats = $('[data-act="cheats"]'), toolRestart = $('[data-act="restart"]');
+    const chipsEl = $("[data-chips]"), toastEl = $("[data-toast]");
+    const ov = {};
+    for (const key of ["start", "wait", "over", "cheat", "help"]) {
+        const el = $('[data-ov="' + key + '"]');
+        el.innerHTML = '<div class="nm-card nm-modal" role="dialog" aria-modal="true"></div>';
+        ov[key] = { el, card: el.firstElementChild };
+    }
+    ov.pause = { el: $('[data-ov="pause"]'), card: $('[data-ov="pause"] .nm-card') };
+    const toolMenu = $('[data-act="menu"]'), toolCheats = $('[data-cheats]'), toolRestart = $('[data-restart]');
+    const toolPause = $('[data-pause]');
     const padBtns = root.querySelectorAll('[data-act="pad-left"],[data-act="pad-right"],[data-act="drop"],[data-act="col"]');
 
     /* ---------- util kecil ---------- */
     const versus = () => Boolean(state) && (state.mode === "bot" || state.mode === "online");
     const mySeat = () => (online && state ? (room.isHost ? state.hostSeat : 1 - state.hostSeat) : 0);
-    const canMove = () => Boolean(state) && state.status === "playing" && !overlay && (!versus() || state.turn === mySeat());
+    const canMove = () => Boolean(state) && state.status === "playing" && !modalOpen() && (!versus() || state.turn === mySeat());
     function names() {
         if (!state) return ["Player 1", "Player 2"];
         if (state.mode === "bot") return ["You", "Bot"];
@@ -461,6 +542,7 @@ export function mount(root, context = {}) {
     }
     function scheduleBot() {
         clearBot();
+        if (paused) return;
         if (state && state.mode === "bot" && state.status === "playing" && state.turn === 1) {
             botTimer = later(() => {
                 botTimer = 0;
@@ -499,10 +581,20 @@ export function mount(root, context = {}) {
         }
         if (state) html += '<span class="nm-chip">Next <b class="nm-nextval" style="background:' + colorOf(state.queue[1]) + ";color:" + inkOf(state.queue[1]) + '">' + state.queue[1] + "</b></span>";
         if (state && state.cheated) html += '<span class="nm-badge">cheats</span>';
+        html += '<span class="nm-chip nm-status"><i class="nm-dot"></i>' + statusText() + "</span>";
+        if (helpOpen || cheatsOpen || paused) {
+            html += '<span class="nm-chip nm-state">' + (helpOpen ? "Guide" : cheatsOpen ? "Cheats" : "Paused") + "</span>";
+        }
         chipsEl.innerHTML = html;
         toolMenu.hidden = online;
         toolCheats.hidden = online;
         toolRestart.disabled = !state;
+        toolPause.disabled = !state || online;
+        const label = toolPause.querySelector(".nm-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        toolPause.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        toolPause.title = paused ? "Resume (P)" : "Pause (P)";
+        toolCheats.classList.toggle("on", cheatsOpen);
     }
     function overTitle() {
         if (!state) return "Game over";
@@ -516,7 +608,7 @@ export function mount(root, context = {}) {
         if (state.outcome === "overflow") return "A block overflowed above the top row." + (versus() ? " " + nm[1 - state.winner] + " loses." : "");
         return "The tower is completely full." + (versus() ? " " + nm[1 - state.winner] + " loses." : "");
     }
-    function renderStatus() {
+    function statusText() {
         let t = "Ready";
         if (!state) t = online ? "Waiting for host" : "Pick a mode";
         else if (state.status === "generating") t = "Generating level";
@@ -525,7 +617,7 @@ export function mount(root, context = {}) {
         else if (state.mode === "level") t = "Level " + state.level + " - build " + state.target;
         else t = "Build the " + state.target + " tile";
         if (eraseMode) t = "Erase: tap a block (Esc to cancel)";
-        statusEl.textContent = t;
+        return t;
     }
     function renderBoard(animate) {
         gCols.innerHTML = ""; gTiles.innerHTML = ""; gFx.innerHTML = "";
@@ -599,11 +691,13 @@ export function mount(root, context = {}) {
     const ob = (act, label, primary) => '<button class="nm-btn block' + (primary ? " primary" : "") + '" type="button" data-act="' + act + '">' + label + "</button>";
     function cardHtml(type) {
         if (type === "start") {
-            return '<h3>Number Merge</h3><p class="sub">Merge equal numbers from every side. Pick a mode to play.</p><div class="rows">'
+            return '<div class="nm-head"><h3>Number Merge</h3></div>'
+                + '<div class="nm-body"><p class="sub">Merge equal numbers from every side. Pick a mode to play.</p><div class="rows">'
                 + '<button class="nm-btn block nm-mode" type="button" data-act="start-level">Solo &middot; Levels<small>Random generated puzzles, always solvable. Reach each goal.</small></button>'
                 + '<button class="nm-btn block nm-mode" type="button" data-act="start-solo">Solo &middot; Endless<small>Classic random drops. Chase 2048 and a high score.</small></button>'
                 + '<button class="nm-btn block nm-mode" type="button" data-act="start-bot">VS Bot<small>Shared tower, alternating turns. A coin flip decides who starts.</small></button>'
-                + ob("help", "How to play") + "</div>";
+                + "</div></div>"
+                + '<div class="nm-foot"><button class="nm-btn" type="button" data-help>How to play</button></div>';
         }
         if (type === "wait") {
             const hostName = roomData && roomData.players && roomData.players[0] && roomData.players[0].name;
@@ -611,28 +705,33 @@ export function mount(root, context = {}) {
             const sub = online
                 ? (hostName ? hostName + " is setting up the match." : "The host is setting up the match. Seats and the first turn are randomized.")
                 : "Building a random puzzle from a real solution, so it is guaranteed to be solvable.";
-            return "<h3>" + title + '</h3><p class="sub">' + sub + "</p>";
+            return '<div class="nm-head"><h3>' + title + "</h3></div>"
+                + '<div class="nm-body"><p class="sub">' + sub + "</p></div>";
         }
         if (type === "howto") {
-            return '<h3>How to play</h3>'
+            return '<div class="nm-head"><h3>How to play</h3><button class="nm-btn" type="button" data-help-close>' + iconSVG("x", { size: 13 }) + "</button></div>"
+                + '<div class="nm-body nm-howto">'
                 + '<svg viewBox="0 0 216 78" width="100%" aria-hidden="true"><rect x="4" y="42" width="32" height="32" rx="7" fill="#eef2ff"/><text x="20" y="58" dy=".35em" font-size="15" font-weight="700" fill="#312e81" text-anchor="middle">2</text><rect x="40" y="42" width="32" height="32" rx="7" fill="#eef2ff"/><text x="56" y="58" dy=".35em" font-size="15" font-weight="700" fill="#312e81" text-anchor="middle">2</text><rect x="40" y="4" width="32" height="32" rx="7" fill="none" stroke="#4f46e5" stroke-width="1.5" stroke-dasharray="4 3"/><text x="56" y="20" dy=".35em" font-size="15" font-weight="700" fill="#4f46e5" text-anchor="middle">2</text><path d="M84 58h26m0 0-6-6m6 6-6 6" stroke="#94a3b8" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="124" y="38" width="40" height="40" rx="9" fill="#c7d2fe"/><text x="144" y="58" dy=".35em" font-size="18" font-weight="700" fill="#312e81" text-anchor="middle">8</text><text x="192" y="58" dy=".35em" font-size="10" fill="#64748b" text-anchor="middle">2&#215;2&#215;2</text></svg>'
                 + '<h4>Goal</h4><ul><li>Build the <b>2048</b> tile (level mode has its own goal).</li></ul>'
                 + '<h4>Drop &amp; merge</h4><ul><li>Drop the current block into any column; it lands on top of the stack.</li><li>The new block joins <b>all connected equal blocks</b> - up, down, left and right. Every matching block doubles the value: two 2s make 4, three 2s make 8, four 2s make 16.</li><li>The merged block falls, and if it touches a new twin it merges again: <b>chain bonus</b>.</li><li>Blocks that already touch only merge when a new block joins their group.</li></ul>'
                 + '<h4>Losing</h4><ul><li>Dropping into a <b>full column</b> overflows and ends the game. Filling the whole tower also ends it. In versus, whoever causes it loses.</li></ul>'
                 + '<h4>Versus</h4><ul><li>One shared tower and queue, alternating turns. Merge points go to the player who dropped. A <b>coin flip</b> picks who starts; online seats are randomized too.</li></ul>'
-                + '<h4>Controls</h4><ul><li>Desktop: hover to aim, click to drop, scroll to switch column. <span class="nm-kbd">&#8592;</span> <span class="nm-kbd">&#8594;</span> aim, <span class="nm-kbd">Space</span> drop, <span class="nm-kbd">1&ndash;5</span> pick column, <span class="nm-kbd">H</span> hint, <span class="nm-kbd">U</span> undo, <span class="nm-kbd">E</span> erase, <span class="nm-kbd">C</span> cheats, <span class="nm-kbd">R</span> restart.</li><li>Mobile: tap a column, or use the arrow / Drop pad and the 1&ndash;5 buttons.</li></ul>'
-                + '<div class="rows">' + ob("close-ov", "Got it", true) + "</div>";
+                + '<h4>Controls</h4><ul><li>Desktop: hover to aim, click to drop, scroll to switch column. <span class="nm-kbd">&#8592;</span> <span class="nm-kbd">&#8594;</span> aim, <span class="nm-kbd">Space</span> drop, <span class="nm-kbd">1&ndash;5</span> pick column, <span class="nm-kbd">G</span> hint, <span class="nm-kbd">U</span> undo, <span class="nm-kbd">E</span> erase.</li><li>Buttons / keys: <span class="nm-kbd">H</span> help, <span class="nm-kbd">C</span> cheats, <span class="nm-kbd">P</span> pause, <span class="nm-kbd">R</span> restart, <span class="nm-kbd">M</span> modes. Mobile: tap a column, or use the arrow / Drop pad and the 1&ndash;5 buttons.</li></ul>'
+                + "</div>"
+                + '<div class="nm-foot"><span class="nm-note">Press H to reopen this guide</span><button class="nm-btn primary" type="button" data-help-close>Got it</button></div>';
         }
         if (type === "cheats") {
             const vals = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
             const noHist = state && state.history.length ? "" : " disabled";
-            return '<h3>Cheats</h3><p class="sub">Casual helpers for offline play. Using one marks the run and disables best-score saving.</p><div class="rows">'
+            return '<div class="nm-head"><h3>Cheats</h3><button class="nm-btn" type="button" data-cheat-close>' + iconSVG("x", { size: 13 }) + "</button></div>"
+                + '<div class="nm-body"><p class="sub">Casual helpers for offline play. Using one marks the run and disables best-score saving.</p><div class="rows">'
                 + '<button class="nm-btn block" type="button" data-act="cheat-undo"' + noHist + ">Undo last move (U)</button>"
-                + ob("cheat-hint", "Hint: best column (H)")
+                + ob("cheat-hint", "Hint: best column (G)")
                 + ob("cheat-erase", "Erase a block (E), then tap it")
                 + '</div><h4 class="nm-note">Set the next block</h4><div class="nm-cheatgrid">'
                 + vals.map((v) => '<button class="nm-btn" type="button" data-act="cheat-next" data-v="' + v + '">' + v + "</button>").join("")
-                + '</div><div class="rows">' + ob("close-ov", "Close", true) + "</div>";
+                + "</div></div>"
+                + '<div class="nm-foot"><button class="nm-btn primary" type="button" data-cheat-close>Close</button></div>';
         }
         if (type === "over") {
             const win = versus() ? state.winner === mySeat() : state.outcome === "target";
@@ -651,19 +750,27 @@ export function mount(root, context = {}) {
             } else {
                 rows += ob("rematch", "Play again", true) + ob("to-menu", "Game modes");
             }
-            return '<h3 class="' + (win ? "nm-win" : "nm-lose") + '">' + overTitle() + "</h3>"
-                + '<p class="sub">' + overReason() + (online ? " Either player can start a rematch." : "") + "</p>"
+            return '<div class="nm-head"><h3 class="' + (win ? "nm-win" : "nm-lose") + '">' + overTitle() + "</h3></div>"
+                + '<div class="nm-body"><p class="sub">' + overReason() + (online ? " Either player can start a rematch." : "") + "</p>"
                 + '<p class="nm-scoreline">' + scoreline + "</p>"
-                + (state.cheated ? '<p class="nm-note">Cheats were used this run.</p>' : "")
-                + '<div class="rows">' + rows + "</div>";
+                + (state.cheated ? '<p class="nm-note">Cheats were used this run.</p>' : "") + "</div>"
+                + '<div class="nm-foot"><div class="rows">' + rows + "</div></div>";
         }
         return "";
     }
+    ov.start.card.innerHTML = cardHtml("start");
+    ov.help.card.innerHTML = cardHtml("howto");
     function renderOverlay() {
-        if (!overlay) { ovEl.hidden = true; return; }
-        ovEl.hidden = false;
-        cardEl.className = "nm-card" + (overlay === "howto" ? " nm-howto" : "");
-        cardEl.innerHTML = cardHtml(overlay);
+        ov.wait.card.innerHTML = overlay === "wait" ? cardHtml("wait") : "";
+        ov.over.card.innerHTML = overlay === "over" ? cardHtml("over") : "";
+        ov.cheat.card.innerHTML = cheatsOpen ? cardHtml("cheats") : "";
+        const blocked = cheatsOpen || helpOpen || paused;
+        ov.start.el.hidden = overlay !== "start" || blocked;
+        ov.wait.el.hidden = overlay !== "wait" || blocked;
+        ov.over.el.hidden = overlay !== "over" || blocked;
+        ov.pause.el.hidden = !paused || cheatsOpen || helpOpen;
+        ov.cheat.el.hidden = !cheatsOpen || helpOpen;
+        ov.help.el.hidden = !helpOpen;
     }
     function renderAll() {
         if (state) {
@@ -677,9 +784,33 @@ export function mount(root, context = {}) {
             prevStatus = state.status;
         } else prevStatus = "";
         const animate = Boolean(state && state.lastMove && state.lastMove.moves !== seenMove);
-        renderHud(); renderStatus(); renderBoard(animate);
+        renderHud(); renderBoard(animate);
         if (state) seenMove = state.moves;
         renderOverlay(); updateControls();
+    }
+    function closeModals() { cheatsOpen = false; helpOpen = false; paused = false; }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        renderAll();
+    }
+    function toggleCheats(on) {
+        if (online || !state || state.status === "generating") return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        renderAll();
+    }
+    function setPaused(on) {
+        if (!state || online) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) {
+            clearBot(); stopHold();
+        } else {
+            const queued = pending.splice(0);
+            queued.forEach((p) => later(p.fn, p.ms));
+            scheduleBot();
+        }
+        renderAll();
     }
 
     /* ---------- aksi & alur game ---------- */
@@ -718,7 +849,7 @@ export function mount(root, context = {}) {
         if (t === "restart") {
             if (state.status === "generating") return;
             resetMatch(state);
-            overlay = null; eraseMode = false; hintCol = -1; seenMove = -1;
+            closeModals(); overlay = null; eraseMode = false; hintCol = -1; seenMove = -1;
             gameEl.classList.remove("nm-erase");
             clearBot(); publish(); ensureLevelLoaded(); scheduleBot(); announceStart();
             return;
@@ -751,7 +882,7 @@ export function mount(root, context = {}) {
         applyAction(action, mySeat());
     }
     function dropAt(c) {
-        if (!state || state.status !== "playing" || overlay || eraseMode) return;
+        if (!state || state.status !== "playing" || modalOpen() || eraseMode) return;
         if (versus() && state.turn !== mySeat()) { toast("Not your turn"); return; }
         aim = Math.max(0, Math.min(COLS - 1, c));
         submitAction({ type: "drop", c: aim });
@@ -770,7 +901,7 @@ export function mount(root, context = {}) {
         state.best = h.best; state.moves = h.moves;
         state.status = "playing"; state.outcome = ""; state.winner = null;
         state.lastMove = null; state.cheated = true;
-        overlay = null; eraseMode = false; hintCol = -1; seenMove = state.moves;
+        closeModals(); overlay = null; eraseMode = false; hintCol = -1; seenMove = state.moves;
         gameEl.classList.remove("nm-erase");
         clearBot(); publish(); toast("Move undone");
     }
@@ -785,7 +916,7 @@ export function mount(root, context = {}) {
     function startLocal(m) {
         clearBot();
         state = freshSession(m);
-        overlay = null; eraseMode = false; hintCol = -1; aim = 2; seenMove = -1; prevStatus = "";
+        closeModals(); overlay = null; eraseMode = false; hintCol = -1; aim = 2; seenMove = -1; prevStatus = "";
         gameEl.classList.remove("nm-erase");
         publish(); ensureLevelLoaded(); scheduleBot(); announceStart();
     }
@@ -794,6 +925,12 @@ export function mount(root, context = {}) {
     function handleClick(event) {
         const t = event.target instanceof Element ? event.target : null;
         if (!t) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { setPaused(); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
         const el = t.closest("[data-act]");
         if (!el || el.disabled) return;
@@ -801,18 +938,27 @@ export function mount(root, context = {}) {
         if (act === "drop") { el.blur(); dropAt(aim); }
         else if (act === "col") { el.blur(); dropAt(Number(el.getAttribute("data-c"))); }
         else if (act === "pad-left" || act === "pad-right") { /* ditangani pointerdown (hold-repeat) */ }
-        else if (act === "help") { overlay = "howto"; renderOverlay(); updateControls(); }
-        else if (act === "cheats") { if (!online && state && state.status !== "generating") { overlay = "cheats"; renderOverlay(); updateControls(); } }
-        else if (act === "menu" || act === "to-menu") { if (!online) { clearBot(); state = null; overlay = "start"; eraseMode = false; hintCol = -1; gameEl.classList.remove("nm-erase"); renderAll(); } }
+        else if (act === "help") { toggleHelp(); }
+        else if (act === "cheats") { toggleCheats(); }
+        else if (act === "menu" || act === "to-menu") {
+            if (!online) {
+                clearBot(); closeModals(); state = null; overlay = "start";
+                eraseMode = false; hintCol = -1; gameEl.classList.remove("nm-erase"); renderAll();
+            }
+        }
         else if (act === "restart") { if (state) submitAction({ type: "restart" }); }
         else if (act === "start-solo") startLocal("solo");
         else if (act === "start-level") startLocal("level");
         else if (act === "start-bot") startLocal("bot");
-        else if (act === "close-ov") { overlay = state ? (state.status === "over" ? "over" : (state.status === "generating" ? "wait" : null)) : (online ? "wait" : "start"); renderOverlay(); updateControls(); }
-        else if (act === "cheat-undo") { overlay = null; renderOverlay(); applyAction({ type: "cheat-undo" }, 0); }
-        else if (act === "cheat-hint") { overlay = null; renderOverlay(); doHint(); updateControls(); }
+        else if (act === "close-ov") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+        }
+        else if (act === "cheat-undo") { toggleCheats(false); applyAction({ type: "cheat-undo" }, 0); }
+        else if (act === "cheat-hint") { toggleCheats(false); doHint(); updateControls(); }
         else if (act === "cheat-erase") {
-            overlay = null; renderOverlay();
+            toggleCheats(false);
             if (canMove()) { eraseMode = true; hoverCell = null; gameEl.classList.add("nm-erase"); renderAll(); toast("Tap a block to erase it"); }
             else toast("Not available right now");
         }
@@ -825,29 +971,33 @@ export function mount(root, context = {}) {
         if (!mounted) return;
         const tag = (e.target && e.target.tagName) || "";
         if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
-        if (e.key === "Escape") {
-            if (eraseMode) { eraseMode = false; hoverCell = null; gameEl.classList.remove("nm-erase"); renderAll(); e.preventDefault(); return; }
-            if (overlay === "howto" || overlay === "cheats") {
-                overlay = state ? (state.status === "over" ? "over" : null) : (online ? "wait" : "start");
-                renderOverlay(); updateControls(); e.preventDefault();
-            }
-            return;
-        }
-        if (overlay || !state || state.status !== "playing") return;
         const k = e.key;
+        /* priority: help -> cheats -> pause -> Escape -> game actions */
+        if (k === "h" || k === "H" || k === "?") { if (!e.repeat) toggleHelp(); e.preventDefault(); return; }
+        if (k === "c" || k === "C") { if (!e.repeat) toggleCheats(); e.preventDefault(); return; }
+        if (k === "p" || k === "P") { if (!e.repeat) setPaused(); e.preventDefault(); return; }
+        if (k === "r" || k === "R") {
+            if (!e.repeat && state) { closeModals(); submitAction({ type: "restart" }); }
+            e.preventDefault(); return;
+        }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            else if (eraseMode) { eraseMode = false; hoverCell = null; gameEl.classList.remove("nm-erase"); renderAll(); }
+            e.preventDefault(); return;
+        }
+        if (modalOpen() || !state || state.status !== "playing") return;
         if (k === "ArrowLeft") { e.preventDefault(); setAim(aim - 1); }
         else if (k === "ArrowRight") { e.preventDefault(); setAim(aim + 1); }
         else if (k === " " || k === "Spacebar" || k === "ArrowDown") { e.preventDefault(); if (!e.repeat) dropAt(aim); }
         else if (k >= "1" && k <= "5") { if (!e.repeat) dropAt(Number(k) - 1); }
-        else if ((k === "r" || k === "R") && !e.repeat) submitAction({ type: "restart" });
-        else if ((k === "h" || k === "H") && !e.repeat) doHint();
         else if ((k === "u" || k === "U") && !e.repeat) { if (!online) applyAction({ type: "cheat-undo" }, 0); }
-        else if ((k === "c" || k === "C") && !e.repeat) { if (!online && state.status !== "generating") { overlay = "cheats"; renderOverlay(); updateControls(); } }
+        else if ((k === "g" || k === "G") && !e.repeat) doHint();
         else if ((k === "e" || k === "E") && !e.repeat) {
             if (!online && canMove()) { eraseMode = true; hoverCell = null; gameEl.classList.add("nm-erase"); renderAll(); toast("Tap a block to erase it"); }
         }
-        else if (k === "?") { overlay = "howto"; renderOverlay(); updateControls(); }
-        else if ((k === "m" || k === "M") && !e.repeat) { if (!online) { clearBot(); state = null; overlay = "start"; renderAll(); } }
+        else if ((k === "m" || k === "M") && !e.repeat) { if (!online) { clearBot(); closeModals(); state = null; overlay = "start"; renderAll(); } }
     }
     function cellFromEvent(e) {
         const rect = svg.getBoundingClientRect();
@@ -860,7 +1010,7 @@ export function mount(root, context = {}) {
         return { c, r };
     }
     function onMove(e) {
-        if (!state || state.status !== "playing" || overlay) return;
+        if (!state || state.status !== "playing" || modalOpen()) return;
         const p = cellFromEvent(e);
         if (!p) return;
         if (eraseMode) {
@@ -876,7 +1026,7 @@ export function mount(root, context = {}) {
         if (eraseMode && hoverCell) { hoverCell = null; renderBoard(false); }
     }
     function onDown(e) {
-        if (!state || overlay) return;
+        if (!state || modalOpen()) return;
         const p = cellFromEvent(e);
         if (!p) return;
         if (eraseMode) {

@@ -6,6 +6,8 @@
  * After editing: node tools/build-games-manifest.mjs
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "checkers",
     name: "Checkers",
@@ -179,7 +181,7 @@ export function mount(root, context = {}) {
 
     function negamax(b, color, depth, alpha, beta, ctx) {
         ctx.n++;
-        if ((ctx.n & 255) === 0 && performance.now() > ctx.deadline) throw ABORT;
+        if ((ctx.n & 255) === 0 && (ctx.now ? ctx.now() : performance.now()) > ctx.deadline) throw ABORT;
         const mv = turnMoves(b, color);
         if (!mv.list.length) return -(100000 + depth);
         if (depth <= 0) return evalBoard(b, color);
@@ -205,14 +207,14 @@ export function mount(root, context = {}) {
         2400: { depth: 9, noise: 0, rand: 0, ms: 1000 },
     };
 
-    function chooseBotMove(b, color, cfg) {
+    function chooseBotMove(b, color, cfg, now = performance.now) {
         const mv = turnMoves(b, color);
         if (!mv.list.length) return null;
         if (mv.list.length === 1) return mv.list[0];
         if (cfg.rand && Math.random() < cfg.rand)
             return mv.list[(Math.random() * mv.list.length) | 0];
         orderMoves(b, mv);
-        const ctx = { n: 0, deadline: performance.now() + cfg.ms };
+        const ctx = { n: 0, deadline: now() + cfg.ms, now };
         let pick = mv.list[0];
         for (let d = 1; d <= cfg.depth; d++) {
             try {
@@ -241,12 +243,53 @@ export function mount(root, context = {}) {
     let elo = 1200;
     let sel = -1, cursor = 40, kb = false;
     let U = [];                         /* undo snapshots, offline only */
-    let showCheats = false;
+    let cheatsOpen = false, helpOpen = false, paused = false;
     const cheats = { remove: false, free: false, extra: false };
     let botQueue = [];
-    let aiT = 0, stepT = 0, hopT = 0;
     let alive = true;
     const offs = [];
+
+    /* Pause-aware timers: keep Date.now() due anchors and replay only the
+       remaining delay on resume so the bot / auto-hop never jump ahead. */
+    const timers = new Map();
+    let deferredTimers = [];
+    let pauseStart = 0, pauseOffset = 0;
+    const perfNow = () => performance.now() - pauseOffset;
+
+    function setT(key, fn, ms) {
+        clearT(key);
+        if (paused) { deferredTimers.push({ key, fn, wait: Math.max(0, ms) }); return; }
+        const id = setTimeout(() => {
+            timers.delete(key);
+            if (alive && !paused) fn();
+        }, ms);
+        timers.set(key, { id, due: Date.now() + ms, fn });
+    }
+    function clearT(key) {
+        const rec = timers.get(key);
+        if (rec) { clearTimeout(rec.id); timers.delete(key); }
+        deferredTimers = deferredTimers.filter((t) => t.key !== key);
+    }
+    function pauseTimers() {
+        const now = Date.now();
+        for (const [key, rec] of timers) {
+            clearTimeout(rec.id);
+            deferredTimers.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        timers.clear();
+    }
+    function resumeTimers() {
+        const queue = deferredTimers;
+        deferredTimers = [];
+        for (const t of queue) setT(t.key, t.fn, t.wait);
+    }
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("checkersHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("checkersHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     /* ================= markup (minimalist, no tutorial text) ================= */
     const M = 24, SQ = 60, BD = 480;
@@ -273,21 +316,29 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.ck{display:flex;flex-direction:column;gap:12px;outline:none}
+/* Checkers — single HUD bar, fill-height square board, overlay sheets. */
+.ck{--ck-acc:#6366f1;width:100%;height:100%;min-height:0;margin:0 auto;padding:2px;display:flex;flex-direction:column;gap:10px;outline:none;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.ck *{box-sizing:border-box}
 .ck [hidden]{display:none!important}
-.ck-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.ck-flex{flex:1}
-.ck-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border:1px solid rgba(128,128,128,.32);border-radius:999px;white-space:nowrap}
+.ck :is(button,select,input):focus-visible{outline:2px solid var(--ck-acc);outline-offset:2px}
+.ck-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.ck-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:5px 9px;min-height:30px;border:1px solid rgba(128,128,128,.32);border-radius:999px;white-space:nowrap}
+.ck-chip b{font-variant-numeric:tabular-nums}
 .ck-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
-.ck-dot.r{background:#e05555}.ck-dot.b{background:#2f333c}
+.ck-dot.r{background:#e05555}
+.ck-dot.b{background:#2f333c}
 .ck-sep{opacity:.4}
-.ck-btn,.ck-select{font:inherit;font-size:12.5px;padding:5px 12px;border-radius:8px;border:1px solid rgba(128,128,128,.32);background:transparent;color:inherit;cursor:pointer}
-.ck-btn:hover:not(:disabled),.ck-select:hover{border-color:#6366f1;color:#6366f1}
+.ck-spacer{flex:1 1 auto;min-width:6px}
+.ck-btn,.ck-select{font:inherit;font-size:11px;padding:6px 10px;min-height:32px;border-radius:9px;border:1px solid rgba(128,128,128,.32);background:transparent;color:inherit;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.ck-btn:hover:not(:disabled),.ck-select:hover{border-color:var(--ck-acc);color:var(--ck-acc)}
 .ck-btn:disabled{opacity:.4;cursor:default}
-.ck-btn.on{border-color:#6366f1;color:#6366f1}
-.ck-panel{position:relative;display:flex;justify-content:center}
-.ck-board{width:min(440px,92vw);touch-action:manipulation}
-.ck-board svg{display:block;width:100%;height:auto;border-radius:12px;border:1px solid rgba(128,128,128,.18)}
+.ck-btn.on{border-color:var(--ck-acc);color:var(--ck-acc)}
+.ck-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.ck-icon-btn svg{flex:none;display:block}
+.ck-btn-label{white-space:nowrap}
+.ck.game-fill>.ck-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:0;border-radius:12px;overflow:hidden}
+.ck-board{width:100%;height:100%;display:flex;align-items:center;justify-content:center;min-width:0;touch-action:manipulation}
+.ck-board svg{display:block;width:100%;height:100%;border-radius:12px;border:1px solid rgba(128,128,128,.18)}
 .ck .sq-l{fill:#f0ece3}
 .ck .sq-d{fill:#b3a48e}
 .ck .coord{fill:#a3a3a3;font-size:10.5px;font-family:inherit;text-anchor:middle}
@@ -301,28 +352,56 @@ export function mount(root, context = {}) {
 .ck .ck-piece{cursor:default}
 .ck .ck-piece.can{cursor:pointer}
 .ck .ck-piece.can:hover .ck-disc{filter:brightness(1.12)}
-.ck-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(20,20,20,.32);backdrop-filter:blur(3px);border-radius:12px;z-index:5}
-.ck-card{background:#fff;color:#1f2430;border-radius:14px;padding:18px 20px;min-width:230px;max-width:320px;box-shadow:0 10px 30px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:10px}
-.ck-card h3{margin:0;font-size:18px;font-weight:600}
+.ck-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,20,20,.32);backdrop-filter:blur(3px);border-radius:12px;z-index:5;padding:12px}
+.ck-card{background:#fff;color:#1f2430;border-radius:14px;padding:16px 20px;min-width:0;width:min(380px,100%);max-height:100%;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:12px}
+.ck-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.ck-head h3{margin:0;font-size:18px;font-weight:600}
 .ck-card p{margin:0;font-size:13px;color:#6b7280}
-.ck-win{color:#16a34a}.ck-lose{color:#dc2626}
-.ck-primary{background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:8px 14px;font:inherit;font-size:13px;cursor:pointer}
+.ck-win{color:#16a34a}
+.ck-lose{color:#dc2626}
+.ck-stats,.ck-cheats,.ck-help{flex:1 1 auto;min-height:0;overflow:auto}
+.ck-cheats{display:flex;flex-direction:column;gap:2px}
+.ck-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.ck-help b{display:block;margin:0 0 5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:#6b7280;text-transform:uppercase}
+.ck-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6}
+.ck-kbd{display:inline-block;padding:1px 5px;border:1px solid rgba(128,128,128,.32);border-bottom-width:2px;border-radius:5px;font:600 10px/1.4 ui-monospace,monospace}
+.ck-row{display:flex;justify-content:space-between;align-items:center;gap:14px;font-size:13px;min-height:40px;padding:3px 0}
+.ck-row input{accent-color:var(--ck-acc);width:18px;height:18px;cursor:pointer}
+.ck-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap}
+.ck-note{font-size:11px;color:#6b7280}
+.ck-primary{background:#4f46e5;color:#fff;border:1px solid #4f46e5;border-radius:9px;padding:9px 14px;min-height:40px;font:inherit;font-size:13px;cursor:pointer}
 .ck-primary:hover{background:#4338ca}
-.ck-cheats{position:absolute;top:10px;right:10px;z-index:6;gap:8px}
-.ck-cheat-head{display:flex;justify-content:space-between;align-items:center;gap:14px}
-.ck-row{display:flex;justify-content:space-between;align-items:center;gap:14px;font-size:13px}
-.ck-row input{accent-color:#4f46e5;width:16px;height:16px;cursor:pointer}
+@media (prefers-reduced-motion:reduce){.ck *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* --- layout overrides last (beat pointer:coarse 44px defaults) --- */
+@media (max-width:640px){
+  .ck.game-fill>.ck-panel:not(:has(.ck-ov:not([hidden]))){aspect-ratio:1;flex:0 0 auto}
+  .ck.game-fill>.ck-panel:has(.ck-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .ck{gap:6px}
+  .ck .ck-hud{gap:4px}
+  .ck .ck-hud .ck-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .ck .ck-hud .ck-chip[data-you]{display:none}
+  .ck .ck-hud .ck-btn-label,.ck .ck-hud .ck-spacer{display:none}
+  .ck .ck-hud .ck-btn,.ck .ck-hud .ck-select{min-height:32px;padding:5px 9px;font-size:9px}
+  .ck-ov{padding:8px}
+  .ck-card{width:100%;height:100%;max-height:100%;padding:12px}
+  .ck-help{grid-template-columns:1fr;gap:8px}
+  .ck-stats,.ck-cheats,.ck-help{scrollbar-width:none}
+  .ck-stats::-webkit-scrollbar,.ck-cheats::-webkit-scrollbar,.ck-help::-webkit-scrollbar{display:none}
+  .ck-foot{padding-top:8px;border-top:1px solid rgba(128,128,128,.2)}
+  .ck-note{display:none}
+}
+@media (pointer:coarse){
+  .ck .ck-hud .ck-btn,.ck .ck-hud .ck-select{min-height:32px;padding:5px 9px;font-size:9px}
+  .ck .ck-card .ck-primary{min-height:44px}
+}
 </style>
-<div class="game-app ck" data-ck>
-  <div class="game-intro">
-    <div><h2>Checkers</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <div class="ck-bar">
+<div class="game-app ck game-fill" data-ck>
+  <div class="ck-hud">
     <span class="ck-chip"><i class="ck-dot r" data-turn-dot></i><b data-turn>Red</b></span>
     <span class="ck-chip" title="Captured pieces"><i class="ck-dot r"></i><b data-capr>0</b><span class="ck-sep">·</span><i class="ck-dot b"></i><b data-capb>0</b></span>
+    <span class="ck-chip" data-status>Ready</span>
     <span class="ck-chip" data-you hidden>You: Red</span>
-    <span class="ck-flex"></span>
+    <span class="ck-spacer"></span>
     <select class="ck-select" data-elo title="Bot strength">
       <option value="800">800 · Beginner</option>
       <option value="1200" selected>1200 · Casual</option>
@@ -332,54 +411,106 @@ export function mount(root, context = {}) {
     </select>
     <button class="ck-btn" type="button" data-act="mode">vs Bot</button>
     <button class="ck-btn" type="button" data-act="undo" disabled>Undo</button>
-    <button class="ck-btn" type="button" data-act="cheat">Cheats</button>
-    <button class="ck-btn" type="button" data-act="new">New</button>
+    <button class="ck-btn ck-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ck-btn-label">Help</span></button>
+    <button class="ck-btn ck-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)" ${online ? "disabled" : ""}>${iconSVG("wrench", { size: 14 })}<span class="ck-btn-label">Cheats</span></button>
+    <button class="ck-btn ck-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" ${online ? "disabled" : ""}>${iconSVG("pause", { size: 14 })}<span class="ck-btn-label">Pause</span></button>
+    <button class="ck-btn ck-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ck-btn-label">Restart</span></button>
+    <button class="ck-btn ck-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ck-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel ck-panel" data-board>
     <div class="ck-board">
-      <svg viewBox="0 0 528 528" role="img" aria-label="Checkers board">
+      <svg viewBox="0 0 528 528" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Checkers board">
         <g>${sqs}</g>
         <g data-g="mk" pointer-events="none"></g>
         <g data-g="pc"></g>
         <g pointer-events="none">${cos}</g>
       </svg>
     </div>
-    <div class="ck-ov" data-ov hidden>
+    <div class="ck-ov" data-ov="over" hidden>
       <div class="ck-card">
-        <h3 data-ov-ttl>Game over</h3>
-        <p data-ov-why></p>
-        <button class="ck-primary" type="button" data-act="new">Play again</button>
+        <div class="ck-head"><h3 data-ov-ttl>Game over</h3></div>
+        <div class="ck-stats"><p data-ov-why></p></div>
+        <div class="ck-foot"><span class="ck-note">Press R to restart</span><button class="ck-primary" type="button" data-restart>Play again</button></div>
       </div>
     </div>
-    <div class="ck-card ck-cheats" data-cheats hidden>
-      <div class="ck-cheat-head"><b>Cheats</b><button class="ck-btn" type="button" data-act="cheat-close">Close</button></div>
-      <label class="ck-row"><span>Remove enemy piece</span><input type="checkbox" data-cheat="remove"></label>
-      <label class="ck-row"><span>Free movement</span><input type="checkbox" data-cheat="free"></label>
-      <label class="ck-row"><span>Extra turn</span><input type="checkbox" data-cheat="extra"></label>
-      <div class="ck-row"><span>Crown my army</span><button class="ck-btn" type="button" data-act="crown">Apply</button></div>
-      <div class="ck-row"><span>Win instantly</span><button class="ck-btn" type="button" data-act="win">Apply</button></div>
+    <div class="ck-ov" data-ov="pause" hidden>
+      <div class="ck-card">
+        <div class="ck-head"><h3>Paused</h3></div>
+        <div class="ck-stats"><p>The board, bot and timers are frozen.</p></div>
+        <div class="ck-foot"><span class="ck-note">Press P or Esc to resume</span><button class="ck-primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="ck-ov" data-ov="cheat" hidden>
+      <div class="ck-card">
+        <div class="ck-head"><h3>Cheats</h3><button class="ck-btn" type="button" data-cheat-close aria-label="Close">Close</button></div>
+        <div class="ck-cheats">
+          <label class="ck-row"><span>Remove enemy piece</span><input type="checkbox" data-cheat="remove"></label>
+          <label class="ck-row"><span>Free movement</span><input type="checkbox" data-cheat="free"></label>
+          <label class="ck-row"><span>Extra turn</span><input type="checkbox" data-cheat="extra"></label>
+          <div class="ck-row"><span>Crown my army</span><button class="ck-btn" type="button" data-act="crown">Apply</button></div>
+          <div class="ck-row"><span>Win instantly</span><button class="ck-btn" type="button" data-act="win">Apply</button></div>
+        </div>
+        <div class="ck-foot"><span class="ck-note">Offline games only</span></div>
+      </div>
+    </div>
+    <div class="ck-ov" data-ov="help" hidden>
+      <div class="ck-card">
+        <div class="ck-head"><h3>How to play</h3><button class="ck-btn" type="button" data-help-close aria-label="Close">Close</button></div>
+        <div class="ck-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Click a piece, then a highlighted square to move it.</li>
+              <li><span class="ck-kbd">← ↑ → ↓</span> move the cursor, <span class="ck-kbd">Enter</span> select / place.</li>
+              <li><span class="ck-kbd">H</span> help · <span class="ck-kbd">C</span> cheats · <span class="ck-kbd">P</span> pause · <span class="ck-kbd">R</span> restart · <span class="ck-kbd">U</span> undo</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap a piece then a highlighted destination; multi-jumps continue automatically.</li>
+              <li>Use the HUD buttons for Help, Cheats, Pause, Restart and Exit.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Red moves down, Black moves up; men move diagonally forward.</li>
+              <li>Jumps are mandatory: hop an adjacent enemy into the empty square beyond it.</li>
+              <li>Reach the far row to crown a King, which moves both directions.</li>
+              <li>Win by capturing every enemy piece or leaving the opponent with no legal move.</li>
+              <li>Cheats (offline only): remove a piece, free movement, extra turn, crown or instant win.</li>
+            </ul>
+            <div class="ck-foot"><span class="ck-note">Press H to reopen this guide</span><button class="ck-primary" type="button" data-help-close>Got it</button></div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const gMk = $('[data-g="mk"]'), gPc = $('[data-g="pc"]');
     const elStatus = $("[data-status]"), elTurn = $("[data-turn]"), elTurnDot = $("[data-turn-dot]");
     const elCapR = $("[data-capr]"), elCapB = $("[data-capb]"), elYou = $("[data-you]");
-    const btnMode = $('[data-act="mode"]'), btnUndo = $('[data-act="undo"]'), btnCheat = $('[data-act="cheat"]');
+    const btnMode = $('[data-act="mode"]'), btnUndo = $('[data-act="undo"]');
     const selElo = $("[data-elo]");
-    const ov = $("[data-ov]"), ovTtl = $("[data-ov-ttl]"), ovWhy = $("[data-ov-why]");
-    const cheatPanel = $("[data-cheats]");
+    const ov = {
+        over: $('[data-ov="over"]'),
+        pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'),
+        help: $('[data-ov="help"]'),
+    };
+    const ovTtl = $("[data-ov-ttl]"), ovWhy = $("[data-ov-why]");
+    const cheatPanel = ov.cheat;
+    const pauseBtn = $("[data-pause]");
 
     /* ================= helpers ================= */
     const myColor = () => (state ? state.colors[playerIndex] : RD);
     const isHumanColor = (c) =>
         online ? c === myColor() : submode === "2p" || c === RD;
     const humanTurn = () =>
-        Boolean(state) && !state.result && isHumanColor(state.turn);
+        Boolean(state) && !state.result && !paused && isHumanColor(state.turn);
     const canBot = () =>
-        alive && Boolean(state) && !state.result && !online &&
+        alive && !paused && Boolean(state) && !state.result && !online &&
         submode === "ai" && state.turn === BK;
 
     function freeMoves(st) {
@@ -404,8 +535,9 @@ export function mount(root, context = {}) {
     }
 
     function clearTimers() {
-        clearTimeout(aiT); clearTimeout(stepT); clearTimeout(hopT);
-        aiT = stepT = hopT = 0;
+        for (const rec of timers.values()) clearTimeout(rec.id);
+        timers.clear();
+        deferredTimers = [];
     }
 
     function pushSnap() {
@@ -473,6 +605,7 @@ export function mount(root, context = {}) {
             elStatus.textContent = "Waiting for host…";
             gMk.innerHTML = ""; gPc.innerHTML = "";
             btnUndo.disabled = true;
+            syncUI();
             return;
         }
         const mv = movesFor(state);
@@ -524,14 +657,10 @@ export function mount(root, context = {}) {
         selElo.hidden = online || submode !== "ai";
         selElo.value = String(elo);
         btnUndo.hidden = online;
-        btnUndo.disabled = !U.length;
-        btnCheat.hidden = online;
-        btnCheat.classList.toggle("on", showCheats);
-        cheatPanel.hidden = online || !showCheats;
+        btnUndo.disabled = !U.length || paused;
         for (const box of cheatPanel.querySelectorAll("[data-cheat]"))
             box.checked = Boolean(cheats[box.dataset.cheat]);
 
-        ov.hidden = !state.result;
         if (state.result) {
             ovTtl.textContent = resultTitle();
             const w = state.result.winner;
@@ -539,6 +668,44 @@ export function mount(root, context = {}) {
             ovTtl.className = w === null ? "" : good ? "ck-win" : "ck-lose";
             ovWhy.textContent = resultWhy();
         }
+        syncUI();
+    }
+
+    /* Overlays suppress each other: help > cheats > pause > result. HUD
+       labels are updated on the label span so the icon is never destroyed. */
+    function syncUI() {
+        const resultOpen = Boolean(state && state.result);
+        ov.over.hidden = !resultOpen || cheatsOpen || helpOpen || paused;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) cbtn.classList.toggle("on", cheatsOpen || Object.values(cheats).some(Boolean));
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".ck-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) { pauseStart = performance.now(); pauseTimers(); }
+        else {
+            if (pauseStart) pauseOffset += performance.now() - pauseStart;
+            pauseStart = 0;
+            resumeTimers();
+        }
+        render();
     }
 
     function publish() {
@@ -570,7 +737,7 @@ export function mount(root, context = {}) {
         const list = bot ? movesFor(state).list : legalNow().list;
         const m = list.find((x) => x.f === f && x.t === t);
         if (!m) return false;
-        clearTimeout(hopT); hopT = 0;
+        clearT("hop");
         if (!online && state.chain < 0) pushSnap();
 
         if (m.mid !== undefined) {
@@ -596,13 +763,12 @@ export function mount(root, context = {}) {
     }
 
     function armAutoHop() {
-        clearTimeout(hopT); hopT = 0;
+        clearT("hop");
         if (!state || state.result || state.chain < 0 || !isHumanColor(state.turn)) return;
         const ms = movesFor(state).list;
         if (ms.length !== 1) return;
         const m = ms[0];
-        hopT = setTimeout(() => {
-            hopT = 0;
+        setT("hop", () => {
             if (alive && state && !state.result && state.chain === m.f && isHumanColor(state.turn))
                 submitAction({ k: "move", f: m.f, t: m.t });
         }, 430);
@@ -611,13 +777,13 @@ export function mount(root, context = {}) {
     /* ---------- bot (offline only) ---------- */
     function scheduleBot() {
         if (!canBot()) return;
-        clearTimeout(aiT);
+        clearT("ai");
         render();
-        aiT = setTimeout(() => { aiT = 0; runBot(); }, 380);
+        setT("ai", runBot, 380);
     }
     function runBot() {
         if (!canBot()) return;
-        const mv = chooseBotMove(state.b, BK, ELOS[elo] || ELOS[1200]);
+        const mv = chooseBotMove(state.b, BK, ELOS[elo] || ELOS[1200], perfNow);
         botQueue = mv ? mv.steps.slice() : [];
         botStep();
     }
@@ -627,13 +793,13 @@ export function mount(root, context = {}) {
         if (!s) return;
         performMove(s.f, s.t, BK);
         if (state.chain >= 0 && botQueue.length) {
-            clearTimeout(stepT);
-            stepT = setTimeout(() => { stepT = 0; botStep(); }, 340);
+            setT("step", botStep, 340);
         } else botQueue = [];
     }
 
     /* ---------- controls ---------- */
     function doRestart() {
+        if (paused) togglePause(false);
         clearTimers();
         botQueue = [];
         U = [];
@@ -755,24 +921,33 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const act = event.target.closest("[data-act]");
+        const t = event.target;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-cheats]")) {
+            if (!online) { cheatsOpen = !cheatsOpen; if (cheatsOpen) helpOpen = false; render(); }
+            root.focus({ preventScroll: true }); return;
+        }
+        if (t.closest("[data-cheat-close]")) { cheatsOpen = false; render(); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-pause]")) { togglePause(); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-restart]")) { submitAction({ k: "restart" }); root.focus({ preventScroll: true }); return; }
+        const act = t.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
-            if (a === "new") submitAction({ k: "restart" });
-            else if (a === "undo" && !online) undo();
+            if (a === "undo" && !online) undo();
             else if (a === "mode" && !online) {
                 submode = submode === "ai" ? "2p" : "ai";
                 doRestart();
             }
-            else if (a === "cheat" && !online) { showCheats = !showCheats; render(); }
-            else if (a === "cheat-close") { showCheats = false; render(); }
             else if (a === "crown") cheatCrown();
             else if (a === "win") cheatWin();
             root.focus({ preventScroll: true });
             return;
         }
-        const sq = event.target.closest("[data-i]");
+        if (helpOpen || cheatsOpen || paused) return;
+        const sq = t.closest("[data-i]");
         if (sq) {
             onSq(parseInt(sq.dataset.i, 10));
             root.focus({ preventScroll: true });
@@ -793,14 +968,37 @@ export function mount(root, context = {}) {
     }
 
     function handleKey(e) {
+        if (!alive) return;
         const k = e.key;
-        if (k === "Escape") {
-            if (showCheats) { showCheats = false; render(); }
-            else if (sel >= 0) { sel = -1; render(); }
-            return;
+        const code = e.code || "";
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        /* priority: help -> cheats -> pause -> escape -> restart -> game actions */
+        if (code === "KeyH" || k === "?") {
+            if (!e.repeat) toggleHelp();
+            e.preventDefault(); return;
         }
-        const tag = e.target.tagName;
-        if (tag === "SELECT" || tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON") return;
+        if (code === "KeyC") {
+            if (!e.repeat && !online && !helpOpen) { cheatsOpen = !cheatsOpen; render(); }
+            e.preventDefault(); return;
+        }
+        if (code === "KeyP") {
+            if (!e.repeat && !helpOpen && !cheatsOpen) togglePause();
+            e.preventDefault(); return;
+        }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (paused) togglePause(false);
+            else if (sel >= 0) { sel = -1; render(); }
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR") {
+            if (!e.repeat && !helpOpen && !cheatsOpen) submitAction({ k: "restart" });
+            e.preventDefault(); return;
+        }
+        if (tag === "BUTTON") return; /* keep native Enter/Space on HUD buttons */
+        if (helpOpen || cheatsOpen || paused) { e.preventDefault(); return; }
         if (k === "ArrowUp" || k === "ArrowDown" || k === "ArrowLeft" || k === "ArrowRight") {
             e.preventDefault();
             kb = true;
@@ -815,12 +1013,10 @@ export function mount(root, context = {}) {
             e.preventDefault();
             kb = true;
             onSq(cursor);
-        } else if (k === "u" || k === "U") {
+        } else if (code === "KeyU") {
             if (!online) undo();
-        } else if (k === "n" || k === "N") {
+        } else if (code === "KeyN") {
             submitAction({ k: "restart" });
-        } else if (k === "c" || k === "C") {
-            if (!online) { showCheats = !showCheats; render(); }
         }
     }
 
@@ -841,7 +1037,7 @@ export function mount(root, context = {}) {
             render();
             reg(room.onState((nextState) => {
                 state = nextState;
-                clearTimeout(hopT); hopT = 0;
+                clearT("hop");
                 if (!state) { render(); return; }
                 if (sel >= 0) {
                     const p = state.b[sel];

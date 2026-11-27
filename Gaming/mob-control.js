@@ -5,6 +5,8 @@
   - Setelah menyalin file ini, jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "mob-control",
     name: "Mob Control",
@@ -385,6 +387,7 @@ export function mount(root, context = {}) {
     const unsubs = [];
 
     let destroyed = false, raf = null, lastT = 0, pubT = 0, sendT = 0;
+    let wasPaused = false, pausedAnchor = 0;
     let lastPubPhase = "", endSaved = false, staticKey = "";
     let sides = [0, 1], mySide = 0;
     let best = 0;
@@ -392,6 +395,25 @@ export function mount(root, context = {}) {
 
     const cheats = { god: false, freeze: false, rapid: false, infchamp: false, slowmo: false, power: false };
     let manualPause = false, helpOpen = false, cheatsOpen = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("mobControlHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("mobControlHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+    }
+    function togglePause(on) {
+        if (online) return;
+        manualPause = typeof on === "boolean" ? on : !manualPause;
+    }
 
     /* input lokal (desktop + mobile digabung) */
     let localAim = 0;
@@ -405,39 +427,52 @@ export function mount(root, context = {}) {
   <li><b>Slide cannon</b> — <span class="mc-key">A</span><span class="mc-key">D</span> or <span class="mc-key">\u2190</span><span class="mc-key">\u2192</span>, or hold the \u25c0 \u25b6 pad buttons.</li>
   <li><b>Fire</b> — hold click / <span class="mc-key">Space</span> / the FIRE pad. Each mob deals 1 damage.</li>
   <li><b>Gates slide &amp; spawn troops!</b> \u00d72 / \u00d73 clone every mob that touches them, +5 / +10 birth extra troops, \u22123 eats 3 mobs per second (it fades while recharging).</li>
-  <li><b>Champion</b> — <span class="mc-key">C</span> or the CHAMP pad: a 3-HP tank worth 6 damage. 3 per level, 12s cooldown.</li>
+  <li><b>Champion</b> — <span class="mc-key">X</span> or the CHAMP pad: a 3-HP tank worth 6 damage. 3 per level, 12s cooldown.</li>
   <li><b>Win</b> — flatten the enemy base first. A coin toss decides who fires first (3s head start). Sudden death drains both bases after 2:30.</li>
+  <li><b>Panels</b> — <span class="mc-key">H</span> help · <span class="mc-key">C</span> cheats · <span class="mc-key">P</span> pause/resume · <span class="mc-key">R</span> restart · <span class="mc-key">Esc</span> close.</li>
 </ul>`;
 
     root.innerHTML = `
 <style>
 .mc-root{--mc-bg:#0b1526;--mc-line:#233047;--mc-txt:#e2e8f0;--mc-mut:#8aa0bf;--mc-blue:#38bdf8;--mc-rose:#fb7185;--mc-green:#34d399;--mc-amber:#fbbf24;color:var(--mc-txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.mc-root .mc-hud{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:0 0 10px}
-.mc-root .mc-chip{font-size:11.5px;color:var(--mc-mut);background:var(--mc-bg);border:1px solid var(--mc-line);border-radius:999px;padding:4px 10px}
-.mc-root .mc-chip b{color:var(--mc-txt);font-weight:600}
+.mc-root [hidden]{display:none!important}
+.mc-root.game-fill > .mc-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.mc-root .mc-hud{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 10px;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.mc-root .mc-chip{font-size:10px;color:var(--mc-mut);background:var(--mc-bg);border:1px solid var(--mc-line);border-radius:999px;padding:3px 8px;white-space:nowrap}
+.mc-root .mc-chip b{color:var(--mc-txt);font-weight:600;font-variant-numeric:tabular-nums}
 .mc-root .mc-side{font-weight:700;letter-spacing:.06em}
-.mc-root .mc-stage{position:relative;width:min(100%,420px);margin:0 auto}
-.mc-root .mc-board{display:block;width:100%;border-radius:16px;background:var(--mc-bg);touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+.mc-root .mc-status{color:var(--mc-blue)}
+.mc-root .mc-spacer{flex:1 1 auto}
+.mc-root .mc-btn{border:1px solid var(--mc-line);background:var(--mc-bg);color:var(--mc-txt);border-radius:9px;padding:9px 14px;min-height:38px;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+.mc-root .mc-btn:hover{border-color:var(--mc-blue);color:var(--mc-blue)}
+.mc-root .mc-btn.primary{background:var(--mc-blue);border-color:transparent;color:#082f49}
+.mc-root .mc-btn.ghost{background:transparent;color:var(--mc-mut)}
+.mc-root .mc-btn.on{border-color:var(--mc-amber);color:var(--mc-amber)}
+.mc-root .mc-btn:disabled{opacity:.45;cursor:default}
+.mc-root .mc-hud .mc-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.mc-root .mc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.mc-root .mc-icon-btn svg{flex:none;display:block}
+.mc-root .mc-board{position:relative;width:100%;border-radius:16px;background:var(--mc-bg);overflow:hidden}
+.mc-root .mc-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 .mc-root .mc-baselab{font-size:11px;font-weight:700;letter-spacing:.18em;text-anchor:middle}
 .mc-root .mc-gatetx{font-size:12.5px;font-weight:800;text-anchor:middle}
 .mc-root .mc-youtx{font-size:9px;font-weight:800;letter-spacing:.15em;text-anchor:middle}
 .mc-root .mc-champtx{font-size:10px;font-weight:800;text-anchor:middle;fill:#78350f}
 .mc-root .mc-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:4;pointer-events:none;background:rgba(11,21,38,.92);border:1px solid var(--mc-line);border-radius:999px;padding:5px 14px;font-size:12px;white-space:nowrap}
-.mc-root .mc-toast[hidden]{display:none}
 .mc-root .mc-overlay{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(6,11,22,.78);backdrop-filter:blur(5px);border-radius:16px;padding:16px;overflow:auto}
-.mc-root .mc-overlay[hidden]{display:none}
-.mc-root .mc-card{width:min(100%,330px);text-align:center;margin:auto}
-.mc-root .mc-card h3{margin:0 0 6px;font-size:20px;font-weight:700}
+.mc-root .mc-card{display:flex;flex-direction:column;width:min(100%,380px);max-height:100%;margin:auto;text-align:center;overflow:hidden;border:1px solid var(--mc-line);border-radius:14px;background:var(--mc-bg);box-shadow:0 12px 32px rgba(0,0,0,.35)}
+.mc-root .mc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;padding:15px 16px 6px}
+.mc-root .mc-head h3{margin:0;font-size:19px;font-weight:700}
+.mc-root .mc-help,.mc-root .mc-cheats,.mc-root .mc-stats{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 16px}
+.mc-root .mc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap;padding:8px 16px 16px;margin-top:6px}
+.mc-root .mc-note{font-size:10.5px;color:var(--mc-mut);text-align:left}
 .mc-root .mc-sub{margin:0 0 10px;font-size:12.5px;color:var(--mc-mut);line-height:1.5}
 .mc-root .mc-win{color:var(--mc-green)}
 .mc-root .mc-lose{color:var(--mc-rose)}
-.mc-root .mc-howto{list-style:none;margin:12px 0;padding:0;display:grid;gap:7px;text-align:left;font-size:12px;color:var(--mc-mut);line-height:1.45}
+.mc-root .mc-howto{list-style:none;margin:4px 0;padding:0;display:grid;gap:7px;text-align:left;font-size:12px;color:var(--mc-mut);line-height:1.45}
 .mc-root .mc-howto b{color:var(--mc-txt);font-weight:600}
 .mc-root .mc-key{display:inline-block;min-width:16px;text-align:center;border:1px solid #33415e;border-bottom-width:2px;border-radius:5px;padding:0 4px;font-size:10.5px;color:#cbd5e1;background:var(--mc-bg);margin:0 1px}
-.mc-root .mc-cta{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:999px;background:var(--mc-blue);color:#082f49;font-weight:700;font-size:14px;padding:10px 22px;cursor:pointer}
-.mc-root .mc-cta.ghost{background:transparent;color:var(--mc-mut);border:1px solid var(--mc-line);font-weight:600}
-.mc-root .mc-cta:disabled{opacity:.45;cursor:default}
-.mc-root .mc-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:4px}
+.mc-root .mc-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .mc-root .mc-pad{display:flex;gap:8px;width:min(100%,420px);margin:10px auto 0}
 .mc-root .mc-pad button{flex:1;border:1px solid var(--mc-line);background:var(--mc-bg);color:var(--mc-txt);border-radius:12px;padding:12px 0;font-size:14px;font-weight:700;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 .mc-root .mc-pad button:active{background:#16233c}
@@ -446,102 +481,136 @@ export function mount(root, context = {}) {
 .mc-root .mc-pad .mc-champbtn{flex:1.6;background:transparent;border-color:#8a6d1f;color:var(--mc-amber)}
 .mc-root .mc-pad button:disabled{opacity:.45}
 .mc-root .mc-hint{width:min(100%,420px);margin:8px auto 0;font-size:11px;color:var(--mc-mut);text-align:center;line-height:1.5}
-.mc-root .mc-cheats{display:grid;gap:6px;text-align:left;margin:10px 0}
+.mc-root .mc-cheats{display:grid;gap:6px;text-align:left}
 .mc-root .mc-cheats label{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;background:var(--mc-bg);border:1px solid var(--mc-line);border-radius:10px;padding:8px 12px;cursor:pointer}
 .mc-root .mc-cheats small{display:block;color:var(--mc-mut);font-size:10.5px}
 .mc-root .mc-cheats input{accent-color:var(--mc-green);width:16px;height:16px;flex:none}
+
+/* --- Batch 02 design polish --- */
+.mc-root :focus-visible,.mc-root button:focus-visible{outline:2px solid var(--mc-blue);outline-offset:2px}
+.mc-hud{gap:8px;margin-bottom:12px}
+.mc-chip{padding:6px 12px}
+.mc-btn{min-height:44px;padding:10px 16px}
+.mc-pad button{min-height:44px}
+@media (pointer:coarse){.mc-root button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.mc-root *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements --- */
+.mc-root .mc-icon-btn svg{flex:none;display:block}
+@media (max-width:640px){
+.mc-root.game-fill > .mc-board:not(:has(.mc-overlay:not([hidden]))){aspect-ratio:400/560;flex:0 0 auto}
+.mc-root.game-fill > .mc-board:has(.mc-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.mc-root .mc-hud{gap:5px;margin-bottom:8px}
+.mc-root .mc-hud .mc-chip{padding:4px 6px;font-size:9px}
+.mc-root .mc-hud .mc-chip[data-hud="status"]{display:none}
+.mc-root .mc-hud .mc-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.mc-root .mc-hud .mc-btn-label,.mc-root .mc-hud .mc-spacer{display:none}
+.mc-root .mc-overlay{padding:8px}
+.mc-root .mc-card{width:100%;height:100%;max-height:100%;padding:0;border-radius:12px}
+.mc-root .mc-head{padding:12px 12px 6px}
+.mc-root .mc-help,.mc-root .mc-cheats,.mc-root .mc-stats{padding:8px 12px;scrollbar-width:none}
+.mc-root .mc-help::-webkit-scrollbar,.mc-root .mc-cheats::-webkit-scrollbar,.mc-root .mc-stats::-webkit-scrollbar{display:none}
+.mc-root .mc-foot{position:static;margin:0;padding:8px 12px 12px;border-top:1px solid var(--mc-line)}
+.mc-root .mc-note{display:none}
+}
 </style>
-<div class="game-app mc-root">
-  <div class="game-intro">
-    <div><h2>Mob Control</h2><p>Stream mobs through the sliding gates — the first base to fall loses.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app mc-root game-fill" data-mc>
+  <div class="mc-hud">
+    <span class="mc-chip">LV <b data-hud="level">1</b>/3</span>
+    <span class="mc-chip">SCORE <b data-hud="score">0</b></span>
+    <span class="mc-chip" data-chip="best">BEST <b data-hud="best">0</b></span>
+    <span class="mc-chip">ARMY <b data-hud="army">0</b></span>
+    <span class="mc-chip mc-side" data-hud="side">YOU · BLUE</span>
+    <span class="mc-chip mc-status" data-status>Ready</span>
+    <span class="mc-spacer"></span>
+    <button class="mc-btn mc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="mc-btn-label">Help</span></button>
+    <button class="mc-btn mc-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="mc-btn-label">Cheats</span></button>
+    <button class="mc-btn mc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="mc-btn-label">Pause</span></button>
+    <button class="mc-btn mc-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="mc-btn-label">Restart</span></button>
+    <button class="mc-btn mc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="mc-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="mc-hud">
-      <span class="mc-chip">Level <b data-hud="level">1</b>/3</span>
-      <span class="mc-chip">Score <b data-hud="score">0</b></span>
-      <span class="mc-chip" data-chip="best">Best <b data-hud="best">0</b></span>
-      <span class="mc-chip">Army <b data-hud="army">0</b></span>
-      <span class="mc-chip mc-side" data-hud="side">YOU · BLUE</span>
-    </div>
-    <div class="mc-stage">
-      <svg class="mc-board" viewBox="0 0 400 560" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mob Control battlefield">
-        <g data-g="static"></g>
-        <g data-g="dyn"></g>
-      </svg>
-      <div class="mc-toast" data-toast hidden></div>
-      <div class="mc-overlay" data-ov="start">
-        <div class="mc-card">
-          <h3>Mob Control</h3>
+  <section class="game-panel mc-board" data-board>
+    <svg class="mc-canvas" data-canvas viewBox="0 0 400 560" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mob Control battlefield">
+      <g data-g="static"></g>
+      <g data-g="dyn"></g>
+    </svg>
+    <div class="mc-toast" data-toast hidden></div>
+    <div class="mc-overlay" data-ov="start">
+      <div class="mc-card">
+        <div class="mc-head"><h3>Mob Control</h3></div>
+        <div class="mc-help">
           <p class="mc-sub" data-ov="sideinfo">Preparing battlefield…</p>
           ${HOWTO}
-          <button class="mc-cta" type="button" data-act="start">Start battle</button>
         </div>
+        <div class="mc-foot"><span class="mc-note">Space / Enter to start</span><button class="mc-btn primary" type="button" data-act="start">Start battle</button></div>
       </div>
-      <div class="mc-overlay" data-ov="help" hidden>
-        <div class="mc-card">
-          <h3>How to play</h3>
+    </div>
+    <div class="mc-overlay" data-ov="help" hidden>
+      <div class="mc-card">
+        <div class="mc-head"><h3>How to play</h3><button class="mc-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="mc-help">
           ${HOWTO}
           <p class="mc-sub">Offline: the game pauses while this panel is open. Online: it keeps running, and cheats are disabled.</p>
-          <button class="mc-cta" type="button" data-act="closehelp">Resume</button>
+        </div>
+        <div class="mc-foot"><span class="mc-note">Press H to reopen this guide</span><button class="mc-btn primary" type="button" data-help-close>Got it</button></div>
+      </div>
+    </div>
+    <div class="mc-overlay" data-ov="clear" hidden>
+      <div class="mc-card">
+        <div class="mc-head"><h3 class="mc-win">Base destroyed!</h3></div>
+        <div class="mc-stats"><p class="mc-sub" data-ov="clearmsg"></p></div>
+        <div class="mc-foot"><span class="mc-note">Level bonus awarded</span><button class="mc-btn primary" type="button" data-act="next">Next level</button></div>
+      </div>
+    </div>
+    <div class="mc-overlay" data-ov="end" hidden>
+      <div class="mc-card">
+        <div class="mc-head"><h3 data-ov="endtitle">Game over</h3></div>
+        <div class="mc-stats"><p class="mc-sub" data-ov="endreason"></p></div>
+        <div class="mc-foot mc-row">
+          <button class="mc-btn ghost" type="button" data-act="retry" data-btn="retry">Try again</button>
+          <button class="mc-btn primary" type="button" data-act="again" data-btn="again">Play again</button>
         </div>
       </div>
-      <div class="mc-overlay" data-ov="clear" hidden>
-        <div class="mc-card">
-          <h3 class="mc-win">Base destroyed!</h3>
-          <p class="mc-sub" data-ov="clearmsg"></p>
-          <button class="mc-cta" type="button" data-act="next">Next level</button>
-        </div>
-      </div>
-      <div class="mc-overlay" data-ov="end" hidden>
-        <div class="mc-card">
-          <h3 data-ov="endtitle">Game over</h3>
-          <p class="mc-sub" data-ov="endreason"></p>
-          <div class="mc-row">
-            <button class="mc-cta ghost" type="button" data-act="retry" data-btn="retry">Try again</button>
-            <button class="mc-cta" type="button" data-act="again" data-btn="again">Play again</button>
-          </div>
-        </div>
-      </div>
-      <div class="mc-overlay" data-ov="cheats" hidden>
-        <div class="mc-card">
-          <h3>Cheats</h3>
+    </div>
+    <div class="mc-overlay" data-ov="cheats" hidden>
+      <div class="mc-card">
+        <div class="mc-head"><h3>Cheats</h3><button class="mc-btn" type="button" data-act="closecheats" aria-label="Close cheats">Close</button></div>
+        <div class="mc-cheats">
           <p class="mc-sub">Offline sandbox only — disabled in online rooms.</p>
-          <div class="mc-cheats">
-            <label><span>God mode<small>Your base ignores all damage</small></span><input type="checkbox" data-cheat="god"></label>
-            <label><span>Freeze enemy<small>Bot &amp; enemy turrets stop firing</small></span><input type="checkbox" data-cheat="freeze"></label>
-            <label><span>Rapid fire<small>Your cannon fires 3× faster</small></span><input type="checkbox" data-cheat="rapid"></label>
-            <label><span>Infinite champions<small>No cooldown, unlimited stock</small></span><input type="checkbox" data-cheat="infchamp"></label>
-            <label><span>Slow motion<small>World runs at 55% speed</small></span><input type="checkbox" data-cheat="slowmo"></label>
-            <label><span>Power mobs<small>Your mobs deal 5× base damage</small></span><input type="checkbox" data-cheat="power"></label>
-          </div>
-          <div class="mc-row">
-            <button class="mc-cta ghost" type="button" data-act="heal">Heal my base</button>
-            <button class="mc-cta ghost" type="button" data-act="winmap">Destroy enemy</button>
-            <button class="mc-cta ghost" type="button" data-act="reroll">Reroll map</button>
-          </div>
-          <div class="mc-row"><button class="mc-cta" type="button" data-act="closecheats">Close</button></div>
+          <label><span>God mode<small>Your base ignores all damage</small></span><input type="checkbox" data-cheat="god"></label>
+          <label><span>Freeze enemy<small>Bot &amp; enemy turrets stop firing</small></span><input type="checkbox" data-cheat="freeze"></label>
+          <label><span>Rapid fire<small>Your cannon fires 3× faster</small></span><input type="checkbox" data-cheat="rapid"></label>
+          <label><span>Infinite champions<small>No cooldown, unlimited stock</small></span><input type="checkbox" data-cheat="infchamp"></label>
+          <label><span>Slow motion<small>World runs at 55% speed</small></span><input type="checkbox" data-cheat="slowmo"></label>
+          <label><span>Power mobs<small>Your mobs deal 5× base damage</small></span><input type="checkbox" data-cheat="power"></label>
+        </div>
+        <div class="mc-foot mc-row">
+          <button class="mc-btn ghost" type="button" data-act="heal">Heal my base</button>
+          <button class="mc-btn ghost" type="button" data-act="winmap">Destroy enemy</button>
+          <button class="mc-btn ghost" type="button" data-act="reroll">Reroll map</button>
         </div>
       </div>
     </div>
-    <div class="mc-pad">
-      <button type="button" data-pad="left" aria-label="Move cannon left">\u25c0</button>
-      <button type="button" data-pad="right" aria-label="Move cannon right">\u25b6</button>
-      <button type="button" data-pad="fire" class="mc-fire" aria-label="Hold to fire">FIRE</button>
-      <button type="button" data-pad="champ" class="mc-champbtn" data-hud="champ" aria-label="Deploy champion">CHAMP \u00d73</button>
+    <div class="mc-overlay" data-ov="pause" hidden>
+      <div class="mc-card">
+        <div class="mc-head"><h3>Paused</h3></div>
+        <div class="mc-stats"><p class="mc-sub">The battlefield is frozen. Press P or Escape to resume.</p></div>
+        <div class="mc-foot"><span class="mc-note">P / Escape to resume</span><button class="mc-btn primary" type="button" data-act="resume">Resume</button></div>
+      </div>
     </div>
-    <p class="mc-hint" data-hint></p>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="help">How to play</button>
-    <button class="game-action-button" type="button" data-act="cheats" data-ui="cheats">Cheats</button>
-    <button class="game-action-button" type="button" data-act="restart" data-ui="restart">Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="mc-pad">
+    <button type="button" data-pad="left" aria-label="Move cannon left">\u25c0</button>
+    <button type="button" data-pad="right" aria-label="Move cannon right">\u25b6</button>
+    <button type="button" data-pad="fire" class="mc-fire" aria-label="Hold to fire">FIRE</button>
+    <button type="button" data-pad="champ" class="mc-champbtn" data-hud="champ" aria-label="Deploy champion">CHAMP \u00d73</button>
   </div>
+  <p class="mc-hint" data-hint></p>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const svgEl = $(".mc-board");
+    const boardEl = $("[data-board]");
+    const svgEl = $("[data-canvas]");
     const staticG = $('[data-g="static"]');
     const dynG = $('[data-g="dyn"]');
     const statusEl = $("[data-status]");
@@ -551,6 +620,7 @@ export function mount(root, context = {}) {
     const ovClear = $('[data-ov="clear"]');
     const ovEnd = $('[data-ov="end"]');
     const ovCheats = $('[data-ov="cheats"]');
+    const ovPause = $('[data-ov="pause"]');
     const sideInfo = $('[data-ov="sideinfo"]');
     const clearMsg = $('[data-ov="clearmsg"]');
     const endTitle = $('[data-ov="endtitle"]');
@@ -563,15 +633,17 @@ export function mount(root, context = {}) {
         side: $('[data-hud="side"]'), champ: $('[data-hud="champ"]'),
         bestChip: $('[data-chip="best"]'),
     };
-    const cheatsBtn = $('[data-ui="cheats"]');
-    const restartBtn = $('[data-ui="restart"]');
+    const cheatsBtn = $('[data-cheats]');
+    const restartBtn = $('[data-restart]');
+    const pauseBtn = $('[data-pause]');
     hud.bestChip.hidden = online;
     cheatsBtn.hidden = online;
     restartBtn.hidden = online && !isHost;
+    pauseBtn.hidden = online;
     const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     $("[data-hint]").textContent = coarse
         ? "Drag the board to aim · hold FIRE to stream · hold \u25c0 \u25b6 to slide · CHAMP deploys a tank."
-        : "Mouse aims · A/D or \u2190/\u2192 slide · Q/E fine aim · hold click or Space to fire · C champion · H help · P pause.";
+        : "Mouse aims · A/D or \u2190/\u2192 slide · Q/E fine aim · hold click or Space to fire · X champion · H help · C cheats · P pause · R restart.";
 
     /* ---------- alur pertandingan ---------- */
     function newMatch() {
@@ -596,7 +668,7 @@ export function mount(root, context = {}) {
         const view = currentView();
         if (!view) {
             statusEl.textContent = "Waiting for host…";
-            ovStart.hidden = false;
+            ovStart.hidden = helpOpen;
             sideInfo.textContent = "Waiting for the host to prepare the battlefield…";
             return;
         }
@@ -742,8 +814,13 @@ export function mount(root, context = {}) {
         if (bar0) bar0.setAttribute("width", Math.max(0, 200 * view.hp[0] / view.max).toFixed(1));
         if (bar1) bar1.setAttribute("width", Math.max(0, 200 * view.hp[1] / view.max).toFixed(1));
         const paused = !online && (manualPause || helpOpen || cheatsOpen);
+        const pauseLabel = pauseBtn.querySelector(".mc-btn-label");
+        if (pauseLabel) pauseLabel.textContent = manualPause ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", manualPause ? "Resume" : "Pause");
         let st;
-        if (paused) st = "Paused";
+        if (manualPause) st = "Paused";
+        else if (helpOpen) st = "Help";
+        else if (cheatsOpen) st = "Cheats";
         else if (view.phase === "ready") st = "Ready";
         else if (view.phase === "opening")
             st = (view.first === mySide ? "You" : online ? "Rival" : "Bot") + " fire first · " + Math.ceil(view.openT) + "s";
@@ -751,7 +828,9 @@ export function mount(root, context = {}) {
         else st = view.winner === mySide ? "Victory!" : "Defeat";
         statusEl.textContent = st;
         let toast = "";
-        if (paused) toast = "Paused — press P to resume";
+        if (manualPause) toast = "Paused — press P to resume";
+        else if (helpOpen) toast = "Help — press H to close";
+        else if (cheatsOpen) toast = "Cheats — press C to close";
         else if (view.phase === "opening")
             toast = (view.first === mySide ? "You fire" : online ? "Rival fires" : "Bot fires") + " first — " + Math.ceil(view.openT);
         else if (view.sudden && view.phase === "battle") toast = "Sudden death — bases draining!";
@@ -759,7 +838,7 @@ export function mount(root, context = {}) {
         if (toast) toastEl.textContent = toast;
     }
     function updateOverlays(view) {
-        ovStart.hidden = view.phase !== "ready";
+        ovStart.hidden = view.phase !== "ready" || cheatsOpen || helpOpen;
         if (view.phase === "ready") {
             sideInfo.textContent = playerName + " · you are " + SIDE_NAME[mySide] + " (" + (mySide === 0 ? "bottom" : "top") + " cannon). "
                 + (online ? "Sides are drawn at random. " : "")
@@ -768,8 +847,8 @@ export function mount(root, context = {}) {
         const ended = view.phase === "end";
         const iWon = ended && view.winner === mySide;
         const hasNext = ended && view.li + 1 < LEVEL_COUNT;
-        ovClear.hidden = !(iWon && hasNext);
-        ovEnd.hidden = !(ended && !(iWon && hasNext));
+        ovClear.hidden = !(iWon && hasNext) || cheatsOpen || helpOpen;
+        ovEnd.hidden = !(ended && !(iWon && hasNext)) || cheatsOpen || helpOpen;
         if (iWon && hasNext)
             clearMsg.textContent = "Level bonus +" + (200 + Math.round(Math.max(0, view.hp[mySide]) / view.max * 100)) + " · Score " + view.score[mySide] + ". Tougher gates ahead.";
         if (ended && !(iWon && hasNext)) {
@@ -794,8 +873,10 @@ export function mount(root, context = {}) {
                 try { localStorage.setItem(META.bestKey, String(best)); } catch (e) { /* abaikan */ }
             }
         }
+        ovPause.hidden = !manualPause || cheatsOpen || helpOpen;
+        ovCheats.hidden = !cheatsOpen || helpOpen || online;
         ovHelp.hidden = !helpOpen;
-        ovCheats.hidden = !cheatsOpen || online;
+        cheatsBtn.classList.toggle("on", Object.keys(cheats).some((k) => cheats[k]));
     }
 
     /* ---------- loop utama ---------- */
@@ -805,34 +886,41 @@ export function mount(root, context = {}) {
         if (!lastT) lastT = t;
         const dt = Math.min(0.05, (t - lastT) / 1000);
         lastT = t;
-        if (keyAL) localAim -= 1.5 * dt;
-        if (keyAR) localAim += 1.5 * dt;
-        localAim = clamp(localAim, -1.05, 1.05);
-        const move = clamp((keyR ? 1 : 0) - (keyL ? 1 : 0) + (padR ? 1 : 0) - (padL ? 1 : 0), -1, 1);
-        const firing = keyFire || padFire || boardFire;
-        const inp = { type: "input", move, aim: +localAim.toFixed(3), firing };
-        if (!online || isHost) {
-            if (sim) {
-                applyAction(inp, playerIndex);
-                const paused = !online && (manualPause || helpOpen || cheatsOpen);
-                if (!online && (sim.phase === "opening" || sim.phase === "battle") && !paused) {
-                    const b = botThink(sim, 1, dt, sim.cfg.skill);
-                    if (b.champ) tryChamp(sim, 1);
-                    sim.inputs[1] = { move: b.move, aim: b.aim, firing: b.firing };
-                }
-                if (!paused && (sim.phase === "opening" || sim.phase === "battle"))
-                    stepSim(sim, dt * (!online && cheats.slowmo ? 0.55 : 1));
-                if (online) {
-                    pubT += dt;
-                    if (sim.phase !== lastPubPhase || (pubT >= PUB_MS / 1000 && sim.phase !== "ready")) {
-                        pubT = 0; lastPubPhase = sim.phase; publish();
+        const paused = !online && (manualPause || helpOpen || cheatsOpen);
+        if (paused && !wasPaused) pausedAnchor = t;
+        else if (!paused && wasPaused) {
+            if (pausedAnchor && recvT) recvT += t - pausedAnchor; // geser anchor interpolasi agar tidak loncat
+            pausedAnchor = 0;
+        }
+        wasPaused = paused;
+        if (!paused) {
+            if (keyAL) localAim -= 1.5 * dt;
+            if (keyAR) localAim += 1.5 * dt;
+            localAim = clamp(localAim, -1.05, 1.05);
+            const move = clamp((keyR ? 1 : 0) - (keyL ? 1 : 0) + (padR ? 1 : 0) - (padL ? 1 : 0), -1, 1);
+            const firing = keyFire || padFire || boardFire;
+            const inp = { type: "input", move, aim: +localAim.toFixed(3), firing };
+            if (!online || isHost) {
+                if (sim) {
+                    applyAction(inp, playerIndex);
+                    if (sim.phase === "opening" || sim.phase === "battle") {
+                        const b = botThink(sim, 1, dt, sim.cfg.skill);
+                        if (b.champ) tryChamp(sim, 1);
+                        sim.inputs[1] = { move: b.move, aim: b.aim, firing: b.firing };
+                        stepSim(sim, dt * (cheats.slowmo ? 0.55 : 1));
+                    }
+                    if (online) {
+                        pubT += dt;
+                        if (sim.phase !== lastPubPhase || (pubT >= PUB_MS / 1000 && sim.phase !== "ready")) {
+                            pubT = 0; lastPubPhase = sim.phase; publish();
+                        }
                     }
                 }
-            }
-        } else {
-            sendT += dt;
-            if (sendT >= INPUT_MS / 1000 || firing !== lastSentFire) {
-                sendT = 0; lastSentFire = firing; submitAction(inp);
+            } else {
+                sendT += dt;
+                if (sendT >= INPUT_MS / 1000 || firing !== lastSentFire) {
+                    sendT = 0; lastSentFire = firing; submitAction(inp);
+                }
             }
         }
         render();
@@ -840,8 +928,10 @@ export function mount(root, context = {}) {
 
     /* ---------- input: mouse / touch di papan ---------- */
     function boardPoint(e) {
-        const r = svgEl.getBoundingClientRect();
-        return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+        const r = boardEl.getBoundingClientRect();
+        const scale = Math.min(r.width / W, r.height / H);
+        const ox = (r.width - W * scale) / 2, oy = (r.height - H * scale) / 2;
+        return { x: (e.clientX - r.left - ox) / scale, y: (e.clientY - r.top - oy) / scale };
     }
     function aimAt(p) {
         let cx = 200;
@@ -878,24 +968,48 @@ export function mount(root, context = {}) {
     function onCtx(e) { if (e.target.closest(".mc-pad,.mc-board")) e.preventDefault(); }
     root.addEventListener("contextmenu", onCtx);
 
-    /* ---------- input: keyboard desktop ---------- */
+    /* ---------- input: keyboard desktop (help → cheats → pause → aksi) ---------- */
     function onKeyDown(e) {
         if (destroyed) return;
         const ph = sim ? sim.phase : snapCurr ? snapCurr.ph : "ready";
-        switch (e.code) {
+        const code = e.code;
+        if (code === "KeyH") { if (!e.repeat) { e.preventDefault(); toggleHelp(); } return; }
+        if (code === "KeyC") { if (!e.repeat && !helpOpen) { e.preventDefault(); toggleCheats(); } return; }
+        if (code === "KeyP" || code === "Escape") {
+            if (!e.repeat) {
+                e.preventDefault();
+                if (helpOpen) toggleHelp(false);
+                else if (cheatsOpen) toggleCheats(false);
+                else togglePause();
+            }
+            return;
+        }
+        if (code === "KeyR") {
+            if (!e.repeat && !helpOpen && !cheatsOpen && (!online || isHost)) { e.preventDefault(); submitAction({ type: "restart" }); }
+            return;
+        }
+        if (code === "Enter") {
+            if (!e.repeat) {
+                e.preventDefault();
+                if (helpOpen) toggleHelp(false);
+                else if (cheatsOpen) toggleCheats(false);
+                else if (manualPause) togglePause(false);
+                else if (ph === "ready") submitAction({ type: "start" });
+                else if (ph === "end") submitAction({ type: "again" });
+            }
+            return;
+        }
+        if (helpOpen || cheatsOpen || manualPause) return;
+        switch (code) {
             case "ArrowLeft": case "KeyA": e.preventDefault(); keyL = true; break;
             case "ArrowRight": case "KeyD": e.preventDefault(); keyR = true; break;
             case "KeyQ": e.preventDefault(); keyAL = true; break;
             case "KeyE": e.preventDefault(); keyAR = true; break;
+            case "KeyX": if (!e.repeat) { e.preventDefault(); submitAction({ type: "champ" }); } break;
             case "Space":
                 e.preventDefault();
                 if (ph === "ready") submitAction({ type: "start" });
                 keyFire = true; break;
-            case "Enter": if (ph === "ready") { e.preventDefault(); submitAction({ type: "start" }); } break;
-            case "KeyC": if (!e.repeat) { e.preventDefault(); submitAction({ type: "champ" }); } break;
-            case "KeyH": if (!e.repeat) { e.preventDefault(); helpOpen = !helpOpen; cheatsOpen = false; } break;
-            case "KeyP": if (!e.repeat && !online) { e.preventDefault(); manualPause = !manualPause; } break;
-            case "Escape": helpOpen = false; cheatsOpen = false; break;
             default: break;
         }
     }
@@ -914,16 +1028,24 @@ export function mount(root, context = {}) {
 
     /* ---------- klik tombol (kontrak template handleClick) ---------- */
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const pad = event.target.closest('[data-pad="champ"]');
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) { if (!online || isHost) submitAction({ type: "restart" }); return; }
+        const pad = t.closest('[data-pad="champ"]');
         if (pad) { submitAction({ type: "champ" }); return; }
-        const b = event.target.closest("[data-act]");
+        const b = t.closest("[data-act]");
         if (!b) return;
         const a = b.dataset.act;
-        if (a === "help") { helpOpen = !helpOpen; cheatsOpen = false; }
-        else if (a === "closehelp") helpOpen = false;
-        else if (a === "cheats") { if (!online) { cheatsOpen = !cheatsOpen; helpOpen = false; } }
-        else if (a === "closecheats") cheatsOpen = false;
+        if (a === "help") toggleHelp();
+        else if (a === "closehelp") toggleHelp(false);
+        else if (a === "cheats") toggleCheats();
+        else if (a === "closecheats") toggleCheats(false);
+        else if (a === "resume") togglePause(false);
         else if (a === "heal") { if (!online && sim) sim.hp[mySide] = sim.cfg.hp; }
         else if (a === "winmap") { if (!online && sim && sim.phase !== "ready" && sim.phase !== "end") sim.hp[1 - mySide] = 0; }
         else if (a === "reroll") { if (!online && sim) { startLevel(sim.li, sim.baseScore); sim.phase = "opening"; } }

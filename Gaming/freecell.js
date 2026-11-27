@@ -1,3 +1,5 @@
+import { iconSVG } from "../JS/icons.js";
+
 /* ================================================================ */
 /*  freecell.js - FreeCell                                          */
 /*  Template: export META + mount(root, context)                    */
@@ -128,33 +130,48 @@ export function mount(root, context = {}) {
     /* ---------- shell ---------- */
     root.innerHTML = `
 <style>
-.fc{--bg:#f2f4f7;--panel:#fff;--line:#dfe4ea;--ink:#243040;--mut:#8a94a3;--acc:#4c6fff;--amber:#e9a23b;color:var(--ink)}
+.fc{--bg:#f2f4f7;--panel:#fff;--line:#dfe4ea;--ink:#243040;--mut:#8a94a3;--acc:#4c6fff;--amber:#e9a23b;color:var(--ink);width:100%;height:100%;min-height:0;margin:0 auto;padding:2px;display:flex;flex-direction:column;gap:8px;min-width:0;outline:none;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.fc *{box-sizing:border-box}
 .fc [hidden]{display:none!important}
-.fc .fc-hud{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin-bottom:10px;font-size:12px;color:var(--mut)}
-.fc .fc-chip b{color:var(--ink);font-weight:600}
-.fc .fc-turn{color:var(--acc);font-weight:600}
-.fc .fc-cheatflag{color:var(--amber);font-weight:600}
-.fc .fc-spacer{flex:1}
-.fc .fc-seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.fc .fc-seg button{border:0;background:var(--panel);color:var(--mut);font:inherit;font-size:12px;padding:4px 10px;cursor:pointer}
-.fc .fc-seg button.on{background:var(--ink);color:#fff}
-.fc .fc-opp{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:var(--mut)}
-.fc .fc-opp-head{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;margin-bottom:6px}
-.fc .fc-opp-head b{color:var(--ink)}
-.fc .fc-opp-head b.on{color:var(--acc)}
-.fc .fc-opp-bar{height:4px;border-radius:2px;background:var(--line);overflow:hidden;margin-bottom:8px}
-.fc .fc-opp-bar i{display:block;height:100%;background:var(--acc);border-radius:2px}
-.fc .fc-mini{display:flex;gap:4px;align-items:flex-start}
-.fc .fc-mini-col{position:relative;flex:1}
-.fc .fc-mini-card{position:absolute;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:3px;font-size:9px;line-height:1.2;padding:1px 2px;font-weight:600;white-space:nowrap;overflow:hidden}
-.fc .fc-wrap{position:relative}
-.fc .fc-board{position:relative;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:14px;user-select:none;-webkit-user-select:none;outline:none;touch-action:manipulation}
-.fc .fc-board:focus-visible{box-shadow:0 0 0 3px rgba(76,111,255,.25)}
-.fc .slot{position:absolute;box-sizing:border-box;border:1.5px dashed var(--line);border-radius:6px;cursor:pointer}
+.fc :is(button,[tabindex]):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* --- single HUD bar: all info + controls above the board --- */
+.fc-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.fc-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;min-height:28px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--mut);white-space:nowrap}
+.fc-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.fc-turn{color:var(--acc);font-weight:700}
+.fc-status{color:var(--mut)}
+.fc-cheatflag{color:var(--amber);font-weight:700}
+.fc-msg{color:var(--ink);max-width:34ch;white-space:normal;font-weight:600}
+.fc-spacer{flex:1 1 auto;min-width:6px}
+.fc-seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}
+.fc-seg button{border:0;background:var(--panel);color:var(--mut);font:inherit;font-size:10px;padding:6px 10px;min-height:30px;cursor:pointer}
+.fc-seg button.on{background:var(--ink);color:#fff}
+.fc-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;padding:6px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--ink);font:inherit;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.fc-btn:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+.fc-btn:disabled{opacity:.4;cursor:default}
+.fc-btn.armed{border-color:var(--amber);color:var(--amber)}
+.fc-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.fc-btn.primary:hover:not(:disabled){color:#fff;opacity:.92}
+.fc-icon-btn svg{flex:none;display:block;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.fc-btn-label{white-space:nowrap}
+/* --- board fills remaining height; content stays proportional & centered --- */
+.fc.game-fill>.game-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto;min-width:0;position:relative;display:flex;flex-direction:column;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden}
+.fc-opp{flex:none;background:var(--panel);border-bottom:1px solid var(--line);padding:8px 12px;font-size:11px;color:var(--mut)}
+.fc-opp-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin-bottom:6px}
+.fc-opp-head b{color:var(--ink)}
+.fc-opp-head b.on{color:var(--acc)}
+.fc-opp-bar{height:4px;border-radius:2px;background:var(--line);overflow:hidden;margin-bottom:8px}
+.fc-opp-bar i{display:block;height:100%;background:var(--acc);border-radius:2px}
+.fc-mini{display:flex;gap:4px;align-items:flex-start}
+.fc-mini-col{position:relative;flex:1;min-width:0}
+.fc-mini-card{position:absolute;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:3px;font-size:9px;line-height:1.2;padding:1px 2px;font-weight:600;white-space:nowrap;overflow:hidden}
+.fc-wrap{position:relative;flex:1 1 auto;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.fc-board{position:relative;flex:none;background:var(--bg);user-select:none;-webkit-user-select:none;outline:none;touch-action:manipulation;border-radius:10px}
+.fc .slot{position:absolute;box-sizing:border-box;border:1px dashed var(--line);border-radius:6px;cursor:pointer}
 .fc .slot .lab{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c3cad4;font-weight:700}
 .fc .slot.colbase{border-color:transparent}
 .fc .slot.colbase.empty{border-color:var(--line)}
-.fc .card{position:absolute;box-sizing:border-box;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 1px 2px rgba(20,30,50,.06);cursor:pointer;transition:box-shadow .12s,transform .12s}
+.fc .card{position:absolute;box-sizing:border-box;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 1px 2px rgba(20,30,50,.06);cursor:pointer;transition:box-shadow .16s,transform .16s}
 @media(hover:hover){.fc .card:hover{transform:translateY(-1px);box-shadow:0 3px 8px rgba(20,30,50,.12)}}
 .fc .card .rk{position:absolute;font-weight:700;line-height:1}
 .fc .card .cs{position:absolute;line-height:0}
@@ -163,86 +180,151 @@ export function mount(root, context = {}) {
 .fc .card.hint,.fc .slot.hint{box-shadow:0 0 0 2px var(--amber)}
 .fc .card.cur,.fc .slot.cur{outline:2px dashed var(--acc);outline-offset:2px}
 .fc .fc-board.wild .card.sel{box-shadow:0 0 0 2px var(--amber),0 4px 10px rgba(20,30,50,.16)}
-.fc .fc-bar{display:flex;gap:8px;justify-content:center;margin-top:10px}
-.fc .fc-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;height:40px;padding:0 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--ink);cursor:pointer;font:inherit;font-size:13px;transition:transform .08s,background .12s}
-.fc .fc-btn:hover{background:#f6f8fb}
-.fc .fc-btn:active{transform:scale(.95)}
-.fc .fc-btn:disabled{opacity:.35;cursor:default;transform:none}
-.fc .fc-btn.armed{border-color:var(--amber);color:var(--amber)}
-.fc .fc-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fc .fc-btn.wide{min-width:110px}
-.fc .fc-msg{min-height:18px;margin-top:8px;text-align:center;font-size:12px;color:var(--mut)}
-.fc .fc-cheats{position:absolute;top:10px;right:10px;z-index:30;width:min(270px,92%);background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 36px rgba(20,30,50,.16);padding:10px}
-.fc .fc-cheats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:13px}
-.fc .fc-x{border:0;background:none;color:var(--mut);cursor:pointer;font-size:14px;padding:2px 6px}
-.fc .fc-cheat{display:block;width:100%;text-align:left;border:0;background:none;border-radius:8px;padding:8px;cursor:pointer;font:inherit;color:var(--ink)}
-.fc .fc-cheat:hover{background:#f4f6fa}
-.fc .fc-cheat b{display:block;font-size:13px}
-.fc .fc-cheat span{display:block;font-size:11px;color:var(--mut)}
-.fc .fc-cheat.armed{background:#fdf3e3}
-.fc .fc-over,.fc .fc-wait{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:rgba(242,244,247,.88);backdrop-filter:blur(3px);border-radius:14px}
-.fc .fc-over-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 24px;text-align:center;box-shadow:0 14px 36px rgba(20,30,50,.12);max-width:90%}
-.fc .fc-over-card h3{margin:0 0 6px;font-size:20px}
-.fc .fc-over-card h3.win{color:var(--acc)}
-.fc .fc-over-card p{margin:0 0 14px;font-size:13px;color:var(--mut)}
-.fc .fc-over-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-@media(max-width:520px){.fc .fc-bar{gap:6px}.fc .fc-btn{flex:1;min-width:0;padding:0;height:44px}}
+/* --- overlays: cheats / result / wait / pause / help, mutually exclusive --- */
+.fc-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(242,244,247,.9);backdrop-filter:blur(3px);border-radius:12px}
+.fc-card{display:flex;flex-direction:column;overflow:hidden;width:min(440px,100%);max-height:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px rgba(20,30,50,.14)}
+.fc-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 8px}
+.fc-head h3{margin:0;font-size:16px;line-height:1.25}
+.fc-head h3.win{color:var(--acc)}
+.fc-body{flex:1 1 auto;min-height:0;overflow:auto;padding:0 16px 8px;font-size:12px;line-height:1.5;color:var(--mut)}
+.fc-body p{margin:0}
+.fc-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 16px 14px;border-top:1px solid var(--line)}
+.fc-note{font:600 10px/1.4 ui-monospace,monospace;color:var(--mut)}
+.fc-cheat{display:block;width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;min-height:44px;margin-bottom:6px;cursor:pointer;font:inherit;color:var(--ink)}
+.fc-cheat:hover{background:#f4f6fa}
+.fc-cheat b{display:block;font-size:12px}
+.fc-cheat span{display:block;font-size:10px;color:var(--mut)}
+.fc-cheat.armed{background:#fdf3e3;border-color:var(--amber)}
+.fc-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.fc-help b{display:block;margin-bottom:5px;font:700 9px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--mut);text-transform:uppercase}
+.fc-help ul{margin:0 0 10px;padding-left:16px;font-size:11px;line-height:1.6}
+.fc-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--bg);color:var(--ink);font:600 10px/1.4 ui-monospace,monospace}
 @media(prefers-reduced-motion:reduce){.fc *{transition:none!important;animation:none!important}}
+/* --- layout overrides last (beat pointer:coarse 44px defaults) --- */
+@media(max-width:640px){
+.fc.game-fill>.game-panel[data-board]:not(:has(.fc-ov:not([hidden]))){flex:0 0 auto;aspect-ratio:auto}
+.fc.game-fill>.game-panel[data-board]:has(.fc-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.fc .fc-hud{gap:4px}
+.fc .fc-hud .fc-chip{padding:3px 5px;font-size:8px;min-height:0}
+.fc .fc-hud .fc-chip[data-hud="cheatflag"],.fc .fc-hud .fc-chip[data-hud="seat"]{display:none}
+.fc .fc-hud .fc-btn{min-width:22px;width:22px;min-height:28px;padding:3px;font-size:8px;gap:0}
+.fc .fc-hud .fc-icon-btn svg{width:11px;height:11px}
+.fc .fc-hud .fc-seg button{min-width:28px;min-height:28px;padding:4px 5px;font-size:8px}
+.fc .fc-hud .fc-btn-label,.fc .fc-hud .fc-spacer,.fc .fc-hud .fc-msg{display:none}
+.fc .fc-opp{padding:6px 8px}
+.fc-ov{padding:8px}
+.fc-card{width:100%;height:100%;max-height:100%;padding:0}
+.fc .fc-head{padding:10px 12px 6px}
+.fc .fc-body{padding:0 12px 8px;scrollbar-width:none}
+.fc .fc-body::-webkit-scrollbar{display:none}
+.fc-help{grid-template-columns:1fr;gap:8px}
+.fc-foot{padding:8px 12px 10px}
+.fc-note{display:none}
+}
+@media(pointer:coarse){
+.fc .fc-hud .fc-btn{min-width:24px;width:24px;min-height:28px;padding:4px;font-size:8px;gap:0}
+.fc .fc-hud .fc-seg button{min-width:30px;min-height:28px;padding:4px 6px;font-size:8px}
+.fc .fc-card .fc-btn{min-height:44px}
+}
 </style>
-<div class="game-app fc">
-  <div class="game-intro">
-    <div><h2>FreeCell</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <section class="game-panel" data-board>
-    <div class="fc-hud">
-      <span class="fc-chip">Deal <b data-hud="deal">\u2013</b></span>
-      <span class="fc-chip">Moves <b data-hud="moves">0</b></span>
-      <span class="fc-chip">Home <b data-hud="home">0</b>/52</span>
-      <span class="fc-chip fc-turn" data-hud="turn">\u2013</span>
-      <span class="fc-chip fc-cheatflag" data-hud="cheatflag" hidden>\u2605 cheats</span>
-      <span class="fc-spacer"></span>
-      <span class="fc-chip" data-hud="seat" hidden></span>
-      <div class="fc-seg" data-seg>
-        <button type="button" data-mode="solo">Solo</button>
-        <button type="button" data-mode="bot">Bot</button>
-      </div>
+<div class="game-app fc game-fill" data-fc>
+  <div class="fc-hud">
+    <span class="fc-chip">DEAL <b data-hud="deal">\u2013</b></span>
+    <span class="fc-chip">MOVES <b data-hud="moves">0</b></span>
+    <span class="fc-chip">HOME <b data-hud="home">0</b>/52</span>
+    <span class="fc-chip fc-turn" data-hud="turn">\u2013</span>
+    <span class="fc-chip fc-status" data-status>Ready</span>
+    <span class="fc-chip fc-cheatflag" data-hud="cheatflag" hidden>\u2605 cheats</span>
+    <span class="fc-chip" data-hud="seat" hidden></span>
+    <span class="fc-chip fc-msg" data-msg aria-live="polite" hidden></span>
+    <span class="fc-spacer"></span>
+    <div class="fc-seg" data-seg>
+      <button type="button" data-mode="solo">Solo</button>
+      <button type="button" data-mode="bot">Bot</button>
     </div>
+    <button type="button" class="fc-btn fc-icon-btn" data-act="undo" title="Undo (U)" aria-label="Undo">${ICONS.undo}<span class="fc-btn-label">Undo</span></button>
+    <button type="button" class="fc-btn fc-icon-btn" data-act="home" title="Send to foundation (F, double-click, right-click)" aria-label="Send home">${ICONS.home}<span class="fc-btn-label">Home</span></button>
+    <button type="button" class="fc-btn fc-icon-btn" data-act="auto" title="Auto home (A)" aria-label="Auto home">${ICONS.auto}<span class="fc-btn-label">Auto</span></button>
+    <button type="button" class="fc-btn fc-icon-btn" data-act="clear" title="Deselect (Esc)" aria-label="Deselect">${ICONS.clear}<span class="fc-btn-label">Clear</span></button>
+    <button type="button" class="fc-btn fc-icon-btn" data-act="new" title="New solvable deal (N)" aria-label="New deal">${ICONS.fresh}<span class="fc-btn-label">New</span></button>
+    <button class="fc-btn fc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="fc-btn-label">Help</span></button>
+    <button class="fc-btn fc-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="fc-btn-label">Cheats</span></button>
+    <button class="fc-btn fc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" ${online ? "disabled" : ""}>${iconSVG("pause", { size: 14 })}<span class="fc-btn-label">Pause</span></button>
+    <button class="fc-btn fc-icon-btn" type="button" data-restart aria-label="Restart" title="Replay deal (R)">${iconSVG("refresh", { size: 14 })}<span class="fc-btn-label">Restart</span></button>
+    <button class="fc-btn fc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="fc-btn-label">Exit game</span></button>
+  </div>
+  <section class="game-panel fc-panel" data-board>
     <div class="fc-opp" data-opp hidden></div>
     <div class="fc-wrap" data-wrap>
       <div class="fc-board" data-fcboard tabindex="0" aria-label="FreeCell board"></div>
-      <div class="fc-cheats" data-cheats hidden>
-        <div class="fc-cheats-head"><b>Cheats</b><button type="button" class="fc-x" data-act="cheats-close" aria-label="Close cheats">\u2715</button></div>
-        <button type="button" class="fc-cheat" data-cheat="wild"><b>Wild move</b><span>Your next placement ignores the rules.</span></button>
-        <button type="button" class="fc-cheat" data-cheat="pull"><b>Pull next cards</b><span>Send each suit's next card home, even if buried.</span></button>
-        <button type="button" class="fc-cheat" data-cheat="hint"><b>Hint</b><span>Highlight a strong move.</span></button>
-        <button type="button" class="fc-cheat" data-cheat="win"><b>Instant win</b><span>Finish this deal immediately.</span></button>
+    </div>
+    <div class="fc-ov" data-ov="cheat" hidden>
+      <div class="fc-card">
+        <div class="fc-head"><h3>Cheats</h3><button class="fc-btn" type="button" data-cheat-close aria-label="Close cheats">Close</button></div>
+        <div class="fc-body">
+          <button type="button" class="fc-cheat" data-cheat="wild"><b>Wild move</b><span>Your next placement ignores the rules.</span></button>
+          <button type="button" class="fc-cheat" data-cheat="pull"><b>Pull next cards</b><span>Send each suit's next card home, even if buried.</span></button>
+          <button type="button" class="fc-cheat" data-cheat="hint"><b>Hint</b><span>Highlight a strong move (G).</span></button>
+          <button type="button" class="fc-cheat" data-cheat="win"><b>Instant win</b><span>Finish this deal immediately.</span></button>
+        </div>
+        <div class="fc-foot"><span class="fc-note">Press C or Esc to close</span></div>
       </div>
-      <div class="fc-over" data-over hidden>
-        <div class="fc-over-card">
-          <h3 data-el="ovTitle">You win</h3>
-          <p data-el="ovReason"></p>
-          <div class="fc-over-btns">
-            <button type="button" class="fc-btn wide" data-act="new">New deal</button>
-            <button type="button" class="fc-btn wide" data-act="restart">Replay deal</button>
-            <button type="button" class="fc-btn wide" data-act="undo" data-el="ovUndo">Undo</button>
+    </div>
+    <div class="fc-ov" data-ov="over" hidden>
+      <div class="fc-card">
+        <div class="fc-head"><h3 data-el="ovTitle">You win</h3></div>
+        <div class="fc-body"><p data-el="ovReason"></p></div>
+        <div class="fc-foot">
+          <span class="fc-note">New deal: N \u00b7 Replay: R</span>
+          <button type="button" class="fc-btn primary" data-act="new">New deal</button>
+          <button type="button" class="fc-btn" data-act="restart">Replay deal</button>
+          <button type="button" class="fc-btn" data-act="undo" data-el="ovUndo">Undo</button>
+        </div>
+      </div>
+    </div>
+    <div class="fc-ov" data-ov="wait" hidden><div class="fc-card"><div class="fc-head"><h3>Waiting for host\u2026</h3></div></div></div>
+    <div class="fc-ov" data-ov="pause" hidden>
+      <div class="fc-card">
+        <div class="fc-head"><h3>Paused</h3></div>
+        <div class="fc-body"><p>The board, bot and timers are frozen.</p></div>
+        <div class="fc-foot"><span class="fc-note">Press P or Esc to resume</span><button class="fc-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="fc-ov" data-ov="help" hidden>
+      <div class="fc-card">
+        <div class="fc-head"><h3>How to play</h3><button class="fc-btn" type="button" data-help-close aria-label="Close">Close</button></div>
+        <div class="fc-body fc-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Click a card or run, then click a cell, foundation or column to place it.</li>
+              <li>Double-click / right-click a top card to send it home.</li>
+              <li><span class="fc-kbd">\u2190 \u2191 \u2192 \u2193</span> move the cursor, <span class="fc-kbd">Enter</span> select / place, <span class="fc-kbd">1\u20138</span> jump to a column.</li>
+              <li><span class="fc-kbd">U</span> undo \u00b7 <span class="fc-kbd">F</span> send home \u00b7 <span class="fc-kbd">A</span> auto home \u00b7 <span class="fc-kbd">G</span> hint</li>
+              <li><span class="fc-kbd">N</span> new deal \u00b7 <span class="fc-kbd">R</span> replay \u00b7 <span class="fc-kbd">Esc</span> deselect</li>
+              <li><span class="fc-kbd">H</span> help \u00b7 <span class="fc-kbd">C</span> cheats \u00b7 <span class="fc-kbd">P</span> pause</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap a card then a destination; use the HUD icons for actions.</li>
+              <li>Use the Solo / Bot switch in the HUD to change mode.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Build the four foundations from Ace to King, one per suit.</li>
+              <li>Tableau columns build down in alternating red / black.</li>
+              <li>Only a top card, or a correctly ordered run, may move. A run's size is limited by free cells and empty columns.</li>
+              <li>Deals #1\u201332000 (except #11982) are all solvable; the deal number is shown in the HUD.</li>
+              <li>Play solo, race the bot, or duel a friend in an online room. Pause freezes the bot and all timers.</li>
+            </ul>
+            <div class="fc-foot"><span class="fc-note">Press H to reopen this guide</span><button class="fc-btn primary" type="button" data-help-close>Got it</button></div>
           </div>
         </div>
       </div>
-      <div class="fc-wait" data-wait hidden><div class="fc-over-card"><h3>Waiting for host\u2026</h3></div></div>
     </div>
-    <div class="fc-bar">
-      <button type="button" class="fc-btn" data-act="undo" title="Undo (U)" aria-label="Undo">${ICONS.undo}</button>
-      <button type="button" class="fc-btn" data-act="home" title="Send to foundation (F, double-click, right-click)" aria-label="Send home">${ICONS.home}</button>
-      <button type="button" class="fc-btn" data-act="auto" title="Auto home (A)" aria-label="Auto home">${ICONS.auto}</button>
-      <button type="button" class="fc-btn" data-act="clear" title="Deselect (Esc)" aria-label="Deselect">${ICONS.clear}</button>
-      <button type="button" class="fc-btn" data-act="restart" title="Replay this deal (R)" aria-label="Replay deal">${ICONS.restart}</button>
-      <button type="button" class="fc-btn" data-act="new" title="New solvable deal (N)" aria-label="New deal">${ICONS.fresh}</button>
-      <button type="button" class="fc-btn" data-act="cheats" title="Cheats (C)" aria-label="Cheats">${ICONS.cheat}</button>
-    </div>
-    <div class="fc-msg" data-msg aria-live="polite"></div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-act="exit">Exit game</button></div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -261,10 +343,12 @@ export function mount(root, context = {}) {
     const seatChip = $('[data-hud="seat"]');
     const segEl = $("[data-seg]");
     const segBtns = $$("[data-mode]");
-    const cheatsEl = $("[data-cheats]");
+    const cheatsEl = $('[data-ov="cheat"]');
     const wildRow = $('[data-cheat="wild"]');
-    const overEl = $("[data-over]");
-    const waitEl = $("[data-wait]");
+    const overEl = $('[data-ov="over"]');
+    const waitEl = $('[data-ov="wait"]');
+    const pauseOvEl = $('[data-ov="pause"]');
+    const helpEl = $('[data-ov="help"]');
     const ovTitle = $('[data-el="ovTitle"]');
     const ovReason = $('[data-el="ovReason"]');
     const ovUndo = $('[data-el="ovUndo"]');
@@ -274,7 +358,9 @@ export function mount(root, context = {}) {
     const btnAuto = $('[data-act="auto"]');
     const btnHome = $('[data-act="home"]');
     const btnClear = $('[data-act="clear"]');
-    const btnCheats = $('.fc-bar [data-act="cheats"]');
+    const btnCheats = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
+    const restartBtn = $("[data-restart]");
     function esc(s) {
         return String(s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
     }
@@ -283,10 +369,57 @@ export function mount(root, context = {}) {
     let localMode = mode === "solo" ? "solo" : "bot";
     let histories = [[], []];
     const botMem = { visited: new Set(), idle: 0, found: 0 };
-    let botTimer = 0, hintTimer = 0, msgTimer = 0, rafId = 0;
-    let sel = null, hint = null, wildArmed = false, kbActive = false, cheatsOpen = false;
+    let rafId = 0;
+    let sel = null, hint = null, wildArmed = false, kbActive = false;
+    let cheatsOpen = false, helpOpen = false, paused = false;
     let cursor = { row: "col", col: 0, idx: 0 };
     let lastKey = "";
+
+    /* Pause-aware timers: keep Date.now() due anchors and replay only the
+       remaining delay on resume so the bot / hint / toast never jump ahead. */
+    const timers = new Map();
+    let deferredTimers = [];
+    let pauseStart = 0, pauseOffset = 0;
+    const perfNow = () => performance.now() - pauseOffset;
+    function setT(key, fn, ms) {
+        clearT(key);
+        if (paused) { deferredTimers.push({ key, fn, wait: Math.max(0, ms) }); return; }
+        const id = setTimeout(() => {
+            timers.delete(key);
+            if (!dead && !paused) fn();
+        }, ms);
+        timers.set(key, { id, due: Date.now() + ms, fn });
+    }
+    function clearT(key) {
+        const rec = timers.get(key);
+        if (rec) { clearTimeout(rec.id); timers.delete(key); }
+        deferredTimers = deferredTimers.filter((t) => t.key !== key);
+    }
+    function pauseTimers() {
+        const now = Date.now();
+        for (const [key, rec] of timers) {
+            clearTimeout(rec.id);
+            deferredTimers.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        timers.clear();
+    }
+    function resumeTimers() {
+        const queue = deferredTimers;
+        deferredTimers = [];
+        for (const t of queue) setT(t.key, t.fn, t.wait);
+    }
+    function clearAllTimers() {
+        for (const rec of timers.values()) clearTimeout(rec.id);
+        timers.clear();
+        deferredTimers = [];
+    }
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("freecellHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("freecellHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     function freshPlayer(deal) {
         return {
@@ -332,15 +465,17 @@ export function mount(root, context = {}) {
         sel = null; hint = null; wildArmed = false; cheatsOpen = false;
         const me = state ? state.players[mySeat()] : null;
         cursor = { row: "col", col: 0, idx: me ? Math.max(0, me.cols[0].length - 1) : 0 };
-        if (hintTimer) { clearTimeout(hintTimer); hintTimer = 0; }
-        if (msgTimer) { clearTimeout(msgTimer); msgTimer = 0; }
+        clearT("hint");
+        clearT("msg");
         msgEl.textContent = "";
+        msgEl.hidden = true;
         cheatsEl.hidden = true;
     }
     function flash(text) {
         msgEl.textContent = text;
-        if (msgTimer) clearTimeout(msgTimer);
-        msgTimer = setTimeout(() => { msgTimer = 0; msgEl.textContent = ""; }, 2400);
+        msgEl.hidden = !text;
+        clearT("msg");
+        setT("msg", () => { msgEl.textContent = ""; msgEl.hidden = true; }, 2400);
     }
     function announce() {
         if (!state) return;
@@ -580,9 +715,9 @@ export function mount(root, context = {}) {
 
     /* ---------- bot ---------- */
     function maybeBot() {
-        if (botTimer) { clearTimeout(botTimer); botTimer = 0; }
+        clearT("bot");
         if (dead || online || !state || state.mode !== "bot" || state.phase !== "play" || state.turn !== 1) return;
-        botTimer = setTimeout(() => { botTimer = 0; botStep(); }, 550 + Math.random() * 450);
+        setT("bot", () => botStep(), 550 + Math.random() * 450);
     }
     function botStep() {
         if (dead || !state || state.mode !== "bot" || state.phase !== "play" || state.turn !== 1) return;
@@ -804,8 +939,8 @@ export function mount(root, context = {}) {
         const mv = botChoose(state.players[mySeat()], null);
         if (!mv) { flash("No productive move found \u2014 try undo."); return; }
         hint = { from: mv.from, to: mv.to };
-        if (hintTimer) clearTimeout(hintTimer);
-        hintTimer = setTimeout(() => { hintTimer = 0; hint = null; render(); }, 2000);
+        clearT("hint");
+        setT("hint", () => { hint = null; render(); }, 2000);
         render();
     }
     function runCheat(kind) {
@@ -825,12 +960,25 @@ export function mount(root, context = {}) {
     }
 
     /* ---------- rendering ---------- */
-    function metrics() {
+    function metrics(maxN) {
         const w = Math.max(280, wrapEl.clientWidth || 640);
+        const availH = wrapEl.clientHeight || 0;
         const pad = w < 460 ? 8 : 14;
         const gap = w < 460 ? 5 : 8;
         let cw = Math.floor((w - pad * 2 - gap * 7) / 8);
         cw = Math.max(30, Math.min(78, cw));
+        const n = Math.max(1, maxN || 1);
+        const heightFor = (width) => {
+            const ch = Math.round(width * 1.42);
+            const stackH = n ? stackOffset(n, ch) * (n - 1) + ch : ch;
+            return pad * 2 + ch + Math.round(gap * 1.6) + stackH;
+        };
+        /* Keep the whole 8-column layout proportional and inside the flex board. */
+        if (availH > 240) {
+            for (let i = 0; i < 4 && heightFor(cw) > availH - 8; i++) {
+                cw = Math.max(18, Math.floor(cw * ((availH - 8) / heightFor(cw))));
+            }
+        }
         const ch = Math.round(cw * 1.42);
         return { pad, gap, cw, ch, pitch: cw + gap, topY: pad, colY: pad + ch + Math.round(gap * 1.6), boardW: pad * 2 + cw * 8 + gap * 7 };
     }
@@ -882,7 +1030,8 @@ export function mount(root, context = {}) {
     function renderBoard() {
         if (!state) { boardEl.innerHTML = ""; boardEl.style.width = "100%"; boardEl.style.height = "320px"; return; }
         const p = state.players[mySeat()];
-        const m = metrics();
+        const maxN = p.cols.reduce((n, col) => Math.max(n, col.length), 1);
+        const m = metrics(maxN);
         let h = "";
         const cellIcon = '<svg viewBox="0 0 24 24" width="' + Math.round(m.cw * 0.34) + '" height="' + Math.round(m.cw * 0.34) + '" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>';
         for (let i = 0; i < 4; i++) {
@@ -1001,14 +1150,50 @@ export function mount(root, context = {}) {
         btnHome.disabled = !myTurn();
         btnClear.disabled = !sel && !wildArmed;
         btnCheats.disabled = !play;
-        btnCheats.classList.toggle("armed", wildArmed);
+        btnCheats.classList.toggle("armed", wildArmed || cheatsOpen);
+        restartBtn.disabled = !cn;
         wildRow.classList.toggle("armed", wildArmed);
         renderOpp();
         renderBoard();
-        waitEl.hidden = !(online && !state);
+        syncUI();
+    }
+
+    /* Overlays suppress each other: help > cheats > pause > result/wait.
+       Pause labels update the span only, so the icon is never destroyed. */
+    function syncUI() {
         const isOver = !!state && state.phase === "over";
-        if (isOver) { fillOver(); if (cheatsOpen) { cheatsOpen = false; cheatsEl.hidden = true; } }
-        overEl.hidden = !isOver;
+        if (isOver && cheatsOpen) cheatsOpen = false;
+        if (isOver) fillOver();
+        overEl.hidden = !isOver || cheatsOpen || helpOpen || paused;
+        waitEl.hidden = !(online && !state) || cheatsOpen || helpOpen || paused;
+        pauseOvEl.hidden = !paused || cheatsOpen || helpOpen;
+        cheatsEl.hidden = !cheatsOpen || helpOpen;
+        helpEl.hidden = !helpOpen;
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".fc-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) { pauseStart = performance.now(); pauseTimers(); }
+        else {
+            if (pauseStart) pauseOffset += performance.now() - pauseStart;
+            pauseStart = 0;
+            resumeTimers();
+        }
+        render();
     }
 
     /* ---------- events ---------- */
@@ -1020,40 +1205,54 @@ export function mount(root, context = {}) {
         else if (z === "colbase") colBaseClick(+el.getAttribute("data-col"));
     }
     function handleClick(e) {
-        const actEl = e.target.closest("[data-act]");
+        const t = e.target;
+        const blocked = () => helpOpen || cheatsOpen || paused;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) {
+            if (!blocked() && state && state.phase === "play") { cheatsOpen = true; render(); }
+            return;
+        }
+        if (t.closest("[data-cheat-close]")) { cheatsOpen = false; render(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) {
+            if (!blocked() && canNew()) submitAction({ t: "restart" });
+            return;
+        }
+        const actEl = t.closest("[data-act]");
         if (actEl) {
             if (actEl.disabled) return;
             const act = actEl.getAttribute("data-act");
-            if (act === "exit") { onExit(); return; }
-            if (act === "undo") { submitAction({ t: "undo" }); sel = null; render(); return; }
-            if (act === "new") { submitAction({ t: "new" }); return; }
-            if (act === "restart") { submitAction({ t: "restart" }); return; }
-            if (act === "auto") { doAuto(); return; }
-            if (act === "home") { homeFromSelOrCursor(); return; }
-            if (act === "clear") { sel = null; wildArmed = false; render(); return; }
-            if (act === "cheats") { cheatsOpen = !cheatsOpen; cheatsEl.hidden = !cheatsOpen; return; }
-            if (act === "cheats-close") { cheatsOpen = false; cheatsEl.hidden = true; return; }
+            if (act === "undo") { if (blocked()) return; submitAction({ t: "undo" }); sel = null; render(); return; }
+            if (act === "new") { if (blocked()) return; submitAction({ t: "new" }); return; }
+            if (act === "restart") { if (blocked()) return; submitAction({ t: "restart" }); return; }
+            if (act === "auto") { if (blocked()) return; doAuto(); return; }
+            if (act === "home") { if (blocked()) return; homeFromSelOrCursor(); return; }
+            if (act === "clear") { if (blocked()) return; sel = null; wildArmed = false; render(); return; }
             return;
         }
-        const cheatEl = e.target.closest("[data-cheat]");
-        if (cheatEl) { runCheat(cheatEl.getAttribute("data-cheat")); return; }
-        const modeEl = e.target.closest("[data-mode]");
+        const cheatEl = t.closest("[data-cheat]");
+        if (cheatEl) { if (blocked()) return; runCheat(cheatEl.getAttribute("data-cheat")); return; }
+        const modeEl = t.closest("[data-mode]");
         if (modeEl) {
-            if (online) return;
+            if (online || blocked()) return;
             const m = modeEl.getAttribute("data-mode");
             if (m === localMode) return;
             localMode = m;
             applyAction({ t: "new" }, 0);
             return;
         }
-        const zoneEl = e.target.closest("[data-zone]");
+        if (blocked()) return;
+        const zoneEl = t.closest("[data-zone]");
         if (zoneEl) {
             if (!state || state.phase !== "play") return;
             kbActive = false;
             zoneClick(zoneEl);
             return;
         }
-        if (e.target === boardEl && sel) { sel = null; render(); }
+        if (t === boardEl && sel) { sel = null; render(); }
     }
     function handleDbl(e) {
         if (!state || state.phase !== "play") return;
@@ -1082,25 +1281,38 @@ export function mount(root, context = {}) {
         const tag = e.target && e.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const k = e.key;
+        const code = e.code || "";
         const lower = k.length === 1 ? k.toLowerCase() : k;
         if ((lower === "Enter" || lower === " ") && tag === "BUTTON") return;
-        if (!state) return;
+        /* priority: help -> cheats -> pause -> Escape -> restart -> game actions */
+        if (code === "KeyH" || k === "?") { e.preventDefault(); toggleHelp(); return; }
+        if (code === "KeyC") {
+            e.preventDefault();
+            if (!helpOpen && state && state.phase === "play") { cheatsOpen = !cheatsOpen; render(); }
+            return;
+        }
+        if (code === "KeyP") { e.preventDefault(); if (!helpOpen && !cheatsOpen) togglePause(); return; }
+        if (k === "Escape") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (paused) togglePause(false);
+            else { sel = null; wildArmed = false; render(); }
+            return;
+        }
+        if (code === "KeyR") {
+            e.preventDefault();
+            if (!helpOpen && !cheatsOpen && !paused && canNew()) submitAction({ t: "restart" });
+            return;
+        }
+        if (helpOpen || cheatsOpen || paused || !state) return;
         const play = state.phase === "play";
         const nav = (fn) => { e.preventDefault(); kbActive = true; fn(); render(); };
         if (lower === "u") { e.preventDefault(); if (canUndo()) { submitAction({ t: "undo" }); sel = null; render(); } return; }
         if (lower === "n") { e.preventDefault(); if (canNew()) submitAction({ t: "new" }); else flash("Only the host can deal during a game."); return; }
-        if (lower === "r") { e.preventDefault(); if (canNew()) submitAction({ t: "restart" }); else flash("Only the host can deal during a game."); return; }
         if (lower === "a") { e.preventDefault(); doAuto(); return; }
-        if (lower === "h") { e.preventDefault(); doHint(); return; }
-        if (lower === "c") { e.preventDefault(); if (play) { cheatsOpen = !cheatsOpen; cheatsEl.hidden = !cheatsOpen; } return; }
+        if (lower === "g") { e.preventDefault(); doHint(); return; }
         if (lower === "f") { e.preventDefault(); homeFromSelOrCursor(); return; }
-        if (lower === "Escape") {
-            e.preventDefault();
-            if (cheatsOpen) { cheatsOpen = false; cheatsEl.hidden = true; }
-            else { sel = null; wildArmed = false; }
-            render();
-            return;
-        }
         if (!play) return;
         const p = state.players[mySeat()];
         const clampIdx = () => { cursor.idx = Math.max(0, Math.min(cursor.idx, p.cols[cursor.col].length - 1)); };
@@ -1186,9 +1398,7 @@ export function mount(root, context = {}) {
             document.removeEventListener("keydown", handleKey);
             if (ro) ro.disconnect();
             else window.removeEventListener("resize", onResize);
-            if (botTimer) clearTimeout(botTimer);
-            if (hintTimer) clearTimeout(hintTimer);
-            if (msgTimer) clearTimeout(msgTimer);
+            clearAllTimers();
             if (rafId) cancelAnimationFrame(rafId);
             unsubs.forEach((u) => { try { u(); } catch (err) { console.warn(err); } });
         },

@@ -1,4 +1,5 @@
 /* ==== GAME: hill-climb.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /* Hill Climb — balapan bukit 2D side-scrolling realtime (SVG murni).
    Format template: export META + export mount(root, context).
    Mode "ai"  : pemain vs bot (garage, upgrade, cheat tersedia).
@@ -125,126 +126,201 @@ export function mount(root, context = {}) {
     let cam = 0, viewW = 960, markBucket = -1;
     let raf = null, lastT = 0, netAcc = 0, lastCdInt = null, overlayKey = "";
     let destroyed = false, ro = null, toastTimer = null;
-    const timers = new Set(), bound = [], subs = [];
+    let helpOpen = false, cheatsOpen = false, paused = false;
+    const timers = new Set(), timerFns = new Map(), frozenTimers = [], bound = [], subs = [];
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("hillClimbHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("hillClimbHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
     const uid = Math.random().toString(36).slice(2, 8);
 
-    /* ---------- shell UI (minimalis) ---------- */
+    /* ---------- shell UI: HUD bar + fill board + overlays ---------- */
     root.innerHTML = `
 <style>
-.hc{--line:rgba(255,255,255,.14);--ink:#eef2f7;--mut:#93a1b5;--acc:#34d399}
-.hc .hc-shell{width:100%;background:#0b1220;border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.hc .hc-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;color:var(--ink);font-size:12.5px}
-.hc .hc-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.04);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hc{--line:rgba(255,255,255,.14);--ink:#eef2f7;--mut:#a9b6c8;--acc:#34d399;line-height:1.5}
+.hc [hidden]{display:none!important}
+.hc .hc-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding:9px 10px;background:#0b1220;border:1px solid var(--line);border-radius:12px;color:var(--ink);font:600 11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+.hc .hc-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;min-height:28px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.04);font-variant-numeric:tabular-nums;white-space:nowrap}
 .hc .hc-chip b{font-weight:700}
-.hc .hc-coin{width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block}
+.hc .hc-coin{width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block;flex:none}
 .hc .hc-gap.up{color:#34d399}.hc .hc-gap.down{color:#f87171}
-.hc .hc-spacer{flex:1}
-.hc .hc-fuel{width:110px;height:8px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
+.hc .hc-spacer{flex:1 1 auto}
+.hc .hc-fuel{width:min(110px,24vw);height:8px;padding:0;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
 .hc .hc-fuel i{display:block;height:100%;width:100%;background:var(--acc);transition:width .15s linear}
 .hc .hc-fuel.low i{background:#ef4444}
-.hc .hc-progress{position:relative;height:6px;margin:0 14px 10px;background:rgba(255,255,255,.08);border-radius:3px}
+.hc .hc-progress{position:relative;width:120px;height:6px;padding:0;border:0;background:rgba(255,255,255,.08);border-radius:3px}
 .hc .hc-progress b{position:absolute;top:50%;left:0;width:11px;height:11px;border-radius:50%;transform:translate(-50%,-50%);transition:left .12s linear}
 .hc .hc-progress b[data-dot="0"]{background:#ef4444}
 .hc .hc-progress b[data-dot="1"]{background:#3b82f6}
 .hc .hc-progress b.me{box-shadow:0 0 0 2px #fff}
 .hc .hc-fin{position:absolute;right:-4px;top:-9px;font-size:13px;line-height:1}
-.hc .hc-stage{position:relative;background:#e3eef9}
-.hc .hc-stage svg{display:block;width:100%;height:auto;max-height:min(62vh,560px);touch-action:none;user-select:none;-webkit-user-select:none}
+.hc .hc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.hc .hc-icon-btn svg{flex:none;display:block}
+.hc button{font-family:inherit}
+.hc .hc-btn{border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);border-radius:9px;min-height:32px;padding:5px 10px;font-weight:600;font-size:10px;cursor:pointer;transition:background .15s}
+.hc .hc-btn:hover{background:rgba(255,255,255,.12)}
+.hc .hc-btn.on{border-color:var(--acc);color:var(--acc)}
+.hc .hc-btn:disabled{opacity:.4;cursor:default}
+.hc .hc-btn.buy{margin-left:auto;min-height:32px;padding:4px 10px;font-size:11px}
+.hc .hc-btn.primary{display:block;width:100%;margin-top:12px;min-height:44px;padding:0 16px;font-size:14px;background:var(--acc);border-color:transparent;color:#052e16}
+.hc .hc-btn.primary:hover{background:#4ade80}
+.hc.game-fill > .hc-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.hc .hc-board{position:relative;width:100%;aspect-ratio:16/9;padding:0;border:0;border-radius:12px;overflow:hidden;background:linear-gradient(#f7fbff,#e3eef9)}
+.hc .hc-board svg{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none}
 .hc .hc-toast{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-size:clamp(34px,7vw,60px);font-weight:800;letter-spacing:.04em;color:#0f172a;text-shadow:0 2px 0 #fff;opacity:0;transition:opacity .15s}
 .hc .hc-toast.show{opacity:1}
-.hc .hc-overlay{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(8,13,26,.55);backdrop-filter:blur(3px);padding:16px}
-.hc .hc-card{width:min(94%,420px);background:#0f172a;border:1px solid var(--line);border-radius:16px;padding:20px;color:var(--ink);text-align:left}
-.hc .hc-card h3{margin:0 0 4px;font-size:20px}
-.hc .hc-card h3.hc-win{color:#34d399}.hc .hc-card h3.hc-lose{color:#f87171}
-.hc .hc-card .sub{color:var(--mut);font-size:13px;margin:0 0 14px}
-.hc .hc-row{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px}
-.hc .hc-lbl{width:92px;color:var(--mut)}
+.hc .hc-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(8,13,26,.55);backdrop-filter:blur(3px);padding:16px}
+.hc .hc-card{display:flex;flex-direction:column;width:min(94%,440px);max-height:100%;overflow:hidden;background:#0f172a;border:1px solid var(--line);border-radius:12px;padding:16px;color:var(--ink);text-align:left}
+.hc .hc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.hc .hc-head h3{margin:0;font-size:17px}
+.hc .hc-head h3.hc-win{color:#34d399}.hc .hc-head h3.hc-lose{color:#f87171}
+.hc .hc-tag{font:600 9px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 8px;white-space:nowrap}
+.hc .hc-body{flex:1 1 auto;min-height:0;overflow:auto}
+.hc .hc-foot{flex:none;margin-top:12px}
+.hc .hc-sub{color:var(--mut);font-size:12px;margin:0 0 12px;line-height:1.55}
+.hc .hc-row{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12px}
+.hc .hc-lbl{width:92px;flex:none;color:var(--mut)}
 .hc .hc-pips{display:flex;gap:4px}
 .hc .hc-pips i{width:11px;height:11px;border-radius:3px;background:rgba(255,255,255,.12)}
 .hc .hc-pips i.on{background:var(--acc)}
 .hc .hc-max{margin-left:auto;color:#34d399;font-weight:700;font-size:12px}
 .hc .hc-bank{margin-left:auto;color:#fbbf24}
-.hc button{font-family:inherit}
-.hc .hc-btn{border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);border-radius:10px;padding:8px 14px;font-weight:600;font-size:13px;cursor:pointer}
-.hc .hc-btn:hover{background:rgba(255,255,255,.12)}
-.hc .hc-btn:disabled{opacity:.4;cursor:default}
-.hc .hc-btn.buy{margin-left:auto;padding:5px 10px;font-size:12px}
-.hc .hc-btn.primary{display:block;width:100%;margin-top:12px;padding:11px;font-size:14px;background:var(--acc);border-color:transparent;color:#052e16}
-.hc .hc-btn.primary:hover{background:#4ade80}
-.hc .hc-cheats{position:absolute;top:10px;right:10px;z-index:5;width:212px;background:rgba(15,23,42,.95);border:1px solid var(--line);border-radius:12px;padding:12px;color:var(--ink);font-size:12.5px}
-.hc .hc-cheats h4{margin:0 0 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
-.hc .hc-cheats label{display:flex;gap:8px;align-items:center;margin:6px 0;cursor:pointer}
+.hc .hc-cheats label{display:flex;gap:8px;align-items:center;min-height:36px;margin:4px 0;cursor:pointer}
 .hc .hc-cheats input{accent-color:var(--acc)}
-.hc .hc-cheats .once{display:flex;gap:6px;margin-top:10px}
-.hc .hc-cheats .once button{flex:1;padding:6px 4px;font-size:11.5px}
-.hc .hc-pedals{display:flex;gap:10px;justify-content:center;padding:12px;background:#0b1220}
-.hc .hc-pedal{flex:1;max-width:260px;height:60px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.05);color:var(--ink);font-weight:800;font-size:15px;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:8px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
+.hc .hc-cheats .once{display:flex;gap:8px;margin-top:12px}
+.hc .hc-cheats .once button{flex:1;min-height:40px;padding:0 4px;font-size:11px}
+.hc .hc-help > b{display:block;margin:10px 0 4px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--mut);text-transform:uppercase}
+.hc .hc-help ul{margin:0 0 8px;padding-left:16px;font-size:11px;line-height:1.6;color:var(--ink)}
+.hc .hc-note{font-size:10px;color:var(--mut)}
+.hc .hc-pad{display:flex;gap:12px;justify-content:center;padding:10px;background:#0b1220}
+.hc .hc-pedal{flex:1;max-width:260px;min-height:60px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.05);color:var(--ink);font-weight:800;font-size:14px;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:8px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
 .hc .hc-pedal kbd{font-size:10px;font-weight:600;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
 .hc .hc-pedal.on{background:var(--acc);color:#052e16;border-color:transparent}
 .hc .hc-pedal.on kbd{color:#052e16;border-color:rgba(5,46,22,.4)}
 @media (hover:none){.hc .hc-pedal kbd{display:none}}
+@media (prefers-reduced-motion:reduce){
+.hc .hc-fuel i,.hc .hc-progress b,.hc .hc-btn,.hc .hc-toast{transition:none}
+.hc .hc-boom,.hc .hc-pop{animation:none;opacity:0}
+}
 @keyframes hc-boom{from{transform:scale(.4);opacity:.95}to{transform:scale(2.2);opacity:0}}
 .hc .hc-boom{animation:hc-boom .5s ease-out forwards;transform-box:fill-box;transform-origin:center}
 @keyframes hc-pop{from{transform:scale(.6);opacity:1}to{transform:scale(1.8);opacity:0}}
 .hc .hc-pop{animation:hc-pop .35s ease-out forwards;transform-box:fill-box;transform-origin:center}
+
+/* --- fill height + mobile refinements (last: beats pointer:coarse 44px) --- */
+.hc .hc-hud .hc-chip[data-hud="status"]{color:var(--mut)}
+@media (max-width:1100px){
+.hc .hc-hud .hc-progress,.hc .hc-hud .hc-chip[data-hud="status"]{display:none}
+.hc .hc-hud .hc-btn[data-garage] .hc-btn-label,.hc .hc-hud .hc-btn[data-restart] .hc-btn-label{display:none}
+}
+@media (max-width:640px){
+.hc.game-fill > .hc-board:not(:has(.hc-ov:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
+.hc.game-fill > .hc-board:has(.hc-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.hc .hc-hud{gap:5px;margin-bottom:8px;padding:7px}
+.hc .hc-hud .hc-chip{padding:4px 6px;font-size:9px;gap:5px}
+.hc .hc-hud .hc-chip[data-hud="gap"],.hc .hc-hud .hc-progress{display:none}
+.hc .hc-hud .hc-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.hc .hc-hud .hc-btn-label,.hc .hc-hud .hc-spacer{display:none}
+.hc .hc-lbl{width:76px}
+.hc .hc-ov{padding:8px}
+.hc .hc-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.hc .hc-body{scrollbar-width:none}
+.hc .hc-body::-webkit-scrollbar{display:none}
+.hc .hc-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.hc .hc-note{display:none}
+.hc .hc-pad{gap:8px;padding:8px}
+}
 </style>
-<div class="game-app hc">
-  <div class="game-intro">
-    <div><h2>Hill Climb</h2><p>Realtime side-scrolling hill race.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app hc game-fill" data-hc>
+  <div class="hc-hud">
+    <span class="hc-chip">RND <b data-hud="round">1</b></span>
+    <span class="hc-chip"><b data-hud="dist">0</b> m</span>
+    <span class="hc-chip hc-gap" data-hud="gap">+0 m</span>
+    <span class="hc-chip"><i class="hc-coin"></i><b data-hud="coins">0</b></span>
+    <span class="hc-chip" data-hud="status">Ready</span>
+    <span class="hc-chip hc-fuel" data-fuel><i data-fuelbar></i></span>
+    <span class="hc-chip hc-progress"><b data-dot="0"></b><b data-dot="1"></b><span class="hc-fin">🏁</span></span>
+    <span class="hc-spacer"></span>
+    <button class="hc-btn hc-icon-btn" type="button" data-garage data-solo aria-label="Garage" title="Garage">${iconSVG("settings", { size: 14 })}<span class="hc-btn-label">Garage</span></button>
+    <button class="hc-btn hc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="hc-btn-label">Help</span></button>
+    <button class="hc-btn hc-icon-btn" type="button" data-cheats data-solo aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="hc-btn-label">Cheats</span></button>
+    <button class="hc-btn hc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="hc-btn-label">Pause</span></button>
+    <button class="hc-btn hc-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="hc-btn-label">Restart</span></button>
+    <button class="hc-btn hc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="hc-btn-label">Exit</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="hc-shell">
-      <div class="hc-hud">
-        <span class="hc-chip">Round <b data-hud="round">1</b></span>
-        <span class="hc-chip"><b data-hud="dist">0</b>&nbsp;m</span>
-        <span class="hc-chip hc-gap" data-hud="gap">+0 m</span>
-        <span class="hc-chip"><i class="hc-coin"></i><b data-hud="coins">0</b></span>
-        <span class="hc-spacer"></span>
-        <div class="hc-fuel" data-fuel><i data-fuelbar></i></div>
+  <section class="game-panel hc-board" data-board>
+    <svg data-svg viewBox="0 0 960 420" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Hill Climb race">
+      <defs>
+        <linearGradient id="hc-sky-${uid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#f7fbff"/><stop offset="1" stop-color="#e3eef9"/>
+        </linearGradient>
+      </defs>
+      <g data-sky></g>
+      <g data-par="0"></g>
+      <g data-par="1"></g>
+      <g data-cam>
+        <path data-ground fill="#3f6212" stroke="#65a30d" stroke-width="3"/>
+        <g data-marks></g>
+        <g data-flag></g>
+        <g data-items></g>
+        <g data-car="1"></g>
+        <g data-car="0"></g>
+        <g data-tag><rect x="-17" y="-12" width="34" height="14" rx="7" fill="#0f172a" opacity=".85"/><text x="0" y="-2" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="inherit">YOU</text></g>
+        <g data-fx></g>
+      </g>
+    </svg>
+    <div class="hc-toast" data-toast></div>
+    <div class="hc-ov" data-ov="stage" hidden><div class="hc-card" data-card></div></div>
+    <div class="hc-ov" data-ov="pause" hidden>
+      <div class="hc-card">
+        <div class="hc-head"><h3>Paused</h3></div>
+        <div class="hc-foot"><button class="hc-btn primary" type="button" data-resume>Resume</button></div>
       </div>
-      <div class="hc-progress"><b data-dot="0"></b><b data-dot="1"></b><span class="hc-fin">🏁</span></div>
-      <div class="hc-stage" data-stage>
-        <svg data-svg viewBox="0 0 960 420" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Hill Climb race">
-          <defs>
-            <linearGradient id="hc-sky-${uid}" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#f7fbff"/><stop offset="1" stop-color="#e3eef9"/>
-            </linearGradient>
-          </defs>
-          <g data-sky></g>
-          <g data-par="0"></g>
-          <g data-par="1"></g>
-          <g data-cam>
-            <path data-ground fill="#3f6212" stroke="#65a30d" stroke-width="3"/>
-            <g data-marks></g>
-            <g data-flag></g>
-            <g data-items></g>
-            <g data-car="1"></g>
-            <g data-car="0"></g>
-            <g data-tag><rect x="-17" y="-12" width="34" height="14" rx="7" fill="#0f172a" opacity=".85"/><text x="0" y="-2" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="inherit">YOU</text></g>
-            <g data-fx></g>
-          </g>
-        </svg>
-        <div class="hc-toast" data-toast></div>
-        <div class="hc-cheats" data-cheats hidden></div>
-        <div class="hc-overlay" data-overlay hidden><div class="hc-card" data-card></div></div>
+    </div>
+    <div class="hc-ov" data-ov="cheat" hidden>
+      <div class="hc-card">
+        <div class="hc-head"><h3>Cheats</h3><button class="hc-btn" type="button" data-cheat-close>Close</button></div>
+        <div class="hc-body hc-cheats" data-cheat-list></div>
+        <div class="hc-foot"><span class="hc-note">Cheats disable best time</span></div>
       </div>
-      <div class="hc-pedals">
-        <button class="hc-pedal" type="button" data-pedal="brake">◀ BRAKE <kbd>A</kbd></button>
-        <button class="hc-pedal" type="button" data-pedal="gas">GAS ▶ <kbd>D</kbd></button>
+    </div>
+    <div class="hc-ov" data-ov="help" hidden>
+      <div class="hc-card">
+        <div class="hc-head"><h3>How to play</h3><button class="hc-btn" type="button" data-help-close>Close</button></div>
+        <div class="hc-body hc-help">
+          <b>Desktop</b>
+          <ul>
+            <li><b>D</b> / <b>→</b> — gas; <b>A</b> / <b>←</b> — brake / reverse</li>
+            <li>In the air: gas = nose down, brake = nose up — land level to avoid a crash.</li>
+            <li>Press or hold the left / right half of the track to brake / gas.</li>
+            <li><b>H</b> help · <b>C</b> cheats · <b>P</b> pause · <b>R</b> restart</li>
+          </ul>
+          <b>Mobile</b>
+          <ul>
+            <li>Use the BRAKE / GAS pedals below the track, or hold its left / right half.</li>
+          </ul>
+          <b>Rules</b>
+          <ul>
+            <li>Reach the finish before the rival. A coin toss decides who starts 0.9s earlier.</li>
+            <li>Coins fill the bank for garage upgrades; cans refill fuel. Running dry means DNF.</li>
+            <li>Crashes only stun you. Best time is saved on a clean win (no cheats).</li>
+          </ul>
+        </div>
+        <div class="hc-foot"><button class="hc-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="garage" data-solo>Garage</button>
-    <button class="game-action-button" type="button" data-cheat-toggle data-solo>Cheats</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="hc-pad">
+    <button class="hc-pedal" type="button" data-pedal="brake">◀ BRAKE <kbd>A</kbd></button>
+    <button class="hc-pedal" type="button" data-pedal="gas">GAS ▶ <kbd>D</kbd></button>
   </div>
 </div>`;
 
     /* ---------- referensi DOM & util ---------- */
     const $ = (s) => root.querySelector(s);
-    const svg = $("[data-svg]"), stageEl = $("[data-stage]");
+    const svg = $("[data-svg]"), board = $("[data-board]");
     const skyG = $("[data-sky]"), camG = $("[data-cam]");
     const parG = [$('[data-par="0"]'), $('[data-par="1"]')];
     const groundEl = $("[data-ground]"), marksG = $("[data-marks]"), flagG = $("[data-flag]");
@@ -253,19 +329,56 @@ export function mount(root, context = {}) {
     const spokes = [[], []];
     const dots = [$('[data-dot="0"]'), $('[data-dot="1"]')];
     const fuelBox = $("[data-fuel]"), fuelBar = $("[data-fuelbar]");
-    const toastEl = $("[data-toast]"), cheatsEl = $("[data-cheats]");
-    const overlay = $("[data-overlay]"), card = $("[data-card]"), statusEl = $("[data-status]");
+    const toastEl = $("[data-toast]"), cheatsEl = $("[data-cheat-list]");
+    const ov = {
+        stage: $('[data-ov="stage"]'), pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'), help: $('[data-ov="help"]'),
+    };
+    const card = $("[data-card]"), statusEl = $('[data-hud="status"]');
     const hud = { round: $('[data-hud="round"]'), dist: $('[data-hud="dist"]'), gap: $('[data-hud="gap"]'), coins: $('[data-hud="coins"]') };
     const pedalEls = { gas: $('[data-pedal="gas"]'), brake: $('[data-pedal="brake"]') };
 
     function on(el, type, fn, opts) { el.addEventListener(type, fn, opts); bound.push([el, type, fn, opts]); }
-    function later(fn, ms) { const id = setTimeout(() => { timers.delete(id); if (!destroyed) fn(); }, ms); timers.add(id); return id; }
+    /* timer yang bisa dibekukan saat pause (toast + efek) */
+    const timerDue = new Map();
+    function arm(fn, left) {
+        const id = setTimeout(() => {
+            timers.delete(id); timerFns.delete(id); timerDue.delete(id);
+            if (!destroyed) fn();
+        }, left);
+        timers.add(id); timerFns.set(id, fn); timerDue.set(id, performance.now() + left);
+        return id;
+    }
+    function later(fn, ms) {
+        if (paused) { const id = -(frozenTimers.length + 1); frozenTimers.push({ id, fn, left: ms }); return id; }
+        return arm(fn, ms);
+    }
+    function cancelLater(id) {
+        if (id == null) return;
+        clearTimeout(id); timers.delete(id); timerFns.delete(id); timerDue.delete(id);
+        const i = frozenTimers.findIndex((j) => j.id === id);
+        if (i >= 0) frozenTimers.splice(i, 1);
+    }
+    function freezeTimers() {
+        for (const id of Array.from(timers)) {
+            const fn = timerFns.get(id);
+            const left = Math.max(16, (timerDue.get(id) || performance.now()) - performance.now());
+            clearTimeout(id); timers.delete(id); timerFns.delete(id); timerDue.delete(id);
+            frozenTimers.push({ id, fn, left });
+        }
+    }
+    function thawTimers() {
+        for (const job of frozenTimers.splice(0)) {
+            const id = arm(job.fn, job.left);
+            if (job.id === toastTimer) toastTimer = id;
+        }
+    }
     function sub(fn) { try { const u = fn(); if (typeof u === "function") subs.push(u); } catch (e) { console.warn(e); } }
 
     function toast(text, ms) {
         toastEl.textContent = text;
         toastEl.classList.add("show");
-        if (toastTimer) { clearTimeout(toastTimer); timers.delete(toastTimer); }
+        cancelLater(toastTimer);
         toastTimer = later(() => { toastEl.classList.remove("show"); toastTimer = null; }, ms);
     }
     function fx(attrs, ms) {
@@ -380,7 +493,7 @@ export function mount(root, context = {}) {
         if (action.type === "input") {
             inputs[seat] = { gas: !!action.gas, brake: !!action.brake };
         } else if (action.type === "start") {
-            if (state.phase === "garage" || state.phase === "lobby" || state.phase === "result") startRace();
+            startRace(); // start dari garage/lobby/result maupun restart saat balapan
         } else if (action.type === "garage") {
             if (!online) toGarage();
         }
@@ -691,14 +804,16 @@ export function mount(root, context = {}) {
                     ? `<button class="hc-btn buy" type="button" data-buy="${k}" ${session.bank < next ? "disabled" : ""}>${next}c</button>`
                     : `<span class="hc-max">MAX</span>`) + `</div>`;
         }
-        return `<h3>Garage</h3><p class="sub">Round ${state.round + 1} · Track #${hex} · Best ${best ? best.toFixed(1) + "s" : "—"}</p>
+        return `<div class="hc-head"><h3>Garage</h3><span class="hc-tag">ROUND ${state.round + 1}</span></div>
+<div class="hc-body"><p class="hc-sub">Track #${hex} · Best ${best ? best.toFixed(1) + "s" : "—"}</p>
 ${rows}
-<div class="hc-row"><span class="hc-lbl">Bank</span><b class="hc-bank">${session.bank} coins</b></div>
-<button class="hc-btn primary" type="button" data-act="start">Start race</button>`;
+<div class="hc-row"><span class="hc-lbl">Bank</span><b class="hc-bank">${session.bank} coins</b></div></div>
+<div class="hc-foot"><button class="hc-btn primary" type="button" data-act="start">Start race</button></div>`;
     }
     function lobbyHTML(ready) {
-        return `<h3>Race lobby</h3><p class="sub">You drive the ${mySeat() === 0 ? "red" : "blue"} car${ready ? "" : " · waiting for player…"}</p>
-<button class="hc-btn primary" type="button" data-act="start" ${room.isHost && !ready ? "disabled" : ""}>${room.isHost ? "Start race" : "Request start"}</button>`;
+        return `<div class="hc-head"><h3>Race lobby</h3><span class="hc-tag">${mySeat() === 0 ? "RED CAR" : "BLUE CAR"}</span></div>
+<div class="hc-body"><p class="hc-sub">${ready ? "Both players connected." : "Waiting for player…"}</p></div>
+<div class="hc-foot"><button class="hc-btn primary" type="button" data-act="start" ${room.isHost && !ready ? "disabled" : ""}>${room.isHost ? "Start race" : "Request start"}</button></div>`;
     }
     function resultHTML() {
         const win = state.winner === mySeat();
@@ -707,22 +822,68 @@ ${rows}
         const who = online ? "Rival" : "Bot";
         const stallNote = state.reason === "stall" ? (win ? "Rival ran dry. " : "You ran dry. ") : "";
         const bestLine = !online && win && best ? ` · Best ${best.toFixed(1)}s` : "";
-        return `<h3 class="${win ? "hc-win" : "hc-lose"}">${win ? "You win!" : who + " wins"}</h3>
-<p class="sub">${stallNote}Time ${state.winTime != null ? state.winTime.toFixed(1) : "—"}s · Coins ${state.coins[mySeat()]} · Gap ${gap} m${bestLine}</p>
-<button class="hc-btn primary" type="button" data-act="start">${online && !room.isHost ? "Request rematch" : "Rematch"}</button>
-${!online ? `<button class="hc-btn" type="button" data-act="garage" style="display:block;width:100%;margin-top:8px">Garage</button>` : ""}`;
+        return `<div class="hc-head"><h3 class="${win ? "hc-win" : "hc-lose"}">${win ? "You win!" : who + " wins"}</h3><span class="hc-tag">ROUND ${state.round + 1}</span></div>
+<div class="hc-body"><p class="hc-sub">${stallNote}Time ${state.winTime != null ? state.winTime.toFixed(1) : "—"}s · Coins ${state.coins[mySeat()]} · Gap ${gap} m${bestLine}</p></div>
+<div class="hc-foot"><button class="hc-btn primary" type="button" data-act="start">${online && !room.isHost ? "Request rematch" : "Rematch"}</button>
+${!online ? `<button class="hc-btn" type="button" data-act="garage" style="display:block;width:100%;margin-top:8px">Garage</button>` : ""}</div>`;
+    }
+    function syncHudButtons() {
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".hc-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pbtn.title = paused ? "Resume (P)" : "Pause (P)";
+            pbtn.disabled = online;
+        }
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) {
+            const active = Object.values(cheats).filter(Boolean).length;
+            cbtn.classList.toggle("on", active > 0);
+            const label = cbtn.querySelector(".hc-btn-label");
+            if (label) label.textContent = active > 0 ? `Cheats ${active}` : "Cheats";
+        }
+        const gbtn = root.querySelector("[data-garage]");
+        if (gbtn) gbtn.disabled = online;
     }
     function syncOverlay() {
         const ready = playersReady();
-        const key = state
+        const stageKey = state
             ? [state.phase, state.seed, state.round, state.winner, session.bank, best, mySeat(), ready, lv.engine, lv.tank, lv.armor].join("|")
             : "wait|" + ready;
-        if (key === overlayKey) return;
-        overlayKey = key;
-        if (!state) { overlay.hidden = false; card.innerHTML = `<h3>Waiting for host…</h3>`; return; }
-        if (state.phase === "countdown" || state.phase === "race") { overlay.hidden = true; return; }
-        overlay.hidden = false;
-        card.innerHTML = state.phase === "garage" ? garageHTML() : state.phase === "lobby" ? lobbyHTML(ready) : resultHTML();
+        const key = [stageKey, paused ? "p" : "-", cheatsOpen ? "c" : "-", helpOpen ? "h" : "-"].join("#");
+        if (key !== overlayKey) {
+            overlayKey = key;
+            const racing = state && (state.phase === "countdown" || state.phase === "race");
+            ov.stage.hidden = helpOpen || cheatsOpen || paused || !state || Boolean(racing);
+            ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+            ov.cheat.hidden = !cheatsOpen || helpOpen;
+            ov.help.hidden = !helpOpen;
+            if (!ov.stage.hidden) {
+                if (!state) card.innerHTML = `<div class="hc-head"><h3>Waiting for host…</h3></div>`;
+                else card.innerHTML = state.phase === "garage" ? garageHTML() : state.phase === "lobby" ? lobbyHTML(ready) : resultHTML();
+            }
+        }
+        syncHudButtons();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function setPaused(on) {
+        if (online || paused === on) return;
+        paused = on;
+        releaseAll();
+        if (on) freezeTimers();
+        else { lastT = 0; thawTimers(); } // geser anchor waktu agar tidak loncat saat resume
+        render();
     }
 
     /* ---------- loop utama ---------- */
@@ -730,7 +891,8 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
         if (destroyed) return;
         raf = requestAnimationFrame(frame);
         const dt = lastT ? Math.min(0.035, (ts - lastT) / 1000) : 0.016;
-        lastT = ts;
+        lastT = ts; // anchor bergerak terus: tidak ada loncatan waktu saat resume
+        if (paused || helpOpen || cheatsOpen) { renderBoard(0); syncHud(); return; }
         if (online && !room.isHost) { guestFrame(dt); renderBoard(dt); syncHud(); return; }
         if (state) {
             if (state.phase === "countdown") {
@@ -788,11 +950,21 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
     function onKeyDown(e) {
         if (destroyed || e.ctrlKey || e.metaKey || e.altKey) return;
         const c = e.code;
+        if (e.repeat) return;
+        /* prioritas: help → cheats → pause/Escape → aksi game */
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else setPaused(!paused);
+            e.preventDefault();
+            return;
+        }
+        if (helpOpen || cheatsOpen || paused) return;
+        if (c === "KeyR") { e.preventDefault(); submitAction({ type: "start" }); return; }
         if (GAS_KEYS.includes(c)) { e.preventDefault(); press("gas", "key:" + c); }
         else if (BRAKE_KEYS.includes(c)) { e.preventDefault(); press("brake", "key:" + c); }
-        else if (!e.repeat && c === "KeyC" && !online) { e.preventDefault(); toggleCheats(); }
-        else if (!e.repeat && c === "KeyR" && state && ["garage", "lobby", "result"].includes(state.phase)) { e.preventDefault(); submitAction({ type: "start" }); }
-        else if (!e.repeat && c === "Escape") cheatsEl.hidden = true;
     }
     function onKeyUp(e) {
         const c = e.code;
@@ -816,7 +988,8 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
         return e.clientX - r.left > r.width / 2 ? "gas" : "brake";
     }
     on(svg, "pointerdown", (e) => {
-        if (destroyed || (e.pointerType === "mouse" && e.button !== 0)) return;
+        if (destroyed || helpOpen || cheatsOpen || paused) return;
+        if ((e.pointerType === "mouse" && e.button !== 0)) return;
         if (state && ["garage", "lobby", "result"].includes(state.phase)) return;
         e.preventDefault();
         try { svg.setPointerCapture(e.pointerId); } catch (err) { }
@@ -843,13 +1016,12 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
 
     /* ---------- cheat (solo saja) ---------- */
     function buildCheats() {
-        cheatsEl.innerHTML = `<h4>Cheats</h4>` + [
+        cheatsEl.innerHTML = [
             ["infFuel", "Unlimited fuel"], ["noCrash", "No crash"], ["turbo", "Turbo engine"],
             ["magnet", "Pickup magnet"], ["lowGrav", "Low gravity"],
         ].map(([k, label]) => `<label><input type="checkbox" data-cheat="${k}" ${cheats[k] ? "checked" : ""}>${label}</label>`).join("") +
             `<div class="once"><button class="hc-btn" type="button" data-cheat-once="refill">Refill</button><button class="hc-btn" type="button" data-cheat-once="skip">+250 m</button><button class="hc-btn" type="button" data-cheat-once="win">Win</button></div>`;
     }
-    const toggleCheats = () => { cheatsEl.hidden = !cheatsEl.hidden; };
     function cheatOnce(k) {
         if (!state || state.phase !== "race") return;
         const c = state.cars[0];
@@ -872,8 +1044,20 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
     /* ---------- klik (delegasi, sesuai template) ---------- */
     function handleClick(event) {
         if (destroyed) return;
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const buy = event.target.closest("[data-buy]");
+        const t = event.target;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { setPaused(!paused); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-restart]")) { toggleHelp(false); toggleCheats(false); if (paused) setPaused(false); submitAction({ type: "start" }); return; }
+        if (t.closest("[data-garage]")) { if (paused) setPaused(false); submitAction({ type: "garage" }); return; }
+        const once = t.closest("[data-cheat-once]");
+        if (once && !online) { cheatOnce(once.dataset.cheatOnce); return; }
+        if (helpOpen || cheatsOpen || paused) return;
+        const buy = t.closest("[data-buy]");
         if (buy && !online && state && state.phase === "garage") {
             const k = buy.dataset.buy, next = lv[k] + 1;
             if (next <= 3 && session.bank >= UPGRADES[k].cost[next]) {
@@ -883,10 +1067,7 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
             }
             return;
         }
-        if (event.target.closest("[data-cheat-toggle]") && !online) { toggleCheats(); return; }
-        const once = event.target.closest("[data-cheat-once]");
-        if (once && !online) { cheatOnce(once.dataset.cheatOnce); return; }
-        const act = event.target.closest("[data-act]");
+        const act = t.closest("[data-act]");
         if (!act) return;
         if (act.dataset.act === "start") submitAction({ type: "start" });
         else if (act.dataset.act === "garage") submitAction({ type: "garage" });
@@ -894,10 +1075,9 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
 
     /* ---------- ukuran responsif (area gameplay luas) ---------- */
     function fit() {
-        const w = stageEl.clientWidth || 960;
+        const w = board.clientWidth || 960;
         viewW = clamp(Math.round(w), 560, 1160);
         svg.setAttribute("viewBox", `0 0 ${viewW} ${VH}`);
-        svg.style.aspectRatio = viewW + " / " + VH;
         buildSky(); buildPar(); markBucket = -1;
     }
 
@@ -911,7 +1091,7 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
     on(document, "keyup", onKeyUp);
     on(window, "blur", releaseAll);
     on(document, "visibilitychange", () => { if (document.hidden) releaseAll(); });
-    if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(fit); ro.observe(stageEl); }
+    if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(fit); ro.observe(board); }
     else on(window, "resize", fit);
 
     if (online) {
@@ -937,7 +1117,7 @@ ${!online ? `<button class="hc-btn" type="button" data-act="garage" style="displ
             if (raf) cancelAnimationFrame(raf);
             raf = null;
             timers.forEach((id) => clearTimeout(id));
-            timers.clear();
+            timers.clear(); timerFns.clear(); timerDue.clear(); frozenTimers.length = 0;
             root.removeEventListener("click", handleClick);
             root.removeEventListener("change", handleChange);
             for (const [el, type, fn, opts] of bound) el.removeEventListener(type, fn, opts);

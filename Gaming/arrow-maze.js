@@ -4,6 +4,8 @@
    Controls: mouse click / tap; keyboard WASD-arrows + Enter/Space, H hint, C cheats, R restart;
    on-screen D-pad appears automatically on coarse pointers (mobile). */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "arrow-maze",
     name: "Arrow Maze",
@@ -138,7 +140,12 @@ export function mount(root, context = {}) {
 <style>
 .am-app{--ink:#111827;--line:#e5e7eb;--mut:#6b7280;--acc:#2563eb;--ok:#059669;--bad:#dc2626;--warn:#d97706;color:var(--ink)}
 .am-app [hidden]{display:none!important}
-.am-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0}
+.am-hud{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px}
+.am-spacer{flex:1 1 auto}
+.am-app .am-hbtn{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;min-height:30px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation}
+.am-app .am-hbtn svg{flex:none;display:block}
+.am-app .am-hbtn.on{border-color:var(--acc);color:var(--acc)}
+.am-app .am-hbtn:disabled{opacity:.4;cursor:default}
 .am-chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:#fff;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
 .am-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
 .am-chip.turn{border-color:var(--acc);color:var(--acc)}
@@ -149,7 +156,7 @@ export function mount(root, context = {}) {
 .am-dot{width:5px;height:5px;border-radius:50%;background:var(--ok)}
 .am-dot.off{background:var(--line)}
 .am-badge{border-color:var(--warn);color:var(--warn)}
-.am-panel{position:relative;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px}
+.am-panel{position:relative;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}
 .am-svg{display:block;width:min(100%,440px);margin:0 auto;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .am-cell{fill:#fafafa;stroke:var(--line);stroke-width:.35;cursor:pointer}
 .am-arrow{color:var(--ink);cursor:pointer}
@@ -169,7 +176,11 @@ export function mount(root, context = {}) {
 .am-btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:10px;padding:8px 14px;font-size:13px;cursor:pointer;margin:0 3px}
 .am-btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
 .am-btn:disabled{opacity:.4;cursor:default}
-.am-cheats{position:absolute;top:10px;right:10px;z-index:6;width:216px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:12px}
+.am-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(255,255,255,.9);border-radius:16px}
+.am-cheats{width:min(320px,100%);max-height:100%;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:none}
+.am-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;text-align:left}
+.am-help b{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.am-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;color:var(--mut)}
 .am-cheats h4{display:flex;justify-content:space-between;align-items:center;margin:0 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
 .am-cheats h4 button{border:0;background:none;color:var(--mut);font-size:14px;cursor:pointer;padding:0 2px}
 .am-crow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
@@ -186,29 +197,108 @@ export function mount(root, context = {}) {
 .am-pad [data-act="pad-right"]{grid-area:right}
 .am-pad [data-act="pad-down"]{grid-area:down}
 .am-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.am-app{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.am-app *,.am-app *::before,.am-app *::after{box-sizing:border-box}
+.am-app :where(svg,canvas,img){max-width:100%;height:auto}
+.am-app :where(button,[role="button"],select,input){touch-action:manipulation}
+.am-app :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* 4px spacing grid: HUD/control rows wrap instead of overflowing on narrow screens. */
+.am-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+/* Thin borders and calm surfaces instead of heavy elevation. */
+.am-app :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+/* Clear type hierarchy: 12px metadata, compact headings. */
+.am-app :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.am-app :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .am-app :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .am-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .am-app :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .am-app :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .am-app *,.am-app *::before,.am-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* --- layout redesign overrides (keep last) --- */
+@media (max-width:640px){
+.am-app .am-hud{gap:5px 8px;margin-bottom:6px}
+.am-app .am-hbtn{min-width:28px;min-height:28px;padding:4px 6px;font-size:10px}
+.am-app .am-hbtn .am-hlbl,.am-app .am-spacer{display:none}
+.am-panel{flex:0 0 auto;min-height:min(70dvh,620px)}
+.am-card{padding:14px}
+.am-pad button{min-width:44px;min-height:44px}
+}
 </style>
-<div class="game-app am-app${coarse ? " am-coarse" : ""}">
-  <div class="game-intro">
-    <div><h2>Arrow Maze</h2></div>
+<div class="game-app am-app game-fill${coarse ? " am-coarse" : ""}">
+  <div class="am-hud">
     <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+    <div class="am-hud-chips" data-hud></div>
+    <span class="am-spacer"></span>
+    <button class="am-btn am-hbtn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="am-hlbl">Help</span></button>
+    <button class="am-btn am-hbtn" type="button" data-act="hint" data-hintbtn aria-label="Hint" title="Hint (I)">${iconSVG("lightbulb", { size: 14 })}<span class="am-hlbl">Hint · 3</span></button>
+    <button class="am-btn am-hbtn" type="button" data-act="cheat-open" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="am-hlbl">Cheats</span></button>
+    <button class="am-btn am-hbtn" type="button" data-act="pause" data-pause-btn aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="am-hlbl">Pause</span></button>
+    <button class="am-btn am-hbtn" type="button" data-act="restart" data-restart-btn aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="am-hlbl">Restart</span></button>
+    <button class="am-btn am-hbtn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="am-hlbl">Exit</span></button>
   </div>
-  <div class="am-hud" data-hud></div>
   <section class="game-panel am-panel" data-board>
     <svg class="am-svg" data-svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Arrow maze grid">
       <g data-cells></g>
       <rect class="am-cursor" data-cursor rx="2" x="0" y="0" width="0" height="0"></rect>
       <g data-fx></g>
     </svg>
-    <div class="am-cheats" data-cheats hidden>
-      <h4><span>Cheats</span><button type="button" data-act="cheat-close" aria-label="Close cheats">&#215;</button></h4>
-      <div class="am-crow"><span>Freeze time</span><button type="button" class="am-toggle" data-act="cheat-toggle" data-key="freeze">OFF</button></div>
-      <div class="am-crow"><span>Reveal exits</span><button type="button" class="am-toggle" data-act="cheat-toggle" data-key="reveal">OFF</button></div>
-      <div class="am-crow"><span>Safe taps</span><button type="button" class="am-toggle" data-act="cheat-toggle" data-key="safe">OFF</button></div>
-      <div class="am-crow"><span>Add 30 seconds</span><button type="button" class="am-mini" data-act="cheat-time">+30s</button></div>
-      <div class="am-crow"><span>Auto best move</span><button type="button" class="am-mini" data-act="cheat-auto">Fire</button></div>
-      <div class="am-crow"><span>Skip board</span><button type="button" class="am-mini" data-act="cheat-skip">Skip</button></div>
+    <div class="am-ov" data-cheats hidden>
+      <div class="am-cheats">
+        <h4><span>Cheats</span><button type="button" data-act="cheat-close" aria-label="Close cheats">&#215;</button></h4>
+        <div class="am-crow"><span>Freeze time</span><button type="button" class="am-toggle" data-act="cheat-toggle" data-key="freeze">OFF</button></div>
+        <div class="am-crow"><span>Reveal exits</span><button type="button" class="am-toggle" data-act="cheat-toggle" data-key="reveal">OFF</button></div>
+        <div class="am-crow"><span>Safe taps</span><button type="button" class="am-toggle" data-act="cheat-toggle" data-key="safe">OFF</button></div>
+        <div class="am-crow"><span>Add 30 seconds</span><button type="button" class="am-mini" data-act="cheat-time">+30s</button></div>
+        <div class="am-crow"><span>Auto best move</span><button type="button" class="am-mini" data-act="cheat-auto">Fire</button></div>
+        <div class="am-crow"><span>Skip board</span><button type="button" class="am-mini" data-act="cheat-skip">Skip</button></div>
+      </div>
     </div>
     <div class="am-veil" data-veil hidden></div>
+    <div class="am-ov" data-ov="help" hidden>
+      <div class="am-card">
+        <h3>How to play</h3>
+        <div class="am-help">
+          <div>
+            <b>Goal</b>
+            <ul>
+              <li>Fire every arrow out of the grid before time runs out.</li>
+              <li>An arrow can only exit if the cells beyond it are empty.</li>
+              <li>Wrong taps cost a life and pass the turn.</li>
+            </ul>
+            <b>Arrows</b>
+            <ul>
+              <li>Normal: 10 pts · Twin: 20 pts (clears the cell behind).</li>
+              <li>Blast: 15 pts (clears 4 neighbours) · Heavy: 25 pts (needs two hits).</li>
+            </ul>
+          </div>
+          <div>
+            <b>Controls</b>
+            <ul>
+              <li>Click or tap an arrow to fire it; hover to move the cursor.</li>
+              <li>WASD / arrows move, Enter or Space fires.</li>
+              <li>I hint · C cheats · P pause · R restart · H help.</li>
+            </ul>
+            <button class="am-btn" type="button" data-act="help-close">Got it</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="am-ov" data-ov="pause" hidden>
+      <div class="am-card">
+        <h3>Paused</h3>
+        <p>The timer and the bot are stopped.</p>
+        <button class="am-btn" type="button" data-act="resume">Resume <kbd>P</kbd></button>
+      </div>
+    </div>
   </section>
   <div class="am-pad" data-pad>
     <button type="button" data-act="pad-up" aria-label="Move up">&#8593;</button>
@@ -216,12 +306,6 @@ export function mount(root, context = {}) {
     <button type="button" class="am-fire" data-act="pad-fire" aria-label="Fire arrow">FIRE</button>
     <button type="button" data-act="pad-right" aria-label="Move right">&#8594;</button>
     <button type="button" data-act="pad-down" aria-label="Move down">&#8595;</button>
-  </div>
-  <div class="game-actions am-actions">
-    <button class="game-action-button" type="button" data-act="hint" data-hintbtn>Hint &#183; 3</button>
-    <button class="game-action-button" type="button" data-act="cheat-open">Cheat</button>
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
   </div>
 </div>`;
 
@@ -235,6 +319,30 @@ export function mount(root, context = {}) {
     const veilEl = $("[data-veil]");
     const cheatsEl = $("[data-cheats]");
     const hintBtn = $("[data-hintbtn]");
+    const ovHelp = $('[data-ov="help"]'), ovPause = $('[data-ov="pause"]');
+    const pauseBtn = $("[data-pause-btn]");
+
+    let helpOpen = false, paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("arrowMazeHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("arrowMazeHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsEl.hidden = true;
+        render();
+    }
+    function togglePause(on) {
+        if (online && !room.isHost) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) {
+            if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+        } else maybeBot();
+        render();
+    }
 
     const rnd = rng((Math.random() * 1e9) | 0);
     const MARG = 2;
@@ -390,7 +498,7 @@ export function mount(root, context = {}) {
         return bestMove(state.grid, state.W, state.H);
     }
     function maybeBot() {
-        if (online || !state) return;
+        if (online || paused || !state) return;
         if (state.phase !== "play" || state.turn !== 1 || botTimer) return;
         botTimer = setTimeout(() => {
             botTimer = null;
@@ -407,7 +515,7 @@ export function mount(root, context = {}) {
             const now = Date.now();
             const dt = Math.min(1, (now - lastTick) / 1000);
             lastTick = now;
-            if (!state || state.phase !== "play" || state.cheats.freeze) return;
+            if (!state || state.phase !== "play" || state.cheats.freeze || paused) return;
             const before = Math.ceil(state.timeLeft);
             state.timeLeft = Math.max(0, state.timeLeft - dt);
             if (state.timeLeft <= 0) {
@@ -533,6 +641,22 @@ export function mount(root, context = {}) {
     }
 
     function render() {
+        if (helpOpen || paused) cheatsEl.hidden = true;
+        ovHelp.hidden = !helpOpen;
+        ovPause.hidden = !paused || helpOpen;
+        if (pauseBtn) {
+            pauseBtn.disabled = online && !room.isHost;
+            const want = paused ? "play" : "pause";
+            if (pauseBtn.dataset.iconState !== want) {
+                pauseBtn.dataset.iconState = want;
+                const ico = pauseBtn.querySelector("svg");
+                if (ico) ico.outerHTML = iconSVG(want, { size: 14 });
+                const label = pauseBtn.querySelector(".am-hlbl");
+                if (label) label.textContent = paused ? "Resume" : "Pause";
+            }
+        }
+        const restartBtn = $("[data-restart-btn]");
+        if (restartBtn) restartBtn.disabled = online && !room.isHost;
         if (!state) {
             statusEl.textContent = online && !room.isHost ? "Waiting for host\u2026" : "Ready";
             cellsG.innerHTML = "";
@@ -578,10 +702,11 @@ export function mount(root, context = {}) {
         cellsG.innerHTML = out;
         setCursorRect();
 
-        veilEl.hidden = s.phase === "play";
+        veilEl.hidden = s.phase === "play" || helpOpen || paused;
         if (!veilEl.hidden) veilEl.innerHTML = veilHTML();
 
-        hintBtn.textContent = "Hint \u00b7 " + s.hints;
+        const hintLabel = hintBtn.querySelector(".am-hlbl");
+        if (hintLabel) hintLabel.textContent = "Hint \u00b7 " + s.hints;
         hintBtn.disabled = s.phase !== "play" || s.hints <= 0;
         cheatsEl.querySelectorAll("[data-key]").forEach((b) => {
             const on = Boolean(s.cheats[b.dataset.key]);
@@ -610,6 +735,7 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
+        if (event.target.closest && event.target.closest("[data-help]")) { toggleHelp(); return; }
         if (event.target.closest("[data-exit]")) { onExit(); return; }
         const actEl = event.target.closest("[data-act]");
         if (actEl) {
@@ -622,8 +748,11 @@ export function mount(root, context = {}) {
             else if (act === "hint") submitAction({ type: "hint" });
             else if (act === "restart") submitAction({ type: "restart" });
             else if (act === "next") submitAction({ type: "next" });
-            else if (act === "cheat-open") cheatsEl.hidden = !cheatsEl.hidden;
+            else if (act === "cheat-open") { if (!helpOpen && !paused) cheatsEl.hidden = !cheatsEl.hidden; }
             else if (act === "cheat-close") cheatsEl.hidden = true;
+            else if (act === "help-close") toggleHelp(false);
+            else if (act === "pause") togglePause();
+            else if (act === "resume") togglePause(false);
             else if (act === "cheat-toggle") submitAction({ type: "cheat", key: actEl.dataset.key });
             else if (act === "cheat-time") submitAction({ type: "cheat", key: "time" });
             else if (act === "cheat-skip") submitAction({ type: "cheat", key: "skip" });
@@ -662,6 +791,14 @@ export function mount(root, context = {}) {
         const tag = event.target && event.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const k = event.key;
+        if (helpOpen) {
+            if (k === "Escape" || k === "h" || k === "H" || k === "Enter" || k === " ") toggleHelp(false);
+            event.preventDefault(); return;
+        }
+        if (paused) {
+            if (k === "p" || k === "P" || k === "Escape" || k === "Enter" || k === " ") togglePause(false);
+            event.preventDefault(); return;
+        }
         let used = true;
         if (k === "ArrowUp" || k === "w" || k === "W") moveCursor(0, -1);
         else if (k === "ArrowDown" || k === "s" || k === "S") moveCursor(0, 1);
@@ -673,7 +810,9 @@ export function mount(root, context = {}) {
             else if (state.phase === "over") submitAction({ type: "restart" });
             else fireAt(cursorIndex());
         }
-        else if (k === "h" || k === "H") submitAction({ type: "hint" });
+        else if (k === "h" || k === "H") toggleHelp();
+        else if (k === "i" || k === "I") submitAction({ type: "hint" });
+        else if (k === "p" || k === "P") togglePause();
         else if (k === "c" || k === "C") cheatsEl.hidden = !cheatsEl.hidden;
         else if (k === "r" || k === "R") submitAction({ type: "restart" });
         else if (k === "Escape") cheatsEl.hidden = true;

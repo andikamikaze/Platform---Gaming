@@ -5,6 +5,8 @@
   2. Jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "screw-out",
     name: "Screw Out",
@@ -442,189 +444,185 @@ export function mount(root, context = {}) {
     let roomData = (room && room.room) || null;
     let state = null;
     let destroyed = false;
-    let timer = null, botTO = null, nextTO = null;
+    let tickTimer = null;
     let showHelp = false, showCheat = false, lastVersus = false;
+
+    /* ---------- first-run internal help ---------- */
+    const HELP_KEY = "screwOutHelpSeen";
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem(HELP_KEY) === "1"; } catch (_) { seenHelp = true; }
+    showHelp = !seenHelp;
+    if (!seenHelp) {
+        try { localStorage.setItem(HELP_KEY, "1"); } catch (_) { /* storage blocked */ }
+    }
 
     const mySeat = () => (online ? (room.isHost ? (state ? state.seatOfHost : 0) : 1 - (state ? state.seatOfHost : 0)) : 0);
     const isTouch = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) || "ontouchstart" in window;
     const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const icon = (name) => iconSVG(name, { size: 14 });
 
-    /* ---------- icons (pure SVG, no emoji) ---------- */
-    const ic = (d) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + "</svg>";
-    const ICO = {
-        help: ic('<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.8"/><path d="M12 16.6v.1"/>'),
-        bolt: ic('<path d="M13 2 4.5 14H11l-1 8 8.5-12H12l1-8z"/>'),
-        pause: ic('<path d="M9 5v14M15 5v14"/>'),
-        play: ic('<path d="M7 4.5 19 12 7 19.5z"/>'),
-        redo: ic('<path d="M21 12a9 9 0 1 1-2.9-6.6"/><path d="M21 3v6h-6"/>'),
-        left: ic('<path d="M15 5l-7 7 7 7"/>'),
-        right: ic('<path d="M9 5l7 7-7 7"/>'),
-        driver: ic('<path d="M3 21l1-4L15 6l3 3L7 20l-4 1z"/><path d="M15 6l3 3"/>'),
-        bulb: ic('<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.7 10.7c.7.6 1.2 1.3 1.2 2.3h5c0-1 .5-1.7 1.2-2.3A6 6 0 0 0 12 3z"/>'),
-        clock: ic('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
-    };
-
-    /* ---------- shell ---------- */
+    /* ---------- shell: single HUD bar, fill board, sibling pad ---------- */
     root.innerHTML = `
 <style>
-.so-app{max-width:540px;margin:0 auto}
-.so-app .so-card{position:relative;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:12px 12px 10px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
-.so-app .so-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
-.so-app .so-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:3px 9px;line-height:1.2}
-.so-app .so-chip b{color:#0f172a;font-variant-numeric:tabular-nums}
-.so-app .so-chip svg{width:12px;height:12px}
-.so-app .so-chip .so-dot{width:7px;height:7px;border-radius:50%;flex:none}
-.so-app .so-chip.turn{border-color:currentColor;background:#fff}
-.so-app .so-cheat-tag{font-size:10px;color:#b45309;background:#fef3c7;border-radius:999px;padding:2px 7px;border:1px solid #fde68a}
-.so-app .so-flex{flex:1}
-.so-app .so-icon{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:9px;cursor:pointer;padding:0;flex:none}
-.so-app .so-icon:hover{background:#f1f5f9;color:#0f172a}
-.so-app .so-icon:disabled{opacity:.4;cursor:default}
-.so-app .so-icon svg{width:15px;height:15px}
-.so-app .so-bar{height:3px;border-radius:2px;background:#eef2f7;overflow:hidden;margin:0 0 8px}
-.so-app .so-bar i{display:block;height:100%;background:#6366f1;transition:width .5s linear}
-.so-app .so-bar.warn i{background:#ef4444}
-.so-app .so-board{width:100%;display:block;touch-action:manipulation;background:#f8fafc;background-image:radial-gradient(#e2e8f0 1px,transparent 1px);background-size:16px 16px;border:1px solid #eef2f7;border-radius:12px;overflow:visible}
-.so-app .so-panel{filter:drop-shadow(0 2px 2px rgba(15,23,42,.16));transition:opacity .4s}
-.so-app .so-panel.gone{opacity:0;pointer-events:none}
-.so-app .so-screw{cursor:pointer}
-.so-app .so-screw:hover .so-head{filter:brightness(1.12)}
-.so-app .so-screw.out{opacity:0;transform:rotate(540deg) scale(.15);transform-box:fill-box;transform-origin:center;transition:transform .45s ease-in,opacity .4s ease-in;pointer-events:none}
-.so-app .so-screw.loose .so-cross{transform:rotate(45deg);transform-box:fill-box;transform-origin:center}
-.so-app .so-screw.hinted .so-head{animation:so-hint 1.2s ease 2}
+.so-app{width:100%;height:100%;min-height:0;margin:0 auto;padding:2px;display:flex;flex-direction:column;gap:8px;color:#0f172a;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+.so-app *,.so-app *::before,.so-app *::after{box-sizing:border-box}
+.so-app [hidden]{display:none!important}
+.so-app :focus-visible{outline:2px solid #6366f1;outline-offset:2px}
+.so-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.so-chip{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:4px 9px;border:1px solid #e2e8f0;border-radius:999px;background:#f8fafc;color:#475569;white-space:nowrap}
+.so-chip b{color:#0f172a;font-variant-numeric:tabular-nums}
+.so-chip svg{width:12px;height:12px}
+.so-chip .so-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.so-chip[data-hud-chip="status"] .so-dot{background:#6366f1}
+.so-chip.turn{border-color:currentColor;background:#fff}
+.so-bar{width:52px;height:4px;border-radius:2px;background:#eef2f7;overflow:hidden;flex:none}
+.so-bar i{display:block;height:100%;background:#6366f1;transition:width .4s linear}
+.so-bar.warn i{background:#ef4444}
+.so-cheat-tag{font-size:10px;color:#b45309;background:#fef3c7;border-radius:999px;padding:3px 8px;border:1px solid #fde68a}
+.so-spacer{flex:1 1 auto;min-width:4px}
+.so-btn{font:inherit;font-size:11px;padding:6px 10px;min-height:32px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;cursor:pointer}
+.so-btn:hover:not(:disabled){background:#f1f5f9;color:#0f172a}
+.so-btn:disabled{opacity:.4;cursor:default}
+.so-btn.primary{background:#0f172a;border-color:#0f172a;color:#fff}
+.so-btn.ghost{background:#fff;color:#334155;border-color:#e2e8f0}
+.so-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.so-icon-btn svg{flex:none;display:block}
+.so-btn-label{white-space:nowrap}
+.so-notice{flex:none;min-height:17px;text-align:center;font-size:12px;color:#64748b}
+.so-app.game-fill>.so-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;flex-direction:column;min-width:0;padding:0;border:1px solid #eef2f7;border-radius:12px;background:#f8fafc;background-image:radial-gradient(#e2e8f0 1px,transparent 1px);background-size:16px 16px;overflow:hidden}
+.so-play{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;position:relative}
+.so-svg{display:block;width:100%;flex:1 1 auto;min-height:0;touch-action:manipulation;cursor:pointer}
+.so-panel{filter:drop-shadow(0 2px 2px rgba(15,23,42,.16));transition:opacity .4s}
+.so-panel.gone{opacity:0;pointer-events:none}
+.so-screw{cursor:pointer}
+.so-screw:hover .so-head{filter:brightness(1.12)}
+.so-screw.out{opacity:0;transform:rotate(540deg) scale(.15);transform-box:fill-box;transform-origin:center;transition:transform .45s ease-in,opacity .4s ease-in;pointer-events:none}
+.so-screw.loose .so-cross{transform:rotate(45deg);transform-box:fill-box;transform-origin:center}
+.so-screw.hinted .so-head{animation:so-hint 1.2s ease 2}
 @keyframes so-hint{0%,100%{filter:none}50%{filter:brightness(1.5) drop-shadow(0 0 5px #f59e0b)}}
-.so-app .so-ghost{cursor:pointer;opacity:.7}
-.so-app .so-xray .so-ghost{opacity:1}
-.so-app .so-xray .so-ghost .so-gdot{transform:scale(1.7);transform-box:fill-box;transform-origin:center}
-.so-app .so-selring{animation:so-spin 7s linear infinite;transform-box:fill-box;transform-origin:center;pointer-events:none}
+.so-ghost{cursor:pointer;opacity:.7}
+.so-xray .so-ghost{opacity:1}
+.so-xray .so-ghost .so-gdot{transform:scale(1.7);transform-box:fill-box;transform-origin:center}
+.so-selring{animation:so-spin 7s linear infinite;transform-box:fill-box;transform-origin:center;pointer-events:none}
 @keyframes so-spin{to{transform:rotate(360deg)}}
-.so-app .so-tray{display:flex;gap:10px;justify-content:center;margin-top:10px;position:relative}
-.so-app .so-slot{width:76px;min-height:40px;border:1.5px dashed #cbd5e1;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:5px;padding:4px;background:#fff}
-.so-app .so-slot.full{border-style:solid;border-color:#94a3b8}
-.so-app .so-slot i{width:14px;height:14px;border-radius:50%;border:1.5px solid rgba(15,23,42,.35)}
-.so-app .so-slot.pop{animation:so-pop .4s ease}
+.so-tray{flex:none;display:flex;gap:10px;justify-content:center;padding:8px 0 2px;position:relative}
+.so-slot{width:76px;min-height:40px;border:1.5px dashed #cbd5e1;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:5px;padding:4px;background:#fff}
+.so-slot.full{border-style:solid;border-color:#94a3b8}
+.so-slot i{width:14px;height:14px;border-radius:50%;border:1.5px solid rgba(15,23,42,.35)}
+.so-slot.pop{animation:so-pop .4s ease}
 @keyframes so-pop{50%{transform:scale(1.12)}}
-.so-app .so-part{position:absolute;width:7px;height:7px;border-radius:50%;pointer-events:none;z-index:3}
-.so-app .so-msg{min-height:18px;text-align:center;margin-top:8px;font-size:12.5px;color:#64748b}
-.so-app .so-pad{display:none;gap:8px;justify-content:center;margin-top:8px}
-.so-app.so-touch .so-pad{display:flex}
-.so-app .so-pad button{height:44px;min-width:44px;border:1px solid #e2e8f0;background:#fff;border-radius:12px;color:#334155;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0 10px}
-.so-app .so-pad button:active{background:#f1f5f9}
-.so-app .so-pad .so-pad-pick{flex:1;max-width:170px;background:#0f172a;color:#fff;border-color:#0f172a;gap:7px;font-size:13px;font-weight:600}
-.so-app .so-pad .so-pad-pick:disabled{background:#94a3b8;border-color:#94a3b8}
-.so-app .so-pad svg{width:18px;height:18px}
-.so-app .so-shake{animation:so-shake .3s ease}
+.so-part{position:absolute;width:7px;height:7px;border-radius:50%;pointer-events:none;z-index:3}
+.so-shake{animation:so-shake .3s ease}
 @keyframes so-shake{30%{transform:translateX(-5px)}70%{transform:translateX(5px)}}
-.so-app .so-ov{position:absolute;inset:0;background:rgba(248,250,252,.9);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:5;border-radius:16px;padding:14px}
-.so-app .so-ov[hidden]{display:none}
-.so-app .so-ovcard{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px;max-width:340px;width:100%;box-shadow:0 8px 24px rgba(15,23,42,.08);max-height:100%;overflow:auto}
-.so-app .so-ovcard h3{margin:0 0 6px;font-size:17px;color:#0f172a}
-.so-app .so-ovcard h3.win{color:#10b981}
-.so-app .so-ovcard h3.lose{color:#ef4444}
-.so-app .so-ovcard p{margin:0 0 12px;font-size:13px;color:#64748b;line-height:1.5}
-.so-app .so-row{display:flex;gap:8px;flex-wrap:wrap}
-.so-app .so-btn{border:1px solid #0f172a;background:#0f172a;color:#fff;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer}
-.so-app .so-btn.ghost{background:#fff;color:#334155;border-color:#e2e8f0}
-.so-app .so-btn:hover{opacity:.92}
-.so-app .so-btn:disabled{opacity:.45;cursor:default}
-.so-app .so-help h4{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}
-.so-app .so-help ol{margin:0;padding-left:18px;font-size:12.5px;color:#475569;line-height:1.55}
-.so-app .so-help .so-keys{font-size:12px;color:#475569;line-height:1.8}
-.so-app kbd{background:#f1f5f9;border:1px solid #e2e8f0;border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px;font-family:inherit}
-.so-app .so-cheats .so-cl{display:flex;flex-direction:column;gap:6px}
-.so-app .so-cheats .so-btn{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;color:#334155;border-color:#e2e8f0;font-weight:500;text-align:left}
-.so-app .so-cheats .so-btn.on{border-color:#6366f1;color:#6366f1;background:#eef2ff}
-.so-app .so-cheats .so-note{font-size:11px;color:#b45309;margin:10px 0 0}
-.so-app .so-score-line{font-size:14px;color:#0f172a;font-weight:600;margin:0 0 10px}
+.so-pad{display:none;gap:8px;justify-content:center;flex:none}
+.so-app.so-touch .so-pad{display:flex}
+.so-pad button{height:44px;min-width:44px;border:1px solid #e2e8f0;background:#fff;border-radius:12px;color:#334155;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0 10px}
+.so-pad button:active{background:#f1f5f9}
+.so-pad .so-pad-pick{flex:1;max-width:170px;background:#0f172a;color:#fff;border-color:#0f172a;gap:7px;font-size:13px;font-weight:600}
+.so-pad .so-pad-pick:disabled{background:#94a3b8;border-color:#94a3b8}
+.so-pad svg{width:18px;height:18px}
+.so-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(248,250,252,.9);backdrop-filter:blur(3px);border-radius:12px}
+.so-card{display:flex;flex-direction:column;gap:10px;width:min(440px,100%);max-height:100%;overflow:hidden;padding:16px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;box-shadow:0 4px 12px rgba(15,23,42,.08)}
+.so-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.so-head h3{margin:0;font-size:17px;color:#0f172a}
+.so-head h3.win{color:#10b981}
+.so-head h3.lose{color:#ef4444}
+.so-card p{margin:0;font-size:13px;color:#64748b;line-height:1.5}
+.so-stats,.so-cheats,.so-help{flex:1 1 auto;min-height:0;overflow:auto}
+.so-score-line{font-size:14px;color:#0f172a;font-weight:600}
+.so-row{display:flex;gap:8px;flex-wrap:wrap}
+.so-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap;margin-top:2px}
+.so-note{font-size:11px;color:#b45309}
+.so-help b{display:block;margin:10px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}
+.so-help b:first-child{margin-top:0}
+.so-help ol{margin:0;padding-left:18px;font-size:12.5px;color:#475569;line-height:1.55}
+.so-keys{font-size:12px;color:#475569;line-height:1.8}
+.so-kbd{display:inline-block;padding:1px 5px;border:1px solid #e2e8f0;border-bottom-width:2px;border-radius:5px;background:#f1f5f9;font:inherit}
+.so-cheats .so-cl{display:flex;flex-direction:column;gap:6px}
+.so-cheats .so-btn{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;color:#334155;border-color:#e2e8f0;font-weight:500;text-align:left}
+.so-cheats .so-btn.on{border-color:#6366f1;color:#6366f1;background:#eef2ff}
 @media (prefers-reduced-motion:reduce){.so-app *{animation:none!important;transition:none!important}}
-</style>
-<div class="game-app so-app${isTouch ? " so-touch" : ""}">
-  <div class="game-intro">
-    <div><h2>Screw Out</h2><p>Unscrew every stacked panel into the 3-color tray before the clock runs out.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <section class="game-panel">
-    <div class="so-card" data-card>
-      <div class="so-top">
-        <span class="so-chip">Level <b data-hud-level>1</b>/${LEVEL_COUNT}</span>
-        <span class="so-chip">${ICO.clock}<b data-hud-time>60</b>s</span>
-        <span class="so-chip" data-score0 hidden><i class="so-dot"></i><span data-name0>You</span>&nbsp;<b data-pts0>0</b></span>
-        <span class="so-chip" data-score1 hidden><i class="so-dot"></i><span data-name1>Bot</span>&nbsp;<b data-pts1>0</b></span>
-        <span class="so-cheat-tag" data-cheattag hidden>cheated</span>
-        <span class="so-flex"></span>
-        <button class="so-icon" type="button" data-act="help" title="How to play (F1)">${ICO.help}</button>
-        <button class="so-icon" type="button" data-act="cheat" data-cheatbtn title="Cheats (C)">${ICO.bolt}</button>
-        <button class="so-icon" type="button" data-act="pause" data-pausebtn title="Pause (P)">${ICO.pause}</button>
-        <button class="so-icon" type="button" data-act="restart" data-restartbtn title="Restart (R)">${ICO.redo}</button>
-      </div>
-      <div class="so-bar" data-bar><i data-fill style="width:100%"></i></div>
-      <svg class="so-board" data-board viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Screw Out board"></svg>
-      <div class="so-tray" data-tray></div>
-      <div class="so-msg" data-msg aria-live="polite">Pick a mode to begin.</div>
-      <div class="so-pad">
-        <button type="button" data-act="pad-prev" title="Previous screw">${ICO.left}</button>
-        <button type="button" class="so-pad-pick" data-act="pad-pick" data-padpick>${ICO.driver}<span>Unscrew</span></button>
-        <button type="button" data-act="pad-next" title="Next screw">${ICO.right}</button>
-        <button type="button" data-act="hint" data-padhint title="Hint">${ICO.bulb}</button>
-      </div>
 
-      <div class="so-ov" data-ov-ready>
-        <div class="so-ovcard">
-          <h3>Screw Out</h3>
+/* --- layout overrides last (beat design polish + pointer:coarse 44px) --- */
+@media (max-width:640px){
+.so-app.game-fill>.so-board:not(:has(.so-ov:not([hidden]))){aspect-ratio:4/3;flex:0 0 auto}
+.so-app.game-fill>.so-board:has(.so-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.so-app{gap:6px}
+.so-app .so-hud{gap:5px}
+.so-app .so-hud .so-chip{padding:4px 6px;font-size:9px;min-height:0}
+.so-app .so-hud .so-chip[data-hud-chip="status"],.so-app .so-hud .so-chip[data-hud-chip="hints"]{display:none}
+.so-app .so-hud .so-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+.so-app .so-hud .so-btn-label,.so-app .so-hud .so-spacer{display:none}
+.so-app .so-board .so-ov{padding:8px}
+.so-app .so-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.so-app .so-stats,.so-app .so-cheats,.so-app .so-help{scrollbar-width:none}
+.so-app .so-stats::-webkit-scrollbar,.so-app .so-cheats::-webkit-scrollbar,.so-app .so-help::-webkit-scrollbar{display:none}
+.so-app .so-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid #e2e8f0}
+.so-app .so-note{display:none}
+}
+@media (pointer:coarse){
+.so-app .so-hud .so-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+.so-app .so-card .so-btn{min-height:44px}
+}
+</style>
+<div class="game-app so-app game-fill" data-so${isTouch ? " so-touch" : ""}>
+  <div class="so-hud">
+    <span class="so-chip">LV <b data-hud="level">1</b>/${LEVEL_COUNT}</span>
+    <span class="so-chip">TIME <b data-hud="time">60</b>s <span class="so-bar" data-bar><i data-fill style="width:100%"></i></span></span>
+    <span class="so-chip" data-score0 hidden><i class="so-dot"></i><span data-name0>You</span>&nbsp;<b data-pts0>0</b></span>
+    <span class="so-chip" data-score1 hidden><i class="so-dot"></i><span data-name1>Bot</span>&nbsp;<b data-pts1>0</b></span>
+    <span class="so-chip" data-hud-chip="status"><i class="so-dot"></i><span data-status>Ready</span></span>
+    <span class="so-chip" data-hud-chip="hints">HINT <b data-hud="hints">3</b></span>
+    <span class="so-cheat-tag" data-cheattag hidden>cheated</span>
+    <span class="so-spacer"></span>
+    <button class="so-btn so-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${icon("helpCircle")}<span class="so-btn-label">Help</span></button>
+    <button class="so-btn so-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${icon("wrench")}<span class="so-btn-label">Cheats</span></button>
+    <button class="so-btn so-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${icon("pause")}<span class="so-btn-label">Pause</span></button>
+    <button class="so-btn so-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${icon("refresh")}<span class="so-btn-label">Restart</span></button>
+    <button class="so-btn so-icon-btn" type="button" data-hint aria-label="Hint" title="Hint (N)">${icon("lightbulb")}<span class="so-btn-label">Hint</span></button>
+    <button class="so-btn so-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${icon("logOut")}<span class="so-btn-label">Exit game</span></button>
+  </div>
+  <div class="so-notice" data-msg aria-live="polite">Pick a mode to begin.</div>
+  <section class="game-panel so-board" data-board>
+    <div class="so-play">
+      <svg class="so-svg" data-boardsvg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Screw Out board"></svg>
+      <div class="so-tray" data-tray></div>
+    </div>
+
+    <div class="so-ov" data-ov="ready">
+      <div class="so-card">
+        <div class="so-head"><h3>Screw Out</h3></div>
+        <div class="so-stats">
           <p>Turn screws that are not covered by a higher panel. The tray holds three colors - the third screw of a color clears its slot. Free every panel before time runs out. If the tray fills with colors you cannot feed, you are stuck.</p>
           <p data-seatinfo hidden></p>
-          <div class="so-row" data-readybtns></div>
         </div>
+        <div class="so-foot"><span class="so-note">Press H for the guide</span><div class="so-row" data-readybtns></div></div>
       </div>
+    </div>
 
-      <div class="so-ov" data-ov-over hidden>
-        <div class="so-ovcard">
-          <h3 data-over-title>Game over</h3>
+    <div class="so-ov" data-ov="over" hidden>
+      <div class="so-card">
+        <div class="so-head"><h3 data-over-title>Game over</h3></div>
+        <div class="so-stats">
           <div class="so-score-line" data-over-score hidden></div>
           <p data-over-reason></p>
-          <div class="so-row" data-overbtns></div>
         </div>
+        <div class="so-foot"><span class="so-note">Press R to play again</span><div class="so-row" data-overbtns></div></div>
       </div>
+    </div>
 
-      <div class="so-ov" data-ov-pause hidden>
-        <div class="so-ovcard">
-          <h3>Paused</h3>
-          <p>The clock is holding its breath.</p>
-          <div class="so-row"><button class="so-btn" type="button" data-act="resume">Resume</button></div>
-        </div>
+    <div class="so-ov" data-ov="pause" hidden>
+      <div class="so-card">
+        <div class="so-head"><h3>Paused</h3></div>
+        <div class="so-stats"><p>The clock, bot and level timers are frozen.</p></div>
+        <div class="so-foot"><span class="so-note">Press P or Esc to resume</span><button class="so-btn primary" type="button" data-resume>Resume</button></div>
       </div>
+    </div>
 
-      <div class="so-ov so-help" data-ov-help hidden>
-        <div class="so-ovcard">
-          <h3>How to play</h3>
-          <ol>
-            <li>Tap or click a screw to unscrew it. Only screws <b>not covered</b> by a higher panel can turn - faint dots mark the buried ones.</li>
-            <li>Every screw lands in the tray. The tray holds <b>3 colors</b>; collecting the <b>3rd screw</b> of a color clears that slot.</li>
-            <li>Remove all screws of a panel and it pops loose (with a satisfying fall).</li>
-            <li>Tray full and only fresh colors reachable? You are <b>stuck</b> - plan the order.</li>
-            <li>Screws with a <b>dashed ring</b> are tight: one turn loosens them, a second turn extracts them.</li>
-            <li>Clear all ${LEVEL_COUNT} levels before the timer empties.</li>
-          </ol>
-          <h4>Vs bot / online duel</h4>
-          <ol>
-            <li>A coin toss decides who starts; seats are shuffled too. Players alternate turns on the same board and share the tray - you can block each other.</li>
-            <li>Points: screw +10, loosen +2, color trio +15, panel +25, level +20. Highest score wins.</li>
-          </ol>
-          <h4>Desktop controls</h4>
-          <div class="so-keys">
-            <kbd>Click</kbd> unscrew &nbsp; <kbd>Wheel</kbd> / <kbd>&larr;</kbd><kbd>&rarr;</kbd> select &nbsp; <kbd>Enter</kbd>/<kbd>Space</kbd> unscrew selected<br>
-            <kbd>1</kbd>-<kbd>9</kbd> quick pick &nbsp; <kbd>H</kbd> hint &nbsp; <kbd>P</kbd> pause &nbsp; <kbd>R</kbd> restart &nbsp; <kbd>C</kbd> cheats &nbsp; <kbd>F1</kbd> help &nbsp; <kbd>Esc</kbd> close
-          </div>
-          <h4>Mobile</h4>
-          <div class="so-keys">Tap screws directly, or use the on-screen pad: arrows to select, <b>Unscrew</b> to turn, bulb for a hint.</div>
-          <div class="so-row" style="margin-top:14px"><button class="so-btn" type="button" data-act="close-help">Got it</button></div>
-        </div>
-      </div>
-
-      <div class="so-ov so-cheats" data-ov-cheat hidden>
-        <div class="so-ovcard">
-          <h3>Cheat workshop</h3>
-          <p>Offline only. Using any cheat tags this run as <b>cheated</b>.</p>
+    <div class="so-ov" data-ov="cheat" hidden>
+      <div class="so-card">
+        <div class="so-head"><h3>Cheat workshop</h3><button class="so-btn" type="button" data-cheat-close aria-label="Close cheats">Close</button></div>
+        <div class="so-cheats">
           <div class="so-cl">
             <button class="so-btn" type="button" data-act="cheatTime"><span>+30 seconds</span><span>time</span></button>
             <button class="so-btn" type="button" data-act="cheatFreeze" data-cfreeze><span>Freeze timer</span><span data-cfreeze-state>off</span></button>
@@ -635,33 +633,68 @@ export function mount(root, context = {}) {
             <button class="so-btn" type="button" data-act="cheatAuto" data-cauto><span>Auto-play (bot drives you)</span><span data-cauto-state>off</span></button>
             <button class="so-btn" type="button" data-act="xray" data-cxray><span>X-ray buried screws</span><span data-cxray-state>off</span></button>
           </div>
-          <p class="so-note">Cheats are disabled in online duels to keep matches fair.</p>
-          <div class="so-row" style="margin-top:12px"><button class="so-btn ghost" type="button" data-act="close-cheat">Close</button></div>
+          <p class="so-note">Offline only. Using any cheat tags this run as cheated; cheats are disabled in online duels.</p>
         </div>
+        <div class="so-foot"><span class="so-note">Press C or Esc to close</span><button class="so-btn ghost" type="button" data-cheat-close>Close</button></div>
+      </div>
+    </div>
+
+    <div class="so-ov" data-ov="help" hidden>
+      <div class="so-card">
+        <div class="so-head"><h3>How to play</h3><button class="so-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="so-help">
+          <div>
+            <b>Desktop</b>
+            <ol>
+              <li>Click a screw to unscrew it. Only screws <b>not covered</b> by a higher panel can turn - faint dots mark the buried ones.</li>
+              <li>Wheel or <span class="so-kbd">&larr;</span><span class="so-kbd">&rarr;</span> select, <span class="so-kbd">Enter</span>/<span class="so-kbd">Space</span> unscrew, <span class="so-kbd">1</span>-<span class="so-kbd">9</span> quick pick.</li>
+            </ol>
+            <b>Mobile</b>
+            <ol>
+              <li>Tap screws directly, or use the pad below the board: arrows to select, <b>Unscrew</b> to turn, bulb for a hint.</li>
+              <li>Use the HUD buttons for Help, Cheats, Pause, Restart, Hint and Exit.</li>
+            </ol>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ol>
+              <li>Every screw lands in the tray. The tray holds <b>3 colors</b>; the <b>3rd screw</b> of a color clears its slot.</li>
+              <li>Remove all screws of a panel and it pops loose. Screws with a <b>dashed ring</b> are tight: one turn loosens, a second extracts.</li>
+              <li>Tray full and only fresh colors reachable? You are <b>stuck</b>. Clear all ${LEVEL_COUNT} levels before the timer empties.</li>
+              <li>Vs bot / online: a coin toss decides who starts; players alternate turns and share the tray. Points: screw +10, loosen +2, trio +15, panel +25, level +20.</li>
+            </ol>
+            <b>Shortcuts</b>
+            <div class="so-keys"><span class="so-kbd">H</span> help &nbsp; <span class="so-kbd">C</span> cheats &nbsp; <span class="so-kbd">P</span> pause &nbsp; <span class="so-kbd">R</span> restart &nbsp; <span class="so-kbd">N</span> hint &nbsp; <span class="so-kbd">Esc</span> close</div>
+          </div>
+        </div>
+        <div class="so-foot"><span class="so-note">Press H to reopen this guide</span><button class="so-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="so-pad">
+    <button type="button" data-act="pad-prev" aria-label="Previous screw" title="Previous screw">${icon("arrowLeft")}</button>
+    <button type="button" class="so-pad-pick" data-act="pad-pick" data-padpick aria-label="Unscrew selected screw">${icon("wrench")}<span>Unscrew</span></button>
+    <button type="button" data-act="pad-next" aria-label="Next screw" title="Next screw">${icon("arrowRight")}</button>
+    <button type="button" data-act="hint" data-padhint aria-label="Hint" title="Hint (N)">${icon("lightbulb")}</button>
+  </div>
 </div>`;
 
     const $ = (sel) => root.querySelector(sel);
-    const appEl = $(".so-app");
-    const cardEl = $("[data-card]");
-    const svgEl = $("[data-board]");
+    const appEl = $("[data-so]");
+    const svgEl = $("[data-boardsvg]");
     const trayEl = $("[data-tray]");
-    const msgEl = $("[data-msg]");
+    const noticeEl = $("[data-msg]");
     const barEl = $("[data-bar]");
     const fillEl = $("[data-fill]");
     const statusEl = $("[data-status]");
-    const ovReady = $("[data-ov-ready]");
-    const ovOver = $("[data-ov-over]");
-    const ovPause = $("[data-ov-pause]");
-    const ovHelp = $("[data-ov-help]");
-    const ovCheat = $("[data-ov-cheat]");
+    const ov = {
+        ready: $('[data-ov="ready"]'), over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'), help: $('[data-ov="help"]'),
+    };
     const readyBtns = $("[data-readybtns]");
     const overBtns = $("[data-overbtns]");
     const seatInfo = $("[data-seatinfo]");
-    const hud = { level: $("[data-hud-level]"), time: $("[data-hud-time]") };
+    const hud = { level: $('[data-hud="level"]'), time: $('[data-hud="time"]'), hints: $('[data-hud="hints"]') };
     const scoreEls = [
         { chip: $("[data-score0]"), dot: $("[data-score0] .so-dot"), name: $("[data-name0]"), pts: $("[data-pts0]") },
         { chip: $("[data-score1]"), dot: $("[data-score1] .so-dot"), name: $("[data-name1]"), pts: $("[data-pts1]") },
@@ -669,6 +702,56 @@ export function mount(root, context = {}) {
     const clipId = "so-clip-" + Math.random().toString(36).slice(2, 8);
 
     const view = { key: "", prev: null, panelEls: new Map(), screwEls: new Map(), sel: null, hintSeq: 0, rejectSeq: 0, xray: false };
+
+    /* ---------- pause-aware timer anchors ---------- */
+    let scheduleSeq = 0;
+    const scheduled = new Map();
+    let deferred = [];
+    let timeFrozen = false;
+    let pauseStart = 0, pauseOffset = 0;
+    const perfNow = () => (pauseStart ? pauseStart : performance.now()) - pauseOffset;
+    const hasLater = (key) => scheduled.has(key) || deferred.some((t) => t.key === key);
+
+    function cancelLater(key) {
+        const rec = scheduled.get(key);
+        if (rec) { clearTimeout(rec.id); scheduled.delete(key); }
+        deferred = deferred.filter((t) => t.key !== key);
+    }
+    function later(fn, ms, key) {
+        if (key !== undefined) cancelLater(key);
+        const idKey = key === undefined ? ++scheduleSeq : key;
+        if (timeFrozen) { deferred.push({ key: idKey, fn, wait: Math.max(0, ms) }); return idKey; }
+        const id = setTimeout(() => {
+            scheduled.delete(idKey);
+            if (!destroyed && !timeFrozen) fn();
+        }, ms);
+        scheduled.set(idKey, { id, due: Date.now() + ms, fn });
+        return idKey;
+    }
+    function freezeTimers() {
+        if (timeFrozen) return;
+        timeFrozen = true;
+        pauseStart = performance.now();
+        const now = Date.now();
+        for (const [key, rec] of scheduled) {
+            clearTimeout(rec.id);
+            deferred.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        scheduled.clear();
+    }
+    function thawTimers() {
+        if (!timeFrozen) return;
+        if (pauseStart) pauseOffset += performance.now() - pauseStart;
+        pauseStart = 0;
+        timeFrozen = false;
+        const queue = deferred;
+        deferred = [];
+        for (const t of queue) later(t.fn, t.wait, t.key);
+    }
+    function syncFreeze() {
+        const freeze = showHelp || showCheat || (!!state && state.phase === "paused");
+        if (freeze) freezeTimers(); else thawTimers();
+    }
 
     /* ---------- board building ---------- */
     function shapeMarkup(p, cx, cy) {
@@ -713,11 +796,12 @@ export function mount(root, context = {}) {
 
     /* ---------- physics FX (view-only) ---------- */
     const fx = { bodies: [], flies: [], raf: 0, last: 0 };
-    function fxKick() { if (!fx.raf) { fx.last = performance.now(); fx.raf = requestAnimationFrame(fxStep); } }
+    function fxKick() { if (!fx.raf) { fx.last = perfNow(); fx.raf = requestAnimationFrame(fxStep); } }
     function fxStep(ts) {
         if (destroyed) { fx.raf = 0; return; }
-        const dt = Math.min(0.033, (ts - fx.last) / 1000 || 0.016);
-        fx.last = ts;
+        const now = perfNow();
+        const dt = Math.min(0.033, (now - fx.last) / 1000 || 0.016);
+        fx.last = now;
         const gIn = svgEl.querySelector("[data-fxin]");
         for (let i = fx.bodies.length - 1; i >= 0; i--) {
             const b = fx.bodies[i];
@@ -871,7 +955,6 @@ export function mount(root, context = {}) {
         });
         rebuildGhosts();
         updateSelection();
-        /* hint highlight */
         if (state.hint && state.hint.seq !== view.hintSeq) {
             view.hintSeq = state.hint.seq;
             const el = view.screwEls.get(state.hint.pi + ":" + state.hint.si);
@@ -880,7 +963,6 @@ export function mount(root, context = {}) {
                 el.addEventListener("animationend", () => el.classList.remove("hinted"), { once: true });
             }
         }
-        /* reject feedback */
         if (state.reject && state.reject.seq !== view.rejectSeq) {
             view.rejectSeq = state.reject.seq;
             const el = view.screwEls.get(state.reject.pi + ":" + state.reject.si);
@@ -920,6 +1002,7 @@ export function mount(root, context = {}) {
     function syncHud() {
         hud.level.textContent = state.level + 1;
         hud.time.textContent = Math.max(0, Math.ceil(state.timeLeft));
+        hud.hints.textContent = state.hintsLeft;
         const total = Math.round((60 + 30 * state.level) * (state.versus ? 1.5 : 1));
         fillEl.style.width = Math.max(0, Math.min(100, (state.timeLeft / total) * 100)) + "%";
         barEl.classList.toggle("warn", state.timeLeft < total * 0.25);
@@ -951,17 +1034,24 @@ export function mount(root, context = {}) {
         else if (state.phase === "over") status = "Match over";
         else if (state.phase === "ready") status = online ? (room.isHost ? "Lobby - press Start" : "Waiting for host") : "Pick a mode";
         statusEl.textContent = status;
-        msgEl.textContent = state.msg || "";
-        /* top buttons availability */
-        $("[data-cheatbtn]").style.display = online ? "none" : "";
-        $("[data-pausebtn]").style.display = online ? "none" : "";
-        $("[data-pausebtn]").innerHTML = state.phase === "paused" ? ICO.play : ICO.pause;
-        $("[data-pausebtn]").disabled = state.phase !== "playing" && state.phase !== "paused";
-        $("[data-restartbtn]").style.display = online && !room.isHost ? "none" : "";
-        /* pad */
-        const pickBtn = $("[data-padpick]");
-        pickBtn.disabled = state.phase !== "playing" || (state.versus && state.turn !== mySeat());
-        $("[data-padhint]").style.display = online ? "none" : "";
+        noticeEl.textContent = state.msg || "";
+        /* HUD controls */
+        const pbtn = $("[data-pause]");
+        pbtn.hidden = online;
+        pbtn.disabled = state.phase !== "playing" && state.phase !== "paused";
+        const pausedNow = state.phase === "paused";
+        const plabel = pbtn.querySelector(".so-btn-label");
+        if (plabel) plabel.textContent = pausedNow ? "Resume" : "Pause";
+        pbtn.setAttribute("aria-label", pausedNow ? "Resume" : "Pause");
+        pbtn.setAttribute("title", pausedNow ? "Resume (P)" : "Pause (P)");
+        const picon = pbtn.querySelector("svg");
+        if (picon) picon.outerHTML = icon(pausedNow ? "play" : "pause");
+        $("[data-cheats]").hidden = online;
+        $("[data-restart]").hidden = online && !room.isHost;
+        const hintBtn = $("[data-hint]");
+        hintBtn.hidden = online;
+        hintBtn.disabled = state.phase !== "playing" || (state.versus && state.turn !== mySeat()) || state.hintsLeft <= 0;
+        $("[data-padhint]").hidden = online;
         /* cheat overlay states */
         const cf = $("[data-cfreeze]"); cf.classList.toggle("on", state.frozen);
         $("[data-cfreeze-state]").textContent = state.frozen ? "on" : "off";
@@ -969,7 +1059,7 @@ export function mount(root, context = {}) {
         $("[data-cauto-state]").textContent = state.autoPlay ? "on" : "off";
         const cx = $("[data-cxray]"); cx.classList.toggle("on", view.xray);
         $("[data-cxray-state]").textContent = view.xray ? "on" : "off";
-        ovCheat.querySelectorAll(".so-cl .so-btn").forEach((b) => {
+        ov.cheat.querySelectorAll(".so-cl .so-btn").forEach((b) => {
             const t = b.dataset.act;
             const toggle = t === "cheatFreeze" || t === "cheatAuto" || t === "xray";
             b.disabled = !toggle && state.phase !== "playing" && state.phase !== "paused";
@@ -979,11 +1069,12 @@ export function mount(root, context = {}) {
         return '<button class="so-btn' + (ghost ? " ghost" : "") + '" type="button" data-act="' + act + '">' + label + "</button>";
     }
     function syncOverlays() {
-        ovReady.hidden = state.phase !== "ready";
-        ovOver.hidden = state.phase !== "over";
-        ovPause.hidden = state.phase !== "paused";
-        ovHelp.hidden = !showHelp;
-        ovCheat.hidden = !showCheat || online;
+        const suppress = showHelp || showCheat;
+        ov.ready.hidden = state.phase !== "ready" || suppress;
+        ov.over.hidden = state.phase !== "over" || suppress;
+        ov.pause.hidden = state.phase !== "paused" || suppress;
+        ov.cheat.hidden = !showCheat || online || showHelp;
+        ov.help.hidden = !showHelp;
         if (state.phase === "ready") {
             if (online) {
                 seatInfo.hidden = false;
@@ -1023,11 +1114,15 @@ export function mount(root, context = {}) {
         if (destroyed) return;
         if (!state) {
             statusEl.textContent = "Connecting...";
-            ovReady.hidden = false;
+            noticeEl.textContent = "Connecting...";
+            ov.ready.hidden = showHelp || showCheat;
+            ov.over.hidden = true;
+            ov.pause.hidden = true;
+            ov.cheat.hidden = !showCheat || online;
+            ov.help.hidden = !showHelp;
             seatInfo.hidden = true;
             readyBtns.innerHTML = "<p>Waiting for the room state...</p>";
-            ovHelp.hidden = !showHelp;
-            ovCheat.hidden = true;
+            syncFreeze();
             return;
         }
         const key = state.seed + ":" + state.level + ":" + (state.panels.length ? state.panels[0].z : 0);
@@ -1040,26 +1135,25 @@ export function mount(root, context = {}) {
         syncOverlays();
         svgEl.classList.toggle("so-xray", view.xray);
         view.prev = clone(state);
+        syncFreeze();
     }
 
-    /* ---------- authority drivers ---------- */
+    /* ---------- authority drivers (pause-aware) ---------- */
     function driveLocal() {
         if (!authority || !state || destroyed) return;
-        if (state.phase === "between" && !nextTO) {
-            nextTO = setTimeout(() => {
-                nextTO = null;
+        if (state.phase === "between" && !hasLater("next")) {
+            later(() => {
                 if (!destroyed && state && state.phase === "between") applyAction({ type: "next", first: randInt(2) }, -1);
-            }, 1400);
+            }, 1400, "next");
         }
         const botTurn = !online && state.versus && state.phase === "playing" && state.turn === 1;
         const autoTurn = state.autoPlay && state.phase === "playing" && (!state.versus || state.turn === 0);
-        if ((botTurn || autoTurn) && !botTO) {
-            botTO = setTimeout(() => {
-                botTO = null;
+        if ((botTurn || autoTurn) && !hasLater("bot")) {
+            later(() => {
                 if (destroyed || !state || state.phase !== "playing") return;
                 const mv = bestMove(state);
                 if (mv) applyAction({ type: "pick", pi: mv.pi, si: mv.si }, state.versus ? state.turn : 0);
-            }, botTurn ? 700 + Math.random() * 700 : 380);
+            }, botTurn ? 700 + Math.random() * 700 : 380, "bot");
         }
     }
     function publish() {
@@ -1097,32 +1191,62 @@ export function mount(root, context = {}) {
         lastVersus = versus;
         submitAction({ type: "start", versus, seed: randSeed(), first: randInt(2) });
     }
+    function toggleHelp(on) {
+        showHelp = typeof on === "boolean" ? on : !showHelp;
+        if (showHelp) showCheat = false;
+        render();
+        appEl.focus?.({ preventScroll: true });
+    }
+    function toggleCheat(on) {
+        if (online) return;
+        showCheat = typeof on === "boolean" ? on : !showCheat;
+        if (showCheat) showHelp = false;
+        render();
+        appEl.focus?.({ preventScroll: true });
+    }
+    function restart() {
+        showHelp = showCheat = false;
+        if (!online || room.isHost) submitAction({ type: "restart", seed: randSeed(), seat: randInt(2) });
+    }
+    function togglePause() {
+        if (online || !state) return;
+        submitAction({ type: state.phase === "paused" ? "resume" : "pause" });
+    }
     function handleClick(event) {
-        const exitBtn = event.target.closest("[data-exit]");
-        if (exitBtn) { onExit(); return; }
-        const screwEl = event.target.closest("[data-screw]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheat(); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheat(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) { restart(); return; }
+        if (t.closest("[data-hint]")) { if (state && !online) submitAction({ type: "hint" }); return; }
+        const screwEl = t.closest("[data-screw]");
         if (screwEl && svgEl.contains(screwEl)) {
             tryPick(parseInt(screwEl.dataset.pi, 10), parseInt(screwEl.dataset.si, 10));
             return;
         }
-        const b = event.target.closest("[data-act]");
+        if (showHelp || showCheat || !state) return;
+        const b = t.closest("[data-act]");
         if (!b) return;
         const act = b.dataset.act;
-        if (act === "help") { showHelp = !showHelp; showCheat = false; render(); return; }
-        if (act === "close-help") { showHelp = false; render(); return; }
-        if (act === "cheat") { if (!online) { showCheat = !showCheat; showHelp = false; render(); } return; }
-        if (act === "close-cheat") { showCheat = false; render(); return; }
+        if (act === "help") { toggleHelp(); return; }
+        if (act === "close-help") { toggleHelp(false); return; }
+        if (act === "cheat") { toggleCheat(); return; }
+        if (act === "close-cheat") { toggleCheat(false); return; }
         if (act === "xray") { view.xray = !view.xray; submitAction({ type: "cheatXray" }); render(); return; }
-        if (!state) return;
         switch (act) {
             case "start-solo": startLocal(false); break;
             case "start-bot": startLocal(true); break;
             case "start-online": submitAction({ type: "start", seed: randSeed(), first: randInt(2), name: cleanName(playerName) }); break;
             case "again": startLocal(lastVersus); break;
-            case "restart": showHelp = showCheat = false; submitAction({ type: "restart", seed: randSeed(), seat: randInt(2) }); break;
-            case "pause": submitAction({ type: "pause" }); break;
-            case "resume": submitAction({ type: "resume" }); break;
-            case "hint": submitAction({ type: "hint" }); break;
+            case "restart": restart(); break;
+            case "pause": togglePause(); break;
+            case "resume": togglePause(); break;
+            case "hint": if (!online) submitAction({ type: "hint" }); break;
             case "pad-prev": cycleSelection(-1); break;
             case "pad-next": cycleSelection(1); break;
             case "pad-pick": pickSelected(); break;
@@ -1135,14 +1259,21 @@ export function mount(root, context = {}) {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
         const tag = e.target && e.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA") return;
+        const c = e.code || "";
         const k = e.key;
-        if (k === "Escape") { if (showHelp || showCheat) { showHelp = showCheat = false; render(); e.preventDefault(); } return; }
-        if (k === "?" || k === "F1") { showHelp = !showHelp; showCheat = false; render(); e.preventDefault(); return; }
-        if (k === "c" || k === "C") { if (!online) { showCheat = !showCheat; showHelp = false; render(); e.preventDefault(); } return; }
+        /* priority: help -> cheats -> pause / Escape -> game actions */
+        if (c === "KeyH" || k === "F1" || k === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") { toggleCheat(); e.preventDefault(); return; }
+        if (c === "KeyP" || k === "Escape") {
+            if (showHelp) toggleHelp(false);
+            else if (showCheat) toggleCheat(false);
+            else togglePause();
+            e.preventDefault();
+            return;
+        }
+        if (c === "KeyR") { restart(); e.preventDefault(); return; }
         if (showHelp || showCheat) return;
-        if (k === "p" || k === "P") { if (!online) { submitAction({ type: state.phase === "paused" ? "resume" : "pause" }); e.preventDefault(); } return; }
-        if (k === "r" || k === "R") { if (!online || room.isHost) { submitAction({ type: "restart", seed: randSeed(), seat: randInt(2) }); e.preventDefault(); } return; }
-        if (k === "h" || k === "H") { if (!online) { submitAction({ type: "hint" }); e.preventDefault(); } return; }
+        if (c === "KeyN") { if (!online) { submitAction({ type: "hint" }); e.preventDefault(); } return; }
         if (state.phase === "ready" && k === "Enter") {
             if (!online) startLocal(lastVersus);
             else if (room.isHost) submitAction({ type: "start", seed: randSeed(), first: randInt(2), name: cleanName(playerName) });
@@ -1188,7 +1319,9 @@ export function mount(root, context = {}) {
         render();
     }
     if (authority) {
-        timer = setInterval(() => { if (!destroyed && state && state.phase === "playing") applyAction({ type: "tick" }, -1); }, 1000);
+        tickTimer = setInterval(() => {
+            if (!destroyed && state && state.phase === "playing" && !showHelp && !showCheat && !timeFrozen) applyAction({ type: "tick" }, -1);
+        }, 1000);
     }
 
     return {
@@ -1197,9 +1330,9 @@ export function mount(root, context = {}) {
             root.removeEventListener("click", handleClick);
             document.removeEventListener("keydown", onKey);
             svgEl.removeEventListener("wheel", onWheel);
-            if (timer) clearInterval(timer);
-            if (botTO) clearTimeout(botTO);
-            if (nextTO) clearTimeout(nextTO);
+            if (tickTimer) clearInterval(tickTimer);
+            for (const rec of scheduled.values()) clearTimeout(rec.id);
+            scheduled.clear(); deferred = [];
             if (fx.raf) cancelAnimationFrame(fx.raf);
             fx.bodies.length = 0; fx.flies.length = 0;
         },

@@ -5,6 +5,8 @@ Format template: export const META + export function mount().
 Setelah menyalin file ini, jalankan: node tools/build-games-manifest.mjs
 ============================================================= */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "stickman-war", // harus sama dengan nama file (tanpa .js)
     name: "Stickman War",
@@ -334,7 +336,13 @@ export function mount(root, context = {}) {
     let sim = null;                                  // otoritas (AI / host)
     let snapPrev = null, snapCur = null, snapAt = 0; // tamu (interpolasi)
     let destroyed = false, hover = false;
-    let helpOpen = true, cheatOpen = false, helpPause = false;
+    let helpOpen = true, cheatOpen = false, helpPause = false, pauseAt = 0;
+    let helpSeen = true;
+    try { helpSeen = localStorage.getItem("stickmanWarHelpSeen") === "1"; } catch (err) { helpSeen = true; }
+    if (!helpSeen) {
+        helpOpen = true;
+        try { localStorage.setItem("stickmanWarHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     let follow = true, camX = 0, camT = 0, padDir = 0, keyDir = 0;
     let shake = { t: 0, life: 1, mag: 0 }, mm = null;
     let lastPhase = "", lastGuestPhase = "", lastLevelKey = "";
@@ -352,9 +360,17 @@ export function mount(root, context = {}) {
     /* ---------- markup + gaya (minimalis) ---------- */
     root.innerHTML = `
 <style>
-.sw-shell{--sw-line:#ffffff14;--sw-tx:#e7ecf3;--sw-mut:#8fa3b8;--sw-gold:#fbbf24;--sw-ok:#34d399;--sw-bad:#f87171;width:100%;display:flex;flex-direction:column;gap:10px;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--sw-tx)}
-.sw-top{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.sw-chip{display:inline-flex;align-items:center;gap:6px;background:#ffffff08;border:1px solid var(--sw-line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--sw-mut);white-space:nowrap}
+.sw{--sw-line:#ffffff14;--sw-tx:#e7ecf3;--sw-mut:#8fa3b8;--sw-gold:#fbbf24;--sw-ok:#34d399;--sw-bad:#f87171;width:100%;max-width:100%;box-sizing:border-box;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--sw-tx);line-height:1.45}
+.sw *{box-sizing:border-box}
+.sw [hidden]{display:none!important}
+.sw button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.sw-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sw-spacer{flex:1 1 auto}
+.sw-btn{display:inline-flex;align-items:center;gap:6px;background:#ffffff08;border:1px solid var(--sw-line);border-radius:9px;padding:8px 11px;min-height:34px;color:var(--sw-tx);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+.sw-btn:hover{border-color:#ffffff3a}
+.sw-icon-btn svg{flex:none;display:block}
+.sw-dot{width:7px;height:7px;border-radius:50%;background:var(--sw-ok);flex:none}
+.sw-chip{display:inline-flex;align-items:center;gap:8px;background:#ffffff08;border:1px solid var(--sw-line);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--sw-mut);white-space:nowrap}
 .sw-chip b{color:var(--sw-tx);font-variant-numeric:tabular-nums}
 .sw-goldv{color:var(--sw-gold)!important}
 .sw-lname{color:var(--sw-mut);font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis}
@@ -363,33 +379,35 @@ export function mount(root, context = {}) {
 .sw-inc{width:34px;height:3px}
 .sw-inc i{background:var(--sw-gold)}
 .sw-badge{color:#fbbf24;border-color:#fbbf2455;background:#fbbf2412;font-weight:800;letter-spacing:.5px}
-.sw-stage{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--sw-line);background:#0a1410;user-select:none;-webkit-user-select:none}
-.sw-stage canvas{display:block;width:100%;touch-action:none;cursor:grab}
-.sw-stage canvas:active{cursor:grabbing}
-.sw-toast{position:absolute;top:30px;left:50%;transform:translateX(-50%);background:#0d1a14ee;border:1px solid #ffffff22;color:var(--sw-tx);border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:600;pointer-events:none;opacity:0;transition:opacity .25s,top .25s;z-index:5;max-width:88%;text-align:center}
-.sw-toast.show{opacity:1;top:38px}
-.sw-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#040a08b8;backdrop-filter:blur(3px);z-index:10;padding:12px}
+.sw-board{position:relative;width:100%;padding:0;border:1px solid var(--sw-line);border-radius:12px;overflow:hidden;background:#0a1410;user-select:none;-webkit-user-select:none}
+.sw-board canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.sw-board canvas:active{cursor:grabbing}
+.sw-toast{position:absolute;top:32px;left:50%;transform:translateX(-50%);background:#0d1a14ee;border:1px solid #ffffff22;color:var(--sw-tx);border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:600;pointer-events:none;opacity:0;transition:opacity .18s,top .18s;z-index:5;max-width:calc(100% - 24px);text-align:center}
+.sw-toast.show{opacity:1;top:40px}
+.sw-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#040a08b8;z-index:10;padding:16px}
 .sw-ov[hidden]{display:none}
-.sw-card{background:#0d1a14f2;border:1px solid #ffffff1c;border-radius:16px;padding:18px;width:min(94%,560px);max-height:92%;overflow:auto;animation:sw-pop .22s ease}
+.sw-card{display:flex;flex-direction:column;overflow:hidden;background:#0d1a14f2;border:1px solid #ffffff1c;border-radius:14px;padding:20px 24px;width:min(560px,100%);max-height:92%;max-height:100%;animation:sw-pop .2s ease}
+.sw-card .sw-ovhead,.sw-card .sw-ovbtns,.sw-card h3,.sw-card .sw-sub:last-child{flex:none}
+.sw-card .sw-steps,.sw-card .sw-legend,.sw-card .sw-cols,.sw-card .sw-tip,.sw-card .sw-cheats,.sw-card .sw-stats{flex:1 1 auto;min-height:0;overflow:auto}
 @keyframes sw-pop{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
 .sw-card h3{margin:0 0 4px;font-size:19px}
 .sw-sub{margin:0 0 10px;color:var(--sw-mut);font-size:13px;line-height:1.5}
 .sw-steps{margin:0 0 12px;padding-left:18px;display:grid;gap:6px;font-size:13px;line-height:1.45}
 .sw-steps b{color:var(--sw-ok)}
-.sw-legend{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
-.sw-leg{background:#ffffff06;border:1px solid var(--sw-line);border-radius:10px;padding:8px 6px;text-align:center;font-size:11px;color:var(--sw-mut)}
+.sw-legend{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.sw-leg{background:#ffffff06;border:1px solid var(--sw-line);border-radius:8px;padding:8px;text-align:center;font-size:11px;color:var(--sw-mut)}
 .sw-leg b{display:block;color:var(--sw-tx);font-size:11.5px;margin:4px 0 2px}
 .sw-leg .sw-uic{display:flex;justify-content:center}
-.sw-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.sw-cols>div{background:#ffffff06;border:1px solid var(--sw-line);border-radius:10px;padding:8px 10px;font-size:11.5px;color:var(--sw-mut);line-height:1.55}
+.sw-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.sw-cols>div{background:#ffffff06;border:1px solid var(--sw-line);border-radius:8px;padding:12px;font-size:11.5px;color:var(--sw-mut);line-height:1.55}
 .sw-cols h4{margin:0 0 4px;font-size:12px;color:var(--sw-tx)}
-.sw-tip{font-size:12px;color:#fcd34d;background:#fcd34d12;border:1px solid #fcd34d2e;border-radius:10px;padding:8px 10px;margin:0 0 12px;line-height:1.5}
+.sw-tip{font-size:12px;color:#fcd34d;background:#fcd34d12;border:1px solid #fcd34d2e;border-radius:8px;padding:8px 12px;margin:0 0 12px;line-height:1.5}
 .sw-ovbtns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.sw-cta{background:var(--sw-ok);color:#04120b;border:0;border-radius:10px;padding:10px 18px;font-weight:800;font-size:14px;cursor:pointer}
+.sw-cta{background:var(--sw-ok);color:#04120b;border:1px solid var(--sw-ok);border-radius:8px;padding:10px 18px;min-height:44px;font-weight:800;font-size:14px;cursor:pointer}
 .sw-cta:hover{filter:brightness(1.1)}
-.sw-ghost{background:transparent;color:var(--sw-tx);border:1px solid #ffffff2a;border-radius:10px;padding:10px 14px;font-weight:700;font-size:13px;cursor:pointer}
+.sw-ghost{background:transparent;color:var(--sw-tx);border:1px solid #ffffff2a;border-radius:8px;padding:10px 14px;min-height:44px;font-weight:700;font-size:13px;cursor:pointer}
 .sw-ghost:hover{border-color:#ffffff55}
-.sw-x{margin-left:auto;background:none;border:0;color:var(--sw-mut);font-size:16px;cursor:pointer;padding:4px}
+.sw-x{margin-left:auto;background:none;border:0;color:var(--sw-mut);font-size:16px;cursor:pointer;padding:8px 12px;min-height:44px}
 .sw-ovhead{display:flex;align-items:center;gap:8px}
 .sw-center{text-align:center}
 .sw-stats{display:flex;justify-content:center;gap:18px;margin:10px 0}
@@ -397,16 +415,16 @@ export function mount(root, context = {}) {
 .sw-stats span{font-size:11px;color:var(--sw-mut)}
 .sw-win{color:var(--sw-ok)}
 .sw-lose{color:var(--sw-bad)}
-.sw-cheats{display:grid;gap:6px;margin-bottom:10px}
-.sw-cheat{display:flex;align-items:center;gap:10px;background:#ffffff06;border:1px solid var(--sw-line);border-radius:10px;padding:9px 12px;color:var(--sw-tx);font-size:13px;font-weight:600;cursor:pointer;text-align:left;width:100%}
+.sw-cheats{display:grid;gap:8px;margin-bottom:12px}
+.sw-cheat{display:flex;align-items:center;gap:12px;background:#ffffff06;border:1px solid var(--sw-line);border-radius:8px;padding:10px 12px;min-height:44px;color:var(--sw-tx);font-size:13px;font-weight:600;cursor:pointer;text-align:left;width:100%}
 .sw-cheat:hover{border-color:#ffffff3a}
 .sw-cheat .sw-dot{width:10px;height:10px;border-radius:50%;background:#ffffff22;flex:none}
 .sw-cheat[aria-pressed="true"]{border-color:#fbbf2466;background:#fbbf2410}
 .sw-cheat[aria-pressed="true"] .sw-dot{background:var(--sw-gold)}
 .sw-cheat small{margin-left:auto;color:var(--sw-mut);font-weight:500}
-.sw-controls{display:flex;gap:8px;align-items:stretch}
-.sw-units{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:1}
-.sw-unit{position:relative;display:flex;align-items:center;gap:8px;background:#ffffff07;border:1px solid var(--sw-line);border-radius:12px;padding:8px 10px;min-height:54px;color:var(--sw-tx);cursor:pointer;transition:transform .08s,border-color .15s,background .15s;font-family:inherit}
+.sw-controls{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.sw-units{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;flex:1;min-width:0}
+.sw-unit{position:relative;display:flex;align-items:center;gap:8px;background:#ffffff07;border:1px solid var(--sw-line);border-radius:10px;padding:8px 10px;min-height:54px;color:var(--sw-tx);cursor:pointer;transition:transform .08s,border-color .15s,background .15s;font-family:inherit}
 .sw-unit:hover{border-color:var(--uc);background:#ffffff0d}
 .sw-unit:active{transform:scale(.96)}
 .sw-unit .sw-uic{color:var(--uc);flex:none;display:flex}
@@ -419,7 +437,7 @@ export function mount(root, context = {}) {
 .sw-unit.pulse{animation:sw-pulse .3s}
 @keyframes sw-pulse{0%{box-shadow:0 0 0 0 var(--uc)}100%{box-shadow:0 0 0 8px transparent}}
 .sw-tools{display:flex;gap:6px;align-items:stretch;flex-wrap:wrap}
-.sw-tool{width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:#ffffff07;border:1px solid var(--sw-line);border-radius:12px;color:var(--sw-mut);cursor:pointer;font-size:12px;font-weight:800;font-family:inherit}
+.sw-tool{width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:#ffffff07;border:1px solid var(--sw-line);border-radius:8px;color:var(--sw-mut);cursor:pointer;font-size:12px;font-weight:800;font-family:inherit;flex:none}
 .sw-tool:hover{color:var(--sw-tx);border-color:#ffffff3a}
 .sw-tool[aria-pressed="true"]{color:var(--sw-ok);border-color:#34d39955;background:#34d39910}
 .sw-padbtn{display:none}
@@ -427,36 +445,66 @@ export function mount(root, context = {}) {
 .sw-flash{animation:sw-flash .35s}
 @keyframes sw-flash{0%,100%{background:#ffffff08}50%{background:#f8717133;border-color:#f87171}}
 @media (max-width:640px){
-.sw-units{grid-template-columns:repeat(2,1fr)}
+.sw{gap:8px}
+.sw-units{grid-template-columns:repeat(2,minmax(0,1fr))}
 .sw-controls{flex-direction:column}
 .sw-tools{justify-content:center}
 .sw-legend{grid-template-columns:repeat(2,1fr)}
 .sw-cols{grid-template-columns:1fr}
-.sw-chip{font-size:11px;padding:3px 8px}
+.sw-chip{font-size:11px;padding:6px 10px;min-height:32px}
 .sw-lname{max-width:80px}
+.sw-card{padding:16px}
 }
-@media (pointer:coarse){.sw-padbtn{display:flex}.sw-unit kbd{display:none}}
-@media (prefers-reduced-motion:reduce){.sw-card,.sw-unit.pulse,.sw-flash{animation:none}}
+@media (pointer:coarse){.sw-padbtn{display:flex}.sw-unit kbd{display:none}.sw-x{min-width:44px}}
+@media (prefers-reduced-motion:reduce){.sw-card,.sw-unit.pulse,.sw-flash{animation:none}.sw *{transition-duration:.01ms!important}}
+
+/* --- fill height + mobile refinements (paling akhir, spesifisitas tinggi) --- */
+.sw.game-fill>.sw-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.sw.game-fill>.sw-board:not(:has(.sw-ov:not([hidden]))){aspect-ratio:640/400;flex:0 0 auto}
+.sw.game-fill>.sw-board:has(.sw-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sw .sw-hud{gap:4px;margin-bottom:0}
+.sw .sw-hud .sw-chip{padding:3px 5px;font-size:8px;min-height:0;gap:4px}
+.sw .sw-hud .sw-chip .sw-bar{width:22px}
+.sw .sw-hud .sw-lname{display:none}
+.sw .sw-hud .sw-chip[data-hud="statuswrap"],
+.sw .sw-hud .sw-chip:has([data-hud="first"]),
+.sw .sw-hud .sw-chip:has([data-hud="army"]){display:none}
+.sw .sw-hud .sw-spacer{display:none}
+.sw .sw-hud .sw-btn{min-height:32px;padding:5px 7px;font-size:9px;gap:3px}
+.sw .sw-hud .sw-btn:not([data-tool="speed"]) .sw-btn-label{display:none}
+.sw .sw-hud .sw-icon-btn svg{width:13px;height:13px}
+.sw .sw-ov{padding:8px}
+.sw .sw-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sw .sw-card .sw-steps,.sw .sw-card .sw-legend,.sw .sw-card .sw-cols,.sw .sw-card .sw-tip,.sw .sw-card .sw-cheats,.sw .sw-card .sw-stats{scrollbar-width:none}
+.sw .sw-card .sw-steps::-webkit-scrollbar,.sw .sw-card .sw-legend::-webkit-scrollbar,.sw .sw-card .sw-cols::-webkit-scrollbar,.sw .sw-card .sw-tip::-webkit-scrollbar,.sw .sw-card .sw-cheats::-webkit-scrollbar,.sw .sw-card .sw-stats::-webkit-scrollbar{display:none}
+.sw .sw-ovbtns{position:sticky;bottom:0;background:#0d1a14;padding-top:8px;margin-top:4px}
+.sw .sw-hint{display:none}
+}
+@media (pointer:coarse){.sw .sw-hud .sw-btn{min-height:32px}}
 </style>
-<div class="game-app">
-  <div class="game-intro">
-    <div><h2>Stickman War</h2><p>Rekrut pasukan, kelola emas, ratakan markas lawan. Realtime 2D side-scrolling.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Siap</span></span>
+<div class="game-app sw game-fill" data-sw>
+  <div class="sw-hud">
+    <span class="sw-chip" data-hud="statuswrap"><i class="sw-dot" data-dot></i><span data-hud="status">Siap</span></span>
+    <span class="sw-chip">Lv <b data-hud="level">1</b><span class="sw-lname" data-hud="lname"></span></span>
+    <span class="sw-chip" data-goldchip>Emas <b class="sw-goldv" data-hud="gold">60</b><span class="sw-bar sw-inc"><i data-hud="inc"></i></span></span>
+    <span class="sw-chip">Markasmu <b data-hud="pbase">300</b><span class="sw-bar"><i data-hud="pbar"></i></span></span>
+    <span class="sw-chip">Lawan <b data-hud="ebase">300</b><span class="sw-bar"><i data-hud="ebar"></i></span></span>
+    <span class="sw-chip">Pasukan <b data-hud="army">0</b>/14</span>
+    <span class="sw-chip">Duluan <b data-hud="first">-</b></span>
+    <span class="sw-chip sw-badge" data-hud="cheat" hidden>CHEAT</span>
+    <span class="sw-chip" data-hud="bestwrap" hidden>Rekor <b data-hud="best">0</b></span>
+    <span class="sw-spacer"></span>
+    <button class="sw-btn sw-icon-btn" type="button" data-tool="speed" aria-label="Kecepatan game" title="Kecepatan game (1×/2×)"><span class="sw-btn-label" data-hud="speed">1×</span></button>
+    <button class="sw-btn sw-icon-btn" type="button" data-tool="follow" aria-label="Kamera ikuti pertempuran" title="Kamera auto (F)" aria-pressed="true">${iconSVG("camera", { size: 14 })}<span class="sw-btn-label" data-hud="follow">Auto</span></button>
+    <button class="sw-btn sw-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sw-btn-label">Help</span></button>
+    <button class="sw-btn sw-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sw-btn-label">Cheats</span></button>
+    <button class="sw-btn sw-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sw-btn-label">Pause</span></button>
+    <button class="sw-btn sw-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sw-btn-label">Restart</span></button>
+    <button class="sw-btn sw-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sw-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="sw-shell">
-      <div class="sw-top">
-        <span class="sw-chip">Lv <b data-hud="level">1</b><span class="sw-lname" data-hud="lname"></span></span>
-        <span class="sw-chip" data-goldchip>Emas <b class="sw-goldv" data-hud="gold">60</b><span class="sw-bar sw-inc"><i data-hud="inc"></i></span></span>
-        <span class="sw-chip">Markasmu <b data-hud="pbase">300</b><span class="sw-bar"><i data-hud="pbar"></i></span></span>
-        <span class="sw-chip">Lawan <b data-hud="ebase">300</b><span class="sw-bar"><i data-hud="ebar"></i></span></span>
-        <span class="sw-chip">Pasukan <b data-hud="army">0</b>/14</span>
-        <span class="sw-chip">Duluan <b data-hud="first">-</b></span>
-        <span class="sw-chip sw-badge" data-hud="cheat" hidden>CHEAT</span>
-        <span class="sw-chip" data-hud="bestwrap" hidden>Rekor <b data-hud="best">0</b></span>
-      </div>
-      <div class="sw-stage" data-stage>
-        <canvas data-canvas role="img" aria-label="Medan perang stickman 2D side-scrolling"></canvas>
+  <section class="game-panel sw-board" data-board>
+    <canvas data-canvas role="img" aria-label="Medan perang stickman 2D side-scrolling"></canvas>
         <div class="sw-toast" data-toast hidden></div>
         <div class="sw-ov" data-ov="help">
           <div class="sw-card">
@@ -524,24 +572,22 @@ export function mount(root, context = {}) {
             <div class="sw-ovbtns"><button type="button" class="sw-ghost" data-act="closecheat">Tutup</button></div>
           </div>
         </div>
-      </div>
-      <div class="sw-controls">
-        <div class="sw-units" data-units></div>
-        <div class="sw-tools" data-tools></div>
-      </div>
-      <div class="sw-hint" data-hint></div>
-    </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar game</button></div>
+  <div class="sw-controls">
+    <div class="sw-units" data-units></div>
+    <div class="sw-tools" data-tools></div>
+  </div>
+  <div class="sw-hint" data-hint></div>
 </div>`;
 
     /* ---------- referensi DOM ---------- */
     const $ = (s) => root.querySelector(s);
-    const stage = $("[data-stage]");
+    const app = $("[data-sw]");
+    const board = $("[data-board]");
     const canvas = $("[data-canvas]");
     const ctx = canvas.getContext("2d");
     const toastEl = $("[data-toast]");
-    const statusEl = $("[data-status]");
+    const statusEl = $("[data-hud='status']");
     const dotEl = $("[data-dot]");
     const ovHelp = $('[data-ov="help"]'), ovEnd = $('[data-ov="end"]'), ovPause = $('[data-ov="pause"]'), ovCheat = $('[data-ov="cheat"]');
     const hud = {};
@@ -558,17 +604,11 @@ export function mount(root, context = {}) {
     ).join("");
     $("[data-tools]").innerHTML =
         '<button type="button" class="sw-tool sw-padbtn" data-pad="l" aria-label="Geser kamera kiri">' + ICONS.left + "</button>" +
-        '<button type="button" class="sw-tool" data-tool="pause" aria-label="Jeda">' + ICONS.pause + "</button>" +
-        '<button type="button" class="sw-tool" data-tool="speed" aria-label="Kecepatan game">1×</button>' +
-        '<button type="button" class="sw-tool" data-tool="follow" aria-label="Kamera ikuti pertempuran" aria-pressed="true">' + ICONS.cam + "</button>" +
-        '<button type="button" class="sw-tool" data-tool="help" aria-label="Bantuan">' + ICONS.help + "</button>" +
-        '<button type="button" class="sw-tool" data-tool="cheat" aria-label="Cheat">' + ICONS.bug + "</button>" +
-        '<button type="button" class="sw-tool" data-tool="restart" aria-label="Ulang level">' + ICONS.redo + "</button>" +
         '<button type="button" class="sw-tool sw-padbtn" data-pad="r" aria-label="Geser kamera kanan">' + ICONS.right + "</button>";
     const unitBtns = {};
     root.querySelectorAll("[data-buy]").forEach((b) => { unitBtns[b.dataset.buy] = b; });
-    const toolPause = $('[data-tool="pause"]'), toolSpeed = $('[data-tool="speed"]'), toolFollow = $('[data-tool="follow"]'),
-        toolCheat = $('[data-tool="cheat"]'), toolRestart = $('[data-tool="restart"]');
+    const toolPause = $("[data-pause]"), toolSpeed = $('[data-tool="speed"]'), toolFollow = $('[data-tool="follow"]'),
+        toolCheat = $("[data-cheats]"), toolRestart = $("[data-restart]");
     const cheatToggles = {};
     root.querySelectorAll(".sw-cheat[data-cheat]").forEach((b) => { if (["gold", "god", "onehit", "freeze"].includes(b.dataset.cheat)) cheatToggles[b.dataset.cheat] = b; });
     $("[data-hint]").textContent = coarse
@@ -576,16 +616,17 @@ export function mount(root, context = {}) {
         : "1–4 rekrut · Space jeda · F kamera auto · A/D atau seret untuk geser · H bantuan · C cheat · R ulang.";
 
     /* ---------- canvas & kamera ---------- */
-    let viewW = 920, scale = 1;
+    let viewW = 920, scaleX = 1, scaleY = 1;
     function resize() {
-        const w = Math.max(300, stage.clientWidth || root.clientWidth || 640);
+        const rect = board.getBoundingClientRect ? board.getBoundingClientRect() : null;
+        const w = Math.max(300, Math.round((rect && rect.width) || board.clientWidth || root.clientWidth || 640));
         viewW = w < 680 ? 640 : 920;
-        const h = Math.round((w * VIEW_H) / viewW);
+        const h = Math.max(160, Math.round((rect && rect.height) || (w * VIEW_H) / viewW));
         const dpr = Math.min(2, window.devicePixelRatio || 1);
-        canvas.style.height = h + "px";
         canvas.width = Math.round(w * dpr);
         canvas.height = Math.round(h * dpr);
-        scale = canvas.width / viewW;
+        scaleX = canvas.width / viewW;
+        scaleY = canvas.height / VIEW_H;
         camT = clamp(camT, 0, WORLD - viewW);
         camX = clamp(camX, 0, WORLD - viewW);
     }
@@ -851,7 +892,7 @@ export function mount(root, context = {}) {
         ctx.strokeRect(x + (camX / WORLD) * w, y + 1, (viewW / WORLD) * w, h - 2);
     }
     function render(v, now, dt) {
-        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
         const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
         g.addColorStop(0, "#0b1220"); g.addColorStop(0.7, "#0e2018"); g.addColorStop(1, "#123020");
         ctx.fillStyle = g; ctx.fillRect(0, 0, viewW, VIEW_H);
@@ -940,7 +981,7 @@ export function mount(root, context = {}) {
         ovHelp.hidden = !showHelp;
         ovEnd.hidden = !(u.phase === "ended" && !showHelp && !cheatOpen);
         ovPause.hidden = !(u.phase === "paused" && !showHelp && !cheatOpen);
-        ovCheat.hidden = !cheatOpen;
+        ovCheat.hidden = !cheatOpen || helpOpen;
         txt(H.helpTitle, ready ? "Stickman War — Level " + u.level : "Cara main");
         txt(H.helpSub, ready ? (u.name || "") + (online ? " · multiplayer" : " · vs BOT") : "Ringkasan cepat biar langsung jago.");
         H.startBtn.hidden = !(ready && isHost);
@@ -980,11 +1021,13 @@ export function mount(root, context = {}) {
             hud.pbar.style.background = ARMY_COL[u.my];
             hud.ebar.style.background = ARMY_COL[u.foe];
         }
-        toolPause.innerHTML = u.phase === "paused" ? ICONS.play : ICONS.pause;
-        toolPause.setAttribute("aria-label", u.phase === "paused" ? "Lanjut" : "Jeda");
-        txt(toolSpeed, (u.speed || 1) + "×");
+        const pLabel = toolPause.querySelector(".sw-btn-label");
+        if (pLabel) pLabel.textContent = u.phase === "paused" ? "Resume" : "Pause";
+        toolPause.setAttribute("aria-label", u.phase === "paused" ? "Resume" : "Pause");
+        txt(hud.speed, (u.speed || 1) + "×");
+        txt(hud.follow, follow ? "Auto" : "Manual");
         syncFollow();
-        for (const el of [toolPause, toolSpeed, toolCheat, toolRestart]) el.style.display = isHost ? "" : "none";
+        for (const el of [toolPause, toolSpeed, toolCheat, toolRestart]) el.hidden = !isHost;
         syncOverlays(u);
         hudLight(u);
         refreshBuy(u);
@@ -1004,7 +1047,7 @@ export function mount(root, context = {}) {
         const sides = Math.random() < 0.5 ? [0, 1] : [1, 0];       // acak sisi pemain
         const initiative = Math.random() < 0.5 ? 0 : 1;            // acak giliran pertama
         sim = createSim({ level: n, seed, sides, initiative, vsBot: !online });
-        helpOpen = true; cheatOpen = false; helpPause = false;
+        helpOpen = !helpSeen; cheatOpen = false; helpPause = false; pauseAt = 0;
         gCache.clear(); gFx = []; gArrows = [];
         lastPhase = sim.phase;
         resetCam();
@@ -1036,8 +1079,12 @@ export function mount(root, context = {}) {
                 startPlay(sim); helpOpen = false;
                 toast(sim.initiative === sim.sides[0] ? "Undian: KAMU jalan duluan! +1 Swordman gratis." : "Undian: lawan jalan duluan. Siapkan pertahanan!");
             } else if (a.type === "pause") {
-                if (sim.phase === "play") sim.phase = "paused";
-                else if (sim.phase === "paused") sim.phase = "play";
+                if (sim.phase === "play") { sim.phase = "paused"; pauseAt = performance.now(); }
+                else if (sim.phase === "paused") {
+                    sim.phase = "play";
+                    if (pauseAt && snapAt) snapAt += performance.now() - pauseAt;
+                    pauseAt = 0; last = 0;
+                }
             } else if (a.type === "speed") {
                 sim.speed = sim.speed === 1 ? 2 : 1;
             } else if (a.type === "restart") {
@@ -1118,40 +1165,46 @@ export function mount(root, context = {}) {
     }
     function autoPause(want) {
         if (online || !sim) return;
-        if (want && sim.phase === "play") { helpPause = true; sim.phase = "paused"; }
-        else if (!want && helpPause && !helpOpen && !cheatOpen && sim.phase === "paused") { helpPause = false; sim.phase = "play"; }
+        if (want && sim.phase === "play") { helpPause = true; sim.phase = "paused"; pauseAt = performance.now(); }
+        else if (!want && helpPause && !helpOpen && !cheatOpen && sim.phase === "paused") {
+            helpPause = false; sim.phase = "play";
+            if (pauseAt && snapAt) snapAt += performance.now() - pauseAt;
+            pauseAt = 0; last = 0;
+        }
     }
     function toggleHelp(force) {
         const want = force !== undefined ? force : !helpOpen;
         if (want === helpOpen) return;
+        if (want) cheatOpen = false;
         helpOpen = want; autoPause(want); syncUI();
     }
     function toggleCheat(force) {
         if (!isHost) return;
         const want = force !== undefined ? force : !cheatOpen;
         if (want === cheatOpen) return;
+        if (want) helpOpen = false;
         cheatOpen = want; autoPause(want); syncUI();
     }
     function closeTop() {
-        if (cheatOpen) toggleCheat(false);
-        else if (helpOpen && uiState().phase !== "ready") toggleHelp(false);
+        if (helpOpen && uiState().phase !== "ready") toggleHelp(false);
+        else if (cheatOpen) toggleCheat(false);
         else if (isHost) submitAction({ type: "pause" });
     }
 
     /* ---------- input: klik / keyboard / mouse / sentuh ---------- */
     function handleClick(e) {
         if (e.target.closest("[data-exit]")) { onExit(); return; }
+        if (e.target.closest("[data-help]")) { toggleHelp(); return; }
+        if (e.target.closest("[data-cheats]")) { toggleCheat(); return; }
+        if (e.target.closest("[data-pause]")) { if (isHost) submitAction({ type: "pause" }); return; }
+        if (e.target.closest("[data-restart]")) { if (isHost && !cheatOpen) submitAction({ type: "restart" }); return; }
         const buy = e.target.closest("[data-buy]");
         if (buy) { tryBuy(buy.dataset.buy); return; }
         const tool = e.target.closest("[data-tool]");
         if (tool) {
             const t = tool.dataset.tool;
-            if (t === "pause" && isHost) submitAction({ type: "pause" });
-            else if (t === "speed" && isHost) submitAction({ type: "speed" });
+            if (t === "speed" && isHost) submitAction({ type: "speed" });
             else if (t === "follow") { follow = !follow; syncFollow(); }
-            else if (t === "help") toggleHelp();
-            else if (t === "cheat" && isHost) toggleCheat();
-            else if (t === "restart" && isHost) submitAction({ type: "restart" });
             return;
         }
         const ch = e.target.closest("[data-cheat]");
@@ -1174,19 +1227,23 @@ export function mount(root, context = {}) {
         const tag = (e.target && e.target.tagName) || "";
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const code = e.code;
-        if (code === "Escape") { e.preventDefault(); closeTop(); return; }
+        /* Prioritas: help → cheats → pause/Escape → aksi game */
+        if (code === "KeyH") { e.preventDefault(); toggleHelp(); return; }
+        if (code === "KeyC") { e.preventDefault(); if (isHost && !helpOpen) toggleCheat(); return; }
+        if (code === "KeyP" || code === "Escape") { e.preventDefault(); closeTop(); return; }
+        if (code === "KeyR") { e.preventDefault(); if (isHost && !helpOpen && !cheatOpen) submitAction({ type: "restart" }); return; }
         if (BUY_MAP[code]) { e.preventDefault(); if (!helpOpen && !cheatOpen) tryBuy(BUY_MAP[code]); return; }
         if (code === "ArrowLeft" || code === "KeyA") { keyDir = -1; e.preventDefault(); return; }
         if (code === "ArrowRight" || code === "KeyD") { keyDir = 1; e.preventDefault(); return; }
         if (code === "Space") { e.preventDefault(); if (isHost && !helpOpen && !cheatOpen) submitAction({ type: "pause" }); return; }
-        if (code === "KeyF") { follow = !follow; syncFollow(); return; }
-        if (code === "KeyH") { toggleHelp(); return; }
-        if (code === "KeyC") { if (isHost) toggleCheat(); return; }
-        if (code === "KeyR") { if (isHost && !cheatOpen) submitAction({ type: "restart" }); return; }
+        if (code === "KeyF") { e.preventDefault(); follow = !follow; syncFollow(); return; }
         if (code === "Enter") {
+            e.preventDefault();
             const u = uiState();
             if (isHost && u.phase === "ready") submitAction({ type: "start" });
-            else if (isHost && u.phase === "ended" && !helpOpen && !cheatOpen) submitAction({ type: "next" });
+            else if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheat(false);
+            else if (isHost && u.phase === "ended") submitAction({ type: "next" });
         }
     }
     function onKeyUp(e) {
@@ -1247,7 +1304,7 @@ export function mount(root, context = {}) {
     bindPad($('[data-pad="l"]'), -1);
     bindPad($('[data-pad="r"]'), 1);
     let ro = null;
-    if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(resize); ro.observe(stage); }
+    if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(resize); ro.observe(board); }
     else window.addEventListener("resize", resize, sig);
 
     /* ---------- koneksi room (multiplayer) ---------- */

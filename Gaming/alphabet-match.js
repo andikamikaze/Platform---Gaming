@@ -18,6 +18,8 @@
  * C = cheat overlay, R = restart. Hover a picture to see its name.
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "alphabet-match",
     name: "Alphabet Match",
@@ -106,10 +108,30 @@ export function mount(root, context = {}) {
     let reveal = false;
     let lastPulse = 0;
     let didFocus = false;
+    let helpOpen = false, paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("alphabetMatchHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("alphabetMatchHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     const unsubs = [];
 
     const $ = (s) => root.querySelector(s);
     const me = (playerName || "Player").trim() || "Player";
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        if (online && !room.isHost) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { clearTimeout(botTimer); botTimer = 0; }
+        else scheduleBot();
+        render();
+    }
 
     /* Random seat assignment (multiplayer): host flips a coin once,
        stores it in state, both clients derive their seat from it. */
@@ -148,58 +170,99 @@ export function mount(root, context = {}) {
     /* ---------------- skeleton (template structure) ---------------- */
     root.innerHTML = `
 <style>
-.am-game{--am-line:rgba(127,135,160,.28);--am-tile:rgba(127,135,160,.07);--am-accent:#6366f1;--am-ok:#10b981;--am-bad:#ef4444;max-width:620px;margin:0 auto}
-.am-game .am-panel{position:relative}
-.am-game .am-wrap{display:grid;gap:14px;padding:4px 2px}
-.am-game .am-scores{display:flex;gap:10px;justify-content:center;align-items:stretch}
-.am-game .am-score{flex:1;max-width:160px;border:1px solid var(--am-line);border-radius:12px;padding:8px 10px;display:grid;gap:1px;text-align:center;opacity:.6;transition:opacity .15s,border-color .15s}
+.am-app{--am-line:rgba(127,135,160,.28);--am-tile:rgba(127,135,160,.07);--am-accent:#6366f1;--am-ok:#10b981;--am-bad:#ef4444;color:var(--color-text,#e5e9f0)}
+.am-game{--am-line:rgba(127,135,160,.28);--am-tile:rgba(127,135,160,.07);--am-accent:#6366f1;--am-ok:#10b981;--am-bad:#ef4444;width:100%;min-width:0;font-family:inherit}
+.am-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:8px;padding:8px 12px;border:1px solid var(--am-line);border-radius:10px}
+.am-app .am-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;min-height:32px;border:1px solid var(--am-line);border-radius:8px;background:var(--am-tile);color:inherit;font:inherit;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation}
+.am-app .am-btn svg{flex:none;display:block}
+.am-app .am-btn.on{border-color:var(--am-accent);color:var(--am-accent)}
+.am-app .am-btn:disabled{opacity:.4;cursor:default}
+.am-spacer{flex:1 1 auto}
+.am-subchip{font-size:11px;opacity:.8}
+.am-game .am-panel{position:relative;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}
+.am-game .am-wrap{display:grid;gap:12px;padding:4px 2px;width:min(620px,100%);margin:0 auto}
+.am-game .am-scores{display:flex;gap:8px;justify-content:center;align-items:stretch;flex-wrap:wrap}
+.am-game .am-score{flex:1 1 120px;max-width:160px;border:1px solid var(--am-line);border-radius:10px;padding:8px 12px;display:grid;gap:2px;text-align:center;opacity:.75;transition:opacity .16s,border-color .16s}
 .am-game .am-score.on{opacity:1;border-color:var(--am-accent)}
-.am-game .am-who{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.am-game .am-who{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .am-game .am-score b{font-size:22px;font-weight:700;line-height:1.15}
-.am-game .am-mini{font-size:10px;opacity:.6}
-.am-game .am-mid{display:grid;place-content:center;text-align:center;font-size:10.5px;opacity:.8;padding:0 4px}
+.am-game .am-mini{font-size:10px;opacity:.7}
+.am-game .am-mid{display:grid;place-content:center;text-align:center;font-size:10.5px;opacity:.85;padding:0 4px}
 .am-game .am-mid b{font-size:15px}
-.am-game .am-board{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
-.am-game .am-col{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.am-game .am-tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:clamp(60px,17vw,84px);border:1px solid var(--am-line);border-radius:12px;background:var(--am-tile);color:inherit;font:inherit;cursor:pointer;padding:6px;transition:border-color .15s,background .15s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none}
+.am-game .am-board{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;min-width:0}
+.am-game .am-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;min-width:0}
+.am-game .am-tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:clamp(60px,16vw,80px);border:1px solid var(--am-line);border-radius:10px;background:var(--am-tile);color:inherit;font:inherit;font-size:13px;cursor:pointer;padding:8px 4px;transition:border-color .16s,background .16s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none}
 .am-game .am-tile:hover:not(:disabled){border-color:var(--am-accent)}
 .am-game .am-tile:focus-visible{outline:2px solid var(--am-accent);outline-offset:2px}
 .am-game .am-tile.sel{border-color:var(--am-accent);background:rgba(99,102,241,.14)}
 .am-game .am-tile.done{border-color:rgba(16,185,129,.5);background:rgba(16,185,129,.1);cursor:default}
-.am-game .am-big{font-size:clamp(20px,6vw,28px);font-weight:700;line-height:1}
-.am-game .am-sub{font-size:9px;height:11px;line-height:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.65;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.am-game .am-big{font-size:clamp(20px,6vw,28px);font-weight:700;line-height:1.1}
+.am-game .am-sub{font-size:9px;height:11px;line-height:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .am-game .am-tile svg{width:clamp(26px,7vw,36px);height:auto}
 .am-game .am-name{font-size:9px;height:11px;line-height:11px;letter-spacing:.05em;text-transform:uppercase;opacity:0;transition:opacity .12s;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .am-game .am-tile:hover .am-name,.am-game .am-tile:focus-visible .am-name,.am-game .am-tile.done .am-name,.am-game .am-board.reveal .am-name{opacity:.85}
 .am-game .am-board.wait{opacity:.55;pointer-events:none}
-.am-game .am-tile.err{animation:am-shake .3s;border-color:var(--am-bad)}
-.am-game .am-tile.pop{animation:am-pop .3s}
+.am-game .am-tile.err{animation:am-shake .28s;border-color:var(--am-bad)}
+.am-game .am-tile.pop{animation:am-pop .28s}
 @keyframes am-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
-@keyframes am-pop{0%{transform:scale(1)}40%{transform:scale(1.07)}100%{transform:scale(1)}}
-.am-game .am-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(8,10,20,.55);backdrop-filter:blur(3px);border-radius:14px;padding:12px}
-.am-game .am-card{width:min(320px,100%);background:#0f172a;color:#eef2ff;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:18px;display:grid;gap:10px;text-align:center}
+@keyframes am-pop{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
+.am-game .am-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(8,10,20,.55);border-radius:12px;padding:12px}
+.am-game .am-card{width:min(320px,100%);max-height:100%;overflow:auto;background:#0f172a;color:#eef2ff;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:16px;display:grid;gap:12px;text-align:center}
 .am-game .am-card h3{margin:0;font-size:18px}
-.am-game .am-card p{margin:0;font-size:12.5px;opacity:.8;line-height:1.5}
-.am-game .am-btn{border:1px solid transparent;border-radius:10px;background:var(--am-accent);color:#fff;font:inherit;font-weight:600;font-size:13px;padding:9px 14px;cursor:pointer}
+.am-game .am-card p{margin:0;font-size:12.5px;opacity:.85;line-height:1.5}
+.am-game .am-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;text-align:left}
+.am-game .am-help b{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.8}
+.am-game .am-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;opacity:.85}
+.am-game .am-btn{border:1px solid transparent;border-radius:8px;background:var(--am-accent);color:#fff;font:inherit;font-weight:600;font-size:13px;min-height:44px;padding:8px 16px;cursor:pointer;transition:filter .16s}
 .am-game .am-btn:hover{filter:brightness(1.1)}
 .am-game .am-btn.ghost{background:transparent;border-color:rgba(255,255,255,.25);color:inherit}
-.am-game .am-btn.small{padding:5px 10px;font-size:11.5px;border-radius:8px}
+.am-game .am-btn.small{min-height:44px;padding:8px 12px;font-size:11.5px;border-radius:8px}
 .am-game .am-btn:disabled{opacity:.45;cursor:default}
-.am-game .am-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;text-align:left}
-.am-game .am-waiting{padding:40px 10px;text-align:center;font-size:13px;opacity:.7}
-@media (max-width:420px){.am-game .am-board{gap:8px}.am-game .am-col{gap:6px}}
+.am-game .am-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:44px;font-size:12.5px;text-align:left}
+.am-game .am-waiting{padding:32px 12px;text-align:center;font-size:13px;opacity:.8}
+@media (max-width:420px){
+.am-game .am-board{gap:8px}
+.am-game .am-col{gap:6px}
+.am-game .am-scores{gap:6px}
+.am-game .am-score{padding:8px}
+.am-game .am-big{font-size:20px}
+.am-game .am-tile{min-height:60px;padding:6px 2px}
+}
+.am-game.am-app .am-hud{color:#e5e9f0}
+.am-game.am-app .am-btn{background:var(--am-tile);border-color:var(--am-line);color:inherit}
+.am-game.am-app .am-btn.on{border-color:var(--am-accent);color:var(--am-accent)}
+.am-hud .am-scores{flex:0 0 auto;flex-wrap:nowrap}
+.am-hud .am-score{flex:0 0 116px;max-width:116px}
+.am-hud .am-mid{flex:0 0 auto}
+@media (max-width:640px){
+.am-app .am-hud{gap:5px 8px;padding:6px 8px;margin-bottom:6px}
+.am-app .am-hud .am-scores{gap:4px}
+.am-app .am-hud .am-score{padding:5px 8px;flex-basis:80px;max-width:100px}
+.am-app .am-hud .am-score b{font-size:16px}
+.am-app .am-hud .am-who,.am-app .am-hud .am-mini{font-size:9px}
+.am-app .am-hud .am-mid{font-size:9px;padding:0}
+.am-app .am-hud .am-mid b{font-size:12px}
+.am-app .am-hud .am-btn{min-width:28px;min-height:28px;padding:4px 6px;font-size:10px}
+.am-app .am-hud .am-btn-label,.am-app .am-hud .am-spacer,.am-app .am-hud .am-subchip{display:none}
+.am-game .am-panel{flex:0 0 auto;min-height:min(70dvh,620px)}
+.am-game .am-card{padding:14px}
+}
+@media (prefers-reduced-motion:reduce){.am-game *{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
 </style>
-<div class="game-app am-game">
-  <div class="game-intro">
-    <div><h2>Alphabet Match</h2><p data-sub>&nbsp;</p></div>
+<div class="game-app am-game am-app game-fill">
+  <div class="am-hud">
     <span class="game-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Ready</span></span>
+    <span class="am-subchip" data-sub></span>
+    <div class="am-scores" data-scores></div>
+    <div class="am-mid" data-levelinfo></div>
+    <span class="am-spacer"></span>
+    <button class="am-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="am-btn-label">Help</span></button>
+    <button class="am-btn" type="button" data-act="cheats" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="am-btn-label">Cheats</span></button>
+    <button class="am-btn" type="button" data-act="pause" data-pause-btn aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="am-btn-label">Pause</span></button>
+    <button class="am-btn" type="button" data-act="restart" data-restart-btn aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="am-btn-label">Restart</span></button>
+    <button class="am-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="am-btn-label">Exit</span></button>
   </div>
   <section class="game-panel am-panel" data-board></section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-act="cheats">Cheats</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------------- render ---------------- */
@@ -224,14 +287,28 @@ export function mount(root, context = {}) {
         const board = $("[data-board]");
         const sub = $("[data-sub]");
         const status = $("[data-status]");
-        const restartBtn = $('[data-act="restart"]');
+        const scoresEl = $("[data-scores]"), levelInfoEl = $("[data-levelinfo]");
+        const restartBtn = $("[data-restart-btn]"), pauseBtn = $("[data-pause-btn]");
         if (!board) return;
 
         status.textContent = statusText();
         if (restartBtn) restartBtn.disabled = online && !room.isHost;
+        if (pauseBtn) {
+            pauseBtn.disabled = online && !room.isHost;
+            const want = paused ? "play" : "pause";
+            if (pauseBtn.dataset.iconState !== want) {
+                pauseBtn.dataset.iconState = want;
+                const ico = pauseBtn.querySelector("svg");
+                if (ico) ico.outerHTML = iconSVG(want, { size: 14 });
+                const label = pauseBtn.querySelector(".am-btn-label");
+                if (label) label.textContent = paused ? "Resume" : "Pause";
+            }
+        }
 
         if (!state) {
             sub.textContent = "Waiting for the host to start…";
+            if (scoresEl) scoresEl.innerHTML = "";
+            if (levelInfoEl) levelInfoEl.innerHTML = "";
             board.innerHTML = '<div class="am-waiting">Waiting for host…</div>';
             return;
         }
@@ -259,9 +336,11 @@ export function mount(root, context = {}) {
                 '<span class="am-who">P' + (s + 1) + " · " + names[s] + (s === seat ? " (You)" : "") + "</span>" +
                 "<b>" + state.scores[s] + "</b>" +
                 '<span class="am-mini">' + state.misses[s] + " miss" + (state.misses[s] === 1 ? "" : "es") + "</span></div>"
-            ).join("") +
-            '<div class="am-mid"><span>Level ' + (state.level + 1) + "/" + LEVELS.length + "</span><b>" +
-            state.matched.length + "/" + letters.length + "</b><span>pairs</span></div></div>";
+            ).join("") + "</div>";
+
+        if (scoresEl) scoresEl.innerHTML = scoresHtml;
+        if (levelInfoEl) levelInfoEl.innerHTML = "<span>Level " + (state.level + 1) + "/" + LEVELS.length + "</span><b>" +
+            state.matched.length + "/" + letters.length + "</b><span>pairs</span>";
 
         const lettersHtml = letters.map((L, i) => {
             const done = matched.has(WORDS[L]);
@@ -289,7 +368,7 @@ export function mount(root, context = {}) {
             '<div class="am-col">' + picsHtml + "</div></div>";
 
         let overHtml = "";
-        if (state.phase === "over") {
+        if (state.phase === "over" && !helpOpen && !paused) {
             const [a, b] = state.scores;
             const title = a === b ? "It\u2019s a draw" : (a > b ? 0 : 1) === seat ? "You win!" : names[a > b ? 0 : 1] + " wins";
             const guestLock = online && !room.isHost;
@@ -301,7 +380,7 @@ export function mount(root, context = {}) {
         }
 
         let cheatHtml = "";
-        if (cheatsOpen) {
+        if (cheatsOpen && !helpOpen && !paused) {
             const over = state.phase === "over";
             cheatHtml =
                 '<div class="am-ov"><div class="am-card"><h3>Cheats</h3>' +
@@ -315,7 +394,25 @@ export function mount(root, context = {}) {
                 '<button type="button" class="am-btn ghost" data-act="cheats-close">Close</button></div></div>';
         }
 
-        board.innerHTML = '<div class="am-wrap">' + scoresHtml + boardHtml + "</div>" + overHtml + cheatHtml;
+        const helpHtml = helpOpen
+            ? '<div class="am-ov"><div class="am-card"><h3>How to play</h3>' +
+            '<div class="am-help"><div><b>Goal</b><ul>' +
+            "<li>Pair every letter with the picture whose word starts with it.</li>" +
+            "<li>A correct match scores a point and you go again; a wrong one passes the turn.</li>" +
+            "<li>Highest score after all five levels wins.</li></ul><b>Desktop</b><ul>" +
+            "<li>Click a letter, then its picture. Hover a picture to see its name.</li>" +
+            "<li>Tab / arrows to move, Enter or Space to select, Esc to deselect.</li>" +
+            "<li>C cheats · R restart · P pause · H help.</li></ul></div><div><b>Mobile</b><ul>" +
+            "<li>Tap a letter, then tap the matching picture.</li>" +
+            "<li>No virtual buttons are needed — the tiles are the controls.</li></ul></div></div>" +
+            '<button type="button" class="am-btn" data-act="help-close">Got it</button></div></div>'
+            : "";
+        const pauseHtml = paused
+            ? '<div class="am-ov"><div class="am-card"><h3>Paused</h3><p>The bot is stopped.</p>' +
+            '<button type="button" class="am-btn" data-act="resume">Resume <kbd>P</kbd></button></div></div>'
+            : "";
+
+        board.innerHTML = '<div class="am-wrap">' + boardHtml + "</div>" + overHtml + cheatHtml + helpHtml + pauseHtml;
 
         /* restore / initial focus for keyboard users */
         const focusEl = (key) => {
@@ -432,7 +529,7 @@ export function mount(root, context = {}) {
     /* ---------------- bot (AI mode only) ---------------- */
     function scheduleBot() {
         clearTimeout(botTimer);
-        if (online || destroyed || !state) return;
+        if (online || destroyed || paused || !state) return;
         if (state.phase !== "play" || state.turn !== 1) return;
         botTimer = setTimeout(botStep, 650 + Math.random() * 450);
     }
@@ -452,6 +549,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- input: mouse / touch (no virtual buttons) ---------------- */
     function handleClick(event) {
+        if (event.target.closest && event.target.closest("[data-help]")) { toggleHelp(); return; }
         const el = event.target.closest ? event.target.closest("[data-exit],[data-act]") : null;
         if (!el || el.disabled) return;
         if (el.hasAttribute("data-exit")) { onExit(); return; }
@@ -459,6 +557,9 @@ export function mount(root, context = {}) {
             case "restart": submitAction({ type: "restart" }); break;
             case "cheats": cheatsOpen = !cheatsOpen; render(); break;
             case "cheats-close": cheatsOpen = false; render(); break;
+            case "help-close": toggleHelp(false); break;
+            case "pause": togglePause(); break;
+            case "resume": togglePause(false); break;
             case "cheat-reveal": reveal = !reveal; render(); break;
             case "cheat-pair": submitAction({ type: "cheat-pair" }); break;
             case "cheat-clear": submitAction({ type: "cheat-clear" }); break;
@@ -479,12 +580,23 @@ export function mount(root, context = {}) {
         const t = event.target;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
 
+        if (helpOpen) {
+            if (event.key === "Escape" || event.key === "h" || event.key === "H" || event.key === "Enter") toggleHelp(false);
+            return;
+        }
+        if (paused) {
+            if (event.key === "p" || event.key === "P" || event.key === "Escape" || event.key === "Enter") togglePause(false);
+            return;
+        }
+
         if (event.key === "Escape") {
             if (cheatsOpen) { cheatsOpen = false; render(); event.preventDefault(); }
             else if (state.sel && state.turn === mySeat()) submitAction({ type: "clear" });
             return;
         }
         const inRoot = root.contains(document.activeElement);
+        if ((event.key === "h" || event.key === "H") && inRoot) { toggleHelp(); event.preventDefault(); return; }
+        if ((event.key === "p" || event.key === "P") && inRoot) { togglePause(); event.preventDefault(); return; }
         if ((event.key === "c" || event.key === "C") && (inRoot || cheatsOpen)) {
             cheatsOpen = !cheatsOpen; render(); event.preventDefault(); return;
         }

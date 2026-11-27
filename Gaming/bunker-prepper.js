@@ -4,6 +4,8 @@
  * Setelah mengubah file ini jalankan: node tools/build-games-manifest.mjs
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "bunker-prepper", // harus sama dengan nama file (tanpa .js)
     name: "Bunker Prepper",
@@ -543,142 +545,246 @@ export function mount(root, context = {}) {
     let buildMode = null;      // fasilitas yang dipilih untuk dibangun
     let flashMsg = null;       // pesan lokal sementara (mis. "not your turn")
     let botTimer = null;
+    let cheatsOpen = false;
+    let helpOpen = false;
+    let paused = false;
     const unsubs = [];
 
     const mySeat = () => (online ? (state ? state.seats[room.isHost ? 0 : 1] : 0) : 0);
     const rivalName = online ? "Rival" : "Bot";
     const myName = playerName || "You";
 
+    /* first-run guide: internal modal, once per browser */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("bunkerPrepperHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("bunkerPrepperHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
     root.innerHTML = `
 <style>
 .bp{--p:#131a2c;--l:#ffffff16;--t:#e7eaf0;--m:#8b93a7;--a:#f59e0b;--b:#38bdf8;
-  color:var(--t);font-size:13px;display:flex;flex-direction:column;gap:10px;width:100%}
+  color:var(--t);font-size:13px;display:grid;grid-template-columns:minmax(0,1fr) 272px;
+  grid-template-rows:auto minmax(0,1fr);gap:10px;width:100%;height:100%;min-height:0}
 .bp *{box-sizing:border-box}
 .bp [hidden]{display:none!important}
-.bp .bp-intro{display:flex;align-items:center;gap:10px}
-.bp .bp-intro h2{margin:0;font-size:16px;font-weight:700;letter-spacing:.2px}
-.bp .bp-intro .game-status{margin-left:auto}
-.bp .bp-icon{border:1px solid var(--l);background:transparent;color:var(--m);border-radius:8px;
-  width:28px;height:28px;cursor:pointer;font-size:14px;line-height:1}
-.bp .bp-icon:hover{color:var(--t);border-color:#ffffff33}
-.bp .bp-main{display:grid;grid-template-columns:minmax(0,1fr) 264px;gap:12px;align-items:start}
-.bp .bp-boardwrap{position:relative;padding:8px;background:var(--p);border:1px solid var(--l);border-radius:14px}
-.bp svg{width:100%;height:auto;display:block;border-radius:10px;user-select:none;touch-action:manipulation}
-.bp .bp-note{min-height:18px;margin-top:6px;color:var(--m);font-size:11.5px;line-height:1.4;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bp .bp-side{display:flex;flex-direction:column;gap:8px;min-width:0}
-.bp .bp-sec{background:var(--p);border:1px solid var(--l);border-radius:12px;padding:8px 10px}
-.bp .bp-h{font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--m);margin:0 0 6px}
-.bp .bp-card{background:var(--p);border:1px solid var(--l);border-radius:12px;padding:8px 10px;margin-bottom:6px}
+/* one HUD row: game info left, icon controls right */
+.bp .bp-hud{grid-column:1/-1;grid-row:1;display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.bp .bp-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid var(--l);
+  border-radius:999px;background:var(--p);color:var(--m);white-space:nowrap}
+.bp .bp-chip b{color:var(--t);font-weight:700;font-variant-numeric:tabular-nums}
+.bp .bp-toast{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:4;
+  max-width:calc(100% - 24px);padding:5px 12px;border:1px solid var(--l);border-radius:999px;
+  background:#0b1020dd;color:var(--m);font:600 10px/1.4 ui-monospace,monospace;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.bp .bp-dot{width:6px;height:6px;border-radius:50%;background:var(--a);flex:none}
+.bp .bp-sp{flex:1 1 auto}
+.bp .bp-btn,.bp .bp-pal button,.bp .bp-cheats button{border:1px solid var(--l);background:#182136;color:var(--t);
+  border-radius:8px;padding:8px 10px;min-height:36px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
+.bp .bp-btn:hover:not(:disabled),.bp .bp-btn:focus-visible,.bp .bp-pal button:hover:not(:disabled),
+.bp .bp-cheats button:hover{border-color:#ffffff3d}
+.bp .bp-btn:focus-visible,.bp .bp-pal button:focus-visible,.bp .bp-cheats button:focus-visible{outline:2px solid var(--b);outline-offset:2px}
+.bp .bp-btn:disabled,.bp .bp-pal button:disabled{opacity:.38;cursor:default}
+.bp .bp-btn.pri{border-color:var(--a);background:#3a2f12;color:#fde68a}
+.bp .bp-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.bp .bp-icon-btn svg{flex:none;display:block}
+.bp .bp-icon-btn.on{border-color:var(--a);color:var(--a)}
+/* board absorbs the remaining height; its SVG keeps its own aspect ratio */
+.bp .bp-board{grid-column:1;grid-row:2;position:relative;display:flex;align-items:center;justify-content:center;
+  min-width:0;min-height:0;padding:0;border:1px solid var(--l);border-radius:12px;background:var(--p);overflow:hidden}
+.bp .bp-board svg{display:block;width:100%;height:100%;user-select:none;touch-action:manipulation}
+.bp .bp-side{grid-column:2;grid-row:2;display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0;overflow:auto}
+.bp .bp-side.locked{pointer-events:none;opacity:.7}
+.bp .bp-sec{background:var(--p);border:1px solid var(--l);border-radius:10px;padding:8px 10px}
+.bp .bp-h{font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--m);margin:0 0 8px}
+.bp .bp-card{background:var(--p);border:1px solid var(--l);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 .bp .bp-card.on{border-color:var(--a)}
 .bp .bp-card.on.s1{border-color:var(--b)}
-.bp .bp-card .nm{display:flex;justify-content:space-between;font-weight:700;font-size:12px;margin-bottom:5px}
+.bp .bp-card .nm{display:flex;justify-content:space-between;font-weight:700;font-size:12px;margin-bottom:8px}
 .bp .bp-card .nm em{font-style:normal;color:var(--m);font-weight:600}
-.bp .bp-bar{height:5px;border-radius:99px;background:#0b1020;overflow:hidden;margin-bottom:6px}
+.bp .bp-bar{height:5px;border-radius:99px;background:#0b1020;overflow:hidden;margin-bottom:8px}
 .bp .bp-bar i{display:block;height:100%;background:var(--a);border-radius:99px}
 .bp .bp-card.s1 .bp-bar i{background:var(--b)}
 .bp .bp-stats{display:flex;gap:8px;font-size:10.5px;color:var(--m);flex-wrap:wrap}
 .bp .bp-stats b{color:var(--t);font-weight:600}
 .bp .bp-stats b.warn{color:#f87171}
-.bp .bp-row{display:flex;gap:6px;flex-wrap:wrap}
-.bp .bp-btn{flex:1;min-width:64px;border:1px solid var(--l);background:#182136;color:var(--t);
-  border-radius:9px;padding:7px 8px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
-.bp .bp-btn:hover:not(:disabled){border-color:#ffffff3d}
-.bp .bp-btn:disabled{opacity:.38;cursor:default}
-.bp .bp-pal{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.bp .bp-pal button{display:flex;flex-direction:column;gap:1px;align-items:flex-start;text-align:left;
-  border:1px solid var(--l);background:#182136;color:var(--t);border-radius:9px;padding:6px 8px;
-  font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
+.bp .bp-row{display:flex;gap:8px;flex-wrap:wrap}
+.bp .bp-pal{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bp .bp-pal button{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;font-size:11.5px}
 .bp .bp-pal button small{font-size:9.5px;font-weight:500;color:var(--m)}
 .bp .bp-pal button.on{border-color:var(--a);background:#2a2410}
-.bp .bp-pal button:disabled{opacity:.38;cursor:default}
-.bp .bp-dpad{display:none;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,40px);
-  gap:5px;justify-content:center;padding:4px 0}
-.bp .bp-dpad button{border:1px solid var(--l);background:#182136;color:var(--t);border-radius:9px;
-  font-size:15px;cursor:pointer}
+.bp .bp-dpad{display:none;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,44px);
+  gap:8px;justify-content:center;padding:4px 0}
+.bp .bp-dpad button{border:1px solid var(--l);background:#182136;color:var(--t);border-radius:8px;
+  font-size:15px;cursor:pointer;min-width:44px;min-height:44px}
 .bp .bp-dpad button:active{background:#243050}
-.bp .bp-cheatbtn{border:1px dashed #ffffff2a;background:transparent;color:var(--m);border-radius:9px;
-  padding:6px;font:inherit;font-size:11px;cursor:pointer}
-.bp .bp-cheatbtn:hover{color:var(--t)}
-.bp .bp-ov{position:absolute;inset:8px;border-radius:10px;background:#0b1020e6;display:flex;
-  align-items:center;justify-content:center;z-index:5}
-.bp .bp-ovcard{background:var(--p);border:1px solid var(--l);border-radius:14px;padding:18px 20px;
-  max-width:340px;width:calc(100% - 32px);text-align:center}
-.bp .bp-ovcard h3{margin:0 0 6px;font-size:16px}
-.bp .bp-ovcard p{margin:0 0 12px;color:var(--m);font-size:12px;line-height:1.5}
-.bp .bp-cheats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
-.bp .bp-cheats button{border:1px solid var(--l);background:#182136;color:var(--t);border-radius:8px;
-  padding:7px 6px;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
-.bp .bp-cheats button:hover{border-color:var(--a)}
+/* overlays: fixed head/foot, scrollable body, one modal at a time */
+.bp .bp-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
+  padding:12px;background:#0b1020e6;border-radius:12px}
+.bp .bp-modal{display:flex;flex-direction:column;overflow:hidden;width:min(420px,100%);max-height:100%;
+  padding:16px 18px;background:var(--p);border:1px solid var(--l);border-radius:12px;text-align:center}
+.bp .bp-modal.wide{width:min(560px,100%)}
+.bp .bp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:10px}
+.bp .bp-head h3{margin:0;font-size:15px}
+.bp .bp-body{flex:1 1 auto;min-height:0;overflow:auto;font-size:12px;line-height:1.55;color:var(--m);text-align:left}
+.bp .bp-body.center{text-align:center}
+.bp .bp-body p{margin:0 0 10px}
+.bp .bp-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.bp .bp-note{font-size:10px;color:var(--m)}
+.bp .bp-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bp .bp-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.bp .bp-help b{display:block;margin-bottom:6px;color:var(--t);font-size:10px;letter-spacing:.8px;text-transform:uppercase}
+.bp .bp-help ul{margin:0 0 12px;padding-left:16px}
+.bp .bp-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--l);border-bottom-width:2px;
+  border-radius:5px;background:#0b1020;color:var(--t);font:600 10px/1.5 ui-monospace,monospace}
 .bp .bp-cell{fill:transparent;cursor:pointer}
 .bp .bp-cell:hover{fill:#ffffff12}
 .bp .bp-cell.act:hover{fill:#f59e0b22;stroke:#f59e0b88;stroke-width:1.5}
 .bp .bp-cell.build:hover{fill:#38bdf822;stroke:#38bdf888;stroke-width:1.5}
 .bp .bp-cell.no{cursor:default}
 .bp .bp-cell.no:hover{fill:transparent}
-@media (pointer:coarse){.bp .bp-dpad{display:grid}}
+@media (prefers-reduced-motion:reduce){.bp *{animation:none!important;transition:none!important}}
+/* --- fill height + mobile refinements (keep LAST) --- */
 @media (max-width:860px){
-  .bp .bp-main{grid-template-columns:1fr}
-  .bp .bp-dpad{display:grid}
-  .bp .bp-note{white-space:normal}
+ .game-app.bp{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;height:auto;min-height:0}
+ .bp .bp-hud{grid-column:1;grid-row:1;gap:5px}
+ .bp .bp-board{grid-column:1;grid-row:2}
+ .bp .bp-board:not(:has(.bp-ov:not([hidden]))){aspect-ratio:832/384;flex:0 0 auto}
+ .bp .bp-board:has(.bp-ov:not([hidden])){min-height:min(70dvh,620px);aspect-ratio:auto;flex:0 0 auto}
+ .bp .bp-side{grid-column:1;grid-row:3;overflow:visible}
+ .bp .bp-dpad{display:grid}
+}
+@media (pointer:coarse){.bp .bp-side .bp-btn,.bp .bp-pal button,.bp .bp-cheats button{min-height:44px}}
+/* (0,3,0) beats the shared pointer:coarse min-height:44px rule on HUD buttons */
+.bp .bp-hud .bp-btn{min-height:32px;padding:6px 9px;font-size:10px}
+@media (max-width:640px){
+ .bp .bp-hud .bp-chip{padding:4px 6px;font-size:9px}
+ .bp .bp-hud .bp-chip[data-hud="init"],.bp .bp-hud .bp-chip[data-hud="dig"]{display:none}
+ .bp .bp-hud .bp-btn{min-height:32px;padding:5px 9px;font-size:9px}
+ .bp .bp-hud .bp-btn-label,.bp .bp-hud .bp-sp{display:none}
+ .bp .bp-ov{padding:8px}
+ .bp .bp-modal{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+ .bp .bp-body,.bp .bp-cheats,.bp .bp-help{scrollbar-width:none}
+ .bp .bp-body::-webkit-scrollbar,.bp .bp-cheats::-webkit-scrollbar,.bp .bp-help::-webkit-scrollbar{display:none}
+ .bp .bp-cheats{grid-template-columns:1fr 1fr}
+ .bp .bp-help{grid-template-columns:1fr}
+ .bp .bp-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--l)}
+ .bp .bp-modal .bp-note{display:none}
 }
 </style>
-<div class="game-app bp">
-  <div class="game-intro bp-intro">
-    <div><h2>Bunker Prepper</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-    <button class="bp-icon" type="button" data-act="reroll" title="New map" aria-label="New map">&#8635;</button>
+<div class="game-app bp game-fill" data-bp>
+  <div class="bp-hud">
+    <span class="bp-chip status"><i class="bp-dot"></i><b data-hud="status">Ready</b></span>
+    <span class="bp-chip">DAY <b data-hud="day">1 06:00</b></span>
+    <span class="bp-chip">LEFT <b data-hud="left">6d 6h</b></span>
+    <span class="bp-chip">READY <b data-hud="ready">0% · 0%</b></span>
+    <span class="bp-chip">DUG <b data-hud="dig">0/6</b></span>
+    <span class="bp-chip" data-hud="init">FIRST —</span>
+    <span class="bp-sp"></span>
+    <button class="bp-btn bp-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="bp-btn-label">Help</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="bp-btn-label">Cheats</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="bp-btn-label">Pause</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="bp-btn-label">Restart</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-newmap aria-label="New map" title="New map (N)">${iconSVG("map", { size: 14 })}<span class="bp-btn-label">New map</span></button>
+    <button class="bp-btn bp-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="bp-btn-label">Exit game</span></button>
   </div>
-  <div class="bp-main">
-    <section class="game-panel bp-boardwrap" data-board>
-      <svg data-el="svg" viewBox="0 0 832 384" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bunker cross-section"></svg>
-      <div class="bp-note" data-el="note"></div>
-      <div class="bp-ov" data-ov="cheat" hidden>
-        <div class="bp-ovcard">
-          <h3>Cheats</h3>
-          <div class="bp-cheats">
-            <button type="button" data-cheat="res">+12 all resources</button>
-            <button type="button" data-cheat="stats">Full stats</button>
-            <button type="button" data-cheat="dig">Auto-dig bunker</button>
-            <button type="button" data-cheat="build">Build everything</button>
-            <button type="button" data-cheat="stock">Fill stockpile</button>
-            <button type="button" data-cheat="time">+2 days deadline</button>
+  <section class="game-panel bp-board" data-board>
+    <svg data-el="svg" viewBox="0 0 832 384" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bunker cross-section"></svg>
+    <div class="bp-toast" data-hud="note" title=""></div>
+    <div class="bp-ov" data-ov="wait" hidden>
+      <div class="bp-modal">
+        <div class="bp-head"><h3>Waiting for host&hellip;</h3></div>
+        <div class="bp-body center"><p>The host is setting up the bunker race. Your board appears as soon as the game starts.</p></div>
+      </div>
+    </div>
+    <div class="bp-ov" data-ov="pause" hidden>
+      <div class="bp-modal">
+        <div class="bp-head"><h3>Paused</h3><span class="bp-note">Solo</span></div>
+        <div class="bp-body center"><p>Your turn and the rival bot are on hold. Press <span class="bp-kbd">P</span> or <span class="bp-kbd">Esc</span> to resume.</p></div>
+        <div class="bp-foot"><span class="bp-note">Race held</span><button class="bp-btn pri" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="bp-ov" data-ov="cheat" hidden>
+      <div class="bp-modal wide">
+        <div class="bp-head"><h3>Cheats</h3><button class="bp-btn" type="button" data-close-cheats aria-label="Close cheats">Close</button></div>
+        <div class="bp-body bp-cheats">
+          <button type="button" data-cheat="res">+12 all resources</button>
+          <button type="button" data-cheat="stats">Full stats</button>
+          <button type="button" data-cheat="dig">Auto-dig bunker</button>
+          <button type="button" data-cheat="build">Build everything</button>
+          <button type="button" data-cheat="stock">Fill stockpile</button>
+          <button type="button" data-cheat="time">+2 days deadline</button>
+        </div>
+      </div>
+    </div>
+    <div class="bp-ov" data-ov="over" hidden>
+      <div class="bp-modal">
+        <div class="bp-head"><h3 data-ov="title">Game over</h3><span class="bp-note">Race report</span></div>
+        <div class="bp-body center"><p data-ov="reason"></p></div>
+        <div class="bp-foot"><span class="bp-note">Best time saved locally</span><button class="bp-btn pri" type="button" data-again>Play again</button></div>
+      </div>
+    </div>
+    <div class="bp-ov" data-ov="help" hidden>
+      <div class="bp-modal wide">
+        <div class="bp-head"><h3>How to play</h3><button class="bp-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="bp-body bp-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Click a yard tile to gather, soil to dig, or a dug room to build.</li>
+              <li><span class="bp-kbd">← ↑ ↓ →</span> / <span class="bp-kbd">WASD</span> move up to 5 tiles per turn.</li>
+              <li><span class="bp-kbd">E</span> eat · <span class="bp-kbd">B</span> rest · <span class="bp-kbd">T</span> scout · <span class="bp-kbd">1</span>–<span class="bp-kbd">5</span> pick a building.</li>
+              <li><span class="bp-kbd">H</span> help · <span class="bp-kbd">C</span> cheats · <span class="bp-kbd">P</span> pause · <span class="bp-kbd">R</span> restart · <span class="bp-kbd">N</span> new map.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap cells to act; use the D-pad, Eat/Rest/Scout and Build buttons below the board.</li>
+              <li>Right-click (or long-press) cancels the selected building.</li>
+            </ul>
           </div>
-          <button class="bp-btn" type="button" data-act="closecheat">Close</button>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Race the rival to 100%: dig 6 rooms, build 5 facilities and stock the target supplies.</li>
+              <li>Each action costs 60 minutes; resting costs 6 hours. Raiders, cave-ins and storms hit at 06:00.</li>
+              <li>Keep an eye on hunger, energy and health — collapse loses the race.</li>
+              <li>The inspectors arrive on day 8 at 06:00; whoever is less ready loses.</li>
+              <li>Cheats, pause and new map are offline only; best time is saved when you win fairly.</li>
+            </ul>
+            <div class="bp-foot"><span class="bp-note">Press H to reopen this guide</span><button class="bp-btn pri" type="button" data-help-close>Got it</button></div>
+          </div>
         </div>
       </div>
-      <div class="bp-ov" data-ov="over" hidden>
-        <div class="bp-ovcard">
-          <h3 data-ov="title">Game over</h3>
-          <p data-ov="reason"></p>
-          <button class="bp-btn" type="button" data-act="restart">Play again</button>
-        </div>
-      </div>
-      <div class="bp-ov" data-ov="wait" hidden>
-        <div class="bp-ovcard"><h3>Waiting for host&hellip;</h3></div>
-      </div>
-    </section>
-    <aside class="bp-side">
-      <div data-el="cards"></div>
-      <div class="bp-sec"><div class="bp-row" data-el="acts"></div></div>
-      <div class="bp-sec"><div class="bp-h">Build</div><div class="bp-pal" data-el="pal"></div></div>
-      <div class="bp-dpad" data-el="dpad">
-        <span></span><button type="button" data-move="0,-1" aria-label="Up">&#8593;</button><span></span>
-        <button type="button" data-move="-1,0" aria-label="Left">&#8592;</button>
-        <button type="button" data-move="0,1" aria-label="Down">&#8595;</button>
-        <button type="button" data-move="1,0" aria-label="Right">&#8594;</button>
-      </div>
-      <button class="bp-cheatbtn" type="button" data-act="cheats" data-el="cheatbtn">Cheats</button>
-    </aside>
-  </div>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+    </div>
+  </section>
+  <aside class="bp-side">
+    <div data-el="cards"></div>
+    <div class="bp-sec"><div class="bp-row" data-el="acts"></div></div>
+    <div class="bp-sec"><div class="bp-h">Build</div><div class="bp-pal" data-el="pal"></div></div>
+    <div class="bp-dpad" data-el="dpad">
+      <span></span><button type="button" data-move="0,-1" aria-label="Up">&#8593;</button><span></span>
+      <button type="button" data-move="-1,0" aria-label="Left">&#8592;</button>
+      <button type="button" data-move="0,1" aria-label="Down">&#8595;</button>
+      <button type="button" data-move="1,0" aria-label="Right">&#8594;</button>
+    </div>
+  </aside>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
-    const svg = $('[data-el="svg"]'), noteEl = $('[data-el="note"]');
+    const side = $(".bp-side");
+    const svg = $('[data-el="svg"]');
     const cardsEl = $('[data-el="cards"]'), actsEl = $('[data-el="acts"]'), palEl = $('[data-el="pal"]');
-    const statusEl = $('[data-status]'), cheatBtn = $('[data-el="cheatbtn"]');
-    const ovCheat = $('[data-ov="cheat"]'), ovOver = $('[data-ov="over"]'), ovWait = $('[data-ov="wait"]');
+    const hud = {
+        status: $('[data-hud="status"]'), day: $('[data-hud="day"]'), left: $('[data-hud="left"]'),
+        ready: $('[data-hud="ready"]'), dig: $('[data-hud="dig"]'), init: $('[data-hud="init"]'),
+        note: $('[data-hud="note"]'),
+    };
+    const ov = {
+        wait: $('[data-ov="wait"]'), pause: $('[data-ov="pause"]'), cheat: $('[data-ov="cheat"]'),
+        over: $('[data-ov="over"]'), help: $('[data-ov="help"]'),
+    };
     const ovTitle = $('[data-ov="title"]'), ovReason = $('[data-ov="reason"]');
 
     /* ---------------- render ---------------- */
@@ -810,41 +916,69 @@ export function mount(root, context = {}) {
                 f.charAt(0).toUpperCase() + f.slice(1) + (p.facil[f] ? " ✓" : "") +
                 "<small>" + cost + "</small></button>";
         }).join("");
-        cheatBtn.hidden = online;
-        root.querySelector('[data-act="reroll"]').hidden = online;
     }
     function renderStatus() {
+        if (!state) {
+            hud.status.textContent = "Waiting…";
+            hud.day.textContent = "—"; hud.left.textContent = "—";
+            hud.ready.textContent = "—"; hud.dig.textContent = "—";
+            hud.init.textContent = "FIRST —";
+            return;
+        }
         const me = mySeat();
         const left = Math.max(0, state.deadline - state.min);
         const tl = Math.floor(left / 1440) + "d " + Math.floor((left % 1440) / 60) + "h";
-        let turnTxt;
-        if (state.over) turnTxt = "Finished";
-        else if (state.turn === me) turnTxt = "Your turn";
-        else turnTxt = online ? "Rival's turn" : "Bot's turn";
-        statusEl.textContent = turnTxt + " · Day " + dayOf(state.min) + " " + fmtTime(state.min) + " · " + tl + " left";
+        hud.status.textContent = state.over ? "Finished" : state.turn === me ? "Your turn" :
+            online ? "Rival's turn" : "Bot's turn";
+        hud.day.textContent = "D" + dayOf(state.min) + " " + fmtTime(state.min);
+        hud.left.textContent = tl;
+        hud.ready.textContent = ready(state.players[me]) + "% · " + ready(state.players[1 - me]) + "%";
+        hud.dig.textContent = state.players[me].dug + "/" + DIG_TARGET;
+        hud.init.textContent = "FIRST " + (state.first === me ? (online ? "P" + (me + 1) : "YOU") :
+            online ? "P" + (2 - me) : "BOT");
     }
     function renderOver() {
-        if (!state.over) { ovOver.hidden = true; return; }
+        if (!state.over) return;
         const me = mySeat(), w = state.winner;
         ovTitle.textContent = w === -1 ? "Draw" : w === me ? "You win" : online ? "Rival wins" : "Bot wins";
         ovReason.textContent = state.reason + " You " + ready(state.players[me]) + "% · " +
             rivalName + " " + ready(state.players[1 - me]) + "%." +
             (state.cheated ? " (cheated)" : "");
-        ovOver.hidden = false;
+    }
+    /* one modal wins at a time; help > cheats > pause > result > wait */
+    function syncOverlays() {
+        const modal = cheatsOpen || helpOpen;
+        ov.wait.hidden = !!state || modal || paused;
+        ov.over.hidden = !state || !state.over || modal || paused;
+        ov.pause.hidden = !paused || modal;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+        const pbtn = $("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".bp-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pbtn.title = paused ? "Resume (P)" : "Pause (P)";
+            pbtn.classList.toggle("on", paused);
+        }
+        const cbtn = $("[data-cheats]");
+        if (cbtn) { cbtn.hidden = online; cbtn.classList.toggle("on", cheatsOpen); }
+        const nbtn = $("[data-newmap]");
+        if (nbtn) nbtn.hidden = online;
+        side.classList.toggle("locked", !state || modal || paused);
+        svg.style.pointerEvents = !state || modal || paused ? "none" : "";
     }
     function render() {
-        if (!state) {
-            ovWait.hidden = false;
-            statusEl.textContent = "Waiting for host…";
-            return;
-        }
-        ovWait.hidden = true;
+        syncOverlays();
+        renderStatus();
+        if (!state) { hud.note.textContent = "Waiting for host…"; return; }
         renderBoard();
         renderCards();
         renderControls();
-        renderStatus();
         renderOver();
-        noteEl.textContent = flashMsg || (state.log + (state.event ? "  ·  " + state.event : ""));
+        const msg = flashMsg || (state.log + (state.event ? "  ·  " + state.event : ""));
+        hud.note.textContent = msg;
+        hud.note.title = msg;
     }
 
     /* ---------------- alur aksi ---------------- */
@@ -853,7 +987,7 @@ export function mount(root, context = {}) {
         state = makeState(seed);
         // posisi pemain di multiplayer diacak oleh host
         state.seats = online && Math.random() < 0.5 ? [1, 0] : [0, 1];
-        buildMode = null; flashMsg = null;
+        buildMode = null; flashMsg = null; paused = false;
     }
     function saveBest() {
         if (!state.over || online || state.cheated || state.winner !== 0) return;
@@ -865,10 +999,10 @@ export function mount(root, context = {}) {
     }
     function scheduleBot() {
         if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (online || !state || state.over || state.turn !== 1) return;
+        if (online || paused || helpOpen || cheatsOpen || !state || state.over || state.turn !== 1) return;
         botTimer = setTimeout(() => {
             botTimer = null;
-            if (!state || state.over || state.turn !== 1) return;
+            if (paused || helpOpen || cheatsOpen || !state || state.over || state.turn !== 1) return;
             applyAction(botChoose(state, 1), 1);
         }, 650);
     }
@@ -908,17 +1042,63 @@ export function mount(root, context = {}) {
         applyAction(action, mySeat());
     }
 
+    /* ---------------- overlay controls ---------------- */
+    function canResumeBot() {
+        if (!paused && !helpOpen && !cheatsOpen) scheduleBot();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        if (helpOpen && botTimer) { clearTimeout(botTimer); botTimer = null; }
+        render();
+        canResumeBot();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        if (helpOpen && on !== false) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen && botTimer) { clearTimeout(botTimer); botTimer = null; }
+        render();
+        canResumeBot();
+    }
+    function togglePause(on) {
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused && botTimer) { clearTimeout(botTimer); botTimer = null; }
+        /* The race clock lives in state.min (advanced per action), so there is
+         * no Date.now()-based anchor to shift — resuming simply restarts the bot. */
+        buildMode = null;
+        render();
+        canResumeBot();
+    }
+    function restartGame() {
+        helpOpen = false; cheatsOpen = false; paused = false; buildMode = null;
+        submitAction({ type: "restart" });
+        render();
+        canResumeBot();
+    }
+
     /* ---------------- input: mouse / sentuh ---------------- */
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-close-cheats]")) { toggleCheats(false); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]") || t.closest("[data-again]")) { restartGame(); return; }
+        if (t.closest("[data-pause]")) {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else togglePause();
+            return;
+        }
+        if (t.closest("[data-newmap]")) { if (!online) submitAction({ type: "reroll" }); return; }
+        if (helpOpen || cheatsOpen || paused) return;
         const act = t.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
-            if (a === "reroll") { submitAction({ type: "reroll" }); return; }
-            if (a === "restart") { submitAction({ type: "restart" }); return; }
-            if (a === "cheats") { ovCheat.hidden = !ovCheat.hidden; return; }
-            if (a === "closecheat") { ovCheat.hidden = true; return; }
             if (a === "eat" || a === "rest" || a === "scout") submitAction({ type: a });
             return;
         }
@@ -945,12 +1125,42 @@ export function mount(root, context = {}) {
         }
     }
     function handleContext(event) {
-        if (buildMode) { event.preventDefault(); buildMode = null; render(); }
+        if (buildMode && !helpOpen && !cheatsOpen && !paused) {
+            event.preventDefault(); buildMode = null; render();
+        }
     }
     /* ---------------- input: keyboard desktop ---------------- */
     function handleKey(event) {
         if (event.repeat || !root.isConnected) return;
         const k = event.key;
+        /* priority: help → cheats → pause/Escape → Enter → game actions */
+        if (k === "h" || k === "H") { event.preventDefault(); toggleHelp(); return; }
+        if (k === "c" || k === "C") { event.preventDefault(); toggleCheats(); return; }
+        if (k === "p" || k === "P") {
+            event.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else togglePause();
+            return;
+        }
+        if (k === "Escape") {
+            event.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            else if (buildMode) { buildMode = null; render(); }
+            return;
+        }
+        if (k === "Enter") {
+            event.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            else if (state && state.over) restartGame();
+            return;
+        }
+        if (k === "r" || k === "R") { event.preventDefault(); restartGame(); return; }
+        if (helpOpen || cheatsOpen || paused) return;
         const MOVES = {
             ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
             w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
@@ -962,10 +1172,9 @@ export function mount(root, context = {}) {
             return;
         }
         if (k === "e" || k === "E") { event.preventDefault(); submitAction({ type: "eat" }); }
-        else if (k === "r" || k === "R") { event.preventDefault(); submitAction({ type: "rest" }); }
+        else if (k === "b" || k === "B") { event.preventDefault(); submitAction({ type: "rest" }); }
         else if (k === "t" || k === "T") { event.preventDefault(); submitAction({ type: "scout" }); }
-        else if ((k === "c" || k === "C") && !online) { event.preventDefault(); ovCheat.hidden = !ovCheat.hidden; }
-        else if (k === "Escape") { buildMode = null; ovCheat.hidden = true; render(); }
+        else if ((k === "n" || k === "N") && !online) { event.preventDefault(); submitAction({ type: "reroll" }); }
         else if (k >= "1" && k <= "5") {
             const f = FIDS[Number(k) - 1];
             const p = state && state.players[mySeat()];

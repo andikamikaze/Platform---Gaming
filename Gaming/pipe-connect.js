@@ -4,6 +4,8 @@
   2. Jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "pipe-connect",
     name: "Pipe Connect",
@@ -282,32 +284,25 @@ export function mount(root, context = {}) {
     /* ================= shell (design minimalis) ================= */
     root.innerHTML = `
 <style>
-.pc-app{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a;display:flex;flex-direction:column;gap:14px;width:100%;max-width:560px;margin:0 auto;padding:4px 0}
-.pc-app .game-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.pc-app .game-intro h2{margin:0;font-size:20px;letter-spacing:-.01em}
-.pc-app .game-intro p{margin:4px 0 0;font-size:13px;color:#64748b;line-height:1.5}
-.pc-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;white-space:nowrap}
-.pc-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block}
-.pc-app .game-status.pc-s-turn .game-status-dot{background:#0284c7}
-.pc-app .game-status.pc-s-wait .game-status-dot{background:#d97706}
-.pc-app .game-status.pc-s-win .game-status-dot{background:#059669}
-.pc-app .game-status.pc-s-bad .game-status-dot{background:#e11d48}
-.pc-app .game-panel{position:relative;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-.pc-app .pc-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
-.pc-app .pc-chip{font-size:12px;color:#64748b;background:#f8fafc;border:1px solid #eef2f7;border-radius:999px;padding:5px 10px;font-weight:600}
+.pc-app{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a;display:flex;flex-direction:column;gap:10px;width:100%;max-width:560px;margin:0 auto;padding:4px 0;min-width:0}
+.pc-app .pc-chip.pc-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:5px 10px;white-space:nowrap}
+.pc-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block;flex:none}
+.pc-app .pc-status.pc-s-turn .game-status-dot{background:#0284c7}
+.pc-app .pc-status.pc-s-wait .game-status-dot{background:#d97706}
+.pc-app .pc-status.pc-s-win .game-status-dot{background:#059669}
+.pc-app .pc-status.pc-s-bad .game-status-dot{background:#e11d48}
+.pc-app .game-panel{position:relative;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:14px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(15,23,42,.04);min-width:0}
+.pc-app .pc-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pc-app .pc-chip{font-size:12px;color:#64748b;background:#f8fafc;border:1px solid #eef2f7;border-radius:999px;padding:5px 10px;font-weight:600;white-space:nowrap}
 .pc-app .pc-chip b{color:#0f172a;font-variant-numeric:tabular-nums}
 .pc-app .pc-chip.pc-you{color:#0284c7;border-color:#bae6fd;background:#f0f9ff}
 .pc-app .pc-chip.pc-cheat{color:#d97706;border-color:#fde68a;background:#fffbeb}
-.pc-app .pc-board-wrap{width:100%;max-width:460px;margin:0 auto;aspect-ratio:1/1;background:#fbfcfe;border:1px solid #e8eef5;border-radius:14px;padding:6px}
-.pc-app .pc-board{width:100%;height:100%;display:block;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.pc-app .pc-chip.pc-msg-chip{flex:1 1 150px;min-width:0;overflow:hidden;text-overflow:ellipsis;background:transparent;border-color:transparent;color:#64748b}
+.pc-app .pc-chip.pc-msg-chip.pc-good{color:#0284c7}
+.pc-app .pc-chip.pc-msg-chip.pc-bad{color:#e11d48}
+.pc-app .pc-board-wrap{width:100%;max-width:460px;max-height:100%;margin:0 auto;aspect-ratio:1/1;background:#fbfcfe;border:1px solid #e8eef5;border-radius:14px;padding:6px;display:flex;align-items:center;justify-content:center}
+.pc-app .pc-board-svg{width:100%;height:100%;display:block;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .pc-app .pc-hit rect{cursor:pointer}
-.pc-app .pc-legend{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;font-size:11.5px;color:#64748b;align-items:center}
-.pc-app .pc-legend span{display:inline-flex;align-items:center;gap:5px}
-.pc-app .pc-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
-.pc-app .pc-sq{width:10px;height:10px;border-radius:3px;display:inline-block}
-.pc-app .pc-msg{min-height:20px;text-align:center;font-size:13px;font-weight:600;color:#64748b}
-.pc-app .pc-msg.pc-good{color:#0284c7}
-.pc-app .pc-msg.pc-bad{color:#e11d48}
 .pc-app .pc-pad{display:none;justify-content:center;align-items:center;gap:24px;padding:2px 0}
 @media (hover:none),(max-width:720px){.pc-app .pc-pad{display:flex}}
 .pc-app.pc-pad-on .pc-pad{display:flex}
@@ -321,18 +316,23 @@ export function mount(root, context = {}) {
 .pc-app .pc-rot-main:active{background:#0369a1}
 .pc-app .pc-pad-col{display:flex;flex-direction:column;gap:8px;align-items:center}
 .pc-app .pc-pad-cap{font-size:10.5px;color:#94a3b8;font-weight:600}
-.pc-app .game-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-.pc-app .pc-btn,.pc-app .game-action-button{border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:12px;padding:10px 14px;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px;justify-content:center;font-family:inherit}
-.pc-app .pc-btn:hover,.pc-app .game-action-button:hover{background:#f8fafc}
+.pc-app .pc-spacer{flex:1 1 auto}
+.pc-app .pc-btn{border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:10px;padding:7px 10px;min-height:32px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;justify-content:center;font-family:inherit}
+.pc-app .pc-btn:hover{background:#f8fafc}
 .pc-app .pc-btn:disabled{opacity:.45;cursor:default}
+.pc-app .pc-btn.on{color:#0284c7;border-color:#bae6fd;background:#f0f9ff}
 .pc-app .pc-btn-main{background:#0f172a;color:#fff;border-color:#0f172a}
 .pc-app .pc-btn-main:hover{background:#1e293b}
-.pc-app .pc-kbd-hint{font-size:11.5px;color:#94a3b8;text-align:center;line-height:1.7}
-@media (hover:none){.pc-app .pc-kbd-hint{display:none}}
+.pc-app .pc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.pc-app .pc-icon-btn svg{flex:none;display:block}
 .pc-app .pc-kbd{background:#f1f5f9;border:1px solid #e2e8f0;border-bottom-width:2px;border-radius:6px;padding:1px 6px;font-size:11px;font-family:ui-monospace,SFMono-Regular,monospace;color:#475569}
 .pc-app .pc-ov{position:absolute;inset:0;background:rgba(248,250,252,.93);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px;z-index:5;border-radius:18px;animation:pc-fade .22s ease-out}
 .pc-app [hidden]{display:none !important}
-.pc-app .pc-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;max-width:410px;width:100%;box-shadow:0 12px 32px rgba(15,23,42,.10);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.pc-app .pc-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;max-width:410px;width:100%;box-shadow:0 4px 12px rgba(15,23,42,.10);max-height:100%;overflow:hidden;display:flex;flex-direction:column;gap:12px}
+.pc-app .pc-head,.pc-app .pc-foot{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pc-app .pc-head{justify-content:space-between}
+.pc-app .pc-foot{justify-content:flex-end}
+.pc-app .pc-help,.pc-app .pc-cheats{flex:1 1 auto;min-height:0;overflow:auto}
 .pc-app .pc-card h3{margin:0;font-size:18px;letter-spacing:-.01em}
 .pc-app .pc-card h3.pc-win{color:#059669}
 .pc-app .pc-card h3.pc-lose{color:#e11d48}
@@ -356,81 +356,116 @@ export function mount(root, context = {}) {
 @keyframes pc-pulse{0%,100%{opacity:.55}50%{opacity:.12}}
 .pc-app .pc-halo{animation:pc-pulse 2.2s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){.pc-app *{animation:none !important}}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.pc-app{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.pc-app *,.pc-app *::before,.pc-app *::after{box-sizing:border-box}
+.pc-app :where(svg,canvas,img){max-width:100%;height:auto}
+.pc-app :where(button,[role="button"],select,input){touch-action:manipulation}
+.pc-app :where(button,[role="button"],select,input):focus-visible{outline:2px solid #0284c7;outline-offset:2px}
+/* 4px spacing grid: HUD/control rows wrap instead of overflowing on narrow screens. */
+.pc-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+/* Thin borders and calm surfaces instead of heavy elevation. */
+.pc-app :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+/* Clear type hierarchy: 12px metadata, compact headings. */
+.pc-app :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.pc-app :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .pc-app :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .pc-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .pc-app :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .pc-app :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .pc-app *,.pc-app *::before,.pc-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* --- layout shell: fill height + HUD/overlay refinements (keep last) --- */
+.pc-app.game-fill > .pc-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;display:flex;align-items:center;justify-content:center}
+@media (max-width:640px){
+.pc-app{gap:8px}
+.pc-app.game-fill > .pc-board:not(:has(.pc-ov:not([hidden]))){flex:0 0 auto;aspect-ratio:1/1}
+.pc-app.game-fill > .pc-board:has(.pc-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.pc-app .pc-hud{gap:5px}
+.pc-app .pc-hud .pc-chip{padding:4px 6px;font-size:9px}
+.pc-app .pc-hud .pc-chip[data-hud="best"],.pc-app .pc-hud .pc-chip[data-hud="msg"]{display:none}
+.pc-app .pc-hud .pc-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.pc-app .pc-hud .pc-btn-label,.pc-app .pc-hud .pc-spacer{display:none}
+.pc-app .pc-ov{padding:8px}
+.pc-app .pc-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.pc-app .pc-help,.pc-app .pc-cheats{scrollbar-width:none}
+.pc-app .pc-help::-webkit-scrollbar,.pc-app .pc-cheats::-webkit-scrollbar{display:none}
+.pc-app .pc-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid #e2e8f0}
+.pc-app .pc-note{display:none}
+}
 </style>
-<div class="game-app pc-app">
-  <div class="game-intro">
-    <div><h2>Pipe Connect</h2><p data-intro>Putar pipa, alirkan air dari katup START ke meteran FINISH.</p></div>
-    <span class="game-status" data-status-wrap><i class="game-status-dot"></i><span data-status aria-live="polite">Siap</span></span>
+<div class="game-app pc-app game-fill" data-pc>
+  <div class="pc-hud">
+    <span class="pc-chip pc-status" data-status-wrap><i class="game-status-dot"></i><span data-status aria-live="polite">Siap</span></span>
+    <span class="pc-chip">SISA <b data-hud="turns">–</b></span>
+    <span class="pc-chip">ALIRAN <b data-hud="flow">–</b></span>
+    <span class="pc-chip pc-you">KAMU <b data-hud="seat">–</b></span>
+    <span class="pc-chip" data-best-chip>REKOR <b data-hud="best">–</b></span>
+    <span class="pc-chip pc-cheat" data-cheat-badge hidden>cheat aktif</span>
+    <span class="pc-chip pc-msg-chip" data-hud="msg" aria-live="polite"></span>
+    <span class="pc-spacer"></span>
+    <button class="pc-btn pc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pc-btn-label">Help</span></button>
+    <button class="pc-btn pc-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="pc-btn-label">Cheats</span></button>
+    <button class="pc-btn pc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="pc-btn-label">Pause</span></button>
+    <button class="pc-btn pc-icon-btn" type="button" data-act="pad" aria-label="Toggle touch pad" title="Touch pad" aria-pressed="false">${iconSVG("gamepad2", { size: 14 })}<span class="pc-btn-label">Pad</span></button>
+    <button class="pc-btn pc-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="pc-btn-label">Restart</span></button>
+    <button class="pc-btn pc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pc-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="pc-hud">
-      <span class="pc-chip">Langkah <b data-hud="turns">–</b></span>
-      <span class="pc-chip">Aliran <b data-hud="flow">–</b></span>
-      <span class="pc-chip pc-you">Kamu <b data-hud="seat">–</b></span>
-      <span class="pc-chip" data-best-chip>Rekor <b data-hud="best">–</b></span>
-      <span class="pc-chip pc-cheat" data-cheat-badge hidden>cheat aktif</span>
-    </div>
+  <section class="game-panel pc-board" data-board>
     <div class="pc-board-wrap">
-      <svg class="pc-board" viewBox="-34 -34 ${BOARD + 68} ${BOARD + 68}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Papan Pipe Connect" tabindex="0">
+      <svg class="pc-board-svg" viewBox="-34 -34 ${BOARD + 68} ${BOARD + 68}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Papan Pipe Connect" tabindex="0">
         <g data-g="board"></g>
         <g data-g="cursor"></g>
         <g data-g="hit" class="pc-hit"></g>
       </svg>
     </div>
-    <div class="pc-legend">
-      <span><i class="pc-dot" style="background:#0284c7"></i>START (katup, terkunci)</span>
-      <span><i class="pc-dot" style="background:#059669"></i>FINISH (meteran, terkunci)</span>
-      <span><i class="pc-sq" style="background:#fde68a"></i>Limbah (terkunci)</span>
-      <span><i class="pc-dot" style="background:#0ea5e9"></i>Pipa teraliri air</span>
-    </div>
-    <div class="pc-msg" data-msg aria-live="polite"></div>
-    <div class="pc-pad">
-      <div class="pc-dpad">
-        <button type="button" class="pc-pad-btn pc-u" data-pad="up" aria-label="Pilih sel atas">${IC.up}</button>
-        <button type="button" class="pc-pad-btn pc-l" data-pad="left" aria-label="Pilih sel kiri">${IC.left}</button>
-        <button type="button" class="pc-pad-btn pc-r" data-pad="right" aria-label="Pilih sel kanan">${IC.right}</button>
-        <button type="button" class="pc-pad-btn pc-d" data-pad="down" aria-label="Pilih sel bawah">${IC.down}</button>
-      </div>
-      <div class="pc-pad-col">
-        <div style="display:flex;gap:10px">
-          <button type="button" class="pc-pad-btn pc-rot" data-pad="ccw" aria-label="Putar berlawanan jarum jam">${IC.ccw}</button>
-          <button type="button" class="pc-pad-btn pc-rot pc-rot-main" data-pad="cw" aria-label="Putar searah jarum jam">${IC.cw}</button>
-        </div>
-        <span class="pc-pad-cap">putar pipa terpilih</span>
-      </div>
-    </div>
-
     <div class="pc-ov" data-ov="start" hidden>
       <div class="pc-card" role="dialog" aria-modal="true" aria-label="Mulai permainan">
-        <h3>Pipe Connect</h3>
+        <div class="pc-head"><h3>Pipe Connect</h3></div>
         <p class="pc-ov-sub" data-start-desc></p>
         <div class="pc-draw" data-start-draw></div>
-        <div class="pc-row">
+        <div class="pc-foot">
+          <button type="button" class="pc-btn" data-help>Cara bermain</button>
           <button type="button" class="pc-btn pc-btn-main" data-act="start">Mulai</button>
-          <button type="button" class="pc-btn" data-act="tutorial">Cara bermain</button>
         </div>
       </div>
     </div>
     <div class="pc-ov" data-ov="result" hidden>
       <div class="pc-card" role="dialog" aria-modal="true" aria-label="Hasil permainan">
-        <h3 data-res-title>Selesai</h3>
+        <div class="pc-head"><h3 data-res-title>Selesai</h3></div>
         <p class="pc-ov-sub" data-res-reason></p>
-        <div class="pc-row">
-          <button type="button" class="pc-btn pc-btn-main" data-act="restart">Main lagi</button>
+        <div class="pc-foot">
           <button type="button" class="pc-btn" data-act="dismiss">Lihat papan</button>
+          <button type="button" class="pc-btn pc-btn-main" data-act="restart">Main lagi</button>
         </div>
       </div>
     </div>
-    <div class="pc-ov" data-ov="tutorial" hidden>
+    <div class="pc-ov" data-ov="pause" hidden>
+      <div class="pc-card" role="dialog" aria-modal="true" aria-label="Permainan dijeda">
+        <div class="pc-head"><h3>Dijeda</h3></div>
+        <p class="pc-ov-sub">Timer dan bot dihentikan. Lanjutkan saat kamu siap.</p>
+        <div class="pc-foot"><button type="button" class="pc-btn pc-btn-main" data-act="resume">Lanjut</button></div>
+      </div>
+    </div>
+    <div class="pc-ov" data-ov="help" hidden>
       <div class="pc-card" role="dialog" aria-modal="true" aria-label="Cara bermain">
-        <h3>Cara bermain</h3>
+        <div class="pc-head"><h3>Cara bermain</h3><button class="pc-btn" type="button" data-help-close>Tutup</button></div>
+        <div class="pc-help">
         <p class="pc-sec">Tujuan</p>
-        <p class="pc-ov-sub">Sambugkan air dari katup <b>START</b> (biru, berdenyut) ke meteran <b>FINISH</b> (hijau). Pipa yang teraliri air berubah biru. Setiap putaran mengurangi satu langkah bersama.</p>
+        <p class="pc-ov-sub">Sambungkan air dari katup <b>START</b> (biru, berdenyut, terkunci) ke meteran <b>FINISH</b> (hijau, terkunci). Pipa yang teraliri air berubah biru; petak limbah (kuning) terkunci. Setiap putaran mengurangi satu langkah bersama.</p>
         <p class="pc-sec">Giliran</p>
         <p class="pc-ov-sub">Lawan bot / pemain room: bergiliran memutar satu pipa. <b>Pemain yang putarannya membuat air sampai ke meteran menang.</b> Giliran pertama diundi acak; di mode room, posisi P1/P2 juga diundi. Jika langkah habis, semua kalah.</p>
         <p class="pc-sec">Kontrol desktop</p>
         <p class="pc-ov-sub">Klik kiri: putar searah jarum jam · klik kanan: berlawanan.<br>
-        <span class="pc-kbd">←↑↓→</span>/<span class="pc-kbd">WASD</span> pilih sel · <span class="pc-kbd">Spasi</span>/<span class="pc-kbd">Enter</span>/<span class="pc-kbd">E</span> putar · <span class="pc-kbd">Q</span> putar balik · <span class="pc-kbd">R</span> papan baru · <span class="pc-kbd">T</span> tutorial · <span class="pc-kbd">C</span> cheat · <span class="pc-kbd">H</span> bocoran solusi · <span class="pc-kbd">Esc</span> tutup.</p>
+        <span class="pc-kbd">←↑↓→</span>/<span class="pc-kbd">WASD</span> pilih sel · <span class="pc-kbd">Spasi</span>/<span class="pc-kbd">Enter</span>/<span class="pc-kbd">E</span> putar · <span class="pc-kbd">Q</span> putar balik · <span class="pc-kbd">V</span> bocoran solusi · <span class="pc-kbd">R</span> papan baru.<br>
+        <span class="pc-kbd">H</span> panduan · <span class="pc-kbd">C</span> cheat · <span class="pc-kbd">P</span> jeda · <span class="pc-kbd">Esc</span> tutup overlay/lanjut.</p>
         <p class="pc-sec">Kontrol mobile</p>
         <p class="pc-ov-sub">Ketuk pipa untuk memutar, atau pilih sel dengan D-pad lalu tekan tombol putar biru (searah jarum jam) / putih (berlawanan).</p>
         <p class="pc-sec">Jenis pipa & petak</p>
@@ -446,32 +481,42 @@ export function mount(root, context = {}) {
           <div class="pc-tut-item">${MINI.waste}Limbah: terkunci, air tidak bisa lewat</div>
         </div>
         <p class="pc-sec">Tips</p>
-        <p class="pc-ov-sub">Telusuri glow biru dari START untuk menemukan sambungan yang putus.Katup, meteran, dan limbah tidak bisa diputar. Lawan bisa saja "mencuri" kemenangan dari sambungan yang kamu siapkan — hati-hati!</p>
-        <div class="pc-row"><button type="button" class="pc-btn pc-btn-main" data-act="close-tutorial">Tutup</button></div>
+        <p class="pc-ov-sub">Telusuri glow biru dari START untuk menemukan sambungan yang putus. Katup, meteran, dan limbah tidak bisa diputar. Lawan bisa saja "mencuri" kemenangan dari sambungan yang kamu siapkan — hati-hati!</p>
+        </div>
+        <div class="pc-foot"><span class="pc-note">Tekan H untuk membuka panduan ini lagi</span><button type="button" class="pc-btn pc-btn-main" data-help-close>Mengerti</button></div>
       </div>
     </div>
     <div class="pc-ov" data-ov="cheat" hidden>
       <div class="pc-card" role="dialog" aria-modal="true" aria-label="Menu cheat">
-        <h3>Cheat</h3>
+        <div class="pc-head"><h3>Cheat</h3><button class="pc-btn" type="button" data-act="close-cheat">Tutup</button></div>
+        <div class="pc-cheats">
         <div class="pc-cheat-row"><div><b>+15 langkah</b><small>Tambah jatah langkah bersama.</small></div><button type="button" class="pc-btn" data-cheat="turns">Pakai</button></div>
         <div class="pc-cheat-row"><div><b>Perbaiki 1 pipa</b><small>Satu pipa jalur langsung diputar ke orientasi benar (tanpa耗费 langkah).</small></div><button type="button" class="pc-btn" data-cheat="fix">Pakai</button></div>
-        <div class="pc-cheat-row"><div><b>Lihat solusi</b><small>Bayangan hijau menunjukkan orientasi benar pipa jalur (hanya di layarmu).</small></div><button type="button" class="pc-btn" data-cheat="hint"><span class="pc-pill" data-cs="hint">OFF</span></button></div>
+        <div class="pc-cheat-row"><div><b>Lihat solusi</b><small>Bayangan hijau menunjukkan orientasi benar pipa jalur (hanya di layarmu). Tekan <span class="pc-kbd">V</span> untuk toggle cepat.</small></div><button type="button" class="pc-btn" data-cheat="hint"><span class="pc-pill" data-cs="hint">OFF</span></button></div>
         <div class="pc-cheat-row" data-freeze-row><div><b>Bekukan bot</b><small>Bot melewati semua gilirannya — main santai sendiri.</small></div><button type="button" class="pc-btn" data-cheat="freeze"><span class="pc-pill" data-cs="freeze">OFF</span></button></div>
         <div class="pc-cheat-row"><div><b>Langkah tak terbatas</b><small>Putaran tidak lagi mengurangi jatah langkah.</small></div><button type="button" class="pc-btn" data-cheat="unlimited"><span class="pc-pill" data-cs="unlimited">OFF</span></button></div>
         <div class="pc-cheat-row"><div><b>Menang instan</b><small>Semua pipa jalur langsung tersambung atas namamu.</small></div><button type="button" class="pc-btn" data-cheat="win">Pakai</button></div>
         <p class="pc-note" data-cheat-note>Cheat menandai papan dengan badge "cheat aktif".</p>
-        <div class="pc-row"><button type="button" class="pc-btn pc-btn-main" data-act="close-cheat">Tutup</button></div>
+        </div>
+        <div class="pc-foot"><button class="pc-btn" type="button" data-help>Tutorial</button><button type="button" class="pc-btn pc-btn-main" data-act="close-cheat">Tutup</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button type="button" class="game-action-button" data-act="tutorial">Tutorial</button>
-    <button type="button" class="game-action-button" data-act="cheat">Cheat</button>
-    <button type="button" class="game-action-button" data-act="pad">Pad</button>
-    <button type="button" class="game-action-button" data-act="restart" data-btn-restart>Ulang</button>
-    <button type="button" class="game-action-button" data-exit>Keluar</button>
+  <div class="pc-pad">
+    <div class="pc-dpad">
+      <button type="button" class="pc-pad-btn pc-u" data-pad="up" aria-label="Pilih sel atas">${IC.up}</button>
+      <button type="button" class="pc-pad-btn pc-l" data-pad="left" aria-label="Pilih sel kiri">${IC.left}</button>
+      <button type="button" class="pc-pad-btn pc-r" data-pad="right" aria-label="Pilih sel kanan">${IC.right}</button>
+      <button type="button" class="pc-pad-btn pc-d" data-pad="down" aria-label="Pilih sel bawah">${IC.down}</button>
+    </div>
+    <div class="pc-pad-col">
+      <div style="display:flex;gap:10px">
+        <button type="button" class="pc-pad-btn pc-rot" data-pad="ccw" aria-label="Putar berlawanan jarum jam">${IC.ccw}</button>
+        <button type="button" class="pc-pad-btn pc-rot pc-rot-main" data-pad="cw" aria-label="Putar searah jarum jam">${IC.cw}</button>
+      </div>
+      <span class="pc-pad-cap">putar pipa terpilih</span>
+    </div>
   </div>
-  <div class="pc-kbd-hint">Klik: putar · klik kanan: putar balik · <span class="pc-kbd">←↑↓→</span> pilih · <span class="pc-kbd">Spasi</span> putar · <span class="pc-kbd">C</span> cheat · <span class="pc-kbd">T</span> tutorial</div>
 </div>`;
 
     /* ================= refs & lokal ================= */
@@ -479,7 +524,7 @@ export function mount(root, context = {}) {
     const boardG = $('[data-g="board"]');
     const cursorG = $('[data-g="cursor"]');
     const hitG = $('[data-g="hit"]');
-    const msgEl = $("[data-msg]");
+    const msgEl = $('[data-hud="msg"]');
     const statusEl = $("[data-status]");
     const statusWrap = $("[data-status-wrap]");
     const hud = {
@@ -488,16 +533,27 @@ export function mount(root, context = {}) {
     };
     const ov = {
         start: $('[data-ov="start"]'), result: $('[data-ov="result"]'),
-        tutorial: $('[data-ov="tutorial"]'), cheat: $('[data-ov="cheat"]'),
+        pause: $('[data-ov="pause"]'), help: $('[data-ov="help"]'),
+        cheat: $('[data-ov="cheat"]'),
     };
     const appWrap = $(".pc-app");
     let sel = { r: 2, c: 1 };
-    let hintOn = false, tutOpen = false, cheatOpen = false, dismissed = false;
+    let hintOn = false, helpOpen = false, cheatOpen = false, dismissed = false;
+    let paused = false;
     let lastAnim = null, destroyed = false, lastPhase = null;
     let timers = [], botTimer = null;
     const unsubs = [];
 
+    /* Panduan internal hanya muncul sekali; global how-to tidak dipakai game ini. */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("pipeConnectHelpSeen") === "1"; } catch (_) { /* storage diblokir */ }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("pipeConnectHelpSeen", "1"); } catch (_) { /* storage diblokir */ }
+    }
+
     const later = (fn, ms) => {
+        if (destroyed || paused) return null;
         const t = setTimeout(() => { timers = timers.filter((x) => x !== t); fn(); }, ms);
         timers.push(t);
         return t;
@@ -509,7 +565,7 @@ export function mount(root, context = {}) {
     }
     function msg(text, mood) {
         msgEl.textContent = text;
-        msgEl.className = "pc-msg" + (mood ? " pc-" + mood : "");
+        msgEl.className = "pc-chip pc-msg-chip" + (mood ? " pc-" + mood : "");
     }
 
     const mySeat = () => (state ? state.seatOf[playerIndex] : 0);
@@ -650,20 +706,18 @@ export function mount(root, context = {}) {
                 st = state.winner === mySeat() ? "Kamu menang" : nameForSeat(state.winner) + " menang";
                 cls = state.winner === mySeat() ? "pc-s-win" : "pc-s-bad";
             } else if (state.phase === "lost") { st = "Langkah habis"; cls = "pc-s-bad"; }
+            if (paused) { st = "Dijeda"; cls = "pc-s-wait"; }
             statusEl.textContent = st;
-            statusWrap.className = "game-status" + (cls ? " " + cls : "");
-            $('[data-intro]').textContent = online
-                ? "Duel pipa 2 pemain: yang menyambungkan air ke meteran menang. Posisi P1/P2 dan giliran pertama diundi acak."
-                : "Duel pipa lawan bot: yang menyambungkan air ke meteran menang. Giliran pertama diundi acak.";
+            statusWrap.className = "pc-chip pc-status" + (cls ? " " + cls : "");
         } else {
             statusEl.textContent = "Menunggu host…";
-            statusWrap.className = "game-status pc-s-wait";
+            statusWrap.className = "pc-chip pc-status pc-s-wait";
             hud.turns.textContent = "–"; hud.flow.textContent = "–"; hud.seat.textContent = "–";
         }
         renderBoard();
 
         /* overlay start */
-        ov.start.hidden = !(state && state.phase === "ready") || tutOpen || cheatOpen;
+        ov.start.hidden = !(state && state.phase === "ready") || helpOpen || cheatOpen || paused;
         if (state && state.phase === "ready") {
             const first = nameForSeat(state.firstSeat);
             $('[data-start-desc]').textContent = online
@@ -679,7 +733,7 @@ export function mount(root, context = {}) {
 
         /* overlay hasil */
         const ended = state && (state.phase === "won" || state.phase === "lost");
-        ov.result.hidden = !ended || dismissed || tutOpen || cheatOpen;
+        ov.result.hidden = !ended || dismissed || helpOpen || cheatOpen || paused;
         if (ended) {
             const t = $('[data-res-title]');
             const iWon = state.phase === "won" && state.winner === mySeat();
@@ -700,12 +754,25 @@ export function mount(root, context = {}) {
             rb.textContent = canStartOrRestart() ? "Main lagi" : "Tunggu host…";
         }
 
-        ov.tutorial.hidden = !tutOpen;
-        ov.cheat.hidden = !cheatOpen;
+        ov.pause.hidden = !paused || helpOpen || cheatOpen;
+        ov.cheat.hidden = !cheatOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
 
         /* tombol & pad */
-        $('[data-btn-restart]').disabled = !canStartOrRestart();
-        const rotDisabled = !isMyTurn();
+        const rb = root.querySelector("[data-restart]");
+        if (rb) rb.disabled = !canStartOrRestart();
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".pc-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pbtn.title = paused ? "Resume (P)" : "Pause (P)";
+        }
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) cbtn.classList.toggle("on", Boolean(state && state.cheated) || hintOn);
+        const padBtn = root.querySelector('[data-act="pad"]');
+        if (padBtn) padBtn.setAttribute("aria-pressed", String(appWrap.classList.contains("pc-pad-on")));
+        const rotDisabled = paused || !isMyTurn();
         root.querySelector('[data-pad="cw"]').disabled = rotDisabled;
         root.querySelector('[data-pad="ccw"]').disabled = rotDisabled;
 
@@ -728,12 +795,13 @@ export function mount(root, context = {}) {
     function publish() {
         render();
         if (online && room.isHost) room.publishState(state).catch(console.warn);
+        if (paused) { if (botTimer) clearTimers(); return; }
         if (!online) maybeScheduleBot();
     }
 
     function maybeScheduleBot() {
         if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (online || !state || state.phase !== "playing" || state.turnOf !== state.seatOf[1]) return;
+        if (paused || online || !state || state.phase !== "playing" || state.turnOf !== state.seatOf[1]) return;
         botTimer = later(() => {
             botTimer = null;
             if (!state || state.phase !== "playing" || state.turnOf !== state.seatOf[1]) return;
@@ -746,6 +814,28 @@ export function mount(root, context = {}) {
             const mv = botPick(state.level);
             applyAction({ type: "rotate", r: mv.r, c: mv.c }, 1);
         }, 900);
+    }
+
+    /* Pause: tidak ada anchor Date.now()/performance.now() di game ini —
+       yang dibekukan adalah timer bot; saat resume bot dijadwalkan ulang. */
+    function togglePause(on) {
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) clearTimers();
+        render();
+        if (!paused) publish();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function restartGame() {
+        paused = false;
+        helpOpen = false;
+        cheatsOpen = false;
+        submitAction({ type: "restart" });
     }
 
     function applyAction(action, actor) {
@@ -850,6 +940,8 @@ export function mount(root, context = {}) {
     }
 
     function submitAction(action) {
+        if (!action) return;
+        if (paused && action.type !== "restart") return;
         if (online && !room.isHost) {
             room.sendAction(action).catch(console.warn);
             return;
@@ -864,15 +956,24 @@ export function mount(root, context = {}) {
         renderCursor();
     }
     const rotateSel = (ccw) => submitAction({ type: "rotate", r: sel.r, c: sel.c, ccw });
-    function closeTopOverlay() {
-        if (cheatOpen) { cheatOpen = false; render(); return; }
-        if (tutOpen) { tutOpen = false; render(); return; }
-        if (state && (state.phase === "won" || state.phase === "lost")) { dismissed = true; render(); }
-    }
 
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) {
+            cheatOpen = !cheatOpen;
+            if (cheatOpen) helpOpen = false;
+            render();
+            return;
+        }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        if (t.closest('[data-act="resume"]')) { togglePause(false); return; }
+        if (helpOpen || paused) return;
+
         const pad = t.closest("[data-pad]");
         if (pad) {
             const k = pad.dataset.pad;
@@ -901,16 +1002,15 @@ export function mount(root, context = {}) {
         const act = t.closest("[data-act]");
         if (!act) return;
         const a = act.dataset.act;
-        if (a === "start" || a === "restart") submitAction({ type: a });
-        else if (a === "tutorial") { tutOpen = true; cheatOpen = false; render(); }
-        else if (a === "cheat") { cheatOpen = true; tutOpen = false; render(); }
-        else if (a === "close-tutorial") { tutOpen = false; render(); }
+        if (a === "start") submitAction({ type: "start" });
+        else if (a === "restart") restartGame();
         else if (a === "close-cheat") { cheatOpen = false; render(); }
         else if (a === "dismiss") { dismissed = true; render(); }
-        else if (a === "pad") { appWrap.classList.toggle("pc-pad-on"); }
+        else if (a === "pad") { appWrap.classList.toggle("pc-pad-on"); render(); }
     }
 
     function handleContext(event) {
+        if (paused || helpOpen) return;
         const cell = event.target.closest("[data-cell]");
         if (!cell || !state) return;
         event.preventDefault();
@@ -928,23 +1028,44 @@ export function mount(root, context = {}) {
         if (destroyed || !root.isConnected) return;
         if (e.target && e.target.closest && e.target.closest("input,textarea,select")) return;
         const k = e.key;
-        if (k === "Escape") { closeTopOverlay(); return; }
-        if (k === "t" || k === "T") { tutOpen = !tutOpen; if (tutOpen) cheatOpen = false; render(); e.preventDefault(); return; }
-        if (k === "c" || k === "C") { cheatOpen = !cheatOpen; if (cheatOpen) tutOpen = false; render(); e.preventDefault(); return; }
-        if (k === "h" || k === "H") { hintOn = !hintOn; render(); return; }
-        if (tutOpen || cheatOpen) return;
+
+        /* Prioritas: help → cheats → pause/Escape → aksi game. */
+        if (k === "h" || k === "H" || k === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (helpOpen) {
+            if (k === "Escape" || k === "Enter" || k === " ") { toggleHelp(false); e.preventDefault(); }
+            return;
+        }
+        if (k === "c" || k === "C") {
+            cheatOpen = !cheatOpen;
+            if (cheatOpen) helpOpen = false;
+            render();
+            e.preventDefault();
+            return;
+        }
+        if (cheatOpen) {
+            if (k === "Escape" || k === "Enter") { cheatOpen = false; render(); }
+            e.preventDefault();
+            return;
+        }
+        if (k === "p" || k === "P" || k === "Escape") { togglePause(); e.preventDefault(); return; }
+        if (k === "r" || k === "R") { restartGame(); e.preventDefault(); return; }
+        if (paused) {
+            if (k === "Enter" || k === " ") { togglePause(false); e.preventDefault(); }
+            return;
+        }
+
         if (state && state.phase === "ready" && (k === "Enter" || k === " ")) {
             if (canStartOrRestart()) submitAction({ type: "start" });
             e.preventDefault();
             return;
         }
-        if (k === "r" || k === "R") { submitAction({ type: "restart" }); return; }
         const dirs = {
             ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
             w: [-1, 0], s: [1, 0], a: [0, -1], d: [0, 1],
             W: [-1, 0], S: [1, 0], A: [0, -1], D: [0, 1],
         };
         if (dirs[k]) { moveSel(dirs[k][0], dirs[k][1]); e.preventDefault(); return; }
+        if (k === "v" || k === "V") { hintOn = !hintOn; render(); return; }
         if (k === " " || k === "Enter" || k === "e" || k === "E") { rotateSel(false); e.preventDefault(); }
         else if (k === "q" || k === "Q") { rotateSel(true); e.preventDefault(); }
     }

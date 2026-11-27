@@ -1,4 +1,7 @@
 /* ==== js/games/road-crossing.js ==== */
+
+import { iconSVG } from "../JS/icons.js";
+
 /*
   Road Crossing — race bergaya Crossy Road.
   - Format template baru: export META + mount(root, context).
@@ -207,8 +210,14 @@ export function mount(root, context = {}) {
     let state = null;
 
     /* ---------- state lokal (tidak diserialisasi) ---------- */
-    let destroyed = false, paused = false, raf = null, lastT = 0, forcePub = false;
+    let destroyed = false, paused = false, pausedAt = 0, raf = null, lastT = 0, forcePub = false;
     const ui = { help: false, cheats: false };
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("road-crossing-help-seen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        ui.help = true;
+        try { localStorage.setItem("road-crossing-help-seen", "1"); } catch (_) { /* storage blocked */ }
+    }
     const cheats = { god: false, slow: false, freeze: false, fast: false };
     let cheatsUsed = false;
     let best = 0;
@@ -229,97 +238,121 @@ export function mount(root, context = {}) {
 <style>
 .rc-app{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--card:#fff;--soft:#f6f8fa;--accent:#16a34a;
   font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);
-  display:flex;flex-direction:column;align-items:center;gap:12px}
+  display:flex;flex-direction:column;align-items:stretch;gap:10px;width:100%;min-height:0}
 .rc-app *{box-sizing:border-box}
-.rc-app .game-intro{display:flex;justify-content:space-between;align-items:center;gap:12px;width:min(100%,420px)}
-.rc-app .game-intro h2{margin:0;font-size:18px;letter-spacing:-.01em}
-.rc-app .game-intro p{margin:2px 0 0;font-size:12px;color:var(--muted)}
-.rc-app .game-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
-.rc-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block}
-.rc-app .game-status[data-state="running"] .game-status-dot{background:#16a34a;animation:rc-pulse 1.2s infinite}
-.rc-app .game-status[data-state="finished"] .game-status-dot{background:#f59e0b}
-@keyframes rc-pulse{50%{opacity:.35}}
-.rc-panel{display:flex;flex-direction:column;gap:10px;align-items:center;width:100%}
-.rc-hud{width:min(100%,420px);display:flex;flex-direction:column;gap:7px}
-.rc-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.rc-chip{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.rc-app [hidden]{display:none!important}
+.rc-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font:600 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+.rc-chip{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rc-chip small{color:var(--muted);font-weight:600}
 .rc-dot{width:9px;height:9px;border-radius:50%;flex:none}
-.rc-heart{width:12px;height:12px;color:#ef4444}
-.rc-bars{display:flex;flex-direction:column;gap:4px}
-.rc-bar{height:5px;border-radius:999px;background:var(--line);overflow:hidden}
+.rc-status-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block;flex:none}
+.rc-chip[data-state="running"] .rc-status-dot{background:#16a34a;animation:rc-pulse 1.2s infinite}
+.rc-chip[data-state="finished"] .rc-status-dot{background:#f59e0b}
+@keyframes rc-pulse{50%{opacity:.35}}
+.rc-heart{width:12px;height:12px;color:#ef4444;flex:none}
+.rc-bar{display:inline-block;width:44px;height:5px;border-radius:999px;background:var(--line);overflow:hidden;vertical-align:middle}
 .rc-bar i{display:block;height:100%;width:0;border-radius:999px;transition:width .25s}
-.rc-stage{position:relative;width:min(100%,420px);aspect-ratio:400/560;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:0 12px 32px rgba(2,6,23,.10);background:#9fd964}
-.rc-svg{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none}
-.rc-blink{animation:rc-blink .5s steps(2) infinite}
-@keyframes rc-blink{50%{opacity:.2}}
-.rc-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.88);backdrop-filter:blur(3px);padding:14px;z-index:5}
-.rc-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;max-width:330px;width:100%;box-shadow:0 16px 40px rgba(2,6,23,.14);text-align:center}
-.rc-card h3{margin:0 0 6px;font-size:20px;letter-spacing:-.01em}
-.rc-card p{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--muted)}
-.rc-role{display:inline-block;font-size:11.5px;font-weight:700;background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:4px 10px;margin:0 0 12px}
-.rc-bullets{text-align:left;font-size:12.5px;color:#334155;margin:0 0 14px;padding-left:16px;line-height:1.6}
-.rc-btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,transform .05s;font-family:inherit}
+.rc-badge{font-size:10px;font-weight:700;letter-spacing:.06em;color:#b45309;background:#fef3c7;border-radius:999px;padding:5px 8px}
+.rc-spacer{flex:1 1 auto}
+.rc-btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,transform .05s;font-family:inherit}
 .rc-btn:hover{background:var(--soft)}
 .rc-btn:active{transform:scale(.97)}
 .rc-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
 .rc-btn.primary:hover{background:#1e293b}
 .rc-btn[disabled]{opacity:.45;cursor:not-allowed}
+.rc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.rc-icon-btn svg{flex:none;display:block}
 .rc-btnrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.rc-controls{width:min(100%,420px);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.rc-app.game-fill > .rc-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;width:100%;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:0 12px 32px rgba(2,6,23,.10);background:#9fd964}
+.rc-svg{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none}
+.rc-blink{animation:rc-blink .5s steps(2) infinite}
+@keyframes rc-blink{50%{opacity:.2}}
+.rc-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;z-index:6;pointer-events:none;white-space:nowrap}
+.rc-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.88);backdrop-filter:blur(3px);padding:14px}
+.rc-card{display:flex;flex-direction:column;overflow:hidden;max-height:100%;width:min(440px,100%);background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 16px 40px rgba(2,6,23,.14);text-align:center}
+.rc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.rc-head h3{margin:0;font-size:19px;letter-spacing:-.01em}
+.rc-foot{flex:none;display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.rc-card p{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--muted)}
+.rc-role{display:inline-block;font-size:11.5px;font-weight:700;background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:4px 10px;margin:0 0 12px}
+.rc-bullets,.rc-help,.rc-stats,.rc-cheat-body{flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.rc-bullets{font-size:12.5px;color:#334155;margin:0 0 14px;padding-left:16px;line-height:1.6}
+.rc-help h5{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.rc-help ul{margin:0;padding-left:16px;font-size:12.5px;line-height:1.6;color:#334155}
+.rc-legend{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:12px;color:#334155}
+.rc-legend svg{width:36px;height:22px;display:block}
+.rc-cheat-body{padding-right:2px}
+.rc-cheat-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:6px 0;cursor:pointer;text-align:left}
+.rc-cheat-row input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+.rc-cheat-body .rc-btnrow{margin-top:10px}
+.rc-note{font-size:10.5px;line-height:1.4;color:var(--muted)}
+.rc-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 14px;font-size:12px;color:var(--muted)}
+.rc-stats div{background:var(--soft);border-radius:10px;padding:8px}
+.rc-stats b{display:block;font-size:16px;color:var(--ink)}
+.rc-count{font-size:64px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.rc-win{color:#16a34a}.rc-lose{color:#dc2626}
+.rc-controls{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .rc-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:5px}
 .rc-dbtn{border:1px solid var(--line);background:var(--card);border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#334155;touch-action:none;padding:0}
 .rc-dbtn:hover{background:var(--soft)}
 .rc-dbtn:active{background:#e2e8f0}
 .rc-dbtn svg{width:20px;height:20px}
 .rc-side{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
-.rc-side .rc-btnrow{justify-content:flex-end}
 .rc-hint{font-size:11px;color:var(--muted)}
-.rc-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;z-index:6;pointer-events:none;white-space:nowrap}
-.rc-count{font-size:64px;font-weight:800;letter-spacing:-.03em;line-height:1}
-.rc-cheats{position:absolute;top:10px;right:10px;z-index:7;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;width:202px;box-shadow:0 12px 28px rgba(2,6,23,.16);text-align:left}
-.rc-cheats h4{margin:0 0 6px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
-.rc-cheat-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;cursor:pointer}
-.rc-cheat-row input{accent-color:var(--accent);width:15px;height:15px;margin:0}
-.rc-cheats .rc-btn{width:100%;margin-top:6px;padding:7px}
-.rc-cheats small{display:block;margin-top:8px;color:var(--muted);font-size:10.5px;line-height:1.4}
-.rc-x{border:0;background:none;cursor:pointer;color:var(--muted);padding:2px;display:flex}
-.rc-x svg{width:13px;height:13px}
-.rc-help{max-height:92%;overflow:auto;text-align:left}
-.rc-help h3{text-align:center}
-.rc-help h5{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.rc-help ul{margin:0;padding-left:16px;font-size:12.5px;line-height:1.6;color:#334155}
-.rc-legend{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:12px;color:#334155}
-.rc-legend svg{width:36px;height:22px;display:block}
-.rc-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 14px;font-size:12px;color:var(--muted)}
-.rc-stats div{background:var(--soft);border-radius:10px;padding:8px}
-.rc-stats b{display:block;font-size:16px;color:var(--ink)}
-.rc-badge{font-size:10px;font-weight:700;letter-spacing:.06em;color:#b45309;background:#fef3c7;border-radius:999px;padding:2px 7px}
-.rc-win{color:#16a34a}.rc-lose{color:#dc2626}
-.rc-app .game-actions{width:min(100%,420px);display:flex;justify-content:flex-end}
-@media (max-width:430px){.rc-controls{justify-content:center}.rc-side{align-items:center}.rc-side .rc-btnrow{justify-content:center}}
+
+/* --- Batch 02 design polish --- */
+.rc-app :focus-visible,.rc-app button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rc-chip{padding:6px 11px}
+.rc-btn{min-height:44px;padding:10px 16px}
+.rc-dbtn{min-width:44px;min-height:44px}
+@media (pointer:coarse){.rc-app button:not(:disabled){min-height:44px;min-width:44px}}
+@media (prefers-reduced-motion:reduce){.rc-app *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (last: highest specificity) --- */
+.rc-app.game-fill > .rc-board{width:100%;max-width:none}
+.rc-app .rc-hud{gap:6px}
+.rc-app .rc-hud .rc-chip{padding:4px 8px;font-size:10px}
+.rc-app .rc-hud .rc-chip .rc-bar{width:32px}
+.rc-app .rc-hud .rc-btn{min-height:36px;padding:7px 10px;font-size:11px}
+@media (max-width:640px){
+.rc-app.game-fill > .rc-board:not(:has(.rc-ov:not([hidden]))){aspect-ratio:400/560;flex:0 0 auto}
+.rc-app.game-fill > .rc-board:has(.rc-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.rc-app .rc-hud{gap:5px;margin-bottom:0}
+.rc-app .rc-hud .rc-chip{padding:4px 6px;font-size:9px}
+.rc-app .rc-hud .rc-chip[data-first-chip]{display:none}
+.rc-app .rc-hud .rc-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+.rc-app .rc-hud .rc-btn-label,.rc-app .rc-hud .rc-spacer{display:none}
+.rc-app .rc-ov{padding:8px}
+.rc-app .rc-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.rc-app .rc-bullets,.rc-app .rc-help,.rc-app .rc-stats,.rc-app .rc-cheat-body{scrollbar-width:none}
+.rc-app .rc-bullets::-webkit-scrollbar,.rc-app .rc-help::-webkit-scrollbar,.rc-app .rc-stats::-webkit-scrollbar,.rc-app .rc-cheat-body::-webkit-scrollbar{display:none}
+.rc-app .rc-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.rc-app .rc-note{display:none}
+.rc-app .rc-controls{gap:8px}
+}
 </style>
-<div class="game-app rc-app">
-  <div class="game-intro">
-    <div><h2>Road Crossing</h2><p>Hop traffic, ride logs, outrun the camera — first to row ${TARGET} wins.</p></div>
-    <span class="game-status" data-status-wrap><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app rc-app game-fill" data-rc>
+  <div class="rc-hud">
+    <span class="rc-chip"><i class="rc-dot" data-dot="0"></i><span data-name="0">You</span><b data-score="0">0</b><small>/${TARGET}</small>
+      <svg class="rc-heart" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.7-10-9.3C.6 8.6 2.6 5 6 5c2.2 0 3.7 1.2 6 3.6C14.3 6.2 15.8 5 18 5c3.4 0 5.4 3.6 4 6.7C19.5 16.3 12 21 12 21z"/></svg><b data-lives="0">${LIVES}</b>
+      <span class="rc-bar"><i data-bar="0"></i></span></span>
+    <span class="rc-chip"><i class="rc-dot" data-dot="1"></i><span data-name="1">Rival</span><b data-score="1">0</b><small>/${TARGET}</small>
+      <svg class="rc-heart" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.7-10-9.3C.6 8.6 2.6 5 6 5c2.2 0 3.7 1.2 6 3.6C14.3 6.2 15.8 5 18 5c3.4 0 5.4 3.6 4 6.7C19.5 16.3 12 21 12 21z"/></svg><b data-lives="1">${LIVES}</b>
+      <span class="rc-bar"><i data-bar="1"></i></span></span>
+    <span class="rc-chip"><small>TIME</small><b data-timer>0:00</b></span>
+    <span class="rc-chip" data-status-wrap data-state="ready"><i class="rc-status-dot"></i><span data-status>Ready</span></span>
+    <span class="rc-chip" data-first-chip>FIRST <b data-first>—</b></span>
+    <span class="rc-chip"><small>BEST</small><b data-best>0</b></span>
+    <span class="rc-chip rc-badge" data-cheatbadge hidden>CHEATS</span>
+    <span class="rc-spacer"></span>
+    <button class="rc-btn rc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="rc-btn-label">Help</span></button>
+    <button class="rc-btn rc-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)" data-btncheats>${iconSVG("wrench", { size: 14 })}<span class="rc-btn-label">Cheats</span></button>
+    <button class="rc-btn rc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" data-btnpause><span class="rc-ico" data-pause-ico>${iconSVG("pause", { size: 14 })}</span><span class="rc-btn-label" data-pause-label>Pause</span></button>
+    <button class="rc-btn rc-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="rc-btn-label">Restart</span></button>
+    <button class="rc-btn rc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="rc-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel rc-panel" data-board>
-    <div class="rc-hud">
-      <div class="rc-chips">
-        <span class="rc-chip"><i class="rc-dot" data-dot="0"></i><span data-name="0">You</span><b data-score="0">0</b><small>/${TARGET}</small>
-          <svg class="rc-heart" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.7-10-9.3C.6 8.6 2.6 5 6 5c2.2 0 3.7 1.2 6 3.6C14.3 6.2 15.8 5 18 5c3.4 0 5.4 3.6 4 6.7C19.5 16.3 12 21 12 21z"/></svg><b data-lives="0">${LIVES}</b></span>
-        <span class="rc-chip"><i class="rc-dot" data-dot="1"></i><span data-name="1">Rival</span><b data-score="1">0</b><small>/${TARGET}</small>
-          <svg class="rc-heart" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.7-10-9.3C.6 8.6 2.6 5 6 5c2.2 0 3.7 1.2 6 3.6C14.3 6.2 15.8 5 18 5c3.4 0 5.4 3.6 4 6.7C19.5 16.3 12 21 12 21z"/></svg><b data-lives="1">${LIVES}</b></span>
-        <span class="rc-chip"><small>Time</small><b data-timer>0:00</b></span>
-        <span class="rc-badge" data-cheatbadge hidden>CHEATS</span>
-      </div>
-      <div class="rc-bars">
-        <div class="rc-bar"><i data-bar="0"></i></div>
-        <div class="rc-bar"><i data-bar="1"></i></div>
-      </div>
-    </div>
-    <div class="rc-stage">
+  <section class="game-panel rc-board" data-board>
       <svg class="rc-svg" data-svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Road Crossing board">
         <defs><linearGradient id="rc-danger" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#ef4444" stop-opacity="0"/><stop offset="1" stop-color="#ef4444" stop-opacity=".55"/>
@@ -330,52 +363,55 @@ export function mount(root, context = {}) {
       </svg>
       <div class="rc-toast" data-toast hidden></div>
 
-      <div class="rc-overlay" data-ov="intro">
+      <div class="rc-ov" data-ov="intro">
         <div class="rc-card">
-          <h3>Road Crossing</h3>
+          <div class="rc-head"><h3>Road Crossing</h3></div>
           <span class="rc-role" data-role>Preparing the race…</span>
           <ul class="rc-bullets">
             <li>Race to row <b>${TARGET}</b> before your rival. ${LIVES} lives each.</li>
             <li>The camera <b>never stops</b> — fall behind and you lose a life.</li>
             <li>Cross roads through gaps, ride logs, wait out trains.</li>
           </ul>
-          <p style="font-size:11.5px" data-best></p>
-          <div class="rc-btnrow">
+          <p class="rc-note">Your best row is shown in the HUD.</p>
+          <div class="rc-foot"><div class="rc-btnrow">
             <button class="rc-btn primary" type="button" data-act="start">Start race</button>
             <button class="rc-btn" type="button" data-help>How to play</button>
-          </div>
+          </div></div>
         </div>
       </div>
 
-      <div class="rc-overlay" data-ov="count" hidden>
+      <div class="rc-ov" data-ov="count" hidden>
         <div class="rc-card" style="background:transparent;border:0;box-shadow:none">
           <div class="rc-count" data-count>3</div>
-          <p data-countnote style="margin-top:8px"></p>
+          <p class="rc-note" data-countnote style="margin-top:8px"></p>
         </div>
       </div>
 
-      <div class="rc-overlay" data-ov="pause" hidden>
-        <div class="rc-card"><h3>Paused</h3><p>The camera is waiting. Take a breath.</p>
-          <div class="rc-btnrow"><button class="rc-btn primary" type="button" data-pause>Resume</button></div>
-        </div>
-      </div>
-
-      <div class="rc-overlay" data-ov="end" hidden>
+      <div class="rc-ov" data-ov="pause" hidden>
         <div class="rc-card">
-          <h3 data-endtitle>Finished</h3>
+          <div class="rc-head"><h3>Paused</h3></div>
+          <p>The camera is waiting. Take a breath.</p>
+          <div class="rc-foot"><button class="rc-btn primary" type="button" data-pause>Resume</button></div>
+        </div>
+      </div>
+
+      <div class="rc-ov" data-ov="end" hidden>
+        <div class="rc-card">
+          <div class="rc-head"><h3 data-endtitle>Finished</h3></div>
           <p data-endreason></p>
           <div class="rc-stats" data-endstats></div>
-          <p style="font-size:11.5px" data-endbest></p>
-          <div class="rc-btnrow">
+          <p class="rc-note" data-endbest></p>
+          <div class="rc-foot"><div class="rc-btnrow">
             <button class="rc-btn primary" type="button" data-act="restart">Rematch</button>
             <button class="rc-btn" type="button" data-exit>Exit game</button>
-          </div>
+          </div></div>
         </div>
       </div>
 
-      <div class="rc-overlay" data-ov="help" hidden>
-        <div class="rc-card rc-help">
-          <h3>How to play</h3>
+      <div class="rc-ov" data-ov="help" hidden>
+        <div class="rc-card">
+          <div class="rc-head"><h3>How to play</h3><button class="rc-btn" type="button" data-close="help" aria-label="Close help">Close</button></div>
+          <div class="rc-help">
           <h5>Goal</h5>
           <ul>
             <li>Be the first to reach row <b>${TARGET}</b> (checkered line). ${LIVES} lives each; losing all lives eliminates you.</li>
@@ -405,43 +441,40 @@ export function mount(root, context = {}) {
             <li>Every 7th row is safe grass. Levels are generated with guaranteed car gaps, log coverage and train windows — every seed is winnable.</li>
             <li>Cheats (solo vs Bot only) disable best-score saving. In online rooms the host simulates the world; pause & cheats are disabled.</li>
           </ul>
-          <div class="rc-btnrow" style="margin-top:14px"><button class="rc-btn primary" type="button" data-close="help">Got it</button></div>
+          </div>
+          <div class="rc-foot"><span class="rc-note">Press H to reopen this guide</span><button class="rc-btn primary" type="button" data-close="help">Got it</button></div>
         </div>
       </div>
 
-      <div class="rc-cheats" data-cheats-panel hidden>
-        <h4>Cheats <button class="rc-x" type="button" data-close="cheats" aria-label="Close cheats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h4>
-        <label class="rc-cheat-row"><input type="checkbox" data-cheat="god"><span>God mode (invincible)</span></label>
-        <label class="rc-cheat-row"><input type="checkbox" data-cheat="slow"><span>Slow motion world</span></label>
-        <label class="rc-cheat-row"><input type="checkbox" data-cheat="freeze"><span>Freeze camera</span></label>
-        <label class="rc-cheat-row"><input type="checkbox" data-cheat="fast"><span>Quick hops</span></label>
-        <button class="rc-btn" type="button" data-cheatbtn="lives">+3 lives</button>
-        <button class="rc-btn" type="button" data-cheatbtn="warp">Warp +5 rows</button>
-        <small>Using cheats disables best-score saving. Available in solo vs Bot only.</small>
-      </div>
-    </div>
-
-    <div class="rc-controls">
-      <div class="rc-dpad" data-pad aria-label="Direction pad">
-        <span></span>
-        <button class="rc-dbtn" type="button" data-dir="up" aria-label="Hop up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-7 6 7"/></svg></button>
-        <span></span>
-        <button class="rc-dbtn" type="button" data-dir="left" aria-label="Hop left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-7 6 7 6"/></svg></button>
-        <button class="rc-dbtn" type="button" data-dir="down" aria-label="Hop down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 7 6-7"/></svg></button>
-        <button class="rc-dbtn" type="button" data-dir="right" aria-label="Hop right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l7 6-7 6"/></svg></button>
-      </div>
-      <div class="rc-side">
-        <div class="rc-btnrow">
-          <button class="rc-btn" type="button" data-act="restart">Restart</button>
-          <button class="rc-btn" type="button" data-cheats data-btncheats>Cheats</button>
-          <button class="rc-btn" type="button" data-pause data-btnpause>Pause</button>
-          <button class="rc-btn" type="button" data-help>Help</button>
+      <div class="rc-ov" data-ov="cheat" hidden>
+        <div class="rc-card">
+          <div class="rc-head"><h3>Cheats</h3><button class="rc-btn" type="button" data-close="cheats" aria-label="Close cheats">Close</button></div>
+          <div class="rc-cheat-body">
+            <label class="rc-cheat-row"><input type="checkbox" data-cheat="god"><span>God mode (invincible)</span></label>
+            <label class="rc-cheat-row"><input type="checkbox" data-cheat="slow"><span>Slow motion world</span></label>
+            <label class="rc-cheat-row"><input type="checkbox" data-cheat="freeze"><span>Freeze camera</span></label>
+            <label class="rc-cheat-row"><input type="checkbox" data-cheat="fast"><span>Quick hops</span></label>
+            <div class="rc-btnrow">
+              <button class="rc-btn" type="button" data-cheatbtn="lives">+3 lives</button>
+              <button class="rc-btn" type="button" data-cheatbtn="warp">Warp +5 rows</button>
+            </div>
+          </div>
+          <div class="rc-foot"><span class="rc-note">Using cheats disables best-score saving. Available in solo vs Bot only.</span></div>
         </div>
-        <span class="rc-hint">WASD / arrows · click a tile · swipe · hold D-pad</span>
       </div>
-    </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+
+  <div class="rc-controls">
+    <div class="rc-dpad" data-pad aria-label="Direction pad">
+      <span></span>
+      <button class="rc-dbtn" type="button" data-dir="up" aria-label="Hop up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-7 6 7"/></svg></button>
+      <span></span>
+      <button class="rc-dbtn" type="button" data-dir="left" aria-label="Hop left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-7 6 7 6"/></svg></button>
+      <button class="rc-dbtn" type="button" data-dir="down" aria-label="Hop down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 7 6-7"/></svg></button>
+      <button class="rc-dbtn" type="button" data-dir="right" aria-label="Hop right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l7 6-7 6"/></svg></button>
+    </div>
+    <div class="rc-side"><span class="rc-hint">WASD / arrows · click a tile · swipe · hold D-pad</span></div>
+  </div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -456,13 +489,14 @@ export function mount(root, context = {}) {
         dot: [$('[data-dot="0"]'), $('[data-dot="1"]')],
         bar: [$('[data-bar="0"]'), $('[data-bar="1"]')],
         timer: $("[data-timer]"), status: $("[data-status]"), statusWrap: $("[data-status-wrap]"),
-        cheatBadge: $("[data-cheatbadge]"),
+        cheatBadge: $("[data-cheatbadge]"), first: $("[data-first]"),
+        pauseLabel: $("[data-pause-label]"), pauseIcon: $("[data-pause-ico]"),
     };
-    const ov = { intro: $('[data-ov="intro"]'), count: $('[data-ov="count"]'), pause: $('[data-ov="pause"]'), end: $('[data-ov="end"]'), help: $('[data-ov="help"]') };
+    const ov = { intro: $('[data-ov="intro"]'), count: $('[data-ov="count"]'), pause: $('[data-ov="pause"]'), end: $('[data-ov="end"]'), cheat: $('[data-ov="cheat"]'), help: $('[data-ov="help"]') };
     const el = {
         role: $("[data-role]"), best: $("[data-best]"), count: $("[data-count]"), countNote: $("[data-countnote]"),
         endTitle: $("[data-endtitle]"), endReason: $("[data-endreason]"), endStats: $("[data-endstats]"), endBest: $("[data-endbest]"),
-        toast: $("[data-toast]"), cheatsPanel: $("[data-cheats-panel]"),
+        toast: $("[data-toast]"),
     };
     if (online) { $('[data-btncheats]').style.display = "none"; $('[data-btnpause]').style.display = "none"; }
 
@@ -507,7 +541,8 @@ export function mount(root, context = {}) {
     function newGame() {
         state = initState();
         cheatsUsed = cheats.god || cheats.slow || cheats.freeze || cheats.fast;
-        paused = false;
+        paused = false; pausedAt = 0;
+        ui.help = false; ui.cheats = false;
         view.anim = [null, null];
         view.botNext = 0; view.botFwd = 0;
         beginCountdown();
@@ -869,7 +904,7 @@ export function mount(root, context = {}) {
     }
 
     function renderStatic() {
-        const key = [state.phase, state.seed, state.winner, rivalName(), ui.help, ui.cheats, paused, cheatsUsed].join("|");
+        const key = [state.phase, state.seed, state.winner, rivalName(), ui.help, ui.cheats, paused, cheatsUsed, best].join("|");
         if (key === view.staticKey) return;
         view.staticKey = key;
         const mine = state.players[playerIndex], slot = slotOf(playerIndex);
@@ -879,16 +914,20 @@ export function mount(root, context = {}) {
             hud.bar[a].style.background = SLOT_COLOR[slotOf(a)];
         }
         el.role.textContent = `You are the ${SLOT_NAME[slot]} · P${state.pnum[playerIndex]} · ${slot === 0 ? "left" : "right"} spawn — coin flip: ${nameOf(state.firstMover)} moves first`;
-        el.best.textContent = best > 0 ? `Best row so far: ${best}` : "No best score yet — set one!";
+        el.best.textContent = best > 0 ? String(best) : "—";
+        hud.first.textContent = nameOf(state.firstMover);
         el.countNote.textContent = nameOf(state.firstMover) + " moves first, " + nameOf(1 - state.firstMover) + " joins 0.7s later";
-        /* overlay visibility */
-        ov.intro.hidden = state.phase !== "intro";
-        ov.count.hidden = state.phase !== "countdown";
-        ov.end.hidden = state.phase !== "finished";
-        ov.pause.hidden = !(paused && state.phase === "running");
+        /* overlay visibility: help > cheats > phase overlays */
+        ov.intro.hidden = state.phase !== "intro" || ui.cheats || ui.help;
+        ov.count.hidden = state.phase !== "countdown" || ui.cheats || ui.help;
+        ov.end.hidden = state.phase !== "finished" || ui.cheats || ui.help;
+        ov.pause.hidden = !(paused && state.phase === "running") || ui.cheats || ui.help;
+        ov.cheat.hidden = !ui.cheats || ui.help || online;
         ov.help.hidden = !ui.help;
-        el.cheatsPanel.hidden = !ui.cheats || online;
         hud.cheatBadge.hidden = !(cheatsUsed || cheats.god || cheats.slow || cheats.freeze || cheats.fast);
+        /* HUD pause button keeps its icon (label span only) */
+        hud.pauseLabel.textContent = paused ? "Resume" : "Pause";
+        hud.pauseIcon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
         /* status */
         const st = paused && state.phase === "running" ? "paused" : state.phase === "running" ? "running" : state.phase === "finished" ? "finished" : "ready";
         hud.status.textContent = st === "paused" ? "Paused" : st === "running" ? "Racing" : st === "finished" ? "Finished" : state.phase === "countdown" ? "Get set" : "Ready";
@@ -991,23 +1030,71 @@ export function mount(root, context = {}) {
 
     /* ---------- input: keyboard ---------- */
     const KEYMAP = { ArrowUp: [1, 0], ArrowDown: [-1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1], KeyW: [1, 0], KeyS: [-1, 0], KeyA: [0, -1], KeyD: [0, 1], Space: [1, 0] };
-    function onKey(e) {
-        if (destroyed || e.metaKey || e.ctrlKey || e.altKey) return;
-        if (e.target && e.target.closest && e.target.closest(".rc-cheats")) return;
-        if (e.code === "Escape") { ui.help = false; ui.cheats = false; view.staticKey = ""; return; }
-        if (e.code === "KeyH") { e.preventDefault(); ui.help = !ui.help; view.staticKey = ""; return; }
-        if (e.code === "KeyC" && !online) { e.preventDefault(); ui.cheats = !ui.cheats; view.staticKey = ""; return; }
-        if (e.code === "KeyP" && !online) { e.preventDefault(); togglePause(); return; }
-        if (e.code === "KeyR") { e.preventDefault(); submitAction({ type: "restart" }); return; }
-        const mv = KEYMAP[e.code];
-        if (mv) { e.preventDefault(); if (!ui.help) submitAction({ type: "hop", dr: mv[0], dc: mv[1] }); }
-    }
-    function togglePause() {
-        if (online || !state || state.phase !== "running") return;
-        paused = !paused;
+    function toggleHelp(on) {
+        ui.help = typeof on === "boolean" ? on : !ui.help;
+        if (ui.help) ui.cheats = false;
         view.staticKey = "";
     }
-    function onVis() { if (document.hidden && !online && state?.phase === "running" && !paused) { paused = true; view.staticKey = ""; } }
+    function toggleCheats(on) {
+        if (online) return;
+        ui.cheats = typeof on === "boolean" ? on : !ui.cheats;
+        if (ui.cheats) ui.help = false;
+        view.staticKey = "";
+    }
+    /* Pause membekukan state.gt & bot; penanda performance.now() digeser saat resume. */
+    function setPaused(on) {
+        if (online || !state || state.phase !== "running" || on === paused) return;
+        if (on) {
+            paused = true;
+            pausedAt = performance.now();
+        } else {
+            const shift = performance.now() - pausedAt;
+            pausedAt = 0;
+            for (const an of view.anim) if (an) an.t0 += shift;
+            if (view.toast) view.toast.until += shift;
+            lastT += shift;
+            view.lastPub += shift;
+            paused = false;
+        }
+        view.staticKey = "";
+    }
+    function togglePause() { setPaused(!paused); }
+    function onVis() { if (document.hidden && !online && state?.phase === "running" && !paused) setPaused(true); }
+    function onKey(e) {
+        if (destroyed || e.metaKey || e.ctrlKey || e.altKey) return;
+        const c = e.code;
+        /* prioritas: help → cheats → pause/Escape → aksi game */
+        if (c === "KeyH") { e.preventDefault(); toggleHelp(); return; }
+        if (c === "KeyC") { e.preventDefault(); if (!ui.help) toggleCheats(); return; }
+        if (c === "KeyP" || c === "Escape") {
+            e.preventDefault();
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheats) toggleCheats(false);
+            else togglePause();
+            return;
+        }
+        if (c === "KeyR") {
+            e.preventDefault();
+            if (!ui.help && !ui.cheats) submitAction({ type: "restart" });
+            return;
+        }
+        if (c === "Enter") {
+            const focused = e.target && e.target.closest && e.target.closest("button,input");
+            if (!focused) {
+                if (ui.help) toggleHelp(false);
+                else if (ui.cheats) toggleCheats(false);
+                else if (state && state.phase === "intro") submitAction({ type: "start" });
+                else if (state && state.phase === "finished") submitAction({ type: "restart" });
+            }
+            e.preventDefault();
+            return;
+        }
+        const mv = KEYMAP[c];
+        if (mv) {
+            e.preventDefault();
+            if (!ui.help && !ui.cheats && !paused) submitAction({ type: "hop", dr: mv[0], dc: mv[1] });
+        }
+    }
 
     /* ---------- input: mouse / touch di papan ---------- */
     let swipe = null;
@@ -1017,7 +1104,7 @@ export function mount(root, context = {}) {
         return new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
     }
     function onBoardDown(e) {
-        if (!state || state.phase !== "running" || ui.help) return;
+        if (!state || state.phase !== "running" || ui.help || ui.cheats || paused) return;
         e.preventDefault();
         swipe = { x: e.clientX, y: e.clientY };
         try { hitRect.setPointerCapture(e.pointerId); } catch (_) { }
@@ -1026,7 +1113,7 @@ export function mount(root, context = {}) {
         if (!swipe) return;
         const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
         swipe = null;
-        if (!state || state.phase !== "running") return;
+        if (!state || state.phase !== "running" || ui.help || ui.cheats || paused) return;
         if (Math.abs(dx) >= 24 || Math.abs(dy) >= 24) {
             if (Math.abs(dx) > Math.abs(dy)) submitAction({ type: "hop", dr: 0, dc: dx > 0 ? 1 : -1 });
             else submitAction({ type: "hop", dr: dy < 0 ? 1 : -1, dc: 0 });
@@ -1052,13 +1139,16 @@ export function mount(root, context = {}) {
     }
     root.querySelectorAll("[data-pad] .rc-dbtn").forEach((btn) => {
         btn.addEventListener("pointerdown", (e) => {
+            if (ui.help || ui.cheats || paused) return;
             e.preventDefault();
             const mv = PAD_MAP[btn.dataset.dir];
             if (!mv) return;
             submitAction({ type: "hop", dr: mv[0], dc: mv[1] });
             stopPad(btn);
             const delay = setTimeout(() => {
-                const rep = setInterval(() => submitAction({ type: "hop", dr: mv[0], dc: mv[1] }), 170);
+                const rep = setInterval(() => {
+                    if (!paused && !ui.help && !ui.cheats) submitAction({ type: "hop", dr: mv[0], dc: mv[1] });
+                }, 170);
                 padTimers.set(btn, { delay: null, rep });
             }, 280);
             padTimers.set(btn, { delay, rep: null });
@@ -1071,13 +1161,15 @@ export function mount(root, context = {}) {
     function handleClick(event) {
         const exit = event.target.closest("[data-exit]");
         if (exit) { onExit(); return; }
-        const b = event.target.closest("[data-act],[data-help],[data-cheats],[data-pause],[data-close],[data-cheatbtn]");
+        const b = event.target.closest("[data-act],[data-restart],[data-help],[data-cheats],[data-pause],[data-close],[data-cheatbtn]");
         if (!b) return;
         if (b.dataset.act === "start" || b.dataset.act === "restart") submitAction({ type: b.dataset.act });
-        else if (b.hasAttribute("data-help")) { ui.help = !ui.help; view.staticKey = ""; }
-        else if (b.hasAttribute("data-cheats")) { if (!online) { ui.cheats = !ui.cheats; view.staticKey = ""; } }
+        else if (b.hasAttribute("data-restart")) submitAction({ type: "restart" });
+        else if (b.hasAttribute("data-help")) toggleHelp();
+        else if (b.hasAttribute("data-cheats")) toggleCheats();
         else if (b.hasAttribute("data-pause")) togglePause();
-        else if (b.dataset.close) { ui[b.dataset.close === "help" ? "help" : "cheats"] = false; view.staticKey = ""; }
+        else if (b.dataset.close === "help") toggleHelp(false);
+        else if (b.dataset.close) toggleCheats(false);
         else if (b.dataset.cheatbtn) applyCheatButton(b.dataset.cheatbtn);
         if (b.blur) b.blur();
     }

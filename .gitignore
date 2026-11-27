@@ -10,6 +10,7 @@
 node_modules/        # dependency npm, bukan bagian dari static site
 reports/             # hasil npm run check (JSON, Markdown, screenshot)
 playwright-report/   # hasil laporan Playwright
+.opencode/
 test-results/        # hasil sementara Playwright
 dist/                # output build (project ini tidak punya build step)
 build/               # output build

@@ -4,6 +4,8 @@
   - Regenerate manifest: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "poly-tribes",
     name: "Poly Tribes",
@@ -442,129 +444,168 @@ export function mount(root, context = {}) {
     let cursor = { x: 1, y: 1 };    // kursor keyboard
     let showCursor = false;
     let zoomIdx = 0;
-    let modalKind = null, modalData = null, modalLocked = false;
+    let modalKind = null, modalData = null, modalLocked = false, lastModalView = null;
+    let helpOpen = false, cheatsOpen = false, paused = false;
+    let pauseAt = 0, timeShift = 0;   // penanda waktu di-geser saat resume dari jeda
     let overShown = false, lastActive = null, lastKey = "";
-    let toastTimer = null, pan = null, dragSuppress = false, mounted = true;
+    let toastTimer = null, toastDue = 0, toastRemain = 0, pan = null, dragSuppress = false, mounted = true;
     const setupPick = { tribe: "imperius", size: "m", seed: "" };
 
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("polyTribesHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("polyTribesHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
     const $ = (s) => root.querySelector(s);
+    const now = () => Date.now() - timeShift;
+    const overlayOpen = () => helpOpen || cheatsOpen || paused || !!modalKind;
     const mySlot = () => (online && state ? state.slotOf[playerIndex] : 0);
     const myTurn = () => !!state && state.phase === "playing" && state.active === mySlot();
 
     root.innerHTML = `
-<div class="pt-app">
+<div class="game-app pt game-fill" data-pt>
 <style>
-.pt-app{--bg:#0f1319;--panel:#161b23;--panel2:#1b2230;--line:#ffffff14;--text:#e8ebf1;--dim:#98a2b3;--accent:#5b8cff;--good:#3ecf8e;--warn:#f5b84f;--bad:#ff5d52;
-  display:flex;flex-direction:column;gap:10px;max-width:1100px;margin:0 auto;padding:12px;color:var(--text);
-  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.45}
-.pt-app [hidden]{display:none!important}
-.pt-app *{box-sizing:border-box}
-.pt-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.pt-brand{font-weight:800;font-size:15px;letter-spacing:.2px;margin-right:2px}
-.pt-chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;white-space:nowrap}
+/* Poly Tribes — satu bar HUD, board mengisi ruang, semua panel jadi overlay. */
+.pt{--bg:#0f1319;--panel:#161b23;--panel2:#1b2230;--line:#ffffff14;--text:#e8ebf1;--dim:#98a2b3;--accent:#5b8cff;--good:#3ecf8e;--warn:#f5b84f;--bad:#ff5d52;
+  width:100%;height:100%;min-height:0;max-width:1100px;margin:0 auto;padding:8px;display:flex;flex-direction:column;gap:8px;color:var(--text);outline:none;
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;line-height:1.5}
+.pt *{box-sizing:border-box}
+.pt [hidden]{display:none!important}
+.pt :is(button,input):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pt-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:none}
+.pt-hud-info{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1 1 auto;min-width:0}
+.pt-hud-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:none}
+.pt-chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.pt-chip b{font-weight:700;font-variant-numeric:tabular-nums}
 .pt-chip i{font-style:normal;color:var(--dim);font-weight:500}
-.pt-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
-.pt-spacer{flex:1}
-.pt-icon{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:15px;cursor:pointer}
-.pt-icon:hover{background:var(--panel2)}
-.pt-ticker{color:var(--dim);font-size:12px;min-height:18px;padding:0 2px}
-.pt-mapzone{position:relative}
-.pt-mapwrap{overflow:auto;max-height:66vh;border:1px solid var(--line);border-radius:14px;background:#0c1117}
-.pt-mapwrap svg{display:block;width:100%;height:auto;touch-action:pan-x pan-y}
-.pt-zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:2}
-.pt-zoom .pt-icon{background:#161b23ee}
-.pt-hit{fill:transparent;cursor:pointer}
-.pt-hit:hover{fill:#ffffff22}
-.pt-selr{animation:ptPulse 1.1s ease-in-out infinite}
-@keyframes ptPulse{0%,100%{stroke-opacity:1}50%{stroke-opacity:.25}}
-.pt-selbar{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-size:12.5px;min-height:52px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.pt-selbar b{font-size:13px}
-.pt-selbar .pt-dim{color:var(--dim)}
-.pt-actions{display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr;gap:8px}
-.pt-btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:11px;padding:10px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:44px}
-.pt-btn:hover:not(:disabled){background:#232c3f}
+.pt-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none;background:#556}
+.pt-chip-sel{flex:1 1 140px;min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis;color:var(--dim);font-weight:500}
+.pt-chip-log{flex:0 1 190px;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--dim);font-weight:500}
+.pt-spacer{flex:1 1 auto}
+.pt-btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 10px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;min-height:32px;transition:background .15s,border-color .15s}
+.pt-btn:hover:not(:disabled){background:#232c3f;border-color:var(--accent)}
 .pt-btn:disabled{opacity:.45;cursor:default}
 .pt-btn.primary{background:var(--accent);border-color:transparent;color:#fff}
 .pt-btn.primary:hover:not(:disabled){background:#6f9aff}
 .pt-btn.ghost{background:transparent}
-.pt-btn.small{min-height:34px;padding:6px 10px;font-size:12px}
-.pt-overlay{position:fixed;inset:0;background:rgba(6,9,14,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
-.pt-modal{width:min(560px,94vw);max-height:84vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px}
-.pt-modal h3{margin:0 0 4px;font-size:17px}
-.pt-modal h4{margin:14px 0 6px;font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
-.pt-modal p{margin:6px 0;font-size:13px;color:#c6cdd9}
-.pt-modal ul{margin:6px 0;padding-left:18px;font-size:13px;color:#c6cdd9}
+.pt-btn.small{min-height:32px;padding:5px 9px;font-size:11.5px}
+.pt-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.pt-icon-btn svg{flex:none;display:block}
+.pt-btn-label{white-space:nowrap}
+.pt .pt-i-play,.pt.paused .pt-i-pause{display:none}
+.pt.paused .pt-i-play{display:block}
+.pt.game-fill>.pt-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;flex-direction:column;overflow:hidden;padding:0;margin:0;border:1px solid var(--line);border-radius:12px;background:#0c1117}
+.pt-mapwrap{position:relative;flex:1 1 auto;min-height:0;overflow:auto;border-radius:12px;background:#0c1117}
+.pt-mapwrap svg{display:block;width:100%;height:auto;touch-action:pan-x pan-y}
+.pt-zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:2}
+.pt-zoom .pt-btn{min-width:32px;justify-content:center;background:#161b23ee}
+.pt-hit{fill:transparent;cursor:pointer}
+.pt-hit:hover{fill:#ffffff22}
+.pt-selr{animation:ptPulse 1.1s ease-in-out infinite}
+@keyframes ptPulse{0%,100%{stroke-opacity:1}50%{stroke-opacity:.25}}
+.pt-overlay{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:12px;background:rgba(6,9,14,.78)}
+.pt-modal{width:min(600px,100%);max-height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.pt-modal-scroll{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:thin}
+.pt-modal h3{margin:0 0 8px;font-size:17px}
+.pt-modal h4{margin:14px 0 6px;font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+.pt-modal p{margin:8px 0;font-size:13px;color:#c6cdd9}
+.pt-modal ul{margin:8px 0;padding-left:18px;font-size:13px;color:#c6cdd9}
 .pt-modal li{margin:4px 0}
-.pt-row{display:flex;align-items:center;gap:10px;justify-content:space-between;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:9px 12px;margin-top:8px}
+.pt-row{display:flex;align-items:center;gap:12px;justify-content:space-between;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px}
 .pt-row .pt-rl{min-width:0}
 .pt-row .pt-rl b{font-size:13px}
 .pt-row .pt-rl small{display:block;color:var(--dim);font-size:11.5px}
 .pt-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-.pt-card{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px;text-align:left;color:var(--text);font:inherit;cursor:pointer}
+.pt-card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;min-height:44px;text-align:left;color:var(--text);font:inherit;cursor:pointer}
 .pt-card:disabled{opacity:.45;cursor:default}
 .pt-card b{font-size:13px;display:block}
-.pt-card small{color:var(--dim);font-size:11.5px;display:block;margin-top:2px}
-.pt-tribe{display:block;width:100%;text-align:left;background:var(--panel2);border:2px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px;color:var(--text);font:inherit;cursor:pointer}
+.pt-card small{color:var(--dim);font-size:11.5px;display:block;margin-top:4px}
+.pt-tribe{display:block;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:8px;color:var(--text);font:inherit;cursor:pointer}
 .pt-tribe small{display:block;color:var(--dim);font-size:12px}
-.pt-tribe.on{border-color:var(--good)}
-.pt-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-.pt-pick{background:var(--panel2);border:2px solid var(--line);border-radius:999px;padding:7px 14px;color:var(--text);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.pt-tribe.on{border-color:var(--good);box-shadow:inset 0 0 0 1px var(--good)}
+.pt-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.pt-pick{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;min-height:40px;color:var(--text);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
 .pt-pick.on{border-color:var(--good)}
-.pt-input{width:100%;background:#0f141c;border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px 12px;font:inherit;font-size:13px;margin-top:6px}
-.pt-modalbtns{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
-.pt-modalbtns .pt-btn{flex:1}
+.pt-input{width:100%;background:#0f141c;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 12px;min-height:40px;font:inherit;font-size:13px;margin-top:8px}
+.pt-modalbtns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;position:sticky;bottom:0;padding:10px 0 0;background:var(--panel);border-top:1px solid var(--line);z-index:1}
+.pt-modalbtns .pt-btn{flex:1;min-height:38px}
 .pt-kbd{background:#0f141c;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:11.5px;font-family:ui-monospace,monospace}
-.pt-toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:#1c2430;border:1px solid var(--line);border-radius:12px;padding:10px 16px;font-size:13px;font-weight:600;z-index:60;box-shadow:0 8px 24px #0008}
+.pt-toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);max-width:calc(100% - 32px);background:#1c2430;border:1px solid var(--line);border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;z-index:60;box-shadow:0 4px 12px #0006}
 .pt-owned{color:var(--good);font-weight:700;font-size:12px;white-space:nowrap}
 .pt-note{color:var(--dim);font-size:11.5px;margin-top:10px}
 @media (max-width:640px){
-  .pt-app{padding:8px;gap:8px}
-  .pt-brand{font-size:14px}
-  .pt-chip{padding:4px 9px;font-size:11.5px}
-  .pt-actions{grid-template-columns:1fr 1fr;gap:6px}
-  .pt-actions .pt-btn.primary{grid-column:1/-1}
-  .pt-mapwrap{max-height:56vh}
+  .pt{gap:6px;padding:6px}
+  .pt-chip{padding:4px 7px;font-size:10.5px}
+  .pt-modal{padding:12px}
+  .pt-modal-scroll{scrollbar-width:none}
+  .pt-modal-scroll::-webkit-scrollbar{display:none}
   .pt-cards{grid-template-columns:1fr}
+  .pt-note{display:none}
+}
+@media (prefers-reduced-motion:reduce){.pt-selr{animation:none}.pt *{transition-duration:.01ms!important}}
+
+/* --- layout overrides terakhir (mengalahkan pointer:coarse 44px) --- */
+.pt .pt-hud .pt-btn{min-height:32px;padding:5px 9px;font-size:10px}
+@media (max-width:640px){
+  .pt.game-fill>.pt-board:not(:has(.pt-overlay:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
+  .pt.game-fill>.pt-board:has(.pt-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .pt .pt-hud{flex-direction:column;align-items:stretch;gap:4px;margin-bottom:2px}
+  .pt .pt-hud-info{flex-wrap:nowrap;overflow:hidden}
+  .pt .pt-hud-actions{flex-wrap:nowrap;gap:3px;overflow-x:auto;scrollbar-width:none}
+  .pt .pt-hud-actions::-webkit-scrollbar{display:none}
+  .pt .pt-hud .pt-chip{padding:4px 6px;font-size:9px}
+  .pt .pt-hud .pt-chip-log,.pt .pt-hud [data-act="menu"]{display:none}
+  .pt .pt-hud .pt-chip-sel{flex:1 1 auto;min-width:0;font-size:9px}
+  .pt .pt-hud .pt-btn{min-height:32px;padding:5px 8px;font-size:9px;flex:none}
+  .pt .pt-hud .pt-btn-label,.pt .pt-hud .pt-spacer{display:none}
+  .pt .pt-overlay{padding:8px}
+  .pt .pt-modal{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .pt .pt-modalbtns{position:static;margin:10px 0 0;padding:8px 0 0}
+}
+@media (pointer:coarse){
+  .pt .pt-hud .pt-btn{min-height:32px;padding:5px 9px;font-size:9px}
 }
 </style>
 
-<header class="pt-top">
-  <span class="pt-brand">Poly Tribes</span>
-  <span class="pt-chip">⭐ <b data-hud="stars">–</b> <i data-hud="income"></i></span>
-  <span class="pt-chip">Giliran <b data-hud="turn">–</b></span>
-  <span class="pt-chip"><span class="pt-dot" data-hud="dot"></span><span data-hud="who">Siap</span></span>
-  <span class="pt-spacer"></span>
-  <button class="pt-icon" type="button" data-act="help" title="Bantuan (H)" aria-label="Bantuan">?</button>
-  <button class="pt-icon" type="button" data-act="cheatmenu" data-el="cheatbtn" title="Cheat (X)" aria-label="Cheat">🪄</button>
-  <button class="pt-icon" type="button" data-act="menu" title="Menu (M)" aria-label="Menu">☰</button>
-</header>
-
-<div class="pt-ticker" data-el="ticker"></div>
-
-<div class="pt-mapzone">
+<div class="pt-hud">
+  <div class="pt-hud-info">
+    <span class="pt-chip">⭐ <b data-hud="stars">–</b> <i data-hud="income"></i></span>
+    <span class="pt-chip">Giliran <b data-hud="turn">–</b></span>
+    <span class="pt-chip"><span class="pt-dot" data-hud="dot"></span><span data-hud="who">Siap</span></span>
+    <span class="pt-chip pt-chip-sel" data-el="selbar">Pilih suku dan ukuran peta.</span>
+    <span class="pt-chip pt-chip-log" data-el="ticker"></span>
+    <span class="pt-spacer"></span>
+  </div>
+  <div class="pt-hud-actions">
+    <button class="pt-btn pt-icon-btn" type="button" data-act="tech" aria-label="Teknologi" title="Teknologi (T)">${iconSVG("bookOpen", { size: 14 })}<span class="pt-btn-label">Tech</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-act="city" aria-label="Kota" title="Kota (K)">${iconSVG("home", { size: 14 })}<span class="pt-btn-label">City</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-act="nextunit" aria-label="Unit berikutnya" title="Unit berikutnya (N)">${iconSVG("refresh", { size: 14 })}<span class="pt-btn-label">Next</span></button>
+    <button class="pt-btn pt-icon-btn primary" type="button" data-act="end" data-el="endbtn" aria-label="Akhiri giliran" title="Akhiri giliran (E)">${iconSVG("arrowRight", { size: 14 })}<span class="pt-btn-label">End</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-act="menu" aria-label="Menu" title="Menu (M)">${iconSVG("menu", { size: 14 })}<span class="pt-btn-label">Menu</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pt-btn-label">Help</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-cheats data-el="cheatbtn" aria-label="Cheats" title="Cheats (C)" ${online ? "hidden" : ""}>${iconSVG("wrench", { size: 14 })}<span class="pt-btn-label">Cheats</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" ${online ? "disabled" : ""}>${iconSVG("pause", { size: 14, className: "pt-i-pause" })}${iconSVG("play", { size: 14, className: "pt-i-play" })}<span class="pt-btn-label">Pause</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)" ${online && !room?.isHost ? "disabled" : ""}>${iconSVG("rotateCcw", { size: 14 })}<span class="pt-btn-label">Restart</span></button>
+    <button class="pt-btn pt-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pt-btn-label">Exit</span></button>
+  </div>
+</div>
+<section class="game-panel pt-board" data-board>
   <div class="pt-mapwrap" data-el="mapwrap">
     <svg data-el="svg" role="img" aria-label="Peta Poly Tribes"></svg>
   </div>
   <div class="pt-zoom">
-    <button class="pt-icon" type="button" data-act="zoomin" title="Perbesar (+)">+</button>
-    <button class="pt-icon" type="button" data-act="zoomout" title="Perkecil (−)">−</button>
-    <button class="pt-icon" type="button" data-act="nextunit" title="Unit berikutnya (N)">⟳</button>
+    <button class="pt-btn pt-icon-btn" type="button" data-act="zoomin" aria-label="Perbesar" title="Perbesar (+)">${iconSVG("zoomIn", { size: 14 })}</button>
+    <button class="pt-btn pt-icon-btn" type="button" data-act="zoomout" aria-label="Perkecil" title="Perkecil (−)">${iconSVG("zoomOut", { size: 14 })}</button>
+    <button class="pt-btn pt-icon-btn" type="button" data-act="nextunit" aria-label="Unit berikutnya" title="Unit berikutnya (N)">${iconSVG("refresh", { size: 14 })}</button>
   </div>
-</div>
-
-<div class="pt-selbar" data-el="selbar"></div>
-
-<footer class="pt-actions">
-  <button class="pt-btn" type="button" data-act="nextunit">Unit ⟳</button>
-  <button class="pt-btn" type="button" data-act="tech">Teknologi</button>
-  <button class="pt-btn" type="button" data-act="city">Kota</button>
-  <button class="pt-btn primary" type="button" data-act="end" data-el="endbtn">Akhiri Giliran</button>
-</footer>
-
-<div class="pt-overlay" data-el="overlay" hidden><div class="pt-modal" data-el="modal"></div></div>
+  <div class="pt-overlay" data-el="overlay" hidden><div class="pt-modal" data-el="modal"></div></div>
+</section>
 <div class="pt-toast" data-el="toast" hidden></div>
 </div>`;
 
+    const app = $("[data-pt]");
     const svg = $('[data-el="svg"]');
     const wrap = $('[data-el="mapwrap"]');
     const ticker = $('[data-el="ticker"]');
@@ -574,6 +615,7 @@ export function mount(root, context = {}) {
     const toastEl = $('[data-el="toast"]');
     const endBtn = $('[data-el="endbtn"]');
     const cheatBtn = $('[data-el="cheatbtn"]');
+    const pauseBtn = $("[data-pause]");
     const hud = {
         stars: $('[data-hud="stars"]'), income: $('[data-hud="income"]'),
         turn: $('[data-hud="turn"]'), who: $('[data-hud="who"]'), dot: $('[data-hud="dot"]'),
@@ -586,20 +628,92 @@ export function mount(root, context = {}) {
         toastEl.textContent = msg;
         toastEl.hidden = false;
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2400);
+        toastRemain = 2400; toastDue = now() + toastRemain;
+        if (!paused) toastTimer = setTimeout(() => { toastEl.hidden = true; toastTimer = null; }, toastRemain);
+    }
+    function armToast(ms) {
+        clearTimeout(toastTimer);
+        toastRemain = ms; toastDue = now() + ms;
+        toastTimer = setTimeout(() => { toastEl.hidden = true; toastTimer = null; }, ms);
+    }
+    function activeView() {
+        if (helpOpen) return "help";
+        if (cheatsOpen) return "cheat";
+        if (paused) return "pause";
+        return modalKind;
+    }
+    function renderModalHtml(force) {
+        const view = activeView();
+        if (!view) { overlay.hidden = true; lastModalView = null; return; }
+        overlay.hidden = false;
+        if (force || view !== lastModalView || ["tech", "city", "cheat", "menu"].includes(view)) {
+            modal.innerHTML = '<div class="pt-modal-scroll">' + buildModal(view) + "</div>";
+            lastModalView = view;
+        }
     }
     function openModal(kind, data = {}) {
         modalKind = kind; modalData = data; modalLocked = !!data.locked;
-        modal.innerHTML = buildModal();
-        overlay.hidden = false;
+        renderModalHtml(true);
+    }
+    function clearOverlays() {
+        helpOpen = false; cheatsOpen = false;
+        if (paused) {
+            timeShift += Date.now() - pauseAt;
+            pauseAt = 0; paused = false;
+            if (toastRemain > 0) armToast(toastRemain);
+            else toastRemain = 0;
+        }
+        modalKind = null; modalData = null; modalLocked = false;
     }
     function closeModal(force) {
-        if (modalLocked && !force) return;
+        if (force) { clearOverlays(); render(); return; }
+        if (modalLocked) return;
+        if (helpOpen) { helpOpen = false; render(); return; }
+        if (cheatsOpen) { cheatsOpen = false; render(); return; }
+        if (paused) { togglePause(false); return; }
         modalKind = null; modalData = null; modalLocked = false;
-        overlay.hidden = true;
+        render();
     }
-    function refreshModal() {
-        if (modalKind && ["tech", "city", "cheat", "menu"].includes(modalKind)) modal.innerHTML = buildModal();
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online || paused || !state) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    /* Jeda: hentikan bot/timer dan geser penanda Date.now() saat resume. */
+    function togglePause(on) {
+        if (online || !state) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        if (next) {
+            pauseAt = Date.now();
+            toastRemain = Math.max(0, toastDue - now());
+            clearTimeout(toastTimer); toastTimer = null;
+            cheatsOpen = false;
+            paused = true;
+        } else {
+            timeShift += Date.now() - pauseAt;
+            pauseAt = 0;
+            paused = false;
+            if (toastRemain > 0) armToast(toastRemain);
+            else toastRemain = 0;
+        }
+        render();
+    }
+    function forceCloseAll() {
+        clearOverlays();
+        render();
+    }
+    function restartGame() {
+        forceCloseAll();
+        if (online) { if (room.isHost) submitAction({ type: "rematch" }); }
+        else { openModal("setup", { locked: true }); }
+        render();
     }
     function setZoom(i) {
         zoomIdx = clamp(i, 0, ZOOMS.length - 1);
@@ -629,10 +743,13 @@ export function mount(root, context = {}) {
         if (online && room.isHost && state) room.publishState(state).catch(console.warn);
     }
     function submitAction(action) {
+        if (paused || helpOpen) return;
+        if (cheatsOpen && action.type !== "cheat") return;
         if (online && !room.isHost) { room.sendAction(action).catch(console.warn); return; }
         applyAction(action, playerIndex);
     }
     function afterPlayerAction() {
+        if (paused || helpOpen || cheatsOpen) return;
         // selesaikan giliran bot secara sinkron (mode AI)
         if (!online && state && state.phase === "playing" && state.active === 1) {
             runBot(state);
@@ -643,6 +760,8 @@ export function mount(root, context = {}) {
 
     function applyAction(action, actorConn) {
         if (!state || !action) return;
+        if (paused || helpOpen) return;
+        if (cheatsOpen && action.type !== "cheat") return;
         if (action.type === "rematch") {
             if (online && actorConn !== 0) return; // hanya host
             startOnline(true);
@@ -868,51 +987,44 @@ export function mount(root, context = {}) {
 
     function renderSelbar() {
         if (!state) {
-            selbar.innerHTML = '<span class="pt-dim">' + (online ? "Menunggu permainan dari host…" : "Pilih suku dan ukuran peta untuk mulai.") + "</span>";
+            selbar.textContent = online ? "Menunggu permainan dari host…" : "Pilih suku & ukuran peta.";
             return;
         }
         const me = mySlot();
-        let h = "";
         if (sel && sel.kind === "unit") {
             const u = unitById(state, sel.id);
             if (u) {
                 const U = UNITS[u.t];
                 const mine = u.owner === me;
                 const status = !mine ? (online ? "Lawan" : "Bot")
-                    : u.attacked ? "Sudah bertindak" : u.moved ? "Sudah bergerak — masih bisa menyerang" : myTurn() ? "Siap" : "Menunggu giliranmu";
-                h = `<span class="pt-dot" style="background:${COL[u.owner]}"></span><b>${U.label}</b>`
-                    + `<span>HP ${u.hp}/${U.hp}</span><span>ATK ${U.atk}</span><span>DEF ${U.def}</span>`
-                    + `<span>Jarak ${U.range}</span><span>Gerak ${U.move}</span>`
-                    + `<span class="pt-dim">${status}</span>`
-                    + (mine && myTurn() && !u.attacked ? '<span class="pt-dim">Titik putih = bergerak • lingkaran merah = serang</span>' : "")
-                    + '<button class="pt-btn small ghost" type="button" data-act="deselect">Tutup</button>';
+                    : u.attacked ? "Sudah bertindak" : u.moved ? "Bisa menyerang" : myTurn() ? "Siap" : "Menunggu giliran";
+                selbar.textContent = `${U.label} ${slotName(u.owner)} · HP ${u.hp}/${U.hp} · ATK ${U.atk} DEF ${U.def} · ${status}`;
+                return;
             }
         } else if (sel && sel.kind === "city") {
             const c = cityAt(state, sel.x, sel.y);
             if (c) {
                 const own = c.owner === me;
-                h = `<span class="pt-dot" style="background:${COL[c.owner]}"></span><b>${c.name}${c.cap ? " (Ibu Kota)" : ""}</b>`
-                    + `<span>Level ${c.level}</span><span>+${c.level}⭐/giliran</span>`
-                    + `<span class="pt-dim">${own ? "Milikmu" : c.owner === -1 ? "Netral — injak untuk merebut" : "Milik lawan — kosongkan lalu injak"}</span>`
-                    + (own ? '<button class="pt-btn small" type="button" data-act="city">Buka Kota</button>' : "");
+                selbar.textContent = `${c.name}${c.cap ? " ★" : ""} · L${c.level} · +${c.level}⭐ · ${own ? "Milikmu" : c.owner === -1 ? "Netral" : "Milik lawan"}`;
+                return;
             }
         }
-        if (!h) {
-            const nc = state.cities.filter((c) => c.owner === me).length;
-            const nu = state.units.filter((u) => u.owner === me).length;
-            h = `<span class="pt-dot" style="background:${COL[me]}"></span><span>Kamu: <b>${slotName(me)}</b> (${TRIBES[state.tribes[me]].label})</span>`
-                + `<span>Kota ${nc}</span><span>Unit ${nu}</span>`
-                + '<span class="pt-dim">Ketuk unit/kota di peta. Rebut ibu kota lawan untuk menang.</span>';
-        }
-        selbar.innerHTML = h;
+        const nc = state.cities.filter((c) => c.owner === me).length;
+        const nu = state.units.filter((u) => u.owner === me).length;
+        selbar.textContent = `Kamu: ${slotName(me)} (${TRIBES[state.tribes[me]].label}) · Kota ${nc} · Unit ${nu}`;
     }
 
     function renderHud() {
+        app.classList.toggle("paused", paused);
+        const plabel = pauseBtn.querySelector(".pt-btn-label");
+        if (plabel) plabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.disabled = online || !state;
         if (!state) {
             hud.stars.textContent = "–"; hud.income.textContent = ""; hud.turn.textContent = "–";
             hud.who.textContent = online ? "Menunggu…" : "Siap"; hud.dot.style.background = "#556";
             endBtn.disabled = true;
-            ticker.textContent = online ? "Menunggu state dari host…" : "Tekan ? untuk cara bermain.";
+            ticker.textContent = online ? "Menunggu state dari host…" : "Tekan H untuk cara bermain.";
             return;
         }
         const me = mySlot();
@@ -923,8 +1035,10 @@ export function mount(root, context = {}) {
         hud.who.textContent = state.phase === "over" ? "Selesai"
             : myTurn() ? "Giliranmu" : online ? "Giliran lawan…" : "Giliran Bot…";
         const ready = state.units.filter((u) => u.owner === me && !u.attacked).length;
-        endBtn.textContent = myTurn() ? `Akhiri Giliran (${ready})` : "Akhiri Giliran";
-        endBtn.disabled = !myTurn();
+        const endLabel = endBtn.querySelector(".pt-btn-label");
+        if (endLabel) endLabel.textContent = myTurn() ? `End (${ready})` : "End";
+        endBtn.setAttribute("aria-label", myTurn() ? `Akhiri giliran (${ready} unit siap)` : "Akhiri giliran");
+        endBtn.disabled = !myTurn() || overlayOpen();
         ticker.textContent = state.log[0] || "";
     }
 
@@ -942,7 +1056,7 @@ export function mount(root, context = {}) {
         }
         renderHud();
         renderSelbar();
-        refreshModal();
+        renderModalHtml(false);
         // modal kemenangan/kekalahan otomatis
         if (state && state.phase === "over" && !overShown) { overShown = true; openModal("over"); }
         if (state && state.phase === "playing" && modalKind === "over") closeModal(true);
@@ -950,9 +1064,10 @@ export function mount(root, context = {}) {
 
     /* ---------------- isi modal ---------------- */
 
-    function buildModal() {
+    function buildModal(view) {
+        const kind = view || modalKind;
         const me = state ? mySlot() : 0;
-        if (modalKind === "setup") {
+        if (kind === "setup") {
             let h = "<h3>Poly Tribes</h3><p>Strategi bergiliran ala Polytopia. Rebut <b>ibu kota lawan</b> sebelum ibu kotamu jatuh. Peta acak dijamin terhubung dan bisa diselesaikan.</p><h4>Pilih suku</h4>";
             for (const k of Object.keys(TRIBES)) {
                 const t = TRIBES[k];
@@ -970,7 +1085,7 @@ export function mount(root, context = {}) {
                 + '<p class="pt-note">Undian koin menentukan siapa jalan duluan.</p>';
             return h;
         }
-        if (modalKind === "help") {
+        if (kind === "help") {
             return `<h3>Cara Bermain</h3>
 <p><b>Tujuan:</b> rebut ibu kota lawan (bendera). Kamu kalah jika ibu kotamu direbut.</p>
 <h4>Alur giliran</h4>
@@ -998,18 +1113,24 @@ export function mount(root, context = {}) {
 <li><span class="pt-kbd">Klik</span> pilih/aksi • <span class="pt-kbd">Klik kanan</span>/<span class="pt-kbd">Esc</span> batal pilih</li>
 <li><span class="pt-kbd">WASD</span>/<span class="pt-kbd">Panah</span> kursor • <span class="pt-kbd">Enter</span>/<span class="pt-kbd">Spasi</span> aksi</li>
 <li><span class="pt-kbd">N</span> unit berikutnya • <span class="pt-kbd">E</span> akhiri giliran • <span class="pt-kbd">T</span> teknologi • <span class="pt-kbd">K</span> kota</li>
-<li><span class="pt-kbd">H</span> bantuan • <span class="pt-kbd">X</span> cheat • <span class="pt-kbd">M</span> menu • <span class="pt-kbd">+</span>/<span class="pt-kbd">−</span> zoom • <span class="pt-kbd">Ctrl+scroll</span> zoom • seret peta saat zoom</li>
+<li><span class="pt-kbd">H</span> bantuan • <span class="pt-kbd">C</span> cheat • <span class="pt-kbd">P</span> jeda • <span class="pt-kbd">R</span> ulang</li>
+<li><span class="pt-kbd">+</span>/<span class="pt-kbd">−</span> zoom • <span class="pt-kbd">Ctrl+scroll</span> zoom • seret peta saat zoom</li>
 </ul>
 <h4>Kontrol mobile</h4>
 <ul>
-<li>Ketuk unit → ketuk titik/lingkaran. Tombol besar di bawah untuk Teknologi, Kota, dan Giliran.</li>
+<li>Ketuk unit → ketuk titik/lingkaran. Tombol di bar atas untuk Teknologi, Kota, Unit, dan Giliran.</li>
 <li>Tombol + / − untuk zoom, ⟳ untuk lompat ke unit berikutnya. Geser peta dengan jari saat zoom.</li>
+<li>Ikon di bar atas: bantuan, cheat, jeda, ulang, dan keluar.</li>
 </ul>
-<p class="pt-note">Terinspirasi The Battle of Polytopia. Mode online: slot warna/posisi diacak otomatis.</p>
-<div class="pt-modalbtns"><button class="pt-btn primary" type="button" data-act="closemodal">Mengerti</button></div>`;
+<p class="pt-note">Terinspirasi The Battle of Polytopia. Mode online: slot warna/posisi diacak otomatis. Tekan H untuk membuka panduan ini lagi.</p>
+<div class="pt-modalbtns"><button class="pt-btn primary" type="button" data-help-close>Mengerti</button></div>`;
+        }
+        if (kind === "pause") {
+            return "<h3>Dijeda</h3><p>Peta, bot, dan timer dibekukan. Tekan P atau Esc untuk melanjutkan.</p>"
+                + '<div class="pt-modalbtns"><button class="pt-btn primary" type="button" data-act="resume">Lanjutkan</button></div>';
         }
         if (!state) return "<h3>Menunggu…</h3><p>Permainan belum dimulai.</p>";
-        if (modalKind === "tech") {
+        if (kind === "tech") {
             let h = `<h3>Teknologi</h3><p>Bintangmu: <b>${state.stars[me]}⭐</b>${myTurn() ? "" : " — riset hanya saat giliranmu"}</p>`;
             for (const k of Object.keys(TECHS)) {
                 const t = TECHS[k];
@@ -1023,7 +1144,7 @@ export function mount(root, context = {}) {
             h += '<div class="pt-modalbtns"><button class="pt-btn" type="button" data-act="closemodal">Tutup</button></div>';
             return h;
         }
-        if (modalKind === "city") {
+        if (kind === "city") {
             const mine = state.cities.filter((c) => c.owner === me);
             if (!mine.length) return '<h3>Kota</h3><p>Kamu belum punya kota.</p><div class="pt-modalbtns"><button class="pt-btn" type="button" data-act="closemodal">Tutup</button></div>';
             let cur = (modalData && cityAt(state, modalData.x, modalData.y)) || null;
@@ -1055,7 +1176,7 @@ export function mount(root, context = {}) {
             h += '</div><div class="pt-modalbtns"><button class="pt-btn" type="button" data-act="closemodal">Tutup</button></div>';
             return h;
         }
-        if (modalKind === "cheat") {
+        if (kind === "cheat") {
             const rows = [
                 ["stars", "+25 Bintang", "Tambahkan 25⭐ ke kas suku."],
                 ["reveal", "Buka Seluruh Peta", "Hilangkan kabut perang."],
@@ -1069,7 +1190,7 @@ export function mount(root, context = {}) {
             h += '<div class="pt-modalbtns"><button class="pt-btn" type="button" data-act="closemodal">Tutup</button></div>';
             return h;
         }
-        if (modalKind === "menu") {
+        if (kind === "menu") {
             let h = `<h3>Menu</h3><p>Pemain: <b>${playerName}</b> • Mode: <b>${online ? "Online" : "vs Bot"}</b>`
                 + (state ? ` • Kamu: <b>${slotName(me)}</b> (${TRIBES[state.tribes[me]].label})<br>Seed: <span class="pt-kbd">${state.seed}</span> • Peta ${SIZES[state.size]?.label || state.size}` : "")
                 + "</p><div class='pt-modalbtns'>"
@@ -1082,7 +1203,7 @@ export function mount(root, context = {}) {
                 + '<button class="pt-btn ghost" type="button" data-act="exit">Keluar Game</button></div>';
             return h;
         }
-        if (modalKind === "over") {
+        if (kind === "over") {
             const win = state.winner === me;
             const title = online ? `${slotName(state.winner)} Menang!${win ? " (Kamu)" : ""}` : win ? "🏆 Menang!" : "💀 Kalah…";
             let h = `<h3>${title}</h3><p>${state.reason}</p>`
@@ -1149,46 +1270,54 @@ export function mount(root, context = {}) {
 
     function handleClick(e) {
         if (!mounted) return;
-        if (e.target === overlay) { closeModal(); return; }
-        const hit = e.target.closest ? e.target.closest(".pt-hit") : null;
-        if (hit) {
+        const t = e.target;
+        if (t === overlay) { closeModal(); return; }
+        if (t.closest && t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        const b = t.closest ? t.closest("[data-act]") : null;
+        if (b && !b.disabled) {
+            const a = b.dataset.act;
+            if (a === "exit") { onExit(); return; }
+            if (a === "help") { toggleHelp(); return; }
+            if (a === "cheats") { toggleCheats(); return; }
+            if (a === "cheatclose") { toggleCheats(false); return; }
+            if (a === "pause") { togglePause(); return; }
+            if (a === "resume") { togglePause(false); return; }
+            if (a === "restart") { restartGame(); return; }
+            if (a === "closemodal") { closeModal(); return; }
+            if (a === "rematch") { restartGame(); return; }
+            // Kontrol game hanya aktif bila tidak ada overlay; isi overlay tetap boleh.
+            if (overlayOpen() && !overlay.contains(t)) return;
+            if (a === "menu") { openModal("menu"); return; }
+            if (a === "zoomin") { setZoom(zoomIdx + 1); return; }
+            if (a === "zoomout") { setZoom(zoomIdx - 1); return; }
+            if (a === "nextunit") { cycleUnit(); return; }
+            if (a === "deselect") { sel = null; render(); return; }
+            if (a === "picktribe") { setupPick.tribe = b.dataset.tribe; renderModalHtml(true); return; }
+            if (a === "picksize") { setupPick.size = b.dataset.size; renderModalHtml(true); return; }
+            if (a === "start") {
+                const inp = $("#pt-seed");
+                setupPick.seed = inp ? inp.value : "";
+                startAI(); return;
+            }
+            if (a === "newsetup") { openModal("setup", { locked: true }); return; }
+            if (!state) return;
+            if (a === "tech") { openModal("tech"); return; }
+            if (a === "city") {
+                const c = sel && sel.kind === "city" ? { x: sel.x, y: sel.y } : null;
+                openModal("city", c || {}); return;
+            }
+            if (a === "pickcity") { modalData = { x: Number(b.dataset.x), y: Number(b.dataset.y) }; renderModalHtml(true); return; }
+            if (a === "end") { submitAction({ type: "end" }); return; }
+            if (a === "buytech") { submitAction({ type: "tech", tech: b.dataset.tech }); return; }
+            if (a === "train") { submitAction({ type: "train", x: Number(b.dataset.x), y: Number(b.dataset.y), unit: b.dataset.unit }); return; }
+            if (a === "workshop") { submitAction({ type: "workshop", x: Number(b.dataset.x), y: Number(b.dataset.y) }); return; }
+            if (a === "cheat") { submitAction({ type: "cheat", kind: b.dataset.kind }); return; }
+        }
+        const hit = t.closest ? t.closest(".pt-hit") : null;
+        if (hit && !overlayOpen()) {
             if (dragSuppress) { dragSuppress = false; return; }
             tileClicked(Number(hit.dataset.x), Number(hit.dataset.y));
-            return;
         }
-        const b = e.target.closest ? e.target.closest("[data-act]") : null;
-        if (!b || b.disabled) return;
-        const a = b.dataset.act;
-        if (a === "exit") { onExit(); return; }
-        if (a === "help") { openModal("help"); return; }
-        if (a === "closemodal") { closeModal(); return; }
-        if (a === "menu") { openModal("menu"); return; }
-        if (a === "cheatmenu") { if (!online) openModal("cheat"); return; }
-        if (a === "zoomin") { setZoom(zoomIdx + 1); return; }
-        if (a === "zoomout") { setZoom(zoomIdx - 1); return; }
-        if (a === "nextunit") { cycleUnit(); return; }
-        if (a === "deselect") { sel = null; render(); return; }
-        if (a === "picktribe") { setupPick.tribe = b.dataset.tribe; modal.innerHTML = buildModal(); return; }
-        if (a === "picksize") { setupPick.size = b.dataset.size; modal.innerHTML = buildModal(); return; }
-        if (a === "start") {
-            const inp = $("#pt-seed");
-            setupPick.seed = inp ? inp.value : "";
-            startAI(); return;
-        }
-        if (a === "newsetup") { openModal("setup", { locked: true }); return; }
-        if (a === "rematch") { submitAction({ type: "rematch" }); return; }
-        if (!state) return;
-        if (a === "tech") { openModal("tech"); return; }
-        if (a === "city") {
-            const c = sel && sel.kind === "city" ? { x: sel.x, y: sel.y } : null;
-            openModal("city", c || {}); return;
-        }
-        if (a === "pickcity") { modalData = { x: Number(b.dataset.x), y: Number(b.dataset.y) }; modal.innerHTML = buildModal(); return; }
-        if (a === "end") { submitAction({ type: "end" }); return; }
-        if (a === "buytech") { submitAction({ type: "tech", tech: b.dataset.tech }); return; }
-        if (a === "train") { submitAction({ type: "train", x: Number(b.dataset.x), y: Number(b.dataset.y), unit: b.dataset.unit }); return; }
-        if (a === "workshop") { submitAction({ type: "workshop", x: Number(b.dataset.x), y: Number(b.dataset.y) }); return; }
-        if (a === "cheat") { submitAction({ type: "cheat", kind: b.dataset.kind }); return; }
     }
 
     /* ---------------- event: keyboard (desktop) ---------------- */
@@ -1196,14 +1325,26 @@ export function mount(root, context = {}) {
     function handleKey(e) {
         if (!mounted) return;
         const tag = e.target && e.target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") {
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
             if (e.key === "Escape") closeModal();
             return;
         }
-        if (modalKind) {
-            if (e.key === "Escape") { closeModal(); e.preventDefault(); }
-            return;
+        const code = e.code || "";
+        const hit = (letter) => code === "Key" + letter || (e.key && e.key.toLowerCase() === letter.toLowerCase());
+        // prioritas: help → cheats → pause → Escape → restart → aksi game
+        if (hit("H") || e.key === "?") { if (!e.repeat) toggleHelp(); e.preventDefault(); return; }
+        if (hit("C")) { if (!e.repeat && !helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (hit("P")) { if (!e.repeat && !helpOpen && !cheatsOpen) togglePause(); e.preventDefault(); return; }
+        if (e.key === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            else if (modalKind) closeModal();
+            else { sel = null; showCursor = false; render(); }
+            e.preventDefault(); return;
         }
+        if (hit("R")) { if (!e.repeat && !helpOpen && !cheatsOpen) restartGame(); e.preventDefault(); return; }
+        if (overlayOpen()) { e.preventDefault(); return; }
         const k = e.key.toLowerCase();
         const moveCursor = (dx, dy) => {
             if (!state) return;
@@ -1217,13 +1358,10 @@ export function mount(root, context = {}) {
         if (k === "arrowleft" || k === "a") return moveCursor(-1, 0);
         if (k === "arrowright" || k === "d") return moveCursor(1, 0);
         if (k === "enter" || k === " ") { if (state) { showCursor = true; tileClicked(cursor.x, cursor.y); } e.preventDefault(); return; }
-        if (k === "escape") { sel = null; showCursor = false; render(); return; }
         if (k === "n") { cycleUnit(); e.preventDefault(); return; }
         if (k === "e") { if (myTurn()) submitAction({ type: "end" }); e.preventDefault(); return; }
         if (k === "t") { if (state) openModal("tech"); return; }
         if (k === "k") { if (state) openModal("city", sel && sel.kind === "city" ? { x: sel.x, y: sel.y } : {}); return; }
-        if (k === "h") { openModal("help"); return; }
-        if (k === "x") { if (!online && state) openModal("cheat"); return; }
         if (k === "m") { openModal("menu"); return; }
         if (k === "+" || k === "=") { setZoom(zoomIdx + 1); return; }
         if (k === "-") { setZoom(zoomIdx - 1); return; }

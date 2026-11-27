@@ -2,6 +2,8 @@
 /* Count the Cube — turn-based cube counting (solo vs bot / 1v1 room).
    Random starter, random seats, wireframe verification before next round. */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "count-the-cube", // harus sama dengan nama file (tanpa .js)
     name: "Count the Cube",
@@ -185,79 +187,174 @@ export function mount(root, context = {}) {
         return svgOpen(B.vb(10)) + parts.join("") + "</svg>";
     }
 
-    /* ---------------- shell (minimalist, no tutorial) ---------------- */
+    /* ---------------- shell: HUD + fill board + overlays ---------------- */
     root.innerHTML = `
 <style>
-.cc-app{--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;--acc:#4f46e5;--good:#059669;--bad:#dc2626;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.cc-app{--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;--acc:#4f46e5;--good:#059669;--bad:#dc2626;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0}
+.cc-app *{box-sizing:border-box}
 .cc-app [hidden]{display:none!important}
-.cc-app h2{margin:0;font-size:18px;font-weight:700}
-.cc-app .cc-panel{position:relative;display:flex;flex-direction:column;gap:14px;padding:16px;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.cc-hud{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.cc-round{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
-.cc-round b{color:var(--ink)}
-.cc-players{display:flex;gap:8px}
-.cc-player{min-width:104px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;transition:border-color .15s,background .15s}
-.cc-player.active{border-color:var(--acc);background:#eef2ff}
-.cc-player .nm{font-size:11px;color:var(--mut);max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cc-player .sc{font-size:20px;font-weight:700;line-height:1.15}
-.cc-player .lv{display:flex;gap:4px;margin-top:4px}
-.cc-dot{width:7px;height:7px;border-radius:50%;background:var(--acc)}
+.cc-app h3{margin:0;font-size:18px;font-weight:700}
+.cc-hud{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.cc-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--mut);white-space:nowrap}
+.cc-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.cc-side{gap:5px}
+.cc-side .nm{max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex:none}
 .cc-dot.off{background:var(--line)}
-.cc-tools{display:flex;gap:8px}
-.cc-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s}
+.cc-status-dot{width:7px;height:7px;border-radius:50%;background:var(--good);flex:none}
+.cc-spacer{flex:1 1 auto}
+.cc-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;min-height:44px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .16s,background .16s;touch-action:manipulation;font-family:inherit}
 .cc-btn:hover{border-color:var(--acc)}
+.cc-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cc-btn:disabled{opacity:.45;cursor:default}
 .cc-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
 .cc-btn.primary:hover{background:#4338ca}
-.cc-scene-box{position:relative;width:100%}
-.cc-scene{width:100%;height:min(44vh,320px);background:#f8fafc;border:1px solid var(--line);border-radius:14px;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;cursor:grab}
+.cc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.cc-icon-btn svg{flex:none;display:block}
+.cc-btn.on{border-color:var(--acc);color:var(--acc);background:#eef2ff}
+.cc-board{position:relative;width:100%;flex:1 1 auto;min-height:0;overflow:hidden;background:#f8fafc;border:1px solid var(--line);border-radius:12px}
+.cc-scene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:8px;touch-action:none;user-select:none;cursor:grab;overflow:hidden}
 .cc-scene:active{cursor:grabbing}
-.cc-reveal{position:absolute;top:8px;right:10px;font-size:12px;font-weight:700;color:var(--acc);background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:3px 10px}
-.cc-answer{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
-.cc-input{width:110px;text-align:center;font-size:26px;font-weight:700;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 10px;letter-spacing:2px;outline:none}
-.cc-input:focus{border-color:var(--acc)}
+.cc-scene svg{max-width:100%;max-height:100%}
+.cc-reveal{position:absolute;top:8px;right:8px;font-size:12px;font-weight:700;color:var(--acc);background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:4px 12px;z-index:2}
+.cc-controls{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;flex:none}
+.cc-answer{display:flex;align-items:center;gap:8px}
+.cc-input{width:110px;min-height:48px;text-align:center;font-size:26px;font-weight:700;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px;letter-spacing:2px;outline:none;font-family:inherit}
+.cc-input:focus{border-color:var(--acc);outline:2px solid var(--acc);outline-offset:1px}
 .cc-input:disabled{background:#f8fafc;color:var(--mut)}
-.cc-pad{display:grid;grid-template-columns:repeat(3,minmax(56px,72px));gap:8px;justify-content:center}
-.cc-key{height:48px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:18px;font-weight:700;color:var(--ink);cursor:pointer}
+.cc-pad{display:grid;grid-template-columns:repeat(3,minmax(50px,64px));gap:6px}
+.cc-key{height:44px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:18px;font-weight:700;color:var(--ink);cursor:pointer;touch-action:manipulation;font-family:inherit}
+.cc-key:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cc-key:active{background:#eef2ff;border-color:var(--acc)}
 .cc-key:disabled{opacity:.45}
-.cc-feedback{min-height:22px;text-align:center;font-size:14px;font-weight:600;color:var(--mut)}
+.cc-feedback{flex:1 1 100%;min-height:20px;text-align:center;font-size:14px;font-weight:600;color:var(--mut);line-height:1.4}
 .cc-feedback.good{color:var(--good)}
 .cc-feedback.bad{color:var(--bad)}
-.cc-overlay{position:absolute;inset:0;background:rgba(255,255,255,.96);display:flex;align-items:center;justify-content:center;padding:20px;z-index:5}
-.cc-card{width:min(92%,340px);border:1px solid var(--line);border-radius:16px;background:#fff;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 32px rgba(15,23,42,.08)}
-.cc-card h3{margin:0;font-size:18px}
-.cc-card p{margin:0;font-size:13px;color:var(--mut)}
-.cc-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:600}
-.cc-switch{position:relative;width:38px;height:22px;border-radius:999px;border:1px solid var(--line);background:#e2e8f0;cursor:pointer;transition:background .15s;flex:none}
-.cc-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.15);transition:transform .15s}
+.cc-overlay{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(248,250,252,.94);border-radius:inherit}
+.cc-card{width:min(92%,420px);max-height:100%;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:#fff;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 4px 12px rgba(15,23,42,.06)}
+.cc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.cc-head h3{font-size:15px}
+.cc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:auto;padding-top:10px;border-top:1px solid var(--line)}
+.cc-note{font-size:11px;color:var(--mut);line-height:1.5}
+.cc-cheats,.cc-help,.cc-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.cc-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:13px;font-weight:600}
+.cc-switch{position:relative;width:44px;height:26px;border-radius:999px;border:1px solid var(--line);background:#e2e8f0;cursor:pointer;transition:background .16s;flex:none;margin:0;padding:0}
+.cc-switch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.cc-switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .16s}
 .cc-switch[aria-pressed="true"]{background:var(--acc);border-color:var(--acc)}
-.cc-switch[aria-pressed="true"]::after{transform:translateX(16px)}
+.cc-switch[aria-pressed="true"]::after{transform:translateX(18px)}
+.cc-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.cc-help b{display:block;margin-bottom:6px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.cc-help ul{margin:0 0 12px;padding-left:16px;font-size:12px;line-height:1.7;color:var(--mut)}
+.cc-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#f8fafc;color:var(--ink);font:inherit}
+.cc-stats p{margin:0;font-size:13px;color:var(--mut);line-height:1.5}
 @media (hover:hover) and (pointer:fine){.cc-app .cc-pad{display:none}}
-@media (max-width:480px){.cc-app .cc-tools{width:100%;justify-content:flex-end}.cc-app .cc-scene{height:min(40vh,300px)}}
+@media (max-width:480px){
+.cc-app .cc-controls{gap:8px}
+.cc-app .cc-input{width:92px;font-size:22px}
+}
+@media (pointer:coarse){
+.cc-app .cc-switch{width:52px;height:44px}
+.cc-app .cc-switch::after{top:11px;width:20px;height:20px}
+.cc-app .cc-switch[aria-pressed="true"]::after{transform:translateX(26px)}
+}
+@media (prefers-reduced-motion:reduce){.cc-app *{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+/* --- layout redesign overrides (keep last) --- */
+.cc-app.game-fill > .cc-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.cc-app.game-fill > .cc-board:not(:has(.cc-overlay:not([hidden]))){aspect-ratio:16/10;flex:0 0 auto}
+.cc-app.game-fill > .cc-board:has(.cc-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.cc-app .cc-hud{gap:5px}
+.cc-app .cc-hud .cc-chip{padding:4px 6px;font-size:9px}
+.cc-app .cc-hud .cc-chip[data-hud="status"]{display:none}
+.cc-app .cc-hud .cc-side .nm{max-width:46px}
+.cc-app .cc-hud .cc-btn{min-height:32px;padding:5px 7px;font-size:9px}
+.cc-app .cc-hud .cc-btn-label,.cc-app .cc-hud .cc-spacer{display:none}
+.cc-app .cc-overlay{padding:8px}
+.cc-app .cc-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.cc-app .cc-cheats,.cc-app .cc-help,.cc-app .cc-stats{scrollbar-width:none}
+.cc-app .cc-cheats::-webkit-scrollbar,.cc-app .cc-help::-webkit-scrollbar,.cc-app .cc-stats::-webkit-scrollbar{display:none}
+.cc-app .cc-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.cc-app .cc-note{display:none}
+.cc-app .cc-controls{gap:6px}
+.cc-app .cc-input{width:82px;min-height:40px;font-size:20px;padding:4px 8px}
+.cc-app .cc-key{height:40px;font-size:16px}
+}
 </style>
-<div class="game-app cc-app">
-  <div class="game-intro">
-    <div><h2>Count the Cube</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Ready</span></span>
+<div class="game-app cc-app game-fill" data-cc>
+  <div class="cc-hud">
+    <span class="cc-chip">ROUND <b data-round>1</b>/${ROUNDS}</span>
+    <span class="cc-chip cc-side" data-side="0"><i class="cc-dot" data-lv></i><span class="nm" data-nm></span><b data-sc>0</b></span>
+    <span class="cc-chip cc-side" data-side="1"><i class="cc-dot" data-lv></i><span class="nm" data-nm></span><b data-sc>0</b></span>
+    <span class="cc-chip" data-hud="status"><i class="cc-status-dot"></i><span data-status aria-live="polite">Your turn</span></span>
+    <span class="cc-spacer"></span>
+    <button class="cc-btn cc-icon-btn" type="button" data-act="rotate" aria-label="Rotate view" title="Rotate view (Q/E)">${iconSVG("rotateCw", { size: 14 })}<span class="cc-btn-label">Rotate</span></button>
+    <button class="cc-btn cc-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="cc-btn-label">Help</span></button>
+    <button class="cc-btn cc-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="cc-btn-label">Cheats</span></button>
+    <button class="cc-btn cc-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="cc-btn-label">Pause</span></button>
+    <button class="cc-btn cc-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="cc-btn-label">Restart</span></button>
+    <button class="cc-btn cc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cc-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel cc-panel" data-board>
-    <div class="cc-hud">
-      <span class="cc-round">Round <b data-round>1</b>/${ROUNDS}</span>
-      <div class="cc-players">
-        <div class="cc-player" data-seat="0"><div class="nm" data-nm></div><div class="sc" data-sc>0</div><div class="lv" data-lv></div></div>
-        <div class="cc-player" data-seat="1"><div class="nm" data-nm></div><div class="sc" data-sc>0</div><div class="lv" data-lv></div></div>
-      </div>
-      <div class="cc-tools">
-        <button type="button" class="cc-btn" data-act="rotate">Rotate</button>
-        <button type="button" class="cc-btn" data-act="cheats">Cheats</button>
-        <button type="button" class="cc-btn" data-act="restart">Restart</button>
+  <section class="game-panel cc-board" data-board>
+    <div class="cc-scene" data-scene></div>
+    <span class="cc-reveal" data-reveal hidden></span>
+    <div class="cc-overlay" data-ov="over" hidden>
+      <div class="cc-card">
+        <div class="cc-head"><h3 data-over-title>Game over</h3></div>
+        <div class="cc-stats"><p data-over-reason></p></div>
+        <div class="cc-foot"><span class="cc-note">Better luck next round</span><button class="cc-btn primary" type="button" data-act="restart">Play again</button></div>
       </div>
     </div>
-    <div class="cc-scene-box">
-      <div class="cc-scene" data-scene></div>
-      <span class="cc-reveal" data-reveal hidden></span>
+    <div class="cc-overlay" data-ov="pause" hidden>
+      <div class="cc-card">
+        <div class="cc-head"><h3>Paused</h3></div>
+        <div class="cc-foot"><span class="cc-note">Press P or Esc to resume</span><button class="cc-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
     </div>
+    <div class="cc-overlay" data-ov="cheat" hidden>
+      <div class="cc-card">
+        <div class="cc-head"><h3>Cheats</h3><button class="cc-btn" type="button" data-act="close-cheats">Close</button></div>
+        <div class="cc-cheats">
+          <div class="cc-cheat-row"><span>Show total</span><button type="button" class="cc-switch" data-cheat="reveal" aria-pressed="false" aria-label="Show total"></button></div>
+          <div class="cc-cheat-row"><span>X-ray wireframe</span><button type="button" class="cc-switch" data-cheat="xray" aria-pressed="false" aria-label="X-ray wireframe"></button></div>
+          <div class="cc-cheat-row"><span>Auto-fill answer</span><button type="button" class="cc-btn" data-act="autofill">Fill</button></div>
+          <div class="cc-cheat-row" data-cheat-bot><span>Bot always wrong</span><button type="button" class="cc-switch" data-cheat="botBlunder" aria-pressed="false" aria-label="Bot always wrong"></button></div>
+        </div>
+        <div class="cc-foot"><span class="cc-note">Cheats are local to this device</span><button class="cc-btn" type="button" data-act="close-cheats">Close</button></div>
+      </div>
+    </div>
+    <div class="cc-overlay" data-ov="help" hidden>
+      <div class="cc-card">
+        <div class="cc-head"><h3>How to play</h3><button class="cc-btn" type="button" data-help-close>Close</button></div>
+        <div class="cc-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Type the number of cubes, then press <span class="cc-kbd">Enter</span> or click Check.</li>
+              <li><span class="cc-kbd">Q</span>/<span class="cc-kbd">E</span> or <span class="cc-kbd">&#8592;</span>/<span class="cc-kbd">&#8594;</span> rotate the stack; drag or scroll the scene too.</li>
+              <li><span class="cc-kbd">Backspace</span> deletes a digit; <span class="cc-kbd">Enter</span> submits or advances.</li>
+              <li><span class="cc-kbd">H</span> help &middot; <span class="cc-kbd">C</span> cheats &middot; <span class="cc-kbd">P</span>/<span class="cc-kbd">Esc</span> pause &middot; <span class="cc-kbd">R</span> restart.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap the number pad, then Check. Rotate with the Rotate button or drag the stack.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Count every cube in the stack, including hidden ones.</li>
+              <li>Players take turns; a correct answer scores, a wrong one costs a life.</li>
+              <li>After each answer the wireframe view reveals the exact column counts.</li>
+              <li>First to run the other out of lives &mdash; or leading after ${ROUNDS} rounds &mdash; wins.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="cc-foot"><span class="cc-note">Press H to reopen this guide</span><button class="cc-btn primary" type="button" data-help-close>Got it</button></div>
+      </div>
+    </div>
+  </section>
+  <div class="cc-controls">
     <div class="cc-answer">
       <input class="cc-input" data-input inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" placeholder="0" aria-label="Your answer" disabled>
       <button type="button" class="cc-btn primary" data-act="submit" disabled>Check</button>
@@ -265,29 +362,12 @@ export function mount(root, context = {}) {
     </div>
     <div class="cc-pad" data-pad></div>
     <div class="cc-feedback" data-fb aria-live="polite"></div>
-    <div class="cc-overlay" data-cheats hidden>
-      <div class="cc-card">
-        <h3>Cheats</h3>
-        <div class="cc-cheat-row"><span>Show total</span><button type="button" class="cc-switch" data-cheat="reveal" aria-pressed="false" aria-label="Show total"></button></div>
-        <div class="cc-cheat-row"><span>X-ray wireframe</span><button type="button" class="cc-switch" data-cheat="xray" aria-pressed="false" aria-label="X-ray wireframe"></button></div>
-        <div class="cc-cheat-row"><span>Auto-fill answer</span><button type="button" class="cc-btn" data-act="autofill">Fill</button></div>
-        <div class="cc-cheat-row" data-cheat-bot><span>Bot always wrong</span><button type="button" class="cc-switch" data-cheat="botBlunder" aria-pressed="false" aria-label="Bot always wrong"></button></div>
-        <button type="button" class="cc-btn" data-act="close-cheats">Close</button>
-      </div>
-    </div>
-    <div class="cc-overlay" data-over hidden>
-      <div class="cc-card">
-        <h3 data-over-title>Game over</h3>
-        <p data-over-reason></p>
-        <button type="button" class="cc-btn primary" data-act="restart">Play again</button>
-      </div>
-    </div>
-  </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
+    const board = $("[data-board]");
     const statusEl = $("[data-status]"),
         roundEl = $("[data-round]"),
         sceneEl = $("[data-scene]"),
@@ -297,17 +377,36 @@ export function mount(root, context = {}) {
         nextBtn = $('[data-act="next"]'),
         padEl = $("[data-pad]"),
         fbEl = $("[data-fb]"),
-        cheatsEl = $("[data-cheats]"),
-        overEl = $("[data-over]"),
+        pauseBtn = $("[data-pause]"),
         overTitleEl = $("[data-over-title]"),
         overReasonEl = $("[data-over-reason]");
-    const seatEls = [root.querySelector('[data-seat="0"]'), root.querySelector('[data-seat="1"]')];
+    const ov = {
+        over: $('[data-ov="over"]'),
+        pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'),
+        help: $('[data-ov="help"]'),
+    };
+    const sideEls = [root.querySelector('[data-side="0"]'), root.querySelector('[data-side="1"]')];
     if (online) $("[data-cheat-bot]").hidden = true;
 
     /* ---------------- local (non-synced) state ---------------- */
     let viewRot = 0,
         puzzleKey = "",
-        botTimer = null;
+        botTimer = null,
+        cheatsOpen = false,
+        helpOpen = false,
+        paused = false,
+        frozen = false,
+        freezeAt = 0,
+        freezePerfAt = 0,
+        wheelAt = 0,
+        wheelPerfAt = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("countTheCubeHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("countTheCubeHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
     const cheats = { reveal: false, xray: false, botBlunder: false };
     const unsubs = [];
 
@@ -318,7 +417,7 @@ export function mount(root, context = {}) {
         return room.isHost ? state.hostSeat : 1 - state.hostSeat;
     }
     function canPlay() {
-        return Boolean(state) && state.phase === "play" && state.turn === mySeat();
+        return !frozen && Boolean(state) && state.phase === "play" && state.turn === mySeat();
     }
 
     function freshState() {
@@ -344,10 +443,59 @@ export function mount(root, context = {}) {
         };
     }
 
+    /* ---------------- freeze / overlays ---------------- */
+    function syncFreeze() {
+        const next = paused || helpOpen || cheatsOpen;
+        if (next === frozen) return;
+        frozen = next;
+        if (frozen) {
+            freezeAt = Date.now();
+            freezePerfAt = performance.now();
+            if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+        } else {
+            const shift = freezeAt ? Date.now() - freezeAt : 0;
+            const perfShift = freezePerfAt ? performance.now() - freezePerfAt : 0;
+            freezeAt = 0;
+            freezePerfAt = 0;
+            wheelAt += shift;
+            wheelPerfAt += perfShift;
+            scheduleBot();
+        }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function togglePause(on) {
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { cheatsOpen = false; helpOpen = false; }
+        syncFreeze();
+        render();
+    }
+    function syncOverlays() {
+        ov.over.hidden = !state || state.phase !== "over" || cheatsOpen || helpOpen || paused;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen || paused;
+        ov.help.hidden = !helpOpen;
+        const label = pauseBtn.querySelector(".cc-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
+    }
+
     /* ---------------- render ---------------- */
     function render() {
         if (!state) {
             statusEl.textContent = "Waiting for host…";
+            syncOverlays();
             return;
         }
         const key = state.round + "|" + state.heights.join(",");
@@ -359,14 +507,14 @@ export function mount(root, context = {}) {
         roundEl.textContent = String(state.round);
         const me = mySeat();
         for (let s = 0; s < 2; s++) {
-            const card = seatEls[s],
+            const card = sideEls[s],
                 p = state.players[s];
             card.classList.toggle("active", state.phase === "play" && state.turn === s);
             card.querySelector("[data-nm]").textContent = p.name + (s === me ? " (you)" : "");
             card.querySelector("[data-sc]").textContent = String(p.score);
             card.querySelector("[data-lv]").innerHTML = Array.from(
                 { length: LIVES },
-                (_, i) => '<span class="cc-dot' + (i < p.lives ? "" : " off") + '"></span>',
+                (_, i) => '<i class="cc-dot' + (i < p.lives ? "" : " off") + '"></i>',
             ).join("");
         }
         const h = rotated(state.heights, state.n, viewRot);
@@ -404,7 +552,6 @@ export function mount(root, context = {}) {
             statusEl.textContent =
                 state.turn === me ? "Your turn" : state.players[state.turn].name + " is counting…";
 
-        overEl.hidden = state.phase !== "over";
         if (state.phase === "over") {
             const w = state.winner;
             overTitleEl.textContent =
@@ -414,6 +561,7 @@ export function mount(root, context = {}) {
                 a.name + " " + a.score + " — " + b.score + " " + b.name +
                 (state.endReason === "lives" ? " · out of lives" : "");
         }
+        syncOverlays();
     }
 
     function publish() {
@@ -473,7 +621,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- bot (AI mode only) ---------------- */
     function scheduleBot() {
-        if (online || !state) return;
+        if (online || !state || frozen) return;
         if (botTimer) {
             clearTimeout(botTimer);
             botTimer = null;
@@ -481,7 +629,7 @@ export function mount(root, context = {}) {
         if (state.phase !== "play" || state.turn !== 1) return;
         botTimer = setTimeout(() => {
             botTimer = null;
-            if (!state || state.phase !== "play" || state.turn !== 1) return;
+            if (!state || frozen || state.phase !== "play" || state.turn !== 1) return;
             let guess;
             if (!cheats.botBlunder && Math.random() < 0.7) guess = state.answer;
             else {
@@ -495,7 +643,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- local controls ---------------- */
     function rotate(dir) {
-        if (!state || state.phase === "over") return;
+        if (frozen || !state || state.phase === "over") return;
         viewRot = (viewRot + dir + 4) % 4;
         render(); /* view-only: never published, answer unchanged */
     }
@@ -504,10 +652,17 @@ export function mount(root, context = {}) {
         submitAction({ type: "answer", value: parseInt(inputEl.value, 10) });
     }
     function advanceOrCheck() {
-        if (!state) return;
+        if (frozen || !state) return;
         if (state.phase === "verify") submitAction({ type: "next" });
         else if (state.phase === "over") submitAction({ type: "restart" });
         else check();
+    }
+    function restartGame() {
+        cheatsOpen = false;
+        helpOpen = false;
+        paused = false;
+        syncFreeze();
+        submitAction({ type: "restart" });
     }
     function pressKey(k) {
         if (!canPlay()) return;
@@ -527,11 +682,16 @@ export function mount(root, context = {}) {
 
     /* ---------------- events ---------------- */
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) {
-            onExit();
-            return;
-        }
-        const sw = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        const sw = t.closest("[data-cheat]");
         if (sw) {
             const k = sw.dataset.cheat;
             cheats[k] = !cheats[k];
@@ -539,25 +699,25 @@ export function mount(root, context = {}) {
             render();
             return;
         }
-        const btn = event.target.closest("[data-act]");
+        const btn = t.closest("[data-act]");
         if (!btn) return;
         const a = btn.dataset.act;
-        if (a === "rotate") rotate(1);
-        else if (a === "cheats") cheatsEl.hidden = false;
-        else if (a === "close-cheats") cheatsEl.hidden = true;
-        else if (a === "autofill") {
-            if (canPlay()) {
+        if (a === "close-cheats") { toggleCheats(false); return; }
+        if (a === "restart") { restartGame(); return; }
+        if (a === "autofill") {
+            if (state && state.phase === "play" && state.turn === mySeat()) {
                 inputEl.value = String(state.answer);
                 inputEl.focus();
             }
-        } else if (a === "submit") check();
-        else if (a === "next") submitAction({ type: "next" });
-        else if (a === "restart") {
-            cheatsEl.hidden = true;
-            submitAction({ type: "restart" });
+            return;
         }
+        if (frozen) return;
+        if (a === "rotate") rotate(1);
+        else if (a === "submit") check();
+        else if (a === "next") submitAction({ type: "next" });
     }
     function onPad(e) {
+        if (frozen) return;
         const k = e.target.closest(".cc-key");
         if (!k || k.disabled) return;
         e.preventDefault();
@@ -568,19 +728,28 @@ export function mount(root, context = {}) {
     }
     function onKey(e) {
         if (!root.isConnected) return;
-        if (e.key === "Escape") {
-            cheatsEl.hidden = true;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const code = e.code;
+        const tag = e.target && e.target.tagName;
+        const typing = tag === "INPUT" || tag === "TEXTAREA";
+
+        if (code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") { if (!helpOpen && !paused) toggleCheats(); e.preventDefault(); return; }
+        if (code === "KeyP" || e.key === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else togglePause();
+            e.preventDefault();
             return;
         }
-        if (!cheatsEl.hidden) return;
-        if (e.target === inputEl) {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                advanceOrCheck();
-            }
-            return; /* digits/backspace handled natively by the input */
+        if (code === "KeyR" && !typing) { restartGame(); e.preventDefault(); return; }
+        if (typing) {
+            if (e.key === "Enter") { e.preventDefault(); advanceOrCheck(); }
+            return;
         }
-        if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+        if (frozen) { e.preventDefault(); return; }
+        if (code === "ArrowRight" || code === "KeyE") { e.preventDefault(); rotate(1); return; }
+        if (code === "ArrowLeft" || code === "KeyQ") { e.preventDefault(); rotate(-1); return; }
         if (e.key >= "0" && e.key <= "9") pressKey(e.key);
         else if (e.key === "Backspace") {
             e.preventDefault();
@@ -588,15 +757,11 @@ export function mount(root, context = {}) {
         } else if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             advanceOrCheck();
-        } else if (e.key === "r" || e.key === "R") rotate(1);
-        else if (e.key === "c" || e.key === "C") {
-            if (canPlay()) inputEl.value = "";
         }
     }
     /* mouse: drag + wheel rotation on the scene */
     let dragX = null,
-        dragAcc = 0,
-        wheelAt = 0;
+        dragAcc = 0;
     function onSceneDown(e) {
         dragX = e.clientX;
         dragAcc = 0;
@@ -612,9 +777,10 @@ export function mount(root, context = {}) {
     function onSceneUp() { dragX = null; }
     function onWheel(e) {
         e.preventDefault();
-        const now = Date.now();
-        if (now - wheelAt < 160) return;
+        const now = Date.now(), pnow = performance.now();
+        if (now - wheelAt < 160 || pnow - wheelPerfAt < 160) return;
         wheelAt = now;
+        wheelPerfAt = pnow;
         rotate(e.deltaY > 0 ? 1 : -1);
     }
 
@@ -630,6 +796,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- boot: local / host / guest ---------------- */
     buildPad();
+    syncFreeze();
     if (online) {
         unsubs.push(room.onRoom((nextRoom) => { roomData = nextRoom; render(); }));
         if (room.isHost) {

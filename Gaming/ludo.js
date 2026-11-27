@@ -1,4 +1,5 @@
 /* ==== GAME: ludo.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
   Ludo — papan klasik, tampilan minimalis gelap.
   Mode AI  : Red (kamu) vs Blue AI, giliran pertama diundi.
@@ -84,106 +85,138 @@ export function mount(root, context = {}) {
         6: [[21, 18], [43, 18], [21, 32], [43, 32], [21, 46], [43, 46]],
     };
 
-    /* ---------------- shell (minimalis, tanpa tutorial) ---------------- */
+    /* ---------------- shell: HUD bar + papan penuh tinggi ---------------- */
     root.innerHTML = `
 <style>
-.ludo-app{background:#0b1220;border:1px solid #16213a;border-radius:18px;padding:18px 18px 16px;color:#cbd5e1;}
-.ludo-app .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;}
-.ludo-app .game-intro h2{margin:0;font-size:17px;font-weight:700;color:#e2e8f0;letter-spacing:.01em;}
-.ludo-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#94a3b8;background:#0e1830;border:1px solid #1f2b45;border-radius:999px;padding:5px 11px;white-space:nowrap;}
-.ludo-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex:0 0 auto;}
-.ludo-app .game-panel{margin:0;}
-.ludo-stage{position:relative;display:flex;gap:22px;align-items:center;justify-content:center;flex-wrap:wrap;}
-.ludo-board{flex:0 1 520px;min-width:250px;max-width:560px;}
-.ludo-board svg{display:block;width:100%;height:auto;}
-.ludo-rail{display:flex;flex-direction:column;gap:14px;width:196px;}
-.ludo-die-wrap{display:flex;flex-direction:column;align-items:center;gap:5px;}
-.ludo-die-btn{background:none;border:0;padding:0;border-radius:16px;cursor:pointer;transition:transform .15s ease,opacity .15s ease,box-shadow .2s ease;}
-.ludo-die-btn:disabled{opacity:.38;cursor:default;}
-.ludo-die-btn:not(:disabled):hover{transform:translateY(-2px);}
-.ludo-die-btn.armed{box-shadow:0 0 0 2px #26334f,0 0 18px rgba(226,232,240,.14);}
-.ludo-die-btn:focus-visible{outline:2px solid #64748b;outline-offset:3px;}
-.ludo-die{display:block;width:68px;height:68px;}
-.ludo-die-btn.pop .ludo-die{animation:ludoPop .34s ease;}
-.ludo-force{font-size:11px;color:#fbbf24;letter-spacing:.04em;}
-.ludo-players{display:flex;flex-direction:column;gap:8px;}
-.ludo-pchip{display:flex;align-items:center;gap:8px;background:#0e1830;border:1px solid #1f2b45;border-radius:10px;padding:8px 10px;font-size:12px;color:#7c8aa5;transition:border-color .2s ease;}
-.ludo-pchip.active{border-color:var(--pc);}
-.ludo-pchip .ludo-dot{width:8px;height:8px;border-radius:50%;background:var(--pc);flex:0 0 auto;}
-.ludo-pname{color:#e2e8f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:86px;}
-.ludo-pstat{margin-left:auto;white-space:nowrap;}
-.ludo-pstat b{color:#cbd5e1;font-weight:600;}
-.ludo-msg{margin:0;font-size:12px;line-height:1.45;color:#8b93a7;min-height:2.9em;}
-.ludo-pawn{transition:transform .3s cubic-bezier(.2,.8,.3,1);}
-.ludo-pawn .ring{opacity:0;}
-.ludo-pawn .num{display:none;pointer-events:none;}
-.ludo-pawn.movable{cursor:pointer;}
-.ludo-pawn.movable .ring{opacity:1;animation:ludoPulse .95s ease-in-out infinite;transform-box:fill-box;transform-origin:center;}
-.ludo-pawn.movable .num{display:block;}
-.ludo-pawn.movable .inner{display:none;}
-.ludo-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(4,8,20,.72);backdrop-filter:blur(3px);border-radius:16px;padding:14px;}
-.ludo-ov[hidden]{display:none;}
-.ludo-card{background:#0f172a;border:1px solid #223052;border-radius:14px;padding:22px;max-width:330px;width:100%;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center;}
-.ludo-ov-title{margin:0;font-size:19px;font-weight:700;color:#e2e8f0;}
-.ludo-ov-sub{margin:0;font-size:12.5px;line-height:1.55;color:#8b93a7;}
-.ludo-btn{background:#16223c;border:1px solid #26334f;color:#cbd5e1;border-radius:9px;padding:8px 13px;font-size:12.5px;font-family:inherit;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease;}
-.ludo-btn:hover{background:#1c2a49;border-color:#33436b;color:#e2e8f0;}
-.ludo-btn:disabled{opacity:.4;cursor:default;}
-.ludo-btn.primary{background:#e2e8f0;border-color:#e2e8f0;color:#0b1220;font-weight:600;}
-.ludo-btn.primary:hover{background:#ffffff;}
-.ludo-cheat-card{max-width:340px;gap:10px;}
-.ludo-cheat-note{margin:-6px 0 0;font-size:11px;color:#64748b;}
-.ludo-cheat-sec{width:100%;display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
-.ludo-cheat-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;}
-.ludo-dice-row{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;width:100%;}
-.ludo-dice-btn{padding:7px 0;text-align:center;}
-.ludo-dice-btn.sel{border-color:#fbbf24;color:#fbbf24;}
-.ludo-cheat-list{display:flex;flex-direction:column;gap:6px;width:100%;}
-.ludo-cheat-list .ludo-btn{width:100%;text-align:left;}
-.ludo-app .game-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px;}
-.ludo-app .game-action-button{background:transparent;border:1px solid #26334f;color:#94a3b8;border-radius:9px;padding:7px 14px;font-size:12.5px;font-family:inherit;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
-.ludo-app .game-action-button:hover{background:#101c36;color:#e2e8f0;border-color:#33436b;}
-@keyframes ludoPulse{0%,100%{opacity:.25;transform:scale(1);}50%{opacity:1;transform:scale(1.26);}}
-@keyframes ludoPop{0%{transform:scale(1) rotate(0deg);}30%{transform:scale(.88) rotate(-9deg);}65%{transform:scale(1.09) rotate(7deg);}100%{transform:scale(1) rotate(0deg);}}
-@media (max-width:760px){
-  .ludo-stage{gap:14px;}
-  .ludo-rail{order:-1;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:center;width:100%;max-width:560px;gap:12px;}
-  .ludo-players{flex:1 1 170px;max-width:250px;}
-  .ludo-msg{flex-basis:100%;text-align:center;min-height:1.5em;}
+/* Ludo — HUD bar above a fill-height square board; info never overlaps the arena. */
+.ludo-app{--ld-line:#16213a;--ld-ink:#e2e8f0;--ld-mut:#8b93a7;width:100%;max-width:1100px;margin:0 auto;padding:14px;background:#0b1220;border:1px solid var(--ld-line);border-radius:14px;color:#cbd5e1;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.ludo-app *{box-sizing:border-box}
+.ludo-app [hidden]{display:none!important}
+.ludo-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ludo-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #1f2b45;border-radius:999px;background:#0e1830;color:var(--ld-mut);white-space:nowrap;max-width:100%}
+.ludo-chip b{color:var(--ld-ink);font-weight:700;font-variant-numeric:tabular-nums}
+.ludo-status-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex:0 0 auto}
+.ludo-spacer{flex:1 1 auto}
+.ludo-die-wrap{display:inline-flex;align-items:center;gap:6px;padding:4px 8px}
+.ludo-die-btn{background:none;border:0;padding:0;border-radius:10px;cursor:pointer;transition:transform .15s ease,opacity .15s ease,box-shadow .2s ease}
+.ludo-die-btn:disabled{opacity:.38;cursor:default}
+.ludo-die-btn:not(:disabled):hover{transform:translateY(-2px)}
+.ludo-die-btn.armed{box-shadow:0 0 0 2px #26334f,0 0 14px rgba(226,232,240,.14)}
+.ludo-app :is(button,select,input):focus-visible{outline:2px solid #94a3b8;outline-offset:2px}
+.ludo-die{display:block;width:36px;height:36px}
+.ludo-die-btn.pop .ludo-die{animation:ludoPop .34s ease}
+.ludo-force{font-size:10px;color:#fbbf24;letter-spacing:.03em}
+.ludo-players{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
+.ludo-pchip{display:inline-flex;align-items:center;gap:7px;background:#0e1830;border:1px solid #1f2b45;border-radius:999px;padding:5px 9px;font-size:11px;color:#7c8aa5;transition:border-color .2s ease;min-width:0}
+.ludo-pchip.active{border-color:var(--pc)}
+.ludo-pchip .ludo-dot{width:8px;height:8px;border-radius:50%;background:var(--pc);flex:0 0 auto}
+.ludo-pname{color:var(--ld-ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px;min-width:0}
+.ludo-pstat{white-space:nowrap}
+.ludo-pstat b{color:#cbd5e1;font-weight:600}
+.ludo-msg{max-width:270px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ld-mut)}
+.ludo-btn{background:#16223c;border:1px solid #26334f;color:#cbd5e1;border-radius:9px;padding:8px 13px;min-height:36px;font-size:12.5px;font-family:inherit;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.ludo-btn:hover{background:#1c2a49;border-color:#33436b;color:var(--ld-ink)}
+.ludo-btn:disabled{opacity:.4;cursor:default}
+.ludo-btn.primary{background:#e2e8f0;border-color:#e2e8f0;color:#0b1220;font-weight:600}
+.ludo-btn.primary:hover{background:#ffffff}
+.ludo-btn.on{border-color:#fbbf24;color:#fbbf24}
+.ludo-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ludo-icon-btn svg{flex:none;display:block}
+.ludo-app .game-panel.ludo-board{margin:0;padding:0;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;border-color:var(--ld-line);background:#0d1526}
+.ludo-map{display:block;width:100%;height:100%}
+.ludo-pawn{transition:transform .3s cubic-bezier(.2,.8,.3,1)}
+.ludo-pawn .ring{opacity:0}
+.ludo-pawn .num{display:none;pointer-events:none}
+.ludo-pawn.movable{cursor:pointer}
+.ludo-pawn.movable .ring{opacity:1;animation:ludoPulse .95s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.ludo-pawn.movable .num{display:block}
+.ludo-pawn.movable .inner{display:none}
+.ludo-ov{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(4,8,20,.72);backdrop-filter:blur(3px);padding:12px}
+.ludo-card{background:#0f172a;border:1px solid #223052;border-radius:14px;padding:18px;max-width:420px;width:100%;max-height:100%;display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center}
+.ludo-head{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;flex:none}
+.ludo-head h3{margin:0;font-size:16px;font-weight:700;color:var(--ld-ink)}
+.ludo-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;flex:none;margin-top:4px}
+.ludo-note{font-size:10px;color:#64748b}
+.ludo-ov-title{margin:0;font-size:19px;font-weight:700;color:var(--ld-ink)}
+.ludo-ov-sub{margin:0;font-size:12.5px;line-height:1.55;color:var(--ld-mut)}
+.ludo-cheat-card{max-width:360px;gap:10px}
+.ludo-cheat-note{margin:0;font-size:11px;color:#64748b}
+.ludo-cheats,.ludo-help{width:100%;display:flex;flex-direction:column;gap:10px;flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.ludo-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.ludo-help b{display:block;margin-bottom:4px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.09em;color:#64748b;text-transform:uppercase}
+.ludo-help ul{margin:0 0 10px;padding-left:16px;font-size:11.5px;line-height:1.6;color:var(--ld-mut)}
+.ludo-cheat-sec{width:100%;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.ludo-cheat-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b}
+.ludo-dice-row{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;width:100%}
+.ludo-dice-btn{padding:8px 0;text-align:center}
+.ludo-dice-btn.sel{border-color:#fbbf24;color:#fbbf24}
+.ludo-cheat-list{display:flex;flex-direction:column;gap:6px;width:100%}
+.ludo-cheat-list .ludo-btn{width:100%;text-align:left}
+@keyframes ludoPulse{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:1;transform:scale(1.26)}}
+@keyframes ludoPop{0%{transform:scale(1) rotate(0deg)}30%{transform:scale(.88) rotate(-9deg)}65%{transform:scale(1.09) rotate(7deg)}100%{transform:scale(1) rotate(0deg)}}
+@media (max-width:760px){.ludo-app{padding:12px}.ludo-players{order:-1;width:100%}}
+@media (pointer:coarse){.ludo-btn{min-height:44px}.ludo-dice-btn{min-height:44px}}
+@media (prefers-reduced-motion:reduce){.ludo-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+/* --- fill height + mobile refinements (must stay last) --- */
+.ludo-app.game-fill > .ludo-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.ludo-app.game-fill > .ludo-board:not(:has(.ludo-ov:not([hidden]))){aspect-ratio:1;flex:0 0 auto}
+.ludo-app.game-fill > .ludo-board:has(.ludo-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.ludo-app .ludo-hud{gap:5px;margin-bottom:8px}
+.ludo-app .ludo-hud .ludo-chip{padding:4px 6px;font-size:9px}
+.ludo-app .ludo-hud .ludo-msg{max-width:130px}
+.ludo-app .ludo-hud .ludo-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.ludo-app .ludo-hud .ludo-btn-label,.ludo-app .ludo-hud .ludo-spacer{display:none}
+.ludo-app .ludo-hud .ludo-die-btn{min-height:32px}
+.ludo-app .ludo-hud .ludo-force{display:none}
+.ludo-app .ludo-ov{padding:8px}
+.ludo-app .ludo-card{width:100%;height:100%;max-height:100%;padding:14px;border-radius:12px}
+.ludo-app .ludo-cheats,.ludo-app .ludo-help{scrollbar-width:none}
+.ludo-app .ludo-cheats::-webkit-scrollbar,.ludo-app .ludo-help::-webkit-scrollbar{display:none}
+.ludo-app .ludo-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--ld-line)}
+.ludo-app .ludo-note{display:none}
 }
-@media (prefers-reduced-motion:reduce){.ludo-app *{animation:none!important;transition:none!important;}}
 </style>
-<div class="game-app ludo-app">
-  <div class="game-intro">
-    <h2>Ludo</h2>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
+<div class="game-app ludo-app game-fill" data-ludo>
+  <div class="ludo-hud">
+    <span class="ludo-chip"><i class="ludo-status-dot" data-dot></i><span data-status>Ready</span></span>
+    <span class="ludo-chip ludo-die-wrap">
+      <button class="ludo-die-btn" type="button" data-act="roll" aria-label="Roll die" title="Roll die (Space)" disabled>
+        <svg class="ludo-die" viewBox="0 0 64 64" aria-hidden="true"></svg>
+      </button>
+      <span class="ludo-force" data-force hidden></span>
+    </span>
+    <span class="ludo-players">
+      <span class="ludo-pchip" data-chip="0" style="--pc:#ef4444"><span class="ludo-dot"></span><span class="ludo-pname" data-name="0">You</span><span class="ludo-pstat"><b data-home="0">0</b>/4 · <b data-cap="0">0</b> caps</span></span>
+      <span class="ludo-pchip" data-chip="1" style="--pc:#3b82f6"><span class="ludo-dot"></span><span class="ludo-pname" data-name="1">Blue AI</span><span class="ludo-pstat"><b data-home="1">0</b>/4 · <b data-cap="1">0</b> caps</span></span>
+    </span>
+    <span class="ludo-chip ludo-msg" data-msg></span>
+    <span class="ludo-spacer"></span>
+    <button class="ludo-btn ludo-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ludo-btn-label">Help</span></button>
+    <button class="ludo-btn ludo-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ludo-btn-label">Cheats</span></button>
+    <button class="ludo-btn ludo-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="ludo-btn-label">Pause</span></button>
+    <button class="ludo-btn ludo-icon-btn" type="button" data-restart aria-label="Restart" title="Restart">${iconSVG("refresh", { size: 14 })}<span class="ludo-btn-label">Restart</span></button>
+    <button class="ludo-btn ludo-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ludo-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel">
-    <div class="ludo-stage">
-      <div class="ludo-board"><svg viewBox="0 0 600 600" font-family="inherit" role="img" aria-label="Ludo board"></svg></div>
-      <div class="ludo-rail">
-        <div class="ludo-die-wrap">
-          <button class="ludo-die-btn" type="button" data-act="roll" aria-label="Roll die" disabled>
-            <svg class="ludo-die" viewBox="0 0 64 64" aria-hidden="true"></svg>
-          </button>
-          <span class="ludo-force" data-force hidden></span>
-        </div>
-        <div class="ludo-players">
-          <div class="ludo-pchip" data-chip="0" style="--pc:#ef4444"><span class="ludo-dot"></span><span class="ludo-pname" data-name="0">You</span><span class="ludo-pstat"><b data-home="0">0</b>/4 · <b data-cap="0">0</b> caps</span></div>
-          <div class="ludo-pchip" data-chip="1" style="--pc:#3b82f6"><span class="ludo-dot"></span><span class="ludo-pname" data-name="1">Blue AI</span><span class="ludo-pstat"><b data-home="1">0</b>/4 · <b data-cap="1">0</b> caps</span></div>
-        </div>
-        <p class="ludo-msg" data-msg></p>
+  <section class="game-panel ludo-board" data-board>
+    <svg class="ludo-map" viewBox="0 0 600 600" font-family="inherit" role="img" aria-label="Ludo board"></svg>
+    <div class="ludo-ov" data-ov="win" hidden>
+      <div class="ludo-card">
+        <div class="ludo-head"><h3 data-win-title></h3></div>
+        <p class="ludo-ov-sub" data-win-sub></p>
+        <div class="ludo-foot"><span class="ludo-note">Race complete</span><button class="ludo-btn primary" type="button" data-act="restart">Play again</button></div>
       </div>
-      <div class="ludo-ov" data-ov="win" hidden>
-        <div class="ludo-card">
-          <h3 class="ludo-ov-title" data-win-title></h3>
-          <p class="ludo-ov-sub" data-win-sub></p>
-          <button class="ludo-btn primary" type="button" data-act="restart">Play again</button>
-        </div>
+    </div>
+    <div class="ludo-ov" data-ov="pause" hidden>
+      <div class="ludo-card">
+        <div class="ludo-head"><h3>Paused</h3></div>
+        <div class="ludo-foot"><span class="ludo-note">Press P or Esc to resume</span><button class="ludo-btn primary" type="button" data-act="resume">Resume</button></div>
       </div>
-      <div class="ludo-ov" data-ov="cheat" hidden>
-        <div class="ludo-card ludo-cheat-card">
-          <h3 class="ludo-ov-title">Cheats</h3>
+    </div>
+    <div class="ludo-ov" data-ov="cheat" hidden>
+      <div class="ludo-card ludo-cheat-card">
+        <div class="ludo-head"><h3>Cheats</h3><button class="ludo-btn" type="button" data-act="cheat-close">Close</button></div>
+        <div class="ludo-cheats">
           <p class="ludo-cheat-note">Offline only · you are Red</p>
           <div class="ludo-cheat-sec">
             <span class="ludo-cheat-label">Next roll</span>
@@ -198,20 +231,47 @@ export function mount(root, context = {}) {
             <button class="ludo-btn" type="button" data-cheat="banish">Send foes to yard</button>
             <button class="ludo-btn" type="button" data-cheat="win">Win instantly</button>
           </div>
-          <button class="ludo-btn primary" type="button" data-act="cheat-close">Close</button>
+        </div>
+      </div>
+    </div>
+    <div class="ludo-ov" data-ov="help" hidden>
+      <div class="ludo-card">
+        <div class="ludo-head"><h3>How to play</h3><button class="ludo-btn" type="button" data-help-close>Close</button></div>
+        <div class="ludo-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="ludo-chip">Space</span> — roll the die</li>
+              <li><span class="ludo-chip">1</span>–<span class="ludo-chip">4</span> — pick a pawn to move</li>
+              <li><span class="ludo-chip">H</span> help · <span class="ludo-chip">C</span> cheats · <span class="ludo-chip">P</span> pause · <span class="ludo-chip">R</span> restart</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap the die in the HUD to roll</li>
+              <li>Tap a glowing pawn on the board to move it</li>
+              <li>Use the HUD icon buttons for help, cheats, pause and restart</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Race all four pawns around the track and into your home triangle.</li>
+              <li>Roll a 6 to leave the yard; reach home with an exact roll.</li>
+              <li>Land on a foe to send it back to its yard — star cells are safe.</li>
+              <li>A 6 or a capture grants another roll; three 6s in a row forfeits the turn.</li>
+              <li>First player to bring all four pawns home wins.</li>
+            </ul>
+            <div class="ludo-foot"><span class="ludo-note">Press H to reopen this guide</span><button class="ludo-btn primary" type="button" data-help-close>Got it</button></div>
+          </div>
         </div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-act="cheat" data-cheat-toggle>Cheats</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
-    const svg = root.querySelector(".ludo-board svg");
+    const board = root.querySelector("[data-board]");
+    const svg = board.querySelector(".ludo-map");
     const dieSvg = root.querySelector(".ludo-die");
     const dieBtn = root.querySelector('[data-act="roll"]');
     const statusEl = root.querySelector("[data-status]");
@@ -221,9 +281,12 @@ export function mount(root, context = {}) {
     const ovWin = root.querySelector('[data-ov="win"]');
     const winTitle = root.querySelector("[data-win-title]");
     const winSub = root.querySelector("[data-win-sub]");
+    const ovPause = root.querySelector('[data-ov="pause"]');
     const ovCheat = root.querySelector('[data-ov="cheat"]');
+    const ovHelp = root.querySelector('[data-ov="help"]');
     const shieldBtn = root.querySelector("[data-shield-btn]");
-    const cheatToggleBtn = root.querySelector("[data-cheat-toggle]");
+    const cheatToggleBtn = root.querySelector("[data-cheats]");
+    const pauseBtn = root.querySelector("[data-pause]");
     const chips = [0, 1].map((pl) => ({
         el: root.querySelector(`[data-chip="${pl}"]`),
         name: root.querySelector(`[data-name="${pl}"]`),
@@ -235,7 +298,15 @@ export function mount(root, context = {}) {
 
     let aiTimer = null;
     let cheatOpen = false;
+    let helpOpen = false;
+    let paused = false;
     let lastRollTotal = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("ludoHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("ludoHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
     const subs = [];
     const addSub = (u) => { if (typeof u === "function") subs.push(u); };
 
@@ -392,8 +463,9 @@ export function mount(root, context = {}) {
         if (!state) {
             statusEl.textContent = online ? "Waiting for host…" : "Ready";
             statusDot.style.background = "#64748b";
-            dieBtn.disabled = true;
             msgEl.textContent = "";
+            msgEl.title = "";
+            syncUI();
             return;
         }
         const mine = myIndex();
@@ -412,9 +484,6 @@ export function mount(root, context = {}) {
         }
 
         showDie(state.dice);
-        const canRoll = !over && state.phase === "roll" && state.turn === mine;
-        dieBtn.disabled = !canRoll;
-        dieBtn.classList.toggle("armed", canRoll);
         forceEl.hidden = !state.forceDice;
         if (state.forceDice) forceEl.textContent = "next · " + state.forceDice;
 
@@ -442,15 +511,15 @@ export function mount(root, context = {}) {
                 pawnEls[id].style.transform = `translate(${p[0] + off[idx][0]}px,${p[1] + off[idx][1]}px)`;
             });
         });
-        const canPick = !over && state.phase === "choose" && state.turn === mine;
+        const canPick = !over && state.phase === "choose" && state.turn === mine && !uiBlocked();
         pawnEls.forEach((g, id) => {
             const pl = Math.floor(id / 4), i = id % 4;
             g.classList.toggle("movable", canPick && pl === mine && state.movable.includes(i));
         });
 
         msgEl.textContent = state.msg;
+        msgEl.title = state.msg;
 
-        ovWin.hidden = !over;
         if (over) {
             const mineWin = state.winner === mine;
             winTitle.textContent = mineWin ? "You win" : PL[state.winner].label + " wins";
@@ -459,8 +528,32 @@ export function mount(root, context = {}) {
                 "Captures — Red " + state.caps[0] + " · Blue " + state.caps[1] +
                 ". Rolls — Red " + state.rolls[0] + " · Blue " + state.rolls[1] + ".";
         }
+        syncUI();
+    }
 
-        if (cheatOpen) {
+    /* Overlay saling menekan: help > cheats > pause > hasil. */
+    function uiBlocked() { return helpOpen || cheatOpen || paused; }
+    function syncUI() {
+        const over = Boolean(state && state.winner !== null);
+        ovHelp.hidden = !helpOpen;
+        ovCheat.hidden = !cheatOpen || helpOpen;
+        ovPause.hidden = !paused || cheatOpen || helpOpen;
+        ovWin.hidden = !over || uiBlocked();
+
+        const canRoll = Boolean(state && !over && state.phase === "roll" &&
+            state.turn === myIndex() && !uiBlocked());
+        dieBtn.disabled = !canRoll;
+        dieBtn.classList.toggle("armed", canRoll);
+
+        if (cheatToggleBtn) cheatToggleBtn.classList.toggle("on", cheatOpen);
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".ludo-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.title = (paused ? "Resume" : "Pause") + " (P)";
+            pauseBtn.disabled = online;
+        }
+        if (cheatOpen && state) {
             shieldBtn.textContent = "Shield: " + (state.shield ? "On" : "Off");
             diceBtns.forEach((b) => b.classList.toggle("sel", +b.dataset.value === state.forceDice));
             cheatBtns.forEach((b) => { b.disabled = over; });
@@ -571,6 +664,9 @@ export function mount(root, context = {}) {
     }
     function scheduleAI() {
         if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+        // Pause/help/cheats membekukan bot; saat resume timer dijadwalkan ulang
+        // sehingga penanda waktu tidak pernah "loncat" melampaui jeda.
+        if (paused || helpOpen || cheatOpen) return;
         if (online || !state || state.winner !== null || state.turn !== 1) return;
         if (state.phase === "roll") {
             aiTimer = setTimeout(() => { aiTimer = null; applyAction({ type: "roll" }, 1); }, 750);
@@ -627,9 +723,25 @@ export function mount(root, context = {}) {
         }
     }
     function setCheatOpen(v) {
-        cheatOpen = Boolean(v) && !online;
-        ovCheat.hidden = !cheatOpen;
-        if (cheatOpen) render();
+        cheatOpen = Boolean(v) && !online && !helpOpen;
+        if (cheatOpen && aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+        render();
+        if (!cheatOpen) scheduleAI();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) {
+            cheatOpen = false;
+            if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+        }
+        render();
+        if (!helpOpen && !cheatOpen && !paused) scheduleAI();
+    }
+    function setPaused(v) {
+        paused = Boolean(v) && !online && !helpOpen && !cheatOpen;
+        if (paused && aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+        syncUI();
+        if (!paused) scheduleAI();
     }
 
     /* ---------------- aksi (host otoritatif) ---------------- */
@@ -706,29 +818,42 @@ export function mount(root, context = {}) {
     }
 
     /* ---------------- input: mouse + sentuh langsung + keyboard ---------------- */
+    function restartGame() {
+        paused = false;
+        cheatOpen = false;
+        helpOpen = false;
+        submitAction({ type: "restart" });
+    }
     function tryRoll() {
+        if (uiBlocked()) return;
         if (state && state.winner === null && state.phase === "roll" && state.turn === myIndex()) {
             submitAction({ type: "roll" });
         }
     }
     function tryMove(i) {
+        if (uiBlocked()) return;
         if (state && state.winner === null && state.phase === "choose" &&
             state.turn === myIndex() && state.movable.includes(i)) {
             submitAction({ type: "move", pawn: i });
         }
     }
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const act = event.target.closest("[data-act]");
+        const t = event.target;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { setCheatOpen(!cheatOpen); return; }
+        if (t.closest("[data-pause]")) { setPaused(!paused); return; }
+        const act = t.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
             if (a === "roll") { if (!act.disabled) submitAction({ type: "roll" }); }
-            else if (a === "restart") submitAction({ type: "restart" });
-            else if (a === "cheat") setCheatOpen(!cheatOpen);
+            else if (a === "resume") setPaused(false);
+            else if (a === "restart") restartGame();
             else if (a === "cheat-close") setCheatOpen(false);
             return;
         }
-        const ch = event.target.closest("[data-cheat]");
+        const ch = t.closest("[data-cheat]");
         if (ch) {
             submitAction({
                 type: "cheat",
@@ -737,8 +862,9 @@ export function mount(root, context = {}) {
             });
             return;
         }
-        const pawn = event.target.closest(".ludo-pawn");
+        const pawn = t.closest(".ludo-pawn");
         if (pawn) {
+            if (uiBlocked()) return;
             if (!state || state.winner !== null || state.phase !== "choose" || state.turn !== myIndex()) return;
             const pl = +pawn.dataset.p, pi = +pawn.dataset.i;
             if (pl !== myIndex() || !state.movable.includes(pi)) return;
@@ -747,17 +873,28 @@ export function mount(root, context = {}) {
     }
     function onKey(e) {
         if (e.repeat) return;
-        const k = e.key;
-        if (k === "Escape") { if (cheatOpen) setCheatOpen(false); return; }
-        if (cheatOpen) {
-            if (!online && k >= "1" && k <= "6") submitAction({ type: "cheat", cheat: "dice", value: +k });
-            else if ((k === "c" || k === "C") && !online) setCheatOpen(false);
+        const k = e.key, code = e.code;
+        // Prioritas: help → cheats → pause → Escape → aksi game.
+        if (code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") { if (!helpOpen) setCheatOpen(!cheatOpen); e.preventDefault(); return; }
+        if (code === "KeyP" || code === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) setCheatOpen(false);
+            else if (code === "KeyP") setPaused(!paused);
+            else if (paused) setPaused(false);
+            e.preventDefault();
             return;
         }
-        if (e.code === "Space") { e.preventDefault(); tryRoll(); return; }
+        if (helpOpen || cheatOpen) {
+            if (cheatOpen && !online && k >= "1" && k <= "6") {
+                submitAction({ type: "cheat", cheat: "dice", value: +k });
+            }
+            return;
+        }
+        if (code === "KeyR") { restartGame(); e.preventDefault(); return; }
+        if (paused) return;
+        if (code === "Space") { e.preventDefault(); tryRoll(); return; }
         if (k >= "1" && k <= "4") { tryMove(+k - 1); return; }
-        if (k === "r" || k === "R") { submitAction({ type: "restart" }); return; }
-        if ((k === "c" || k === "C") && !online) setCheatOpen(true);
     }
 
     /* ---------------- init ---------------- */

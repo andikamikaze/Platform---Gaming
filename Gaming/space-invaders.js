@@ -5,6 +5,8 @@
 /* Random, guaranteed-solvable levels. One enemy type, no boss.     */
 /* ================================================================ */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "space-invaders", // harus sama dengan nama file (tanpa .js)
     name: "Space Invaders",
@@ -146,57 +148,56 @@ export function mount(root, context = {}) {
     let roomData = (room && room.room) || null;
     let state = null;
 
-    /* ---------------- UI (minimalist) ---------------- */
+    /* ---------------- UI (HUD + board) ---------------- */
     const TUT = `
-    <div class="si-tut">
-      <h4>Cara bermain</h4>
+      <p>Tembak formasi invaders, hindari bom. Level acak dijamin bisa diselesaikan &mdash; satu jenis musuh, tanpa bos.</p>
       <ul>
         <li><b>Gerak</b>: <kbd>&larr;</kbd><kbd>&rarr;</kbd> / <kbd>A</kbd><kbd>D</kbd>, gerakkan mouse di papan, atau sentuh &amp; geser di papan.</li>
         <li><b>Tembak</b>: <kbd>Spasi</kbd>, klik / tahan di papan, atau tombol <b>TEMBAK</b>.</li>
-        <li><b>Pintasan</b>: <kbd>P</kbd> jeda &middot; <kbd>R</kbd> ulang &middot; <kbd>C</kbd> cheat &middot; <kbd>H</kbd> bantuan.</li>
+        <li><b>Pintasan</b>: <kbd>H</kbd> bantuan &middot; <kbd>C</kbd> cheat &middot; <kbd>P</kbd> jeda &middot; <kbd>R</kbd> ulang &middot; <kbd>Esc</kbd> tutup panel.</li>
         <li>Habiskan formasi untuk naik level. Formasi makin cepat saat musuh menipis. Jangan biarkan mereka mendarat.</li>
         <li><b>Duel (Bot / Multiplayer)</b>: giliran bergantian 18 detik, total 6 giliran, papan &amp; level sama. Giliran berakhir saat waktu habis atau terkena bom. Skor tertinggi menang. Undian menentukan siapa jalan dulu &amp; posisi pemain.</li>
         <li><b>Skor</b>: musuh +10, level selesai +50. Satu jenis musuh, tanpa bos.</li>
-      </ul>
-    </div>`;
+      </ul>`;
 
     root.innerHTML = `
 <style>
-.si-app{--paper:#fff;--line:#e7e9ef;--ink:#171a21;--mut:#7d8595;--p1:#4f7dff;--p2:#f5a524;--bad:#e5484d;--ok:#30a46c;--board:#0d1017;max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:12px;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.si-app{--paper:#fff;--line:#e7e9ef;--ink:#171a21;--mut:#7d8595;--p1:#4f7dff;--p2:#f5a524;--bad:#e5484d;--ok:#30a46c;--board:#0d1017;max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:10px;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .si-app [hidden]{display:none!important}
-.si-app .si-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.si-app .si-head h2{margin:0;font-size:18px;letter-spacing:.02em}
-.si-app .si-head p{margin:3px 0 0;font-size:12.5px;color:var(--mut);max-width:44ch;line-height:1.45}
-.si-app .game-status{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mut);white-space:nowrap;background:var(--paper)}
+.si-app .si-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.si-app .si-spacer{flex:1 1 auto}
+.si-app .si-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:11.5px;color:var(--mut);background:var(--paper);white-space:nowrap}
+.si-app .si-chip b{color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
+.si-app .game-status{gap:7px;border-radius:999px;padding:5px 10px;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mut)}
 .si-app .game-status-dot{width:8px;height:8px;border-radius:50%;background:#c3c9d4;display:inline-block}
 .si-app .game-status[data-state="play"] .game-status-dot{background:var(--ok)}
 .si-app .game-status[data-state="wait"] .game-status-dot{background:var(--p2)}
 .si-app .game-status[data-state="over"] .game-status-dot{background:var(--bad)}
-.si-app .si-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.si-app .si-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:11.5px;color:var(--mut);background:var(--paper)}
-.si-app .si-chip b{color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
 .si-app .si-chip .dot{width:8px;height:8px;border-radius:50%;flex:none}
 .si-app .si-chip.s0 .dot{background:var(--p1)}
 .si-app .si-chip.s1 .dot{background:var(--p2)}
 .si-app .si-chip.onturn{border-color:var(--ink)}
 .si-app .si-chip.cheat{color:var(--bad);border-color:var(--bad);font-weight:700;letter-spacing:.06em}
 .si-app .si-lives svg{display:inline-block;vertical-align:-2px;margin-left:2px}
-.si-app .si-tools{display:flex;gap:6px;margin-left:auto}
-.si-app .si-btn{appearance:none;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:10px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s;font-family:inherit}
+.si-app .si-bar-chip{padding:7px 10px}
+.si-app .si-bar{width:52px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.si-app .si-bar i{display:block;height:100%;width:100%;background:var(--p1)}
+.si-app .si-btn{appearance:none;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:10px;padding:7px 12px;font-size:11.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s;font-family:inherit;min-height:36px}
 .si-app .si-btn:hover{background:#f4f6fa}
 .si-app .si-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
 .si-app .si-btn.primary:hover{background:#242938}
 .si-app .si-btn.ghost{padding:6px 10px;font-size:11.5px;color:var(--mut)}
+.si-app .si-btn.on{border-color:var(--p1);color:var(--p1);background:#eef2ff}
 .si-app .si-btn:disabled{opacity:.45;cursor:default}
-.si-app .si-timer{height:3px;border-radius:2px;background:var(--line);overflow:hidden}
-.si-app .si-timer i{display:block;height:100%;width:100%;background:var(--p1)}
-.si-app .game-panel{position:relative;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--board)}
-.si-app svg.board{display:block;width:100%;aspect-ratio:560/520;touch-action:none;cursor:crosshair}
+.si-app .game-panel{position:relative;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--board);padding:0}
+.si-app svg.board{display:block;height:100%;max-height:100%;width:auto;max-width:100%;aspect-ratio:560/520;margin:0 auto;touch-action:none;cursor:crosshair}
 .si-app .si-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(10,13,20,.62);padding:14px}
-.si-app .si-card{background:var(--paper);border-radius:16px;padding:20px;width:100%;max-width:440px;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
-.si-app .si-card h3{margin:0;font-size:17px}
-.si-app .si-card p{margin:0;font-size:13px;color:var(--mut);line-height:1.5}
-.si-app .si-card .row{display:flex;gap:8px;flex-wrap:wrap}
+.si-app .si-card{background:var(--paper);border-radius:16px;padding:18px;width:100%;max-width:460px;max-height:100%;overflow:hidden;display:flex;flex-direction:column;gap:12px;box-shadow:none;border:1px solid var(--line)}
+.si-app .si-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.si-app .si-head h3{margin:0;font-size:17px}
+.si-app .si-body{min-height:0;flex:1 1 auto;overflow:auto}
+.si-app .si-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:none}
+.si-app .si-card p{margin:0 0 10px;font-size:13px;color:var(--mut);line-height:1.5}
 .si-app .si-tut{border:1px solid var(--line);border-radius:12px;padding:12px;font-size:12.5px}
 .si-app .si-tut h4{margin:0 0 8px;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut)}
 .si-app .si-tut ul{margin:0;padding-left:16px;display:grid;gap:5px;color:#3c4250;line-height:1.45}
@@ -208,40 +209,61 @@ export function mount(root, context = {}) {
 .si-app .si-switch input:checked{background:var(--ok)}
 .si-app .si-switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
 .si-app .si-switch input:checked::after{left:18px}
-.si-app .si-touch{display:flex;gap:10px}
+.si-app .si-touch{display:flex;gap:10px;flex:none}
 .si-app .si-touch button{flex:1;height:58px;border-radius:14px;border:1px solid var(--line);background:var(--paper);font-size:17px;font-weight:700;color:var(--ink);touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer;font-family:inherit}
 .si-app .si-touch button:active{background:#eef1f6}
 .si-app .si-touch .fire{color:var(--p1);border-color:var(--p1);letter-spacing:.08em;font-size:13px}
-.si-app .game-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.si-app .game-action-button{appearance:none;border:1px solid var(--line);background:var(--paper);color:var(--mut);border-radius:10px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
-.si-app .game-action-button:hover{background:#f4f6fa}
-.si-app .si-hint{font-size:11.5px;color:var(--mut);margin-left:auto}
-@media (max-width:520px){.si-app .si-head p{display:none}.si-app .si-hint{display:none}}
-</style>
-<div class="game-app si-app">
-  <div class="game-intro si-head">
-    <div>
-      <h2>Space Invaders</h2>
-      <p>Tembak formasi invaders, hindari bom. Level acak yang dijamin bisa diselesaikan &mdash; satu jenis musuh, tanpa bos.</p>
-    </div>
-    <span class="game-status" data-state="idle"><i class="game-status-dot"></i><span data-status>Siap</span></span>
-  </div>
+.si-app .si-note{font-size:10.5px;color:var(--mut)}
 
+/* --- Batch 02 design polish --- */
+.si-app :focus-visible,.si-app button:focus-visible{outline:2px solid var(--p1);outline-offset:2px}
+.si-app .si-btn,.si-app .si-touch button{min-height:44px}
+@media (pointer:coarse){.si-app button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.si-app *{animation:none!important;transition:none!important}}
+
+/* --- layout contract (paling akhir, menimpa pointer:coarse) --- */
+.si-app.game-fill{flex:1 1 auto;height:100%;min-height:0}
+.si-app.game-fill > .game-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.si-app .si-hud .si-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.si-app .si-hud .si-icon-btn svg{flex:none;display:block}
+.si-app .si-hud .si-btn{min-height:32px;padding:5px 9px;font-size:10px}
+.si-app .si-head,.si-app .si-foot{flex:none}
+.si-app .si-body{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+  .si-app.game-fill > .game-panel[data-board]:not(:has(.si-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+  .si-app.game-fill > .game-panel[data-board]:has(.si-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .si-app.game-fill > .game-panel[data-board]:has(.si-ov:not([hidden])) svg.board{height:auto;width:100%;max-height:100%}
+  .si-app .si-hud{gap:5px}
+  .si-app .si-hud .si-chip{padding:4px 6px;font-size:9px}
+  .si-app .si-hud .si-chip[data-chip="best"],.si-app .si-hud .si-chip[data-chip="turn"]{display:none}
+  .si-app .si-hud .si-btn{min-height:32px;padding:5px 8px;font-size:9px}
+  .si-app .si-hud .si-btn-label,.si-app .si-hud .si-spacer{display:none}
+  .si-app .si-ov{padding:8px}
+  .si-app .si-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .si-app .si-body{scrollbar-width:none}
+  .si-app .si-body::-webkit-scrollbar{display:none}
+  .si-app .si-foot{margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+  .si-app .si-note{display:none}
+}
+</style>
+<div class="game-app si-app game-fill" data-si>
   <div class="si-hud">
+    <span class="game-status si-chip" data-state="idle"><i class="game-status-dot"></i><span data-status>Siap</span></span>
     <span class="si-chip s0" data-chip="s0"><i class="dot"></i><span data-hud="name0">Kamu</span>&nbsp;<b data-hud="score0">0</b><span class="si-lives" data-hud="lives0"></span></span>
     <span class="si-chip s1" data-chip="s1" hidden><i class="dot"></i><span data-hud="name1">Bot</span>&nbsp;<b data-hud="score1">0</b><span class="si-lives" data-hud="lives1"></span></span>
-    <span class="si-chip">Level <b data-hud="level">1</b></span>
-    <span class="si-chip" data-chip="best">Terbaik <b data-hud="best">0</b></span>
-    <span class="si-chip" data-chip="turn" hidden>Giliran <b data-hud="turn">1/6</b></span>
+    <span class="si-chip">LV <b data-hud="level">1</b></span>
+    <span class="si-chip" data-chip="best">BEST <b data-hud="best">0</b></span>
+    <span class="si-chip" data-chip="turn" hidden>TURN <b data-hud="turn">1/6</b></span>
+    <span class="si-chip si-bar-chip" data-chip="timer" hidden><span class="si-bar"><i data-hud="timerbar"></i></span></span>
     <span class="si-chip cheat" data-chip="cheat" hidden>CHEAT</span>
-    <span class="si-tools">
-      <button class="si-btn ghost" type="button" data-act="help" title="Bantuan (H)">?</button>
-      <button class="si-btn ghost" type="button" data-act="cheat-open" data-only="offline" title="Cheat (C)">&#9889;</button>
-      <button class="si-btn ghost" type="button" data-act="pause" data-only="offline" title="Jeda (P)">II</button>
-      <button class="si-btn ghost" type="button" data-act="restart" title="Ulang (R)">&#8635;</button>
-    </span>
+    <span class="si-spacer"></span>
+    <button class="si-btn si-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="si-btn-label">Help</span></button>
+    <button class="si-btn si-icon-btn" type="button" data-cheats data-only="offline" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="si-btn-label">Cheats</span></button>
+    <button class="si-btn si-icon-btn" type="button" data-pause data-only="offline" aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="si-btn-label">Pause</span></button>
+    <button class="si-btn si-icon-btn" type="button" data-act="restart" aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="si-btn-label">Restart</span></button>
+    <button class="si-btn si-icon-btn" type="button" data-ui="pad" aria-label="Toggle control pad" title="Control pad (B)">${iconSVG("gamepad2", { size: 14 })}<span class="si-btn-label">Pad</span></button>
+    <button class="si-btn si-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="si-btn-label">Exit game</span></button>
   </div>
-  <div class="si-timer" data-chip="timer" hidden><i data-hud="timerbar"></i></div>
 
   <section class="game-panel" data-board>
     <svg class="board" viewBox="0 0 560 520" preserveAspectRatio="xMidYMid meet" aria-label="Papan Space Invaders">
@@ -257,48 +279,59 @@ export function mount(root, context = {}) {
     </svg>
 
     <div class="si-ov" data-ov="menu">
-      <div class="si-card">
-        <h3>Space Invaders</h3>
-        <p>Pilih mode. Level dibangkitkan acak dan dijamin bisa diselesaikan.</p>
-        <div class="row">
+      <div class="si-card" role="dialog" aria-modal="true" aria-label="Mulai">
+        <div class="si-head"><h3>Space Invaders</h3></div>
+        <div class="si-body si-tut">
+          <p>Pilih mode. Level dibangkitkan acak dan dijamin bisa diselesaikan.</p>
+          <ul>
+            <li><b>Solo</b>: habiskan formasi, naik level, skor tertinggi disimpan.</li>
+            <li><b>Duel</b>: giliran bergantian 18 detik, 6 giliran, skor tertinggi menang.</li>
+            <li>Tekan <kbd>H</kbd> untuk bantuan lengkap.</li>
+          </ul>
+        </div>
+        <div class="si-foot">
           <button class="si-btn primary" type="button" data-act="start-solo">Solo</button>
           <button class="si-btn" type="button" data-act="start-bot">Duel vs Bot</button>
+          <button class="si-btn ghost" type="button" data-help>Bantuan</button>
         </div>
-        ${TUT}
       </div>
     </div>
 
     <div class="si-ov" data-ov="lobby" hidden>
-      <div class="si-card">
-        <h3>Duel Multiplayer</h3>
-        <p data-el="lobbyNote">Posisi pemain (P1/P2) dan giliran pertama diundi acak saat pertandingan dimulai.</p>
-        <div class="row">
-          <button class="si-btn primary" type="button" data-act="start-duel" data-el="lobbyStart">Mulai pertandingan</button>
+      <div class="si-card" role="dialog" aria-modal="true" aria-label="Duel multiplayer">
+        <div class="si-head"><h3>Duel Multiplayer</h3></div>
+        <div class="si-body si-tut">
+          <p data-el="lobbyNote">Posisi pemain (P1/P2) dan giliran pertama diundi acak saat pertandingan dimulai.</p>
         </div>
-        ${TUT}
+        <div class="si-foot">
+          <button class="si-btn primary" type="button" data-act="start-duel" data-el="lobbyStart">Mulai pertandingan</button>
+          <button class="si-btn ghost" type="button" data-help>Bantuan</button>
+        </div>
       </div>
     </div>
 
-    <div class="si-ov" data-ov="help" hidden>
-      <div class="si-card">
-        <h3>Bantuan</h3>
-        ${TUT}
-        <div class="row"><button class="si-btn primary" type="button" data-act="help-close">Tutup</button></div>
+    <div class="si-ov si-help" data-ov="help" hidden>
+      <div class="si-card" role="dialog" aria-modal="true" aria-label="Cara main">
+        <div class="si-head"><h3>Cara main</h3><button class="si-btn ghost" type="button" data-help-close aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="si-body si-tut">${TUT}</div>
+        <div class="si-foot"><span class="si-note">Tekan H untuk membuka lagi</span><button class="si-btn primary" type="button" data-help-close>Mengerti</button></div>
       </div>
     </div>
 
     <div class="si-ov" data-ov="cheat" hidden>
-      <div class="si-card">
-        <h3>Cheat</h3>
-        <p>Skor terbaik tidak disimpan saat cheat aktif. Tidak tersedia di multiplayer.</p>
-        <div class="si-cheats">
-          <label class="si-switch"><span>God mode<small>Kebal terhadap bom &amp; pendaratan</small></span><input type="checkbox" data-cheat="god"></label>
-          <label class="si-switch"><span>Rapid fire<small>Tembak 3x lebih cepat</small></span><input type="checkbox" data-cheat="rapid"></label>
-          <label class="si-switch"><span>Slow motion<small>Armada bergerak 60% lebih lambat</small></span><input type="checkbox" data-cheat="slow"></label>
-          <label class="si-switch"><span>Tanpa bom<small>Musuh berhenti menjatuhkan bom</small></span><input type="checkbox" data-cheat="nobombs"></label>
-          <label class="si-switch"><span>Skor x2<small>Semua poin dikalikan dua</small></span><input type="checkbox" data-cheat="x2"></label>
+      <div class="si-card" role="dialog" aria-modal="true" aria-label="Cheat">
+        <div class="si-head"><h3>Cheat</h3><button class="si-btn ghost" type="button" data-act="cheat-close" aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="si-body">
+          <p>Skor terbaik tidak disimpan saat cheat aktif. Tidak tersedia di multiplayer.</p>
+          <div class="si-cheats">
+            <label class="si-switch"><span>God mode<small>Kebal terhadap bom &amp; pendaratan</small></span><input type="checkbox" data-cheat="god"></label>
+            <label class="si-switch"><span>Rapid fire<small>Tembak 3x lebih cepat</small></span><input type="checkbox" data-cheat="rapid"></label>
+            <label class="si-switch"><span>Slow motion<small>Armada bergerak 60% lebih lambat</small></span><input type="checkbox" data-cheat="slow"></label>
+            <label class="si-switch"><span>Tanpa bom<small>Musuh berhenti menjatuhkan bom</small></span><input type="checkbox" data-cheat="nobombs"></label>
+            <label class="si-switch"><span>Skor x2<small>Semua poin dikalikan dua</small></span><input type="checkbox" data-cheat="x2"></label>
+          </div>
         </div>
-        <div class="row">
+        <div class="si-foot">
           <button class="si-btn" type="button" data-act="cheat-life">+1 nyawa</button>
           <button class="si-btn" type="button" data-act="cheat-skip">Lewati level</button>
           <button class="si-btn ghost" type="button" data-act="cheat-reset">Matikan semua</button>
@@ -308,18 +341,18 @@ export function mount(root, context = {}) {
     </div>
 
     <div class="si-ov" data-ov="pause" hidden>
-      <div class="si-card">
-        <h3>Jeda</h3>
-        <p>Tekan <kbd>P</kbd> atau klik lanjut untuk bermain lagi.</p>
-        <div class="row"><button class="si-btn primary" type="button" data-act="resume">Lanjut</button></div>
+      <div class="si-card" role="dialog" aria-modal="true" aria-label="Jeda">
+        <div class="si-head"><h3>Jeda</h3></div>
+        <div class="si-body"><p>Papan, bot, dan timer dibekukan. Tekan <kbd>P</kbd>, <kbd>Esc</kbd>, atau Lanjut untuk bermain lagi.</p></div>
+        <div class="si-foot"><button class="si-btn primary" type="button" data-act="resume">Lanjut</button></div>
       </div>
     </div>
 
     <div class="si-ov" data-ov="over" hidden>
-      <div class="si-card">
-        <h3 data-el="ovTitle">Game over</h3>
-        <p data-el="ovSub"></p>
-        <div class="row">
+      <div class="si-card" role="dialog" aria-modal="true" aria-label="Hasil">
+        <div class="si-head"><h3 data-el="ovTitle">Game over</h3></div>
+        <div class="si-body"><p data-el="ovSub"></p></div>
+        <div class="si-foot">
           <button class="si-btn primary" type="button" data-act="restart" data-el="ovAgain">Main lagi</button>
           <button class="si-btn" type="button" data-act="rematch" data-el="ovRematch" hidden>Minta rematch</button>
           <button class="si-btn" type="button" data-act="menu" data-el="ovMenu">Menu</button>
@@ -333,12 +366,6 @@ export function mount(root, context = {}) {
     <button type="button" data-hold="r" aria-label="Gerak kanan">&#9654;</button>
     <button type="button" class="fire" data-hold="f" aria-label="Tembak">TEMBAK</button>
   </div>
-
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-    <button class="game-action-button" type="button" data-act="touch-toggle">Tombol virtual</button>
-    <span class="si-hint">Mouse: gerak &amp; klik tembak &middot; Keyboard: A/D + Spasi</span>
-  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
@@ -348,6 +375,9 @@ export function mount(root, context = {}) {
     const bulletsG = $('[data-el="bullets"]'), bombsG = $('[data-el="bombs"]'), fxG = $('[data-el="fx"]');
     const msgEl = $('[data-el="msg"]'), msg2El = $('[data-el="msg2"]');
     const statusWrap = $(".game-status"), statusEl = $("[data-status]");
+    const btnPause = $("[data-pause]"), btnCheats = $("[data-cheats]");
+    const labelPause = btnPause && btnPause.querySelector(".si-btn-label");
+    const labelCheats = btnCheats && btnCheats.querySelector(".si-btn-label");
     const hud = {
         name: [$('[data-hud="name0"]'), $('[data-hud="name1"]')],
         score: [$('[data-hud="score0"]'), $('[data-hud="score1"]')],
@@ -405,6 +435,21 @@ export function mount(root, context = {}) {
     /* ---------------- runtime ---------------- */
     let raf = 0, lastT = 0, lastRenderT = 0, pubAcc = 0, pubForce = false, recvT = 0, bombT = 0.9;
     let paused = false, helpOpen = false, cheatOpen = false;
+
+    /* Pause membekukan tick/bot; penanda Date.now() & performance.now()
+       digeser saat resume supaya timer tidak meloncat. */
+    let clockShift = 0, perfShift = 0, pauseWallAt = 0, pausePerfAt = 0;
+    const clockNow = () => Date.now() - clockShift;
+    const perfNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now()) - perfShift;
+
+    /* Bantuan internal: tampil sekali pada launch pertama. */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("spaceInvadersHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("spaceInvadersHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+
     let touchOn = false;
     try { touchOn = window.matchMedia("(pointer: coarse)").matches; } catch (e) { }
     const inp = { l: false, r: false, f: false, tx: null };
@@ -478,6 +523,7 @@ export function mount(root, context = {}) {
         setMsg(turnLabel(state.active), "Level " + state.level + " \u00b7 " + TURN_TIME + " detik", 1.2);
     }
     function startMatch(m) {
+        if (paused) setPaused(false);
         state = baseState(m, "menu");
         if (m !== "solo") {
             state.slots[0].x = W * 0.35;
@@ -824,15 +870,22 @@ export function mount(root, context = {}) {
         return [who + " \u00b7 " + Math.max(Math.ceil(state.turnT), 0) + "s", "play"];
     }
     function render() {
+        if (labelPause) labelPause.textContent = paused ? "Resume" : "Pause";
+        if (btnPause) {
+            btnPause.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            btnPause.setAttribute("title", (paused ? "Resume" : "Pause") + " (P)");
+        }
+        if (btnCheats) btnCheats.classList.toggle("on", anyCheats());
+        if (labelCheats) labelCheats.textContent = anyCheats() ? "Cheats!" : "Cheats";
         if (!state) {
             statusEl.textContent = "Menghubungkan\u2026";
             statusWrap.setAttribute("data-state", "wait");
-            for (const k in ov) ov[k].hidden = k !== "lobby";
+            for (const k in ov) ov[k].hidden = k !== (helpOpen ? "help" : "lobby");
             lobbyStart.hidden = true;
             lobbyNote.textContent = "Menunggu host menyiapkan pertandingan\u2026";
             return;
         }
-        const now = performance.now();
+        const now = perfNow();
         const dtR = lastRenderT ? clamp((now - lastRenderT) / 1000, 0, 0.05) : 0.016;
         lastRenderT = now;
         const L = state.lvl;
@@ -972,7 +1025,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- input ---------------- */
     function sendInput(force) {
-        const now = performance.now();
+        const now = perfNow();
         if (!force && now - lastSend < 60) { inputDirty = true; return; }
         lastSend = now;
         inputDirty = false;
@@ -985,8 +1038,22 @@ export function mount(root, context = {}) {
         return true;
     }
     function setPaused(v) {
+        v = Boolean(v);
+        if (paused === v) return;
         paused = v;
-        if (v) { inp.l = false; inp.r = false; inp.f = false; inp.tx = null; sendInput(true); }
+        if (v) {
+            inp.l = false; inp.r = false; inp.f = false; inp.tx = null;
+            sendInput(true);
+            pauseWallAt = clockNow(); pausePerfAt = perfNow();
+        } else {
+            if (pausePerfAt) {
+                clockShift += Math.max(0, clockNow() - pauseWallAt);
+                perfShift += Math.max(0, perfNow() - pausePerfAt);
+                pauseWallAt = 0; pausePerfAt = 0;
+            }
+            lastT = 0; /* tidak ada loncatan dt pada frame pertama setelah resume */
+        }
+        render();
     }
     function togglePause() {
         if (online || !state) return;
@@ -994,11 +1061,20 @@ export function mount(root, context = {}) {
         if (ph === "menu" || ph === "lobby" || ph === "over") return;
         setPaused(!paused);
     }
-    function toggleHelp() { helpOpen = !helpOpen; if (helpOpen) cheatOpen = false; }
-    function toggleCheat() { if (online) return; cheatOpen = !cheatOpen; if (cheatOpen) helpOpen = false; }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function toggleCheat(on) {
+        if (online) return;
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) helpOpen = false;
+        render();
+    }
     function closeTop() {
-        if (helpOpen) helpOpen = false;
-        else if (cheatOpen) cheatOpen = false;
+        if (helpOpen) toggleHelp(false);
+        else if (cheatOpen) toggleCheat(false);
         else if (paused) setPaused(false);
     }
     function doRestart() {
@@ -1016,11 +1092,24 @@ export function mount(root, context = {}) {
         const c = e.code;
         if (c === "ArrowLeft" || c === "ArrowRight" || c === "ArrowUp" || c === "ArrowDown" || c === "Space") e.preventDefault();
         if (e.repeat) return;
-        if (c === "KeyP") { togglePause(); return; }
-        if (c === "KeyR") { doRestart(); return; }
+        /* prioritas: help → cheats → pause → Escape → aksi game */
         if (c === "KeyH") { toggleHelp(); return; }
-        if (c === "KeyC") { toggleCheat(); return; }
+        if (c === "KeyC") { if (!helpOpen) toggleCheat(); return; }
+        if (c === "KeyP") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheat(false);
+            else togglePause();
+            return;
+        }
         if (c === "Escape") { closeTop(); return; }
+        if (c === "KeyR") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheat(false);
+            else doRestart();
+            return;
+        }
+        if (c === "KeyB") { touchOn = !touchOn; render(); return; }
+        if (helpOpen || cheatOpen) return;
         let changed = false;
         if (c === "ArrowLeft" || c === "KeyA") changed = setKey("l", true);
         else if (c === "ArrowRight" || c === "KeyD") changed = setKey("r", true);
@@ -1100,8 +1189,23 @@ export function mount(root, context = {}) {
 
     /* klik (template handleClick) */
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const b = event.target.closest("[data-act]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        let b = t.closest("[data-exit],[data-help],[data-help-close],[data-cheats],[data-pause],[data-resume],[data-restart],[data-ui],[data-act]");
+        if (!b) return;
+        if (b.hasAttribute("data-exit")) { onExit(); return; }
+        if (b.hasAttribute("data-help-close")) { toggleHelp(false); b.blur(); return; }
+        if (b.hasAttribute("data-help")) { toggleHelp(); b.blur(); return; }
+        if (b.hasAttribute("data-cheats")) { toggleCheat(); b.blur(); return; }
+        if (b.hasAttribute("data-pause")) { togglePause(); b.blur(); return; }
+        if (b.hasAttribute("data-resume")) { setPaused(false); b.blur(); return; }
+        if (b.hasAttribute("data-restart")) { doRestart(); b.blur(); return; }
+        if (b.hasAttribute("data-ui")) {
+            if (b.dataset.ui === "pad") { touchOn = !touchOn; render(); }
+            b.blur();
+            return;
+        }
+        b = t.closest("[data-act]");
         if (!b) return;
         const a = b.dataset.act;
         if (a === "start-solo") submitAction({ t: "start", mode: "solo" });
@@ -1113,13 +1217,13 @@ export function mount(root, context = {}) {
         else if (a === "resume") setPaused(false);
         else if (a === "pause") togglePause();
         else if (a === "help") toggleHelp();
-        else if (a === "help-close") helpOpen = false;
+        else if (a === "help-close") toggleHelp(false);
         else if (a === "cheat-open") toggleCheat();
-        else if (a === "cheat-close") cheatOpen = false;
+        else if (a === "cheat-close") toggleCheat(false);
         else if (a === "cheat-life") submitAction({ t: "cheat-life" });
         else if (a === "cheat-skip") submitAction({ t: "cheat-skip" });
         else if (a === "cheat-reset") submitAction({ t: "cheat-reset" });
-        else if (a === "touch-toggle") touchOn = !touchOn;
+        else if (a === "touch-toggle") { touchOn = !touchOn; render(); }
         if (typeof b.blur === "function") b.blur();
     }
     function handleChange(event) {
@@ -1147,7 +1251,7 @@ export function mount(root, context = {}) {
         if (!next || !next.lvl) return;
         const prev = state;
         state = next;
-        recvT = performance.now();
+        recvT = perfNow();
         if (prev && prev.lvl && prev.level === state.level && prev.lvl.rows === state.lvl.rows && prev.lvl.cols === state.lvl.cols) {
             for (let i = 0; i < state.lvl.cells.length; i++) {
                 if (prev.lvl.cells[i] && !state.lvl.cells[i]) {

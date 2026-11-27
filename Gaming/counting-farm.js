@@ -3,6 +3,7 @@
    10 ronde bergilir: hitung hewan di padang, pilih angka yang benar.
    Jawaban benar = 1 bintang. Bintang terbanyak menang.
    Setelah mengubah file ini, jalankan: node tools/build-games-manifest.mjs */
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "counting-farm", // harus sama dengan nama file (tanpa .js)
@@ -290,9 +291,26 @@ export function mount(root, context = {}) {
     let uiKey = "";
     let cachedRound = null;
     let cheatOpen = false;
+    let helpOpen = false;
+    let paused = false;
+    let pauseStart = 0;
+    let pauseOffset = 0;
     let fiftyHidden = null; // nilai opsi yang dibuang cheat 50:50 (ronde ini)
     const cheats = { reveal: false, auto: false, weakBot: false };
-    let botTimer = null, advanceTimer = null, autoTimer = null;
+    const timers = { bot: null, advance: null, auto: null };
+
+    /* ---- panduan internal: tampil sekali per instalasi ---- */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("countingFarmHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("countingFarmHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* Jam permainan tidak menghitung waktu pause, agar bot/timer tidak loncat. */
+    const clockNow = () => Date.now() - pauseOffset;
+    const perfNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now()) - pauseOffset;
+    const blocked = () => destroyed || paused || helpOpen || cheatOpen;
 
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -321,108 +339,223 @@ export function mount(root, context = {}) {
         return cachedRound;
     }
 
-    /* ---------------- shell (tanpa tutorial / how-to-play) ---------------- */
+    /* ---------------- shell: HUD bar + board penuh + overlay modal ---------------- */
     root.innerHTML = `
-<div class="game-app cf-app">
 <style>
-.cf-app{position:relative;max-width:720px;margin:0 auto}
+.cf-app{--cf-line:#e5e7eb;--cf-soft:#fafafa;--cf-ink:#1f2937;--cf-mut:#6b7280;--cf-acc:#16a34a;--cf-acc-soft:#f0fdf4;--cf-warn:#f59e0b;--cf-bad:#dc2626;
+  position:relative;width:100%;height:100%;min-height:0;margin:0 auto;padding:2px;
+  display:flex;flex-direction:column;gap:10px;color:var(--cf-ink);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.cf-app *{box-sizing:border-box}
 .cf-app [hidden]{display:none!important}
-.cf-app .cf-panel{position:relative;display:flex;flex-direction:column;gap:12px;padding:14px}
-.cf-app .cf-hud{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-.cf-app .cf-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid #e5e7eb;border-radius:999px;background:#fafafa;font-size:12.5px;font-weight:600;color:#6b7280;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cf-app .cf-chip b{color:#1f2937}
-.cf-app .cf-chip.cf-active{border-color:#16a34a;background:#f0fdf4;color:#166534}
-.cf-app .cf-chip.cf-active b{color:#166534}
-.cf-app .cf-star{color:#f59e0b}
-.cf-app .cf-stage{position:relative;display:flex;flex-direction:column;gap:12px}
-.cf-app .cf-paddock svg{display:block;width:100%;height:auto;max-height:52vh;border-radius:14px}
-.cf-app .cf-question{display:flex;align-items:center;justify-content:center;gap:8px;min-height:36px;font-size:19px;font-weight:700;color:#1f2937;text-align:center}
-.cf-app .cf-qicon{width:36px;height:36px;flex:none}
-.cf-app .cf-opts{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
-.cf-app .cf-opt{min-width:92px;padding:8px 22px;font:inherit;font-size:38px;font-weight:800;line-height:1.2;color:#1f2937;background:#fff;border:2px solid #e5e7eb;border-radius:14px;cursor:pointer;transition:border-color .12s,transform .12s,background .12s,opacity .12s;animation:cf-pop .3s cubic-bezier(.34,1.56,.64,1) backwards}
-.cf-app .cf-opt:hover:not(:disabled){border-color:#16a34a;transform:translateY(-2px)}
-.cf-app .cf-opt.cf-sel:not(:disabled){border-color:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.15)}
-.cf-app .cf-opt:disabled{cursor:default;opacity:.6}
-.cf-app .cf-opt.cf-right{background:#f0fdf4;border-color:#16a34a;color:#166534;opacity:1}
-.cf-app .cf-opt.cf-wrong{background:#fef2f2;border-color:#ef4444;color:#991b1b;opacity:1;animation:cf-shake .4s ease}
-.cf-app .cf-opt.cf-reveal{border-color:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.2)}
-.cf-app .cf-opt.cf-hidden{opacity:.15;pointer-events:none}
-.cf-app .cf-fb{min-height:22px;text-align:center;font-size:14px;font-weight:600;color:#6b7280}
-.cf-app .cf-fb.cf-good{color:#16a34a;animation:cf-pop .35s cubic-bezier(.34,1.56,.64,1)}
-.cf-app .cf-fb.cf-bad{color:#dc2626}
-.cf-app .cf-touch{display:none;gap:12px;justify-content:center}
-.cf-app .cf-tbtn{width:52px;height:52px;border-radius:50%;border:2px solid #e5e7eb;background:#fff;font-size:20px;color:#1f2937;cursor:pointer}
-.cf-app .cf-tbtn:active{transform:scale(.94)}
-.cf-app .cf-tbtn.cf-tok{background:#16a34a;border-color:#16a34a;color:#fff}
-.cf-app .cf-over{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.85);backdrop-filter:blur(2px);border-radius:14px}
-.cf-app .cf-over-card{display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center;padding:22px 28px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
-.cf-app .cf-over-emoji{font-size:40px;line-height:1}
-.cf-app .cf-over-card h3{margin:0;font-size:20px;color:#1f2937}
-.cf-app .cf-over-card p{margin:0;font-size:13.5px;color:#6b7280}
-.cf-app .cf-cheats{position:absolute;top:10px;right:10px;z-index:20;width:240px;display:flex;flex-direction:column;gap:8px;padding:12px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.12)}
-.cf-app .cf-cheats h4{margin:0;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#1f2937}
-.cf-app .cf-cheats h4 button{border:none;background:none;font-size:14px;color:#9ca3af;cursor:pointer}
-.cf-app .cf-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:#374151}
-.cf-app .cf-cheat-row button{font:inherit;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:8px;border:1px solid #e5e7eb;background:#fafafa;color:#374151;cursor:pointer}
-.cf-app .cf-cheat-row button.cf-on{background:#16a34a;border-color:#16a34a;color:#fff}
-.cf-app .cf-cheat-row button:disabled{opacity:.4;cursor:not-allowed}
-.cf-app .cf-note{margin:0;font-size:10.5px;color:#9ca3af}
-.cf-app .game-action-button.cf-on{border-color:#16a34a;color:#16a34a;background:#f0fdf4}
-.cf-app .cf-animal .cf-in{animation:cf-pop .4s cubic-bezier(.34,1.56,.64,1) backwards}
-.cf-app .cf-animal .cf-body{animation:cf-bob 3s ease-in-out infinite}
+.cf-app :is(button):focus-visible{outline:2px solid var(--cf-acc);outline-offset:2px}
+.cf-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.cf-chip{display:inline-flex;align-items:center;gap:6px;min-height:30px;max-width:100%;padding:5px 10px;border:1px solid var(--cf-line);border-radius:999px;background:#fff;color:var(--cf-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cf-chip b{color:var(--cf-ink);font-variant-numeric:tabular-nums}
+.cf-chip.cf-active{border-color:var(--cf-acc);background:var(--cf-acc-soft);color:#166534}
+.cf-chip.cf-active b{color:#166534}
+.cf-dot{width:8px;height:8px;flex:none;border-radius:50%;background:#9ca3af}
+.cf-star{color:var(--cf-warn)}
+.cf-spacer{flex:1 1 auto;min-width:6px}
+.cf-btn{border:1px solid var(--cf-line);background:#fff;color:var(--cf-ink);border-radius:9px;padding:6px 10px;min-height:32px;
+  font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.cf-btn:hover:not(:disabled){border-color:var(--cf-acc);color:var(--cf-acc)}
+.cf-btn:disabled{opacity:.4;cursor:default}
+.cf-btn.on,.cf-btn.cf-on{border-color:var(--cf-acc);background:var(--cf-acc-soft);color:#166534}
+.cf-btn.primary{background:var(--cf-acc);border-color:var(--cf-acc);color:#fff}
+.cf-btn.primary:hover:not(:disabled){color:#fff;opacity:.92}
+.cf-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.cf-icon-btn svg{flex:none;display:block}
+.cf-btn-label{white-space:nowrap}
+.cf-app.game-fill>.cf-board{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;flex-direction:column;gap:8px;min-width:0;padding:10px;border:1px solid var(--cf-line);border-radius:14px;background:#fff;overflow:hidden}
+.cf-paddock{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center}
+.cf-paddock svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;border-radius:12px}
+.cf-question{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;min-height:40px;font-size:18px;font-weight:700;color:var(--cf-ink);text-align:center;line-height:1.35}
+.cf-qicon{width:36px;height:36px;flex:none}
+.cf-opts{flex:none;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.cf-opt{min-width:92px;min-height:56px;padding:8px 16px;font:inherit;font-size:36px;font-weight:800;line-height:1.2;color:var(--cf-ink);background:#fff;border:1px solid var(--cf-line);border-radius:12px;cursor:pointer;touch-action:manipulation;transition:border-color .16s,transform .16s,background .16s,opacity .16s;animation:cf-pop .3s cubic-bezier(.34,1.56,.64,1) backwards}
+.cf-opt:hover:not(:disabled){border-color:var(--cf-acc);transform:translateY(-2px)}
+.cf-opt:focus-visible{outline:2px solid var(--cf-acc);outline-offset:2px}
+.cf-opt.cf-sel:not(:disabled){border-color:var(--cf-acc);box-shadow:0 0 0 3px rgba(22,163,74,.15)}
+.cf-opt:disabled{cursor:default;opacity:.6}
+.cf-opt.cf-right{background:var(--cf-acc-soft);border-color:var(--cf-acc);color:#166534;opacity:1}
+.cf-opt.cf-wrong{background:#fef2f2;border-color:var(--cf-bad);color:#991b1b;opacity:1;animation:cf-shake .4s ease}
+.cf-opt.cf-reveal{border-color:var(--cf-warn);box-shadow:0 0 0 3px rgba(245,158,11,.2)}
+.cf-opt.cf-hidden{opacity:.15;pointer-events:none}
+.cf-fb{flex:none;min-height:22px;text-align:center;font-size:13px;font-weight:600;color:var(--cf-mut);line-height:1.4}
+.cf-fb.cf-good{color:var(--cf-acc);animation:cf-pop .35s cubic-bezier(.34,1.56,.64,1)}
+.cf-fb.cf-bad{color:var(--cf-bad)}
+.cf-touch{display:none;gap:12px;justify-content:center;flex:none}
+.cf-tbtn{width:52px;height:52px;border-radius:50%;border:1px solid var(--cf-line);background:#fff;font-size:20px;color:var(--cf-ink);cursor:pointer;touch-action:manipulation}
+.cf-tbtn:active{transform:scale(.94)}
+.cf-tbtn.cf-tok{background:var(--cf-acc);border-color:var(--cf-acc);color:#fff}
+.cf-over{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(255,255,255,.88);backdrop-filter:blur(2px);border-radius:14px}
+.cf-over-card{display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center;width:min(360px,100%);max-height:100%;overflow:hidden;padding:20px 24px;background:#fff;border:1px solid var(--cf-line);border-radius:14px;box-shadow:0 8px 24px rgba(17,24,39,.1)}
+.cf-over-help .cf-over-card{width:min(560px,100%);text-align:left}
+.cf-over-emoji{font-size:40px;line-height:1}
+.cf-over-card h3{margin:0;font-size:19px;color:var(--cf-ink)}
+.cf-over-card p{margin:0;font-size:13px;color:var(--cf-mut);line-height:1.5}
+.cf-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;width:100%}
+.cf-head h3{margin:0;font-size:16px;font-weight:800;color:var(--cf-ink)}
+.cf-body{flex:1 1 auto;min-height:0;overflow:auto;width:100%;font-size:13px;color:var(--cf-mut)}
+.cf-cheats{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;width:100%}
+.cf-help{flex:1 1 auto;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;width:100%}
+.cf-help b{display:block;margin-bottom:5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--cf-mut);text-transform:uppercase}
+.cf-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;color:#4b5563}
+.cf-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--cf-line);border-bottom-width:2px;border-radius:5px;background:var(--cf-soft);color:var(--cf-ink);font:inherit}
+.cf-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap;width:100%}
+.cf-note{font-size:11px;color:var(--cf-mut)}
+.cf-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:40px;font-size:12.5px;color:var(--cf-ink)}
+.cf-cheat-row .cf-btn{font-size:11.5px}
+.cf-animal .cf-in{animation:cf-pop .4s cubic-bezier(.34,1.56,.64,1) backwards}
+.cf-animal .cf-body{animation:cf-bob 3s ease-in-out infinite}
 @keyframes cf-pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes cf-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes cf-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
 @media (pointer:coarse),(max-width:640px){
   .cf-app .cf-touch{display:flex}
-  .cf-app .cf-opt{font-size:30px;min-width:76px;padding:6px 16px}
+  .cf-app .cf-opt{font-size:30px;min-width:76px;padding:8px 12px}
   .cf-app .cf-question{font-size:16px}
 }
+@media (prefers-reduced-motion:reduce){.cf-app *{animation:none!important;transition-duration:.01ms!important}}
+
+/* --- layout redesign: override terakhir (spesifisitas tinggi) --- */
+@media (max-width:640px){
+  .cf-app.game-fill>.cf-board:not(:has(.cf-over:not([hidden]))){flex:0 0 auto;min-height:0;aspect-ratio:auto}
+  .cf-app.game-fill>.cf-board:has(.cf-over:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .cf-app .cf-paddock{flex:0 0 auto}
+  .cf-app .cf-paddock svg{height:auto;aspect-ratio:640/420}
+  .cf-app .cf-hud{gap:5px;margin-bottom:0}
+  .cf-app .cf-hud .cf-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .cf-app .cf-hud .cf-chip[data-hud="first"]{display:none}
+  .cf-app .cf-hud .cf-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .cf-app .cf-hud .cf-btn-label,.cf-app .cf-hud .cf-spacer{display:none}
+  .cf-app .cf-over{padding:8px}
+  .cf-app .cf-over-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .cf-app .cf-help{grid-template-columns:1fr;gap:8px}
+  .cf-app .cf-cheats,.cf-app .cf-help,.cf-app .cf-body{scrollbar-width:none}
+  .cf-app .cf-cheats::-webkit-scrollbar,.cf-app .cf-help::-webkit-scrollbar,.cf-app .cf-body::-webkit-scrollbar{display:none}
+  .cf-app .cf-foot{padding-top:8px;border-top:1px solid var(--cf-line)}
+  .cf-app .cf-note{display:none}
+}
+@media (pointer:coarse){
+  .cf-app .cf-hud .cf-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .cf-app .cf-over-card .cf-btn{min-height:44px}
+}
 </style>
-  <div class="game-intro">
-    <div><h2>Counting Farm</h2></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Memuat…</span></span>
+<div class="game-app cf-app game-fill" data-cf>
+  <div class="cf-hud">
+    <span class="cf-chip"><i class="cf-dot" data-dot></i><b data-status>Memuat…</b></span>
+    <span class="cf-chip">Ronde <b data-hud="round">1/${ROUNDS}</b></span>
+    <span class="cf-chip" data-seat="0"></span>
+    <span class="cf-chip" data-seat="1"></span>
+    <span class="cf-chip" data-hud="first">Mulai: <b data-hud="first-val">—</b></span>
+    <span class="cf-spacer"></span>
+    <button class="cf-btn cf-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="cf-btn-label">Help</span></button>
+    <button class="cf-btn cf-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="cf-btn-label">Cheats</span></button>
+    <button class="cf-btn cf-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="cf-btn-label">Pause</span></button>
+    <button class="cf-btn cf-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="cf-btn-label">Restart</span></button>
+    <button class="cf-btn cf-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cf-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel cf-panel" data-board></section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-cheat-toggle>Cheat</button>
-    <button class="game-action-button" type="button" data-act="restart">Ulang</button>
-    <button class="game-action-button" type="button" data-exit>Keluar</button>
-  </div>
-  <div class="cf-cheats" data-cheats hidden></div>
-</div>`;
-
-    const boardEl = root.querySelector("[data-board]");
-    const statusEl = root.querySelector("[data-status]");
-    const dotEl = root.querySelector("[data-dot]");
-    const cheatsEl = root.querySelector("[data-cheats]");
-    const cheatBtnEl = root.querySelector("[data-cheat-toggle]");
-    let hudEl = null, optsEl = null, fbEl = null, overEl = null;
-
-    /* ---------------- render ---------------- */
-    function buildBoard() {
-        const rd = currentRound();
-        boardEl.innerHTML = `
-<div class="cf-hud" data-hud></div>
-<div class="cf-stage">
-  <div class="cf-paddock"><svg viewBox="0 0 640 420" aria-hidden="true">${scenerySvg()}${animalsSvg(rd)}${fenceSvg()}</svg></div>
-  <div class="cf-question">${rd.target
-                ? `<svg class="cf-qicon" viewBox="-44 -42 88 82" aria-hidden="true">${ART[rd.target]()}</svg><span>Berapa banyak ${KIND_LABEL[rd.target]}?</span>`
-                : "<span>Berapa jumlah semua hewan?</span>"}</div>
-  <div class="cf-opts" data-opts title="Keyboard: 1–3, panah + Enter">${rd.options.map((v, i) =>
-                    `<button type="button" class="cf-opt" data-v="${v}" data-i="${i}" style="animation-delay:${i * 70}ms">${v}</button>`).join("")}</div>
-  <div class="cf-fb" data-fb></div>
+  <section class="game-panel cf-board" data-board>
+    <div class="cf-paddock"><svg data-paddock viewBox="0 0 640 420" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg></div>
+    <div class="cf-question" data-question></div>
+    <div class="cf-opts" data-opts title="Keyboard: 1–3, panah + Enter"></div>
+    <div class="cf-fb" data-fb></div>
+    <div class="cf-over" data-over hidden>
+      <div class="cf-over-card">
+        <div class="cf-over-emoji" data-res-emoji>🏆</div>
+        <h3 data-res-title></h3>
+        <p data-res-sub></p>
+        <div class="cf-foot"><span class="cf-note">Press R to restart</span><button class="cf-btn primary" type="button" data-restart>Main lagi</button></div>
+      </div>
+    </div>
+    <div class="cf-over" data-ov="pause" hidden>
+      <div class="cf-over-card">
+        <div class="cf-head"><h3>Paused</h3></div>
+        <div class="cf-body"><p>Papan, bot dan timer sedang dibekukan.</p></div>
+        <div class="cf-foot"><span class="cf-note">Press P or Esc to resume</span><button class="cf-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="cf-over" data-ov="cheat" hidden>
+      <div class="cf-over-card">
+        <div class="cf-head"><h3>Cheats</h3><button class="cf-btn" type="button" data-cheat-close aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="cf-cheats" data-cheat-body></div>
+        <div class="cf-foot"><span class="cf-note">Press C to close</span><button class="cf-btn primary" type="button" data-cheat-close>Done</button></div>
+      </div>
+    </div>
+    <div class="cf-over cf-over-help" data-ov="help" hidden>
+      <div class="cf-over-card">
+        <div class="cf-head"><h3>How to play</h3><button class="cf-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="cf-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Hitung hewan di padang, lalu klik angka yang benar atau tekan <span class="cf-kbd">1</span>–<span class="cf-kbd">3</span> / panah + <span class="cf-kbd">Enter</span>.</li>
+              <li><span class="cf-kbd">H</span> help · <span class="cf-kbd">C</span> cheats · <span class="cf-kbd">P</span> pause · <span class="cf-kbd">R</span> restart</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap angka jawaban, atau pakai tombol ◀ ✔ ▶ di bawah papan.</li>
+              <li>Gunakan tombol di bar HUD untuk Help, Cheats, Pause, Restart dan Exit.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>10 ronde bergilir. Pertanyaan bisa menanyakan jenis hewan tertentu atau jumlah semua hewan.</li>
+              <li>Jawaban benar mendapat 1 bintang. Pemain dengan bintang terbanyak menang; seri jika sama.</li>
+              <li>Siapa yang jalan duluan dan posisi pemain (mode online) ditentukan secara acak.</li>
+              <li>Cheat: lihat jawaban, 50:50, jawab otomatis, bot lemah, tambah bintang, lewati giliran (solo).</li>
+            </ul>
+            <div class="cf-foot"><span class="cf-note">Press H to reopen this guide</span><button class="cf-btn primary" type="button" data-help-close>Got it</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
   <div class="cf-touch">
     <button type="button" class="cf-tbtn" data-nav="prev" aria-label="Pilihan sebelumnya">◀</button>
     <button type="button" class="cf-tbtn cf-tok" data-nav="ok" aria-label="Pilih jawaban">✔</button>
     <button type="button" class="cf-tbtn" data-nav="next" aria-label="Pilihan berikutnya">▶</button>
   </div>
-  <div class="cf-over" data-over hidden></div>
 </div>`;
-        hudEl = boardEl.querySelector("[data-hud]");
-        optsEl = boardEl.querySelector("[data-opts]");
-        fbEl = boardEl.querySelector("[data-fb]");
-        overEl = boardEl.querySelector("[data-over]");
+
+    const $ = (s) => root.querySelector(s);
+    const boardEl = $("[data-board]");
+    const paddockEl = $("[data-paddock]");
+    const questionEl = $("[data-question]");
+    const optsEl = $("[data-opts]");
+    const fbEl = $("[data-fb]");
+    const hudSeat = [$('[data-seat="0"]'), $('[data-seat="1"]')];
+    const roundEl = $('[data-hud="round"]');
+    const firstEl = $('[data-hud="first-val"]');
+    const statusEl = $("[data-status]");
+    const dotEl = $("[data-dot]");
+    const cheatBtnEl = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
+    const cheatBodyEl = $("[data-cheat-body]");
+    const ov = {
+        over: $("[data-over]"),
+        pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'),
+        help: $('[data-ov="help"]'),
+    };
+    const res = {
+        emoji: $("[data-res-emoji]"),
+        title: $("[data-res-title]"),
+        sub: $("[data-res-sub]"),
+    };
+
+    /* ---------------- render ---------------- */
+    function buildBoard() {
+        const rd = currentRound();
+        paddockEl.innerHTML = `${scenerySvg()}${animalsSvg(rd)}${fenceSvg()}`;
+        questionEl.innerHTML = rd.target
+            ? `<svg class="cf-qicon" viewBox="-44 -42 88 82" aria-hidden="true">${ART[rd.target]()}</svg><span>Berapa banyak ${KIND_LABEL[rd.target]}?</span>`
+            : "<span>Berapa jumlah semua hewan?</span>";
+        optsEl.innerHTML = rd.options.map((v, i) =>
+            `<button type="button" class="cf-opt" data-v="${v}" data-i="${i}" style="animation-delay:${i * 70}ms">${v}</button>`).join("");
     }
 
     function updateSel() {
@@ -435,18 +568,17 @@ export function mount(root, context = {}) {
     }
 
     function updateRoundUi() {
-        if (!state || !hudEl) return;
+        if (!state) return;
         const rd = currentRound();
         const mine = mySeat();
         const myTurn = state.phase === "playing" && state.turn === mine;
 
-        const seatChip = (s) =>
-            `<span class="cf-chip${state.turn === s && state.phase !== "over" ? " cf-active" : ""}">` +
-            `<span class="cf-star">★</span><b>${state.stars[s]}</b>&nbsp;${esc(seatLabel(s))} (P${s + 1})</span>`;
-        hudEl.innerHTML =
-            `<span class="cf-chip">Ronde <b>${Math.min(state.roundNo, ROUNDS)}/${ROUNDS}</b></span>` +
-            seatChip(0) + seatChip(1) +
-            `<span class="cf-chip">Mulai: <b>${esc(seatLabel(state.starting))}</b></span>`;
+        hudSeat.forEach((chip, s) => {
+            chip.className = `cf-chip${state.turn === s && state.phase !== "over" ? " cf-active" : ""}`;
+            chip.innerHTML = `<span class="cf-star">★</span><b>${state.stars[s]}</b>&nbsp;${esc(seatLabel(s))} (P${s + 1})`;
+        });
+        roundEl.textContent = `${Math.min(state.roundNo, ROUNDS)}/${ROUNDS}`;
+        firstEl.textContent = seatLabel(state.starting);
 
         optsEl.querySelectorAll(".cf-opt").forEach((b, i) => {
             const v = rd.options[i];
@@ -476,15 +608,10 @@ export function mount(root, context = {}) {
         if (state.phase === "over") {
             const draw = state.winner === -1;
             const win = state.winner === mine;
-            overEl.innerHTML = `
-<div class="cf-over-card">
-  <div class="cf-over-emoji">${draw ? "🤝" : win ? "🏆" : "🌱"}</div>
-  <h3>${draw ? "Seri!" : win ? "Kamu menang!" : esc(seatLabel(state.winner)) + " menang"}</h3>
-  <p>${esc(seatLabel(0))} ${state.stars[0]} ★ &nbsp;·&nbsp; ${state.stars[1]} ★ ${esc(seatLabel(1))}</p>
-  <button class="game-action-button" type="button" data-act="restart">Main lagi</button>
-</div>`;
-            overEl.hidden = false;
-        } else overEl.hidden = true;
+            res.emoji.textContent = draw ? "🤝" : win ? "🏆" : "🌱";
+            res.title.textContent = draw ? "Seri!" : win ? "Kamu menang!" : seatLabel(state.winner) + " menang";
+            res.sub.textContent = `${seatLabel(0)} ${state.stars[0]} ★  ·  ${state.stars[1]} ★ ${seatLabel(1)}`;
+        }
 
         let st, dot;
         if (state.phase === "over") {
@@ -500,6 +627,7 @@ export function mount(root, context = {}) {
         statusEl.textContent = st;
         dotEl.style.background = dot;
         renderCheats();
+        syncUI();
     }
 
     function render() {
@@ -511,45 +639,153 @@ export function mount(root, context = {}) {
 
     function renderCheats() {
         const anyOn = cheats.reveal || cheats.auto || cheats.weakBot;
-        cheatBtnEl.classList.toggle("cf-on", cheatOpen || anyOn);
-        cheatsEl.hidden = !cheatOpen;
+        cheatBtnEl.classList.toggle("on", cheatOpen || anyOn);
         if (!cheatOpen) return;
         const rd = state ? currentRound() : null;
-        const fiftyOk = state && state.phase === "playing" && state.turn === mySeat() && !fiftyHidden;
+        const fiftyOk = state && state.phase === "playing" && state.turn === mySeat() && !fiftyHidden && !blocked();
         const tog = (key, label) =>
-            `<div class="cf-cheat-row"><span>${label}</span><button type="button" data-cheat="${key}" class="${cheats[key === "weak" ? "weakBot" : key] ? "cf-on" : ""}" ${online ? "disabled" : ""}>${cheats[key === "weak" ? "weakBot" : key] ? "ON" : "OFF"}</button></div>`;
-        cheatsEl.innerHTML = `
-<h4>Cheat <button type="button" data-cheat="close" aria-label="Tutup cheat">✕</button></h4>
-<div class="cf-cheat-row"><span>Lihat jawaban</span><button type="button" data-cheat="reveal" class="${cheats.reveal ? "cf-on" : ""}">${cheats.reveal ? "ON" : "OFF"}</button></div>
-<div class="cf-cheat-row"><span>50:50 (buang 1 salah)</span><button type="button" data-cheat="fifty" ${fiftyOk ? "" : "disabled"}>Pakai</button></div>
+            `<div class="cf-cheat-row"><span>${label}</span><button type="button" class="cf-btn" data-cheat="${key}" ${online ? "disabled" : ""}>${cheats[key === "weak" ? "weakBot" : key] ? "ON" : "OFF"}</button></div>`;
+        cheatBodyEl.innerHTML = `
+<div class="cf-cheat-row"><span>Lihat jawaban</span><button type="button" class="cf-btn" data-cheat="reveal">${cheats.reveal ? "ON" : "OFF"}</button></div>
+<div class="cf-cheat-row"><span>50:50 (buang 1 salah)</span><button type="button" class="cf-btn" data-cheat="fifty" ${fiftyOk ? "" : "disabled"}>Pakai</button></div>
 ${tog("auto", "Jawab otomatis")}
 ${tog("weak", "Bot lemah")}
-<div class="cf-cheat-row"><span>+1 bintang (kamu)</span><button type="button" data-cheat="star" ${online ? "disabled" : ""}>Tambah</button></div>
-<div class="cf-cheat-row"><span>Lewati giliran</span><button type="button" data-cheat="skip" ${online ? "disabled" : ""}>Lewati</button></div>
+<div class="cf-cheat-row"><span>+1 bintang (kamu)</span><button type="button" class="cf-btn" data-cheat="star" ${online ? "disabled" : ""}>Tambah</button></div>
+<div class="cf-cheat-row"><span>Lewati giliran</span><button type="button" class="cf-btn" data-cheat="skip" ${online ? "disabled" : ""}>Lewati</button></div>
 <p class="cf-note">${online ? "Mode online: hanya cheat tampilan (lihat jawaban & 50:50)." : "Semua cheat tersedia di mode solo vs Bot."}</p>`;
     }
 
-    /* ---------------- alur permainan (otoritas: host / lokal) ---------------- */
-    function clearTimers() {
-        if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
-        if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    /* Overlays saling menekan: help > cheats > pause > result. Label tombol
+       HUD update lewat span agar ikon tidak ikut tertimpa. */
+    function syncUI() {
+        const resultOpen = Boolean(state && state.phase === "over");
+        ov.over.hidden = !resultOpen || helpOpen || cheatOpen || paused;
+        ov.pause.hidden = !paused || helpOpen || cheatOpen;
+        ov.cheat.hidden = !cheatOpen || helpOpen;
+        ov.help.hidden = !helpOpen;
+        cheatBtnEl.classList.toggle("on", cheatOpen);
+        cheatBtnEl.setAttribute("aria-pressed", String(cheatOpen));
+        const label = pauseBtn.querySelector(".cf-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        pauseBtn.disabled = online;
     }
 
+    /* ---------------- timer yang bisa dibekukan ---------------- */
+    function cancelTimer(kind) {
+        const t = timers[kind];
+        if (!t) return;
+        if (t.id) clearTimeout(t.id);
+        timers[kind] = null;
+    }
+
+    function clearTimers() { Object.keys(timers).forEach(cancelTimer); }
+
+    function scheduleTimer(kind, fn, ms) {
+        cancelTimer(kind);
+        const due = clockNow() + ms;
+        const id = setTimeout(() => {
+            if (timers[kind]?.id !== id) return;
+            timers[kind] = null;
+            if (destroyed || blocked()) return;
+            fn();
+        }, Math.max(0, ms));
+        timers[kind] = { id, due, fn };
+    }
+
+    function freezeTimers() {
+        Object.keys(timers).forEach((kind) => {
+            const t = timers[kind];
+            if (!t || !t.id) return;
+            clearTimeout(t.id);
+            t.remaining = Math.max(0, t.due - clockNow());
+            t.id = null;
+        });
+    }
+
+    function thawTimers() {
+        Object.keys(timers).forEach((kind) => {
+            const t = timers[kind];
+            if (!t || t.id) return;
+            const ms = typeof t.remaining === "number" ? t.remaining : Math.max(0, t.due - clockNow());
+            const id = setTimeout(() => {
+                if (timers[kind]?.id !== id) return;
+                timers[kind] = null;
+                if (destroyed || blocked()) return;
+                t.fn();
+            }, ms);
+            t.id = id;
+            delete t.remaining;
+        });
+    }
+
+    /* ---------------- overlay toggles ---------------- */
+    function toggleHelp(on) {
+        const next = typeof on === "boolean" ? on : !helpOpen;
+        if (next === helpOpen) return;
+        helpOpen = next;
+        if (helpOpen) {
+            cheatOpen = false;
+            if (paused) togglePause(false);
+            freezeTimers();
+        } else {
+            thawTimers();
+            scheduleActors();
+        }
+        syncUI();
+    }
+
+    function toggleCheats(on) {
+        const next = typeof on === "boolean" ? on : !cheatOpen;
+        if (next === cheatOpen) return;
+        cheatOpen = next;
+        if (cheatOpen) {
+            helpOpen = false;
+            if (paused) togglePause(false);
+            freezeTimers();
+        } else {
+            thawTimers();
+            scheduleActors();
+        }
+        renderCheats();
+        syncUI();
+    }
+
+    function togglePause(on) {
+        if (online || destroyed) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        if (next) {
+            paused = true;
+            pauseStart = Date.now();
+            cheatOpen = false;
+            helpOpen = false;
+            freezeTimers();
+        } else {
+            if (pauseStart) pauseOffset += Date.now() - pauseStart;
+            pauseStart = 0;
+            paused = false;
+            thawTimers();
+            scheduleActors();
+        }
+        syncUI();
+    }
+
+    /* ---------------- alur permainan (otoritas: host / lokal) ---------------- */
     function publish() {
         render();
         if (online && room.isHost) room.publishState(state).catch(console.warn);
     }
 
     function scheduleActors() {
-        if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
-        if (online || !state || state.phase !== "playing") return;
+        cancelTimer("bot");
+        cancelTimer("auto");
+        if (blocked() || online || !state || state.phase !== "playing") return;
         if (state.turn === 1) {
             const delay = (cheats.weakBot ? 2600 : 1100) + Math.random() * 1400;
-            botTimer = setTimeout(() => {
-                botTimer = null;
-                if (destroyed || !state || state.phase !== "playing" || state.turn !== 1) return;
+            scheduleTimer("bot", () => {
+                if (blocked() || !state || state.phase !== "playing" || state.turn !== 1) return;
                 const rd = currentRound();
                 const acc = cheats.weakBot ? 0.15 : 0.65;
                 let v;
@@ -561,9 +797,8 @@ ${tog("weak", "Bot lemah")}
                 applyAction({ type: "answer", value: v }, 1);
             }, delay);
         } else if (cheats.auto) {
-            autoTimer = setTimeout(() => {
-                autoTimer = null;
-                if (destroyed || !state || state.phase !== "playing" || state.turn !== 0) return;
+            scheduleTimer("auto", () => {
+                if (blocked() || !state || state.phase !== "playing" || state.turn !== 0) return;
                 applyAction({ type: "answer", value: currentRound().correct }, 0);
             }, 700);
         }
@@ -572,8 +807,7 @@ ${tog("weak", "Bot lemah")}
     function afterStateChange() { publish(); scheduleActors(); }
 
     function advance() {
-        advanceTimer = null;
-        if (destroyed || !state) return;
+        if (destroyed) return;
         if (state.roundNo >= ROUNDS) {
             state.phase = "over";
             const [a, b] = state.stars;
@@ -607,7 +841,7 @@ ${tog("weak", "Bot lemah")}
             state.lastPick = { seat: actor, value: v, correct };
             state.phase = "reveal";
             afterStateChange();
-            advanceTimer = setTimeout(advance, 1500);
+            scheduleTimer("advance", advance, 1500);
             return;
         }
         /* Cheat yang mengubah state hanya boleh di mode solo (divalidasi di sini) */
@@ -617,7 +851,7 @@ ${tog("weak", "Bot lemah")}
             state.lastPick = { seat: state.turn, value: null, correct: false, skipped: true };
             state.phase = "reveal";
             afterStateChange();
-            advanceTimer = setTimeout(advance, 900);
+            scheduleTimer("advance", advance, 900);
         }
     }
 
@@ -628,7 +862,7 @@ ${tog("weak", "Bot lemah")}
 
     /* ---------------- input: mouse / keyboard / virtual button ---------------- */
     function pick(v) {
-        if (!state || state.phase !== "playing" || state.turn !== mySeat()) return;
+        if (blocked() || !state || state.phase !== "playing" || state.turn !== mySeat()) return;
         if (v === fiftyHidden) return;
         const rd = currentRound();
         if (!rd.options.includes(v)) return;
@@ -638,7 +872,7 @@ ${tog("weak", "Bot lemah")}
     }
 
     function moveSel(d) {
-        if (!state) return;
+        if (blocked() || !state) return;
         const rd = currentRound();
         for (let k = 0; k < 3; k++) {
             sel = (sel + d + 3) % 3;
@@ -648,7 +882,8 @@ ${tog("weak", "Bot lemah")}
     }
 
     function doCheat(name) {
-        if (name === "close") { cheatOpen = false; renderCheats(); return; }
+        if (name === "close") { toggleCheats(false); return; }
+        if (paused || helpOpen) return;
         if (name === "reveal") { cheats.reveal = !cheats.reveal; updateRoundUi(); return; }
         if (name === "fifty") {
             if (state && state.phase === "playing" && state.turn === mySeat() && !fiftyHidden) {
@@ -668,12 +903,21 @@ ${tog("weak", "Bot lemah")}
     }
 
     function handleClick(event) {
-        const t = event.target.closest("[data-exit],[data-act],[data-v],[data-cheat-toggle],[data-cheat],[data-nav]");
+        const t = event.target.closest("[data-help],[data-help-close],[data-cheats],[data-cheat-close],[data-pause],[data-resume],[data-restart],[data-exit],[data-act],[data-cheat],[data-v],[data-nav]");
         if (!t) return;
+        if (t.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (t.hasAttribute("data-help-close")) { toggleHelp(false); return; }
+        if (t.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (t.hasAttribute("data-cheat-close")) { toggleCheats(false); return; }
+        if (t.hasAttribute("data-pause")) { togglePause(); return; }
+        if (t.hasAttribute("data-resume")) { togglePause(false); return; }
         if (t.hasAttribute("data-exit")) { onExit(); return; }
-        if (t.hasAttribute("data-cheat-toggle")) { cheatOpen = !cheatOpen; renderCheats(); return; }
-        if (t.dataset.cheat) { doCheat(t.dataset.cheat); return; }
-        if (t.dataset.act === "restart") { submitAction({ type: "restart" }); return; }
+        if (t.hasAttribute("data-restart") || t.dataset.act === "restart") {
+            if (!blocked()) submitAction({ type: "restart" });
+            return;
+        }
+        if (t.dataset.cheat) { if (!paused && !helpOpen) doCheat(t.dataset.cheat); return; }
+        if (blocked()) return;
         if (t.dataset.nav) {
             if (t.dataset.nav === "prev") moveSel(-1);
             else if (t.dataset.nav === "next") moveSel(1);
@@ -686,7 +930,7 @@ ${tog("weak", "Bot lemah")}
 
     function handleHover(event) {
         const b = event.target.closest(".cf-opt");
-        if (!b || b.disabled || !state || state.phase !== "playing" || state.turn !== mySeat()) return;
+        if (!b || b.disabled || blocked() || !state || state.phase !== "playing" || state.turn !== mySeat()) return;
         sel = parseInt(b.dataset.i, 10);
         updateSel();
     }
@@ -694,16 +938,44 @@ ${tog("weak", "Bot lemah")}
     function handleKey(event) {
         if (destroyed || event.ctrlKey || event.metaKey || event.altKey) return;
         const tag = event.target && event.target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        const k = event.key;
-        if (k === "Escape") { if (cheatOpen) { cheatOpen = false; renderCheats(); event.preventDefault(); } return; }
-        if ((k === "c" || k === "C") && !event.repeat) { cheatOpen = !cheatOpen; renderCheats(); return; }
-        if ((k === "r" || k === "R") && !event.repeat) { submitAction({ type: "restart" }); return; }
-        if (!state) return;
-        if (k >= "1" && k <= "3") { pick(currentRound().options[Number(k) - 1]); event.preventDefault(); return; }
-        if (k === "ArrowLeft") { moveSel(-1); event.preventDefault(); return; }
-        if (k === "ArrowRight") { moveSel(1); event.preventDefault(); return; }
-        if (k === "Enter" || k === " ") {
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        const code = event.code || "";
+        const key = String(event.key || "").toLowerCase();
+        const is = (c, k) => code === c || key === k;
+        /* Prioritas: help → cheats → pause → Escape → restart → aksi game */
+        if (is("KeyH", "h") || key === "?") {
+            event.preventDefault();
+            if (!event.repeat) toggleHelp();
+            return;
+        }
+        if (is("KeyC", "c")) {
+            event.preventDefault();
+            if (!event.repeat && !helpOpen) toggleCheats();
+            return;
+        }
+        if (is("KeyP", "p")) {
+            event.preventDefault();
+            if (!event.repeat && !helpOpen && !cheatOpen) togglePause();
+            return;
+        }
+        if (is("Escape", "escape")) {
+            event.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            return;
+        }
+        if (is("KeyR", "r")) {
+            event.preventDefault();
+            if (!event.repeat && !blocked()) submitAction({ type: "restart" });
+            return;
+        }
+        if (tag === "BUTTON") return; // biarkan Enter/Space native pada tombol HUD
+        if (!state || blocked()) { event.preventDefault(); return; }
+        if (key >= "1" && key <= "3") { pick(currentRound().options[Number(key) - 1]); event.preventDefault(); return; }
+        if (is("ArrowLeft", "arrowleft")) { moveSel(-1); event.preventDefault(); return; }
+        if (is("ArrowRight", "arrowright")) { moveSel(1); event.preventDefault(); return; }
+        if (is("Enter", "enter") || key === " ") {
             if (state.phase === "over") submitAction({ type: "restart" });
             else pick(currentRound().options[sel]);
             event.preventDefault();
@@ -713,8 +985,9 @@ ${tog("weak", "Bot lemah")}
     root.addEventListener("click", handleClick);
     root.addEventListener("mouseover", handleHover);
     document.addEventListener("keydown", handleKey);
+    syncUI();
 
-    /* ---------------- boot: langsung main, tanpa layar tutorial ---------------- */
+    /* ---------------- boot: langsung main, panduan internal sekali ---------------- */
     if (online) {
         track(room.onRoom((nextRoom) => { roomData = nextRoom; if (state && !destroyed) updateRoundUi(); }));
         if (room.isHost) {

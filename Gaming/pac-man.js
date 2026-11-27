@@ -1,5 +1,7 @@
+import { iconSVG } from "../JS/icons.js";
+
 /* ==== GAME: pac-man.js ==== */
-/* Pac-Man — mengikuti template game (export META + mount).
+/* Pac Man — mengikuti template game (export META + mount).
  * Fitur: maze acak yang dijamin bisa diselesaikan, mode Solo / VS Bot / VS online,
  * overlay cheat, tutorial, D-pad mobile + keyboard & mouse, coin-flip giliran pertama,
  * posisi spawn acak saat multiplayer, animasi makan, mekanik makan hantu (power pellet).
@@ -7,7 +9,7 @@
 
 export const META = {
     id: "pac-man", // harus sama dengan nama file: pac-man.js
-    name: "Pac-Man",
+    name: "Pac Man",
     category: "arcade",
     catLabel: "Arcade",
     desc: "Eat every dot in a freshly generated maze. Dodge four ghosts, grab power pellets to hunt them back. Solo, vs bot, or 2-player online.",
@@ -78,7 +80,7 @@ function bfsField(tiles, sources, who) {
 
 /* Generator maze acak, simetris, dan DIJAMIN selesai:
  * 1) DFS maze di setengah kiri (termasuk kolom tengah) -> semua sel terhubung.
- * 2) "Braid": buka sebagian dead-end supaya banyak loop (gaya Pac-Man).
+ * 2) "Braid": buka sebagian dead-end supaya banyak loop (gaya Pac Man).
  * 3) Cermin ke kanan. 4) Rumah hantu + pintu di tengah.
  * 5) Flood-fill dari sel atas pintu; sel lantai yang tak terjangkau jadi tembok,
  *    jadi SEMUA dot pasti bisa dimakan. Spawn & pellet dipilih dari sel terjangkau. */
@@ -199,138 +201,198 @@ export function mount(root, context) {
     const chomp = [0, 0];
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (e) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("pacManHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        ui.help = true;
+        try { localStorage.setItem("pacManHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+    let pauseAt = 0; // penanda wall-clock saat jeda, digeser saat lanjut
+    let raf = 0, last = performance.now();
 
-    /* ---------- DOM + gaya (minimalis, ter-scope .pm-app) ---------- */
-    root.innerHTML =
-        '<div class="game-app pm-app">' +
-        '<div class="game-intro"><div><h2>Pac-Man</h2>' +
-        "<p>Maze baru setiap level — selalu bisa diselesaikan. Makan semua dot, hindari 4 hantu, dan balikkan keadaan dengan power pellet.</p></div>" +
-        '<span class="game-status"><i class="game-status-dot" data-status-dot></i><span data-status>Ready</span></span></div>' +
-        '<div class="pm-hud">' +
-        '<span class="pm-chip"><i class="pm-dot" data-you-dot></i><span data-you-label>You</span>&nbsp;<b data-hud="you">0</b></span>' +
-        '<span class="pm-chip" data-rival-chip hidden><i class="pm-dot" data-rival-dot></i><span data-rival-label>Bot</span>&nbsp;<b data-hud="rival">0</b></span>' +
-        '<span class="pm-chip">Dots <b data-hud="dots">0</b></span>' +
-        '<span class="pm-chip">Level <b data-hud="level">1</b></span>' +
-        '<span class="pm-chip">Best <b data-hud="best">0</b></span>' +
-        '<span class="pm-chip">Lives <span class="pm-lives" data-hud="lives"></span></span>' +
-        '<span class="pm-spacer"></span>' +
-        '<button class="pm-btn" type="button" data-act="pause" data-pause-btn>Pause</button>' +
-        '<button class="pm-btn" type="button" data-act="help">How to play</button>' +
-        '<button class="pm-btn" type="button" data-act="cheats" data-cheats-btn>Cheats</button>' +
-        '<button class="pm-btn" type="button" data-act="restart" data-restart-btn>Restart</button>' +
-        "</div>" +
-        '<section class="game-panel pm-panel" data-board><div class="pm-board">' +
-        '<svg class="pm-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" aria-label="Pac-Man board"></svg>' +
-        '<div class="pm-msg" data-msg></div>' +
-        '<div class="pm-ov" data-ov="lobby"><div class="pm-card">' +
-        "<h3>Pac-Man</h3>" +
-        '<p data-lobby-sub>Makan semua dot untuk naik level. Pellet membuat hantu biru selama beberapa detik — makan mereka untuk poin bonus.</p>' +
-        '<div class="pm-row" data-mode-row>' +
-        '<button class="pm-btn" type="button" data-act="solo">Solo</button>' +
-        '<button class="pm-btn" type="button" data-act="bot">VS Bot</button></div>' +
-        '<div class="pm-row"><button class="pm-btn primary" type="button" data-act="start" data-start-btn>Start game</button>' +
-        '<button class="pm-btn" type="button" data-act="help">How to play</button></div>' +
-        '<p class="pm-fine">Arrow / WASD · klik papan untuk belok · D-pad di layar sentuh</p>' +
-        "</div></div>" +
-        '<div class="pm-ov" data-ov="pause" hidden><div class="pm-card"><h3>Paused</h3>' +
-        "<p>Hantu-hantu sedang menunggu.</p>" +
-        '<div class="pm-row"><button class="pm-btn primary" type="button" data-act="resume">Resume</button></div></div></div>' +
-        '<div class="pm-ov" data-ov="clear" hidden><div class="pm-card"><h3 data-clear-title>Level clear!</h3>' +
-        '<p data-clear-sub></p>' +
-        '<div class="pm-row"><button class="pm-btn primary" type="button" data-act="next" data-next-btn>Next level</button></div></div></div>' +
-        '<div class="pm-ov" data-ov="over" hidden><div class="pm-card"><h3 data-over-title>Game over</h3>' +
-        '<p data-over-sub></p>' +
-        '<div class="pm-row"><button class="pm-btn primary" type="button" data-act="again">Play again</button>' +
-        '<button class="pm-btn" type="button" data-act="menu" data-menu-btn>Menu</button></div></div></div>' +
-        '<div class="pm-ov" data-ov="help" hidden><div class="pm-card pm-help-card">' +
-        "<h3>How to play</h3>" +
-        '<div class="pm-help">' +
-        "<div><h4>Tujuan</h4><ul><li>Makan semua dot &amp; pellet untuk naik level. Setiap level = maze acak baru yang dijamin bisa diselesaikan.</li><li>Kamu punya 3 nyawa. Tersentuh hantu normal = kehilangan 1 nyawa.</li></ul></div>" +
-        "<div><h4>Kontrol</h4><ul><li>Keyboard: Arrow / WASD, <b>P</b> pause, <b>R</b> restart, <b>C</b> cheats, <b>H</b> bantuan, <b>Space</b> mulai / lanjut.</li><li>Mouse: klik / tahan-drag di papan — Pac-Man belok ke arah kursor.</li><li>Mobile: gunakan D-pad di bawah papan.</li></ul></div>" +
-        "<div><h4>Item &amp; poin</h4><ul><li>Dot = 10 poin. Power pellet = 50 poin.</li><li>Pellet membuat hantu biru (7 detik, makin singkat tiap level). Makan hantu biru: 200 / 400 / 800 / 1600 poin berantai.</li><li>Hantu yang dimakan kembali ke rumah sebagai mata, lalu hidup lagi.</li></ul></div>" +
-        "<div><h4>Mode</h4><ul><li><b>Solo</b>: kejar skor terbaik (tersimpan di perangkat).</li><li><b>VS Bot / VS Player</b>: rebutan dot. Lawan kehilangan semua nyawa = kamu menang. Coin-flip menentukan siapa jalan duluan (yang kalah tunggu 2,2 detik), dan posisi spawn diacak.</li></ul></div>" +
-        "<div><h4>Cheats</h4><ul><li>Tombol <b>Cheats</b> membuka panel: kebal, kecepatan, bekukan hantu, hantu biru terus, +1000 poin, +1 nyawa, lewati level. Saat online, hanya host yang bisa memakai cheat.</li></ul></div>" +
-        "</div>" +
-        '<div class="pm-row"><button class="pm-btn primary" type="button" data-act="close-help">Got it</button></div>' +
-        "</div></div>" +
-        '<div class="pm-ov" data-ov="cheats" hidden><div class="pm-card">' +
-        "<h3>Cheats</h3><p class=\"pm-fine\" data-cheat-note>Panel bantuan — pakai sesukamu.</p>" +
-        '<label class="pm-cheat-row">God mode (kamu kebal)<input class="pm-switch" type="checkbox" data-cheat="god"></label>' +
-        '<label class="pm-cheat-row">Speed boost (kamu)<input class="pm-switch" type="checkbox" data-cheat="speed"></label>' +
-        '<label class="pm-cheat-row">Bekukan hantu<input class="pm-switch" type="checkbox" data-cheat="freeze"></label>' +
-        '<label class="pm-cheat-row">Hantu biru terus<input class="pm-switch" type="checkbox" data-cheat="fright"></label>' +
-        '<div class="pm-row"><button class="pm-btn" type="button" data-act="cheat-score">+1000</button>' +
-        '<button class="pm-btn" type="button" data-act="cheat-life">+1 nyawa</button>' +
-        '<button class="pm-btn" type="button" data-act="cheat-skip">Skip level</button></div>' +
-        '<div class="pm-row"><button class="pm-btn primary" type="button" data-act="close-cheats">Close</button></div>' +
-        "</div></div>" +
-        "</div></section>" +
-        '<div class="pm-foot"><div class="pm-dpad">' +
-        '<button class="pm-dbtn" type="button" data-dir="up" style="grid-column:2;grid-row:1" aria-label="Up"><svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg></button>' +
-        '<button class="pm-dbtn" type="button" data-dir="left" style="grid-column:1;grid-row:2" aria-label="Left"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>' +
-        '<button class="pm-dbtn" type="button" data-dir="down" style="grid-column:2;grid-row:2" aria-label="Down"><svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>' +
-        '<button class="pm-dbtn" type="button" data-dir="right" style="grid-column:3;grid-row:2" aria-label="Right"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>' +
-        "</div>" +
-        '<div class="pm-hint">Arrow / WASD · klik papan untuk belok · P pause · C cheats · H bantuan</div></div>' +
-        '<div class="game-actions"><button class="game-action-button" type="button" data-act="exit">Exit game</button></div>' +
-        "</div>";
+    /* ---------- DOM + gaya (ter-scope .pm-app, layout HUD + board) ---------- */
+    root.innerHTML = `
+<div class="game-app pm-app game-fill" data-pm>
+  <div class="pm-hud">
+    <span class="pm-chip"><i class="pm-dot" data-you-dot></i><span data-you-label>You</span>&nbsp;<b data-hud="you">0</b></span>
+    <span class="pm-chip" data-rival-chip hidden><i class="pm-dot" data-rival-dot></i><span data-rival-label>Bot</span>&nbsp;<b data-hud="rival">0</b></span>
+    <span class="pm-chip">DOTS <b data-hud="dots">0</b></span>
+    <span class="pm-chip">LV <b data-hud="level">1</b></span>
+    <span class="pm-chip">BEST <b data-hud="best">0</b></span>
+    <span class="pm-chip">LIVES <span class="pm-lives" data-hud="lives"></span></span>
+    <span class="pm-chip">MODE <b data-hud="mode">Solo</b></span>
+    <span class="pm-chip pm-status"><i class="pm-status-dot" data-status-dot></i><span data-status data-hud="status">Ready</span></span>
+    <span class="pm-spacer"></span>
+    <button class="pm-btn pm-icon-btn" type="button" data-act="help" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pm-btn-label">Help</span></button>
+    <button class="pm-btn pm-icon-btn" type="button" data-act="cheats" data-cheats data-cheats-btn aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="pm-btn-label">Cheats</span></button>
+    <button class="pm-btn pm-icon-btn" type="button" data-act="pause" data-pause data-pause-btn aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="pm-btn-label">Pause</span></button>
+    <button class="pm-btn pm-icon-btn" type="button" data-act="restart" data-restart data-restart-btn aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="pm-btn-label">Restart</span></button>
+    <button class="pm-btn pm-icon-btn" type="button" data-act="exit" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pm-btn-label">Exit game</span></button>
+  </div>
+  <section class="game-panel pm-panel" data-board>
+    <svg class="pm-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Pac Man board"></svg>
+    <div class="pm-msg" data-msg></div>
+    <div class="pm-ov" data-ov="lobby"><div class="pm-card">
+      <div class="pm-head"><h3>Pac Man</h3><span class="pm-tag">ARCADE</span></div>
+      <div class="pm-grid">
+        <p data-lobby-sub>Makan semua dot untuk naik level. Pellet membuat hantu biru selama beberapa detik — makan mereka untuk poin bonus.</p>
+        <div class="pm-row" data-mode-row>
+          <button class="pm-btn" type="button" data-act="solo">Solo</button>
+          <button class="pm-btn" type="button" data-act="bot">VS Bot</button>
+        </div>
+        <div class="pm-row">
+          <button class="pm-btn primary" type="button" data-act="start" data-start-btn>Start game</button>
+          <button class="pm-btn" type="button" data-act="help">How to play</button>
+        </div>
+      </div>
+      <div class="pm-foot"><span class="pm-note">Arrow / WASD · klik papan untuk belok · D-pad di layar sentuh</span></div>
+    </div></div>
+    <div class="pm-ov" data-ov="pause" hidden><div class="pm-card">
+      <div class="pm-head"><h3>Paused</h3></div>
+      <div class="pm-grid"><p>Hantu-hantu sedang menunggu. Waktu dan simulasi dihentikan.</p></div>
+      <div class="pm-foot"><button class="pm-btn primary" type="button" data-act="resume">Resume</button></div>
+    </div></div>
+    <div class="pm-ov" data-ov="clear" hidden><div class="pm-card">
+      <div class="pm-head"><h3 data-clear-title>Level clear!</h3></div>
+      <div class="pm-grid"><p data-clear-sub></p></div>
+      <div class="pm-foot"><button class="pm-btn primary" type="button" data-act="next" data-next-btn>Next level</button></div>
+    </div></div>
+    <div class="pm-ov" data-ov="over" hidden><div class="pm-card">
+      <div class="pm-head"><h3 data-over-title>Game over</h3></div>
+      <div class="pm-grid"><p data-over-sub></p></div>
+      <div class="pm-foot"><button class="pm-btn primary" type="button" data-act="again">Play again</button><button class="pm-btn" type="button" data-act="menu" data-menu-btn>Menu</button></div>
+    </div></div>
+    <div class="pm-ov" data-ov="help" hidden><div class="pm-card pm-help-card">
+      <div class="pm-head"><h3>How to play</h3><button class="pm-btn" type="button" data-act="close-help">Close</button></div>
+      <div class="pm-help">
+        <div><h4>Tujuan</h4><ul><li>Makan semua dot &amp; pellet untuk naik level. Setiap level = maze acak baru yang dijamin bisa diselesaikan.</li><li>Kamu punya 3 nyawa. Tersentuh hantu normal = kehilangan 1 nyawa.</li></ul></div>
+        <div><h4>Kontrol</h4><ul><li>Keyboard: Arrow / WASD, <b>P</b> pause, <b>R</b> restart, <b>C</b> cheats, <b>H</b> bantuan, <b>Space</b> mulai / lanjut.</li><li>Mouse: klik / tahan-drag di papan — Pac Man belok ke arah kursor.</li><li>Mobile: gunakan D-pad di bawah papan.</li></ul></div>
+        <div><h4>Item &amp; poin</h4><ul><li>Dot = 10 poin. Power pellet = 50 poin.</li><li>Pellet membuat hantu biru (7 detik, makin singkat tiap level). Makan hantu biru: 200 / 400 / 800 / 1600 poin berantai.</li><li>Hantu yang dimakan kembali ke rumah sebagai mata, lalu hidup lagi.</li></ul></div>
+        <div><h4>Mode</h4><ul><li><b>Solo</b>: kejar skor terbaik (tersimpan di perangkat).</li><li><b>VS Bot / VS Player</b>: rebutan dot. Lawan kehilangan semua nyawa = kamu menang. Coin-flip menentukan siapa jalan duluan (yang kalah tunggu 2,2 detik), dan posisi spawn diacak.</li></ul></div>
+        <div><h4>Cheats</h4><ul><li>Tombol <b>Cheats</b> membuka panel: kebal, kecepatan, bekukan hantu, hantu biru terus, +1000 poin, +1 nyawa, lewati level. Saat online, hanya host yang bisa memakai cheat.</li></ul></div>
+      </div>
+      <div class="pm-foot"><span class="pm-note">Press H to reopen this guide</span><button class="pm-btn primary" type="button" data-act="close-help">Got it</button></div>
+    </div></div>
+    <div class="pm-ov" data-ov="cheats" hidden><div class="pm-card">
+      <div class="pm-head"><h3>Cheats</h3></div>
+      <div class="pm-cheats">
+        <p class="pm-fine" data-cheat-note>Panel bantuan — pakai sesukamu.</p>
+        <label class="pm-cheat-row">God mode (kamu kebal)<input class="pm-switch" type="checkbox" data-cheat="god"></label>
+        <label class="pm-cheat-row">Speed boost (kamu)<input class="pm-switch" type="checkbox" data-cheat="speed"></label>
+        <label class="pm-cheat-row">Bekukan hantu<input class="pm-switch" type="checkbox" data-cheat="freeze"></label>
+        <label class="pm-cheat-row">Hantu biru terus<input class="pm-switch" type="checkbox" data-cheat="fright"></label>
+        <div class="pm-row"><button class="pm-btn" type="button" data-act="cheat-score">+1000</button><button class="pm-btn" type="button" data-act="cheat-life">+1 nyawa</button><button class="pm-btn" type="button" data-act="cheat-skip">Skip level</button></div>
+      </div>
+      <div class="pm-foot"><button class="pm-btn primary" type="button" data-act="close-cheats">Close</button></div>
+    </div></div>
+  </section>
+  <div class="pm-pad">
+    <div class="pm-dpad">
+      <button class="pm-dbtn" type="button" data-dir="up" aria-label="Up"><svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg></button>
+      <button class="pm-dbtn" type="button" data-dir="left" aria-label="Left"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button class="pm-dbtn" type="button" data-dir="down" aria-label="Down"><svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>
+      <button class="pm-dbtn" type="button" data-dir="right" aria-label="Right"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    </div>
+    <div class="pm-hint">Arrow / WASD · klik papan untuk belok · P pause · C cheats · H bantuan</div>
+  </div>
+</div>`;
 
     const st = document.createElement("style");
-    st.textContent = [
-        ".pm-app{display:flex;flex-direction:column;gap:10px;color:#e5e7eb;font-variant-numeric:tabular-nums}",
-        ".pm-app *{box-sizing:border-box}",
-        ".pm-app [hidden]{display:none!important}",
-        ".pm-app .pm-hud{display:flex;flex-wrap:wrap;align-items:center;gap:6px}",
-        ".pm-app .pm-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid #ffffff14;border-radius:999px;background:#ffffff08;font-size:12px;color:#94a3b8}",
-        ".pm-app .pm-chip b{color:#e5e7eb;font-weight:600}",
-        ".pm-app .pm-dot{width:8px;height:8px;border-radius:50%;background:#facc15;flex:none}",
-        ".pm-app .pm-lives{display:inline-flex;gap:3px;margin-left:2px}",
-        ".pm-app .pm-life{width:14px;height:14px;display:block}",
-        ".pm-app .pm-spacer{flex:1}",
-        ".pm-app .pm-btn{appearance:none;border:1px solid #ffffff1c;background:#ffffff0a;color:#cbd5e1;border-radius:10px;padding:6px 12px;font-size:12.5px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s,color .15s}",
-        ".pm-app .pm-btn:hover{background:#ffffff14;color:#f8fafc}",
-        ".pm-app .pm-btn.primary{background:#facc15;border-color:transparent;color:#111827;font-weight:600}",
-        ".pm-app .pm-btn.primary:hover{background:#fde047}",
-        ".pm-app .pm-btn.active{border-color:#facc15;color:#facc15}",
-        ".pm-app .pm-panel{position:relative;padding:0;border:none;background:none}",
-        ".pm-app .pm-board{position:relative;width:100%;max-width:560px;margin:0 auto}",
-        ".pm-app .pm-svg{display:block;width:100%;height:auto;aspect-ratio:304/240;background:#070b18;border:1px solid #ffffff12;border-radius:14px;touch-action:none;cursor:crosshair}",
-        ".pm-app .pm-msg{position:absolute;top:10px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;background:#0b1220ee;border:1px solid #ffffff1a;color:#fbbf24;font-size:12px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;z-index:4}",
-        ".pm-app .pm-msg.show{opacity:1}",
-        ".pm-app .pm-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#05081499;backdrop-filter:blur(3px);border-radius:14px;z-index:5}",
-        ".pm-app .pm-card{width:min(92%,330px);max-height:94%;overflow:auto;background:#0b1220f5;border:1px solid #ffffff14;border-radius:14px;padding:18px;text-align:center;display:flex;flex-direction:column;gap:10px}",
-        ".pm-app .pm-card h3{margin:0;font-size:18px;color:#f8fafc}",
-        ".pm-app .pm-card p{margin:0;font-size:12.5px;line-height:1.55;color:#94a3b8}",
-        ".pm-app .pm-fine{font-size:11px;color:#64748b}",
-        ".pm-app .pm-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}",
-        ".pm-app .pm-help-card{width:min(94%,380px);text-align:left}",
-        ".pm-app .pm-help{display:flex;flex-direction:column;gap:9px;font-size:12.5px;color:#94a3b8}",
-        ".pm-app .pm-help h4{margin:0 0 3px;color:#e5e7eb;font-size:11px;text-transform:uppercase;letter-spacing:.07em}",
-        ".pm-app .pm-help ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px;line-height:1.5}",
-        ".pm-app .pm-help b{color:#cbd5e1}",
-        ".pm-app .pm-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:#cbd5e1;padding:7px 0;border-bottom:1px dashed #ffffff10;cursor:pointer}",
-        ".pm-app .pm-switch{appearance:none;flex:none;width:34px;height:20px;border-radius:999px;background:#1e293b;border:1px solid #ffffff22;position:relative;cursor:pointer;transition:background .15s;margin:0}",
-        ".pm-app .pm-switch::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#94a3b8;transition:left .15s,background .15s}",
-        ".pm-app .pm-switch:checked{background:#facc15;border-color:transparent}",
-        ".pm-app .pm-switch:checked::after{left:16px;background:#111827}",
-        ".pm-app .pm-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}",
-        ".pm-app .pm-dpad{display:none;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(2,52px);gap:6px;touch-action:none}",
-        ".pm-app.pm-touch .pm-dpad{display:grid}",
-        ".pm-app .pm-dbtn{appearance:none;border:1px solid #ffffff1c;background:#ffffff0a;color:#cbd5e1;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}",
-        ".pm-app .pm-dbtn:active{background:#facc1522;border-color:#facc15;color:#facc15;transform:scale(.94)}",
-        ".pm-app .pm-dbtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}",
-        ".pm-app .pm-hint{font-size:11px;color:#64748b;text-align:right}",
-        ".pm-app .pm-pellet{animation:pmPulse 1s ease-in-out infinite;transform-box:fill-box;transform-origin:center}",
-        "@keyframes pmPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}}",
-        "@media (max-width:560px){.pm-app .pm-hint{display:none}.pm-app .pm-dpad{display:grid}.pm-app .pm-foot{justify-content:center}}",
-        "@media (prefers-reduced-motion:reduce){.pm-app .pm-pellet{animation:none}}",
-    ].join("\n");
+    st.textContent = `
+.pm-app{display:flex;flex-direction:column;gap:8px;min-height:0;color:#e5e7eb;font-variant-numeric:tabular-nums}
+.pm-app *{box-sizing:border-box}
+.pm-app [hidden]{display:none!important}
+.pm-app .pm-hud{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.pm-app .pm-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid #ffffff14;border-radius:999px;background:#ffffff08;color:#94a3b8;white-space:nowrap}
+.pm-app .pm-chip b{color:#e5e7eb;font-weight:600}
+.pm-app .pm-dot{width:8px;height:8px;border-radius:50%;background:#facc15;flex:none}
+.pm-app .pm-status-dot{width:7px;height:7px;border-radius:50%;background:#64748b;flex:none}
+.pm-app .pm-lives{display:inline-flex;gap:3px;margin-left:2px}
+.pm-app .pm-life{width:14px;height:14px;display:block}
+.pm-app .pm-spacer{flex:1 1 auto}
+.pm-app .pm-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.pm-app .pm-icon-btn svg{flex:none;display:block}
+.pm-app .pm-btn{appearance:none;border:1px solid #ffffff1c;background:#ffffff0a;color:#cbd5e1;border-radius:10px;padding:6px 12px;min-height:32px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.pm-app .pm-btn:hover{background:#ffffff14;color:#f8fafc}
+.pm-app .pm-btn.primary{background:#facc15;border-color:transparent;color:#111827;font-weight:700}
+.pm-app .pm-btn.primary:hover{background:#fde047}
+.pm-app .pm-btn.active{border-color:#facc15;color:#facc15}
+.pm-app .pm-btn.on{border-color:#facc15;color:#facc15;background:#facc1522}
+.pm-app.game-fill > .pm-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.pm-app .pm-panel{position:relative;min-height:0;padding:0;border:0;background:transparent;border-radius:14px;overflow:hidden}
+.pm-app .pm-svg{display:block;width:100%;height:100%;aspect-ratio:304/240;background:#070b18;border:1px solid #ffffff12;border-radius:14px;touch-action:none;cursor:crosshair}
+.pm-app .pm-msg{position:absolute;top:10px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;background:#0b1220ee;border:1px solid #ffffff1a;color:#fbbf24;font-size:12px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;z-index:4}
+.pm-app .pm-msg.show{opacity:1}
+.pm-app .pm-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:#05081499;backdrop-filter:blur(3px);border-radius:14px}
+.pm-app .pm-card{display:flex;flex-direction:column;gap:10px;width:min(92%,360px);max-height:100%;overflow:hidden;padding:18px;background:#0b1220f5;border:1px solid #ffffff14;border-radius:14px;text-align:center}
+.pm-app .pm-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pm-app .pm-head h3{margin:0;font-size:18px;color:#f8fafc}
+.pm-app .pm-tag{font-size:10px;letter-spacing:.1em;color:#64748b}
+.pm-app .pm-grid,.pm-app .pm-help,.pm-app .pm-cheats{flex:1 1 auto;min-height:0;overflow:auto}
+.pm-app .pm-card p{margin:0;font-size:12.5px;line-height:1.55;color:#94a3b8}
+.pm-app .pm-fine{font-size:11px;color:#64748b}
+.pm-app .pm-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.pm-app .pm-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pm-app .pm-note{font-size:11px;color:#64748b}
+.pm-app .pm-help-card{width:min(94%,460px);text-align:left}
+.pm-app .pm-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;font-size:12px;color:#94a3b8}
+.pm-app .pm-help h4{margin:0 0 3px;color:#e5e7eb;font-size:11px;text-transform:uppercase;letter-spacing:.07em}
+.pm-app .pm-help ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px;line-height:1.5}
+.pm-app .pm-help b{color:#cbd5e1}
+.pm-app .pm-cheats{display:flex;flex-direction:column;gap:4px}
+.pm-app .pm-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:#cbd5e1;padding:7px 0;border-bottom:1px dashed #ffffff10;cursor:pointer}
+.pm-app .pm-switch{appearance:none;flex:none;width:34px;height:20px;border-radius:999px;background:#1e293b;border:1px solid #ffffff22;position:relative;cursor:pointer;transition:background .15s;margin:0}
+.pm-app .pm-switch::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#94a3b8;transition:left .15s,background .15s}
+.pm-app .pm-switch:checked{background:#facc15;border-color:transparent}
+.pm-app .pm-switch:checked::after{left:16px;background:#111827}
+.pm-app .pm-pad{display:none;align-items:center;justify-content:space-between;gap:10px}
+.pm-app.pm-touch .pm-pad{display:flex}
+.pm-app .pm-dpad{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(2,48px);gap:5px;touch-action:none}
+.pm-app .pm-dpad [data-dir="up"]{grid-area:1/2}
+.pm-app .pm-dpad [data-dir="left"]{grid-area:2/1}
+.pm-app .pm-dpad [data-dir="down"]{grid-area:2/2}
+.pm-app .pm-dpad [data-dir="right"]{grid-area:2/3}
+.pm-app .pm-dbtn{appearance:none;border:1px solid #ffffff1c;background:#ffffff0a;color:#cbd5e1;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
+.pm-app .pm-dbtn:active{background:#facc1522;border-color:#facc15;color:#facc15;transform:scale(.94)}
+.pm-app .pm-dbtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.pm-app .pm-hint{font-size:11px;color:#64748b;text-align:right}
+.pm-app .pm-pellet{animation:pmPulse 1s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes pmPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}}
+@media (prefers-reduced-motion:reduce){.pm-app .pm-pellet{animation:none}}
+
+/* --- design polish --- */
+.pm-app :focus-visible,.pm-app button:focus-visible{outline:2px solid #facc15;outline-offset:2px}
+.pm-app .pm-card{box-shadow:none}
+.pm-app .pm-dbtn{min-height:44px}
+@media (pointer:coarse){.pm-app button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.pm-app *,.pm-app *::before,.pm-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- fill height + mobile refinements (must stay LAST) --- */
+@media (max-width:640px){
+.pm-app.game-fill > .pm-panel:not(:has(.pm-ov:not([hidden]))){aspect-ratio:304/240;flex:0 0 auto}
+.pm-app.game-fill > .pm-panel:has(.pm-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.pm-app .pm-hud{gap:5px;margin-bottom:0}
+.pm-app .pm-hud .pm-chip{padding:4px 6px;font-size:9px}
+.pm-app .pm-hud .pm-chip[data-hud="best"],.pm-app .pm-hud .pm-chip[data-hud="mode"]{display:none}
+.pm-app .pm-hud .pm-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.pm-app .pm-hud .pm-btn-label,.pm-app .pm-hud .pm-spacer{display:none}
+.pm-app .pm-ov{padding:8px}
+.pm-app .pm-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.pm-app .pm-grid,.pm-app .pm-help,.pm-app .pm-cheats{scrollbar-width:none}
+.pm-app .pm-grid::-webkit-scrollbar,.pm-app .pm-help::-webkit-scrollbar,.pm-app .pm-cheats::-webkit-scrollbar{display:none}
+.pm-app .pm-foot{position:sticky;bottom:-8px;margin:8px -8px -8px;padding:8px;background:#0b1220f5;border-top:1px solid #ffffff14;z-index:1}
+.pm-app .pm-note{display:none}
+.pm-app .pm-pad{display:flex;justify-content:center}
+.pm-app .pm-hint{display:none}
+}
+`;
     root.appendChild(st);
 
     const appEl = root.querySelector(".pm-app");
     const touch = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) || "ontouchstart" in window;
     if (touch) appEl.classList.add("pm-touch");
     const $ = function (s) { return root.querySelector(s); };
+    const board = $("[data-board]");
     const svg = $(".pm-svg");
     const NS = "http://www.w3.org/2000/svg";
     const el = function (t, at, parent) {
@@ -364,7 +426,8 @@ export function mount(root, context) {
 
     const hudYou = $('[data-hud="you"]'), hudRival = $('[data-hud="rival"]'),
         hudDots = $('[data-hud="dots"]'), hudLevel = $('[data-hud="level"]'),
-        hudBest = $('[data-hud="best"]'), hudLives = $('[data-hud="lives"]');
+        hudBest = $('[data-hud="best"]'), hudLives = $('[data-hud="lives"]'),
+        hudMode = $('[data-hud="mode"]');
     const youLabel = $("[data-you-label]"), rivalLabel = $("[data-rival-label]"),
         youDot = $("[data-you-dot]"), rivalDot = $("[data-rival-dot]"),
         rivalChip = $("[data-rival-chip]");
@@ -445,7 +508,7 @@ export function mount(root, context) {
         state = createMatch(m);
         state.phase = "ready"; state.readyT = 2.2;
         rollFirst();
-        ui.paused = false;
+        setPaused(false);
         publish(true);
     }
     function nextLevel() {
@@ -996,7 +1059,9 @@ export function mount(root, context) {
         dt = dt || 1 / 60;
         if (!state) {
             setText(statusEl, "status", "Connecting…");
-            ov.lobby.hidden = false;
+            ov.lobby.hidden = ui.help || ui.cheats;
+            ov.pause.hidden = true; ov.clear.hidden = true; ov.over.hidden = true;
+            ov.cheats.hidden = true; ov.help.hidden = !ui.help;
             lobbySub.textContent = "Menunggu host menyiapkan pertandingan…";
             modeRow.hidden = true; startBtn.hidden = true;
             return;
@@ -1012,6 +1077,7 @@ export function mount(root, context) {
         setText(hudDots, "dots", state.dotsLeft);
         setText(hudLevel, "level", state.level);
         setText(hudBest, "best", best);
+        setText(hudMode, "mode", online ? "Online" : (state.mode === "bot" ? "VS Bot" : "Solo"));
         const livesKey = "lives" + me.lives + "_" + playerIndex;
         if (hudCache.lives !== livesKey) {
             hudCache.lives = livesKey;
@@ -1040,7 +1106,7 @@ export function mount(root, context) {
         else msgEl.classList.remove("show");
         readyText.setAttribute("opacity", state.phase === "ready" ? 1 : 0);
 
-        ov.lobby.hidden = state.phase !== "lobby";
+        ov.lobby.hidden = state.phase !== "lobby" || ui.help || ui.cheats;
         if (state.phase === "lobby") {
             modeRow.hidden = online;
             startBtn.hidden = online && !room.isHost;
@@ -1054,14 +1120,14 @@ export function mount(root, context) {
             botBtn.classList.toggle("active", ui.modeChoice === "bot");
             startBtn.textContent = online ? "Start match" : "Start game";
         }
-        ov.pause.hidden = !(ui.paused && !online);
-        ov.clear.hidden = state.phase !== "clear";
+        ov.pause.hidden = !(ui.paused && !online) || ui.help || ui.cheats;
+        ov.clear.hidden = state.phase !== "clear" || ui.help || ui.cheats;
         if (state.phase === "clear") {
             clearTitle.textContent = "Level " + state.level + " clear!";
             clearSub.textContent = "+500 bonus. Maze baru dalam " + Math.max(0, Math.ceil(state.clearT)) + "s…";
             nextBtn.hidden = !authority;
         }
-        ov.over.hidden = state.phase !== "over";
+        ov.over.hidden = state.phase !== "over" || ui.help || ui.cheats;
         if (state.phase === "over") {
             let title;
             if (state.mode === "solo") title = "Game over";
@@ -1075,10 +1141,17 @@ export function mount(root, context) {
             menuBtn.hidden = !authority;
         }
         ov.help.hidden = !ui.help;
-        ov.cheats.hidden = !(ui.cheats && authority);
+        ov.cheats.hidden = !ui.cheats || !authority || ui.help;
         pauseBtn.hidden = online;
         restartBtn.hidden = !authority;
         cheatsBtn.hidden = !authority;
+        const pauseLabel = pauseBtn.querySelector(".pm-btn-label");
+        if (pauseLabel) pauseLabel.textContent = ui.paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", ui.paused ? "Resume" : "Pause");
+        const activeCheats = Object.keys(state.cheats).filter(function (k) { return state.cheats[k]; }).length;
+        cheatsBtn.classList.toggle("on", activeCheats > 0);
+        const cheatsLabel = cheatsBtn.querySelector(".pm-btn-label");
+        if (cheatsLabel) cheatsLabel.textContent = activeCheats ? "Cheats " + activeCheats : "Cheats";
         if (online) cheatNote.textContent = "Hanya host yang bisa memakai cheat (berlaku untuk semua pemain).";
         const boxes = root.querySelectorAll("[data-cheat]");
         for (let i = 0; i < boxes.length; i++) boxes[i].checked = !!state.cheats[boxes[i].dataset.cheat];
@@ -1088,7 +1161,23 @@ export function mount(root, context) {
     function setPaused(v) {
         if (online || !state) return;
         if (state.phase !== "playing" && state.phase !== "ready") return;
+        if (v === ui.paused) return;
         ui.paused = v;
+        const now = performance.now();
+        if (v) {
+            pauseAt = now;
+        } else if (pauseAt) {
+            // set ulang anchor dt/snapshot setelah jeda agar tidak ada loncatan waktu
+            last = now;
+            lastPub = Math.max(0, now - 120);
+            pauseAt = 0;
+        }
+        render();
+    }
+    function toggleHelp(on) {
+        ui.help = typeof on === "boolean" ? on : !ui.help;
+        if (ui.help) ui.cheats = false;
+        render();
     }
     function handleClick(event) {
         const b = event.target.closest("[data-act]");
@@ -1103,10 +1192,10 @@ export function mount(root, context) {
         if (act === "resume") { setPaused(false); return; }
         if (act === "pause") { setPaused(!ui.paused); return; }
         if (act === "restart") { if (authority && state) startMatch(state.mode); return; }
-        if (act === "help") { ui.help = !ui.help; ui.cheats = false; return; }
-        if (act === "cheats") { if (authority) { ui.cheats = !ui.cheats; ui.help = false; } return; }
-        if (act === "close-help") { ui.help = false; return; }
-        if (act === "close-cheats") { ui.cheats = false; return; }
+        if (act === "help") { toggleHelp(); return; }
+        if (act === "cheats") { if (authority) { ui.cheats = !ui.cheats; ui.help = false; render(); } return; }
+        if (act === "close-help") { toggleHelp(false); return; }
+        if (act === "close-cheats") { ui.cheats = false; render(); return; }
         if (act === "cheat-score") { submitAction({ type: "cheat", key: "score" }); return; }
         if (act === "cheat-life") { submitAction({ type: "cheat", key: "life" }); return; }
         if (act === "cheat-skip") { submitAction({ type: "cheat", key: "skip" }); return; }
@@ -1118,7 +1207,7 @@ export function mount(root, context) {
     }
     let steering = false;
     function steer(event) {
-        if (!state) return;
+        if (!state || ui.help || ui.cheats) return;
         const me = state.players[playerIndex];
         if (!me || !me.alive) return;
         const r = svg.getBoundingClientRect();
@@ -1135,7 +1224,11 @@ export function mount(root, context) {
     }
     function handlePointerDown(event) {
         const db = event.target.closest("[data-dir]");
-        if (db) { event.preventDefault(); submitAction({ type: "dir", dir: db.dataset.dir }); return; }
+        if (db) {
+            event.preventDefault();
+            if (!ui.help && !ui.cheats) submitAction({ type: "dir", dir: db.dataset.dir });
+            return;
+        }
         if (event.target.closest(".pm-svg")) {
             steering = true;
             try { svg.setPointerCapture(event.pointerId); } catch (e) { }
@@ -1153,6 +1246,29 @@ export function mount(root, context) {
         const tag = (e.target && e.target.tagName) || "";
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const k = e.key;
+        /* prioritas: help → cheats → pause → Escape → aksi game */
+        if (k === "h" || k === "H") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "c" || k === "C") {
+            if (!ui.help && authority) { ui.cheats = !ui.cheats; render(); }
+            e.preventDefault(); return;
+        }
+        if (k === "p" || k === "P") {
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheats) { ui.cheats = false; render(); }
+            else setPaused(!ui.paused);
+            e.preventDefault(); return;
+        }
+        if (k === "Escape") {
+            if (ui.help) toggleHelp(false);
+            else if (ui.cheats) { ui.cheats = false; render(); }
+            else if (state && (state.phase === "playing" || state.phase === "ready")) setPaused(!ui.paused);
+            e.preventDefault(); return;
+        }
+        if (k === "r" || k === "R") {
+            if (authority && state && !ui.help && !ui.cheats) startMatch(state.mode);
+            e.preventDefault(); return;
+        }
+        if (ui.help || ui.cheats) return;
         if (KEYS[k]) { e.preventDefault(); submitAction({ type: "dir", dir: KEYS[k] }); return; }
         if (k === " " || k === "Enter") {
             if (!state) return;
@@ -1163,14 +1279,6 @@ export function mount(root, context) {
             else if (state.phase === "over") submitAction({ type: "again" });
             return;
         }
-        if (k === "p" || k === "P") { setPaused(!ui.paused); return; }
-        if (k === "c" || k === "C") { if (authority) { ui.cheats = !ui.cheats; ui.help = false; } return; }
-        if (k === "h" || k === "H") { ui.help = !ui.help; ui.cheats = false; return; }
-        if (k === "r" || k === "R") { if (authority && state) startMatch(state.mode); return; }
-        if (k === "Escape") {
-            if (ui.help || ui.cheats) { ui.help = false; ui.cheats = false; }
-            else if (state && state.phase === "playing") setPaused(!ui.paused);
-        }
     }
     root.addEventListener("click", handleClick);
     root.addEventListener("change", handleChange);
@@ -1180,19 +1288,19 @@ export function mount(root, context) {
     svg.addEventListener("pointercancel", handlePointerUp);
     document.addEventListener("keydown", onKey);
 
-    /* ---------- loop utama ---------- */
-    let raf = 0, last = performance.now();
+    /* ---------- loop utama (raf/last dideklarasikan di atas untuk anchor jeda) ---------- */
     function frame(ts) {
         if (destroyed) return;
         const dt = Math.min(0.05, (ts - last) / 1000 || 0);
         last = ts;
+        const frozen = ui.paused || ui.help || ui.cheats;
         if (state) {
-            if (authority) { if (!ui.paused) sim(dt); }
-            else guestAdvance(dt);
+            if (authority) { if (!frozen) sim(dt); }
+            else if (!frozen) guestAdvance(dt);
         }
-        updateFx(dt);
+        if (!frozen) updateFx(dt);
         render(dt);
-        if (authority && online && dirty) publish(false);
+        if (authority && online && !frozen && dirty) publish(false);
         raf = requestAnimationFrame(frame);
     }
 

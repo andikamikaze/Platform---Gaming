@@ -189,8 +189,8 @@
     }
 
     /* shared physics step: friction, wall reflections (any angle),
- water detection, cup capture. Mutates st, returns an event:
- "" | "water" | "cup". st = {x,y,vx,vy,walls,waters,sands,cup} */
+  water detection, cup capture. Mutates st, returns an event:
+  "" | "water" | "cup". st = {x,y,vx,vy,walls,waters,sands,cup} */
     function stepBall(st, dtMs) {
         const dt = Math.max(0, Math.min(100, dtMs)) / 1000;
         const n = Math.max(1, Math.ceil(dt * 120));
@@ -281,8 +281,8 @@
     }
 
     /* play a hole with scripted shots (fixed 16ms steps, deterministic).
- shots: [{angle, power}, ...] with angle in degrees (0 = right,
- 90 = down). Returns {strokes, holed, capped, splashes, x, y}. */
+  shots: [{angle, power}, ...] with angle in degrees (0 = right,
+  90 = down). Returns {strokes, holed, capped, splashes, x, y}. */
     function simulateHole(holeIdx, shots) {
         const h = HOLES[holeIdx];
         const st = {
@@ -340,8 +340,8 @@
     }
 
     /* scripted completions, one list per hole, found by power search
- over the same stepBall physics; each proves the hole can be
- finished (total 10 strokes, well under the win limit of 20) */
+  over the same stepBall physics; each proves the hole can be
+  finished (total 10 strokes, well under the win limit of 20) */
     const SOLUTIONS = [
         [{ angle: 0, power: 0.85 }],
         [
@@ -374,6 +374,22 @@
         SOLUTIONS,
     };
 
+    /* ---------- inline icons (classic MGP script, no ESM import) ---------- */
+    const ICON_PATHS = {
+        helpCircle: ["M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", "M12 17h.01"],
+        wrench: ["M14.7 6.3a4 4 0 0 0 5 5l-9 9a2.8 2.8 0 0 1-4-4z", "M6 16l-3 3", "M14.5 4.5 19 9"],
+        pause: ["M7 4h3v16H7z", "M14 4h3v16h-3z"],
+        refresh: ["M21 2v6h-6", "M3 12a9 9 0 0 1 15-6.7L21 8", "M3 22v-6h6", "M21 12a9 9 0 0 1-15 6.7L3 16"],
+        logOut: ["m16 17 5-5-5-5", "M21 12H9", "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"],
+        rotateCcw: ["M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5"],
+        rotateCw: ["M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8", "M21 3v5h-5"],
+        flag: ["M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z", "M4 22v-7"],
+    };
+    function iconSVG(name, size) {
+        const paths = ICON_PATHS[name] || ICON_PATHS.flag;
+        return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + paths.map(function (d) { return '<path d="' + d + '"/>'; }).join("") + "</svg>";
+    }
+
     MGP_REGISTER({
         id: "golf-mini",
         name: "Golf Mini",
@@ -384,17 +400,40 @@
         bg: ["#a7f3d0", "#22c55e"],
         _test: TEST,
 
-        build(app) {
+        build(app, context) {
+            const ctx = context || {};
+            const onExit = typeof ctx.onExit === "function" ? ctx.onExit : function () {
+                const b = typeof document !== "undefined" && document.getElementById
+                    ? document.getElementById("closeGameButton") : null;
+                if (b && typeof b.click === "function") b.click();
+            };
             const $ = (s) => app.querySelector(s);
             const fx = (n) => (Math.round(n * 10) / 10).toFixed(1);
+            app.className = "mgp-app game-app gm game-fill";
 
             app.innerHTML = `
 <style>
 #golf-mini-app [hidden]{display:none!important}
-#golf-mini-app .gm-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:6px;padding:8px;min-height:0}
-#golf-mini-app .gm-head{font-size:13.5px;font-weight:700;color:#c3cde2;text-align:center}
-#golf-mini-app .gm-svgbox{flex:1;min-height:0;width:100%;max-width:820px;display:flex;justify-content:center}
-#golf-mini-app .gm-svg{width:100%;height:100%;display:block}
+#golf-mini-app.gm{--panel:#111a33;--court:#0b1020;--line:#ffffff1f;--ink:#e5e7eb;--mut:#9ca3af;--acc:#a3e635;--warn:#fbbf24;--danger:#f87171;display:flex;flex-direction:column;gap:8px;width:100%;height:100%;min-height:0}
+#golf-mini-app.gm *{box-sizing:border-box}
+#golf-mini-app .gm-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+#golf-mini-app .gm-info{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1 1 auto;min-width:0}
+#golf-mini-app .gm-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+#golf-mini-app .gm-chip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--mut);white-space:nowrap}
+#golf-mini-app .gm-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+#golf-mini-app .gm-chip[data-hud="status"]{max-width:210px;overflow:hidden;text-overflow:ellipsis}
+#golf-mini-app .gm-chip .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex:none}
+#golf-mini-app .gm-btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;min-height:36px;padding:0 11px;font:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#golf-mini-app .gm-btn:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+#golf-mini-app .gm-btn:disabled{opacity:.4;cursor:default}
+#golf-mini-app .gm-btn.acc{border-color:var(--acc);color:var(--acc)}
+#golf-mini-app .gm-btn.on{border-color:var(--warn);color:var(--warn)}
+#golf-mini-app .gm-icon-btn{display:inline-flex;align-items:center;gap:6px}
+#golf-mini-app .gm-icon-btn svg{flex:none;display:block}
+#golf-mini-app .gm-ctrl{display:flex;align-items:center;gap:5px;flex-wrap:nowrap}
+#golf-mini-app .gm-ctrl .gm-btn{min-width:32px;padding:0 7px;font-size:13px}
+#golf-mini-app .gm-board{position:relative;width:100%;flex:1 1 auto;min-height:0;aspect-ratio:560/400;border:1px solid var(--line);border-radius:10px;background:var(--court);overflow:hidden;padding:0}
+#golf-mini-app .gm-svg{display:block;width:100%;height:100%;touch-action:none;user-select:none}
 #golf-mini-app .gm-fair{fill:#14532d;stroke:#052e16;stroke-width:4;stroke-linejoin:round}
 #golf-mini-app .gm-wall{stroke:#e2e8f0;stroke-width:5;stroke-linecap:round}
 #golf-mini-app .gm-water{fill:#2563eb;opacity:.9}
@@ -410,60 +449,144 @@
 #golf-mini-app .gm-power{fill:#1f2a55;stroke:#8792c8;stroke-width:1.5}
 #golf-mini-app .gm-powerfill{fill:#a3e635}
 #golf-mini-app .gm-txt{font-family:inherit;text-anchor:middle}
+#golf-mini-app .gm-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(11,16,32,.78);z-index:5}
+#golf-mini-app .gm-card{width:min(520px,100%);max-height:100%;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden;text-align:center}
+#golf-mini-app .gm-card h2,#golf-mini-app .gm-card h3{margin:0;font-size:17px}
+#golf-mini-app .gm-win{color:var(--acc)}
+#golf-mini-app .gm-lose{color:var(--danger)}
+#golf-mini-app .gm-sub{font-size:12px;line-height:1.55;color:var(--mut);margin:0}
+#golf-mini-app .gm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+#golf-mini-app .gm-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+#golf-mini-app .gm-cheats,#golf-mini-app .gm-help{display:grid;gap:8px;flex:1 1 auto;min-height:0;overflow:auto}
+#golf-mini-app .gm-cheats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+#golf-mini-app .gm-help{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;text-align:left}
+#golf-mini-app .gm-help b{display:block;margin-bottom:5px;color:var(--mut);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+#golf-mini-app .gm-help ul{margin:0 0 10px;padding-left:16px;color:var(--mut);font-size:12px;line-height:1.6}
+#golf-mini-app .gm-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--court);color:var(--ink);font:inherit}
+#golf-mini-app .gm-note{color:var(--mut);font-size:11px;line-height:1.5}
+#golf-mini-app .gm-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--court);font-size:12px;text-align:left}
+#golf-mini-app .gm-switch{position:relative;width:40px;height:22px;border-radius:999px;border:1px solid var(--line);background:var(--court);cursor:pointer;flex:none;padding:0}
+#golf-mini-app .gm-switch:after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--mut)}
+#golf-mini-app .gm-switch[aria-pressed="true"]{border-color:var(--acc);background:rgba(163,230,53,.15)}
+#golf-mini-app .gm-switch[aria-pressed="true"]:after{left:20px;background:var(--acc)}
+@media (prefers-reduced-motion:reduce){#golf-mini-app *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* --- layout redesign overrides (keep last) --- */
+#golf-mini-app.gm.game-fill > .gm-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+#golf-mini-app.gm.game-fill > .gm-board:not(:has(.gm-ov:not([hidden]))){aspect-ratio:560/400;flex:0 0 auto}
+#golf-mini-app.gm.game-fill > .gm-board:has(.gm-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+#golf-mini-app .gm-hud{gap:5px;flex-direction:column;align-items:stretch}
+#golf-mini-app .gm-info{gap:5px}
+#golf-mini-app .gm-tools{gap:5px;flex-wrap:nowrap;justify-content:space-between}
+#golf-mini-app .gm-chip{padding:4px 6px;min-height:0;font-size:9px}
+#golf-mini-app .gm-chip[data-hud="status"],#golf-mini-app .gm-chip[data-hud="par"]{display:none}
+#golf-mini-app .gm-ctrl{gap:3px}
+#golf-mini-app .gm-btn{min-height:32px;padding:5px 6px;font-size:9px}
+#golf-mini-app .gm-icon-btn .gm-label{display:none}
+#golf-mini-app .gm-ov{padding:8px}
+#golf-mini-app .gm-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+#golf-mini-app .gm-cheats,#golf-mini-app .gm-help{scrollbar-width:none}
+#golf-mini-app .gm-cheats::-webkit-scrollbar,#golf-mini-app .gm-help::-webkit-scrollbar{display:none}
+#golf-mini-app .gm-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+#golf-mini-app .gm-note{display:none}
+}
+@media (pointer:coarse){#golf-mini-app .gm-hud .gm-btn{min-height:32px}}
 </style>
-<div class="mgp-hud">
-  <span class="mgp-title">Golf Mini</span>
-  <span class="mgp-chip">Hole <b data-hud="hole">1</b>/6</span>
-  <span class="mgp-chip">Strokes <b data-hud="strokes">0</b></span>
-  <span class="mgp-chip">Par <b data-hud="par">2</b></span>
-  <span class="mgp-spacer"></span>
-  <button class="mgp-btn ghost" data-act="restart">Restart</button>
-</div>
-<div class="mgp-stage">
-  <div class="gm-wrap">
-    <div class="gm-head" data-el="caption">Golf Mini</div>
-    <div class="gm-svgbox">
-      <svg class="gm-svg" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet" data-el="svg" aria-label="Mini golf course">
-        <g data-el="course"></g>
-        <g data-el="aimG" visibility="hidden">
-          <line data-el="aimLine" x1="10" y1="0" x2="50" y2="0"/>
-          <polygon data-el="aimHead" points="50,-6 64,0 50,6"/>
-        </g>
-        <circle class="gm-ball" data-el="ball" r="${R}"/>
-        <g>
-          <text class="gm-txt" x="14" y="112" font-size="11" fill="#9ca3af">Pwr</text>
-          <rect class="gm-power" x="6" y="120" width="16" height="200" rx="4"/>
-          <rect class="gm-powerfill" data-el="powerFill" x="8.5" y="318" width="11" height="0"/>
-          <text class="gm-txt" data-el="powerTxt" x="14" y="338" font-size="11" fill="#9ca3af">0</text>
-        </g>
-      </svg>
-    </div>
+<div class="gm-hud">
+  <div class="gm-info">
+    <span class="gm-chip game-status"><i class="game-status-dot"></i><span data-hud="status">Ready</span></span>
+    <span class="gm-chip">HOLE <b data-hud="hole">1</b>/6</span>
+    <span class="gm-chip">PAR <b data-hud="par">2</b></span>
+    <span class="gm-chip">STROKES <b data-hud="strokes">0</b></span>
+    <span class="gm-chip">TOTAL <b data-hud="score">0</b></span>
+    <span class="gm-chip">AIM <b data-hud="aim">0</b>&deg;</span>
   </div>
-  <div class="mgp-overlay" data-ov="start">
-    <div class="mgp-card">
-      <h2 class="mgp-ov-title">Golf Mini</h2>
-      <p class="mgp-ov-sub">Rotate the arrow to aim, hold Space (or the Putt button) to charge, release to putt. Water costs a one stroke penalty, sand slows the roll, and each hole caps at ${STROKE_CAP} strokes. Finish all six holes in ${PAR_TOTAL + 4} strokes or fewer to win.</p>
-      <button class="mgp-btn" data-act="start">Start game</button>
+  <div class="gm-tools">
+    <div class="gm-ctrl">
+      <button class="gm-btn" type="button" data-act="rotL" aria-label="Rotate aim left" title="Rotate aim left (Left arrow)">${iconSVG("rotateCcw", 14)}</button>
+      <button class="gm-btn" type="button" data-act="rotR" aria-label="Rotate aim right" title="Rotate aim right (Right arrow)">${iconSVG("rotateCw", 14)}</button>
+      <button class="gm-btn acc" type="button" data-act="putt" aria-label="Putt (hold)" title="Hold to charge, release to putt (Space)">PUTT</button>
     </div>
-  </div>
-  <div class="mgp-overlay" data-ov="over" hidden>
-    <div class="mgp-card">
-      <h2 class="mgp-ov-title" data-ov="title">Course complete</h2>
-      <p class="mgp-ov-sub" data-ov="reason"></p>
-      <button class="mgp-btn" data-act="start">Play again</button>
-    </div>
+    <button class="gm-btn gm-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", 14)}<span class="gm-label">Help</span></button>
+    <button class="gm-btn gm-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", 14)}<span class="gm-label">Cheats</span></button>
+    <button class="gm-btn gm-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", 14)}<span class="gm-label">Pause</span></button>
+    <button class="gm-btn gm-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", 14)}<span class="gm-label">Restart</span></button>
+    <button class="gm-btn gm-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", 14)}<span class="gm-label">Exit</span></button>
   </div>
 </div>
-<div class="mgp-foot">
-  <button class="mgp-dbtn" data-act="rotL" aria-label="Rotate aim left">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
-  </button>
-  <button class="mgp-dbtn" data-act="rotR" aria-label="Rotate aim right">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
-  </button>
-  <button class="mgp-btn" data-act="putt">Putt (hold)</button>
-  <span class="mgp-hint" data-el="banner">Left/Right: aim. Hold Space: power. Release: putt.</span>
-</div>`;
+<section class="game-panel gm-board" data-board>
+  <svg class="gm-svg" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet" data-el="svg" aria-label="Mini golf course">
+    <g data-el="course"></g>
+    <g data-el="aimG" visibility="hidden">
+      <line data-el="aimLine" x1="10" y1="0" x2="50" y2="0"/>
+      <polygon data-el="aimHead" points="50,-6 64,0 50,6"/>
+    </g>
+    <circle class="gm-ball" data-el="ball" r="${R}"/>
+    <g>
+      <text class="gm-txt" x="14" y="112" font-size="11" fill="#9ca3af">Pwr</text>
+      <rect class="gm-power" x="6" y="120" width="16" height="200" rx="4"/>
+      <rect class="gm-powerfill" data-el="powerFill" x="8.5" y="318" width="11" height="0"/>
+      <text class="gm-txt" data-el="powerTxt" x="14" y="338" font-size="11" fill="#9ca3af">0</text>
+    </g>
+  </svg>
+  <div class="gm-ov" data-ov="select">
+    <div class="gm-card">
+      <div class="gm-head"><h2>Golf Mini</h2><span class="gm-note">6 holes &middot; par ${PAR_TOTAL}</span></div>
+      <p class="gm-sub">Rotate the aim arrow, hold Space (or PUTT) to charge, release to putt. Water costs one penalty stroke, sand slows the roll, and each hole caps at ${STROKE_CAP} strokes. Finish all six holes in ${PAR_TOTAL + 4} strokes or fewer to win.</p>
+      <div class="gm-foot"><button class="gm-btn" type="button" data-help>How to play</button><button class="gm-btn acc" type="button" data-act="start">Start game</button></div>
+    </div>
+  </div>
+  <div class="gm-ov" data-ov="over" hidden>
+    <div class="gm-card">
+      <div class="gm-head"><h2 data-ov="title">Course complete</h2></div>
+      <p class="gm-sub" data-ov="reason"></p>
+      <div class="gm-foot"><span class="gm-note">Press H to reopen the guide</span><button class="gm-btn acc" type="button" data-act="start">Play again</button></div>
+    </div>
+  </div>
+  <div class="gm-ov" data-ov="pause" hidden>
+    <div class="gm-card">
+      <div class="gm-head"><h3>Paused</h3></div>
+      <p class="gm-sub">Ball roll, charging and the between-hole timer are frozen.</p>
+      <div class="gm-foot"><span class="gm-note">Press P or Esc to resume</span><button class="gm-btn acc" type="button" data-resume>Resume</button></div>
+    </div>
+  </div>
+  <div class="gm-ov" data-ov="cheat" hidden>
+    <div class="gm-card">
+      <div class="gm-head"><h3>Cheats</h3><button class="gm-btn" type="button" data-close>Close</button></div>
+      <div class="gm-cheats" data-cheatgrid></div>
+      <div class="gm-cheats" data-cheatacts></div>
+      <div class="gm-foot"><span class="gm-note">Toggles apply immediately</span><button class="gm-btn" type="button" data-close>Done</button></div>
+    </div>
+  </div>
+  <div class="gm-ov" data-ov="help" hidden>
+    <div class="gm-card">
+      <div class="gm-head"><h3>How to play</h3><button class="gm-btn" type="button" data-help-close>Close</button></div>
+      <div class="gm-help">
+        <div>
+          <b>Desktop</b>
+          <ul>
+            <li><span class="gm-kbd">Left</span> / <span class="gm-kbd">Right</span> rotate the aim arrow.</li>
+            <li>Hold <span class="gm-kbd">Space</span> to charge, release to putt.</li>
+            <li><span class="gm-kbd">H</span> help &middot; <span class="gm-kbd">C</span> cheats &middot; <span class="gm-kbd">P</span> pause &middot; <span class="gm-kbd">R</span> restart.</li>
+          </ul>
+          <b>Mobile</b>
+          <ul>
+            <li>Use the aim buttons and hold PUTT in the HUD to charge and release.</li>
+          </ul>
+        </div>
+        <div>
+          <b>Rules</b>
+          <ul>
+            <li>Six holes; water adds one penalty stroke and sand slows the ball.</li>
+            <li>Each hole is capped at ${STROKE_CAP} strokes.</li>
+            <li>Finish in ${PAR_TOTAL + 4} strokes or fewer with fewer than two caps to win.</li>
+          </ul>
+          <div class="gm-foot"><span class="gm-note">Press H to reopen this guide</span><button class="gm-btn acc" type="button" data-help-close>Got it</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>`;
 
             /* ---------------- refs ---------------- */
             const courseG = $('[data-el="course"]');
@@ -473,20 +596,47 @@
             const ballEl = $('[data-el="ball"]');
             const powerFill = $('[data-el="powerFill"]');
             const powerTxt = $('[data-el="powerTxt"]');
-            const captionEl = $('[data-el="caption"]');
-            const bannerEl = $('[data-el="banner"]');
+            const hudStatus = $('[data-hud="status"]');
             const hudHole = $('[data-hud="hole"]');
             const hudStrokes = $('[data-hud="strokes"]');
             const hudPar = $('[data-hud="par"]');
-            const ovStart = $('[data-ov="start"]');
-            const ovOver = $('[data-ov="over"]');
+            const hudScore = $('[data-hud="score"]');
+            const hudAim = $('[data-hud="aim"]');
+            const ov = {
+                select: $('[data-ov="select"]'),
+                over: $('[data-ov="over"]'),
+                pause: $('[data-ov="pause"]'),
+                cheat: $('[data-ov="cheat"]'),
+                help: $('[data-ov="help"]'),
+            };
             const ovTitle = $('[data-ov="title"]');
             const ovReason = $('[data-ov="reason"]');
+            const cheatGrid = $('[data-cheatgrid]');
+            const cheatActs = $('[data-cheatacts]');
+            const pbtn = $('[data-pause]');
+            const cbtn = $('[data-cheats]');
+            const rotL = $('[data-act="rotL"]');
+            const rotR = $('[data-act="rotR"]');
+            const puttBtn = $('[data-act="putt"]');
 
             /* ---------------- state ---------------- */
             let active = false,
                 started = false,
                 over = false;
+            let paused = false,
+                cheatsOpen = false,
+                helpOpen = false;
+            const cheats = { noCap: false, noPenalty: false, maxPower: false };
+            const CHEAT_LABELS = {
+                noCap: "Ignore stroke cap",
+                noPenalty: "No water penalty",
+                maxPower: "Always full power",
+            };
+            const CHEAT_ACTS = [
+                ["skip", "Skip to next hole"],
+                ["sink", "Sink current ball"],
+                ["reset", "Reset strokes"],
+            ];
             let mode = "aim"; /* aim | roll | between | done */
             let holeIdx = 0,
                 strokes = 0;
@@ -504,32 +654,59 @@
                 lastT = 0,
                 acc = 0;
 
+            let seenHelp = true;
+            try { seenHelp = localStorage.getItem("golfMiniHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+            if (!seenHelp) {
+                helpOpen = true;
+                try { localStorage.setItem("golfMiniHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+            }
+
             /* ---------------- rendering ---------------- */
+            function totalTaken() {
+                let t = 0;
+                for (let i = 0; i < HOLES.length; i++) {
+                    if (typeof totals[i] === "number") t += totals[i];
+                }
+                if (started && !over && typeof totals[holeIdx] !== "number") t += strokes;
+                return t;
+            }
+            function renderCheats() {
+                let h = "";
+                for (const k of Object.keys(cheats)) {
+                    const label = CHEAT_LABELS[k];
+                    h += '<div class="gm-cheatrow"><span>' + label + '</span><button class="gm-switch" type="button" data-cheat="' + k + '" aria-pressed="' + (cheats[k] ? "true" : "false") + '" aria-label="' + label + '"></button></div>';
+                }
+                cheatGrid.innerHTML = h;
+                let a = "";
+                for (const act of CHEAT_ACTS) {
+                    a += '<button class="gm-btn" type="button" data-cheatact="' + act[0] + '">' + act[1] + "</button>";
+                }
+                cheatActs.innerHTML = a;
+            }
             function hud() {
                 hudHole.textContent = String(Math.min(holeIdx + 1, HOLES.length));
                 hudStrokes.textContent = String(strokes);
-                hudPar.textContent = String(
-                    HOLES[Math.min(holeIdx, HOLES.length - 1)].par,
-                );
+                hudPar.textContent = String(HOLES[Math.min(holeIdx, HOLES.length - 1)].par);
+                hudScore.textContent = String(totalTaken());
+                hudAim.textContent = String(Math.round(aimAngle)) + "°";
+                ov.select.hidden = started || cheatsOpen || helpOpen;
+                ov.over.hidden = !over || cheatsOpen || helpOpen || paused;
+                ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+                ov.cheat.hidden = !cheatsOpen || helpOpen;
+                ov.help.hidden = !helpOpen;
+                const label = pbtn.querySelector(".gm-label");
+                if (label) label.textContent = paused ? "Resume" : "Pause";
+                pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+                pbtn.disabled = !started || over;
+                cbtn.classList.toggle("on", Object.keys(cheats).some((k) => cheats[k]));
+                renderCheats();
             }
             function banner(msg) {
-                bannerEl.textContent = msg;
-                bannerEl.className = "mgp-hint";
+                hudStatus.textContent = msg;
+                hudStatus.setAttribute("title", msg);
             }
             function caption() {
-                const h = HOLES[Math.min(holeIdx, HOLES.length - 1)];
-                captionEl.textContent =
-                    "Hole " +
-                    (holeIdx + 1) +
-                    " of " +
-                    HOLES.length +
-                    " - " +
-                    h.name +
-                    " - Par " +
-                    h.par +
-                    " - Aim " +
-                    Math.round(aimAngle) +
-                    " deg";
+                hudAim.textContent = String(Math.round(aimAngle)) + "°";
             }
             function renderCourse() {
                 const h = HOLES[holeIdx];
@@ -628,7 +805,7 @@
                 ballEl.setAttribute("cy", fx(st.y));
             }
             function renderAim() {
-                if (mode !== "aim" || !st || st.holed) {
+                if (mode !== "aim" || !st || st.holed || paused || cheatsOpen || helpOpen) {
                     aimG.setAttribute("visibility", "hidden");
                     return;
                 }
@@ -674,7 +851,10 @@
                     !started ||
                     over ||
                     !st ||
-                    st.holed
+                    st.holed ||
+                    paused ||
+                    cheatsOpen ||
+                    helpOpen
                 )
                     return;
                 charging = true;
@@ -684,13 +864,13 @@
             function releaseCharge() {
                 if (!charging) return;
                 charging = false;
-                if (mode === "aim" && started && !over) putt();
+                if (mode === "aim" && started && !over && !paused) putt();
             }
             function putt() {
                 if (mode !== "aim" || !st || st.holed) return;
                 strokes++;
                 shotStart = { x: st.x, y: st.y };
-                const v = shotSpeed(power);
+                const v = shotSpeed(cheats.maxPower ? 1 : power);
                 const a = (aimAngle * Math.PI) / 180;
                 st.vx = Math.cos(a) * v;
                 st.vy = Math.sin(a) * v;
@@ -704,16 +884,18 @@
                 hud();
             }
             function onWater() {
-                strokes++;
+                if (!cheats.noPenalty) strokes++;
                 banner(
-                    "Splash! One stroke penalty - ball back at the last spot.",
+                    cheats.noPenalty
+                        ? "Splash! No penalty (cheat) - ball back at the last spot."
+                        : "Splash! One stroke penalty - ball back at the last spot.",
                 );
                 st.x = shotStart.x;
                 st.y = shotStart.y;
                 st.vx = 0;
                 st.vy = 0;
                 renderBall();
-                if (strokes >= STROKE_CAP && !st.holed) return capOut();
+                if (!cheats.noCap && strokes >= STROKE_CAP && !st.holed) return capOut();
                 mode = "aim";
                 hud();
                 renderAim();
@@ -735,12 +917,14 @@
                 renderBall();
                 mode = "between";
                 betweenT = 1.5;
+                hud();
             }
             function onStopped() {
-                if (strokes >= STROKE_CAP) return capOut();
+                if (!cheats.noCap && strokes >= STROKE_CAP) return capOut();
                 mode = "aim";
                 banner("Stroke " + strokes + " done. Line up the next one.");
                 renderAim();
+                hud();
             }
             function capOut() {
                 totals[holeIdx] = STROKE_CAP;
@@ -790,8 +974,8 @@
                 renderBall();
                 renderAim();
                 renderPower();
-                hud();
                 caption();
+                hud();
                 banner(
                     "Hole " + (i + 1) + ": " + h.name + ". Aim, charge, putt.",
                 );
@@ -821,9 +1005,9 @@
                 else if (!win) reason += " Over the limit.";
                 ovTitle.textContent = win ? "Great round!" : "Over the limit";
                 ovTitle.className =
-                    "mgp-ov-title " + (win ? "mgp-win" : "mgp-lose");
+                    (win ? "gm-win mgp-win" : "gm-lose mgp-lose");
                 ovReason.innerHTML = reason;
-                ovOver.removeAttribute("hidden");
+                hud();
                 banner(
                     win ? "Course complete - great round!" : "Course complete.",
                 );
@@ -833,11 +1017,83 @@
                 totals = [];
                 cappedCount = 0;
                 over = false;
+                paused = false;
                 started = true;
-                ovStart.setAttribute("hidden", "");
-                ovOver.setAttribute("hidden", "");
                 loadHole(0);
+                hud();
                 ensureLoop();
+            }
+
+            /* ---------------- overlay toggles ---------------- */
+            function frozen() { return helpOpen || cheatsOpen || paused; }
+            function toggleHelp(on) {
+                helpOpen = typeof on === "boolean" ? on : !helpOpen;
+                if (helpOpen) cheatsOpen = false;
+                if (helpOpen) {
+                    charging = false;
+                    rotDir = 0;
+                    power = 0;
+                    phase = 0;
+                    renderPower();
+                }
+                hud();
+                renderAim();
+            }
+            function toggleCheats(on) {
+                cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+                if (cheatsOpen) {
+                    helpOpen = false;
+                    charging = false;
+                    rotDir = 0;
+                    power = 0;
+                    phase = 0;
+                    renderPower();
+                }
+                hud();
+                renderAim();
+            }
+            function togglePause(on) {
+                if (!started || over) return;
+                paused = typeof on === "boolean" ? on : !paused;
+                if (paused) {
+                    charging = false;
+                    rotDir = 0;
+                    power = 0;
+                    phase = 0;
+                    renderPower();
+                    renderAim();
+                    stopLoop();
+                } else {
+                    ensureLoop();
+                }
+                hud();
+            }
+            function restart() {
+                helpOpen = false;
+                cheatsOpen = false;
+                paused = false;
+                startGame();
+            }
+            function cheatAction(key) {
+                if (!started || over) return;
+                if (key === "skip") {
+                    paused = false;
+                    helpOpen = false;
+                    cheatsOpen = false;
+                    nextHole();
+                    ensureLoop();
+                } else if (key === "sink") {
+                    if (st && !st.holed) {
+                        st.holed = true;
+                        onCup();
+                    }
+                    paused = false;
+                    ensureLoop();
+                } else if (key === "reset") {
+                    strokes = 0;
+                    hud();
+                }
+                renderAim();
             }
 
             /* ---------------- main loop ---------------- */
@@ -846,6 +1102,10 @@
                 if (!lastT) lastT = t;
                 const dt = Math.min(0.05, (t - lastT) / 1000);
                 lastT = t;
+                if (frozen()) {
+                    rafId = requestAnimationFrame(loop);
+                    return;
+                }
                 if (mode === "aim") {
                     if (rotDir) setAim(aimAngle + rotDir * 140 * dt);
                     if (charging) {
@@ -893,24 +1153,42 @@
                 acc = 0;
             }
             function ensureLoop() {
-                if (!rafId) rafId = requestAnimationFrame(loop);
+                if (!rafId && !frozen()) rafId = requestAnimationFrame(loop);
             }
 
             /* ---------------- events ---------------- */
             const onKey = (e) => {
-                if (!active) return;
-                if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                if (!active || e.ctrlKey || e.metaKey || e.altKey) return;
+                const tag = e.target ? e.target.tagName : "";
+                if (tag === "INPUT" || tag === "TEXTAREA") return;
+                const c = e.code;
+                if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+                if (c === "KeyC") { if (!helpOpen && !paused) toggleCheats(); e.preventDefault(); return; }
+                if (c === "KeyP" || c === "Escape") {
+                    if (helpOpen) toggleHelp(false);
+                    else if (cheatsOpen) toggleCheats(false);
+                    else togglePause();
+                    e.preventDefault();
+                    return;
+                }
+                if (frozen()) { e.preventDefault(); return; }
+                if (c === "KeyR") { restart(); e.preventDefault(); return; }
+                if (c === "Enter") {
+                    if (!started || over) startGame();
+                    e.preventDefault();
+                    return;
+                }
+                if (c === "ArrowLeft" || c === "ArrowRight") {
                     e.preventDefault();
                     if (mode === "aim" && started && !over) {
-                        setAim(aimAngle + (e.key === "ArrowLeft" ? -2 : 2));
+                        setAim(aimAngle + (c === "ArrowLeft" ? -2 : 2));
                     }
-                } else if (e.key === " " || e.code === "Space") {
+                    return;
+                }
+                if (c === "Space") {
                     e.preventDefault();
-                    if (!started || over) {
-                        startGame();
-                        return;
-                    }
                     if (e.repeat) return;
+                    if (!started || over) { startGame(); return; }
                     if (mode === "aim") startCharge();
                 }
             };
@@ -921,37 +1199,28 @@
                     releaseCharge();
                 }
             };
-            document.addEventListener("keydown", onKey);
-            document.addEventListener("keyup", onKeyUp);
-
-            const rotL = $('[data-act="rotL"]');
-            const rotR = $('[data-act="rotR"]');
-            const puttBtn = $('[data-act="putt"]');
-            rotL.addEventListener("pointerdown", (e) => {
-                e.preventDefault();
-                if (active && mode === "aim" && started && !over) rotDir = -1;
-            });
-            rotR.addEventListener("pointerdown", (e) => {
-                e.preventDefault();
-                if (active && mode === "aim" && started && !over) rotDir = 1;
-            });
-            ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => {
-                rotL.addEventListener(ev, () => {
-                    if (rotDir === -1) rotDir = 0;
-                });
-                rotR.addEventListener(ev, () => {
-                    if (rotDir === 1) rotDir = 0;
-                });
-            });
-            puttBtn.addEventListener("pointerdown", (e) => {
-                e.preventDefault();
-                if (!active || !started || over || mode !== "aim") return;
-                startCharge();
-            });
-            document.addEventListener("pointerup", () => {
+            const onDocUp = () => {
                 if (!active) return;
                 rotDir = 0;
                 releaseCharge();
+            };
+
+            rotL.addEventListener("pointerdown", (e) => {
+                e.preventDefault();
+                if (active && !helpOpen && !cheatsOpen && !paused && mode === "aim" && started && !over) rotDir = -1;
+            });
+            rotR.addEventListener("pointerdown", (e) => {
+                e.preventDefault();
+                if (active && !helpOpen && !cheatsOpen && !paused && mode === "aim" && started && !over) rotDir = 1;
+            });
+            ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => {
+                rotL.addEventListener(ev, () => { if (rotDir === -1) rotDir = 0; });
+                rotR.addEventListener(ev, () => { if (rotDir === 1) rotDir = 0; });
+            });
+            puttBtn.addEventListener("pointerdown", (e) => {
+                e.preventDefault();
+                if (!active || !started || over || mode !== "aim" || frozen()) return;
+                startCharge();
             });
 
             app.addEventListener("pointerdown", (e) => {
@@ -960,19 +1229,41 @@
             });
             app.addEventListener("click", (e) => {
                 if (!active) return;
-                const btn = e.target.closest
-                    ? e.target.closest("[data-act]")
-                    : null;
+                const t = e.target;
+                if (!t || !t.closest) return;
+                if (t.closest("[data-help]")) { toggleHelp(); return; }
+                if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+                if (t.closest("[data-exit]")) { onExit(); return; }
+                if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+                if (t.closest("[data-close]")) { toggleCheats(false); return; }
+                if (t.closest("[data-pause]")) { togglePause(); return; }
+                if (t.closest("[data-resume]")) { togglePause(false); return; }
+                if (t.closest("[data-restart]")) { restart(); return; }
+                const sw = t.closest("[data-cheat]");
+                if (sw) {
+                    const k = sw.dataset.cheat;
+                    if (Object.prototype.hasOwnProperty.call(cheats, k)) {
+                        cheats[k] = !cheats[k];
+                        hud();
+                    }
+                    return;
+                }
+                const ca = t.closest("[data-cheatact]");
+                if (ca) { cheatAction(ca.dataset.cheatact); return; }
+                const btn = t.closest("[data-act]");
                 if (!btn) return;
                 const a = btn.dataset.act;
-                if (a === "start" || a === "restart") startGame();
-                else if (a === "rotL" && mode === "aim") setAim(aimAngle - 3);
-                else if (a === "rotR" && mode === "aim") setAim(aimAngle + 3);
+                if (a === "start") startGame();
+                else if (a === "rotL" && !frozen() && mode === "aim") setAim(aimAngle - 3);
+                else if (a === "rotR" && !frozen() && mode === "aim") setAim(aimAngle + 3);
             });
 
             /* ---------------- open / close ---------------- */
             function open() {
                 active = true;
+                document.addEventListener("keydown", onKey);
+                document.addEventListener("keyup", onKeyUp);
+                document.addEventListener("pointerup", onDocUp);
                 if (started && !over) ensureLoop();
             }
             function close() {
@@ -980,10 +1271,14 @@
                 charging = false;
                 rotDir = 0;
                 stopLoop();
+                document.removeEventListener("keydown", onKey);
+                document.removeEventListener("keyup", onKeyUp);
+                document.removeEventListener("pointerup", onDocUp);
             }
 
             loadHole(0);
             renderPower();
+            hud();
             return { open, close };
         },
     });

@@ -5,6 +5,8 @@
   3. Regenerate manifest: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "mini-city-builder",
     name: "Mini City Builder",
@@ -303,6 +305,8 @@ export function mount(root, context = {}) {
         selType = "house";
         demolishMode = false;
         noteKey = "";
+        paused = false;
+        if (botTimer) { clearTimeout(botTimer); botTimer = null; }
     }
 
     const mySeat = () => (online ? (isHost ? state.hostSeat : 1 - state.hostSeat) : 0);
@@ -402,7 +406,7 @@ export function mount(root, context = {}) {
 
     function scheduleBot() {
         if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-        if (destroyed || online || !state || state.phase !== "playing" || state.turn !== 1) return;
+        if (destroyed || paused || online || !state || state.phase !== "playing" || state.turn !== 1) return;
         botTimer = setTimeout(() => {
             botTimer = null;
             if (!destroyed && state && state.phase === "playing" && state.turn === 1)
@@ -420,9 +424,17 @@ export function mount(root, context = {}) {
     let selType = "house";
     let demolishMode = false;
     let cursor = { x: 4, y: 4 };
-    let helpOpen = false, cheatOpen = false;
+    let helpOpen = false, cheatOpen = false, paused = false;
     let padOn = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     let noteKey = "";
+
+    /* First-run internal help (global how-to is suppressed for this game id) */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("mini-city-help-seen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("mini-city-help-seen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     const ICONS = {
         house: '<path d="M-12 2 L0 -10 L12 2 Z" fill="#2563eb"/><rect x="-9" y="2" width="18" height="10" rx="1" fill="#93c5fd"/><rect x="-2.5" y="5" width="5" height="7" fill="#1e3a8a"/>',
@@ -449,187 +461,181 @@ export function mount(root, context = {}) {
 .mcb{--bg:#f6f7f8;--card:#ffffff;--ink:#1f2430;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;
   --ok:#16a34a;--warn:#d97706;--bad:#dc2626;--mcb-r:#16a34a;--mcb-c:#2563eb;--mcb-i:#d97706;--mcb-o:#7c3aed;
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);
-  background:var(--bg);border:1px solid var(--line);border-radius:18px;padding:16px}
+  background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px;gap:10px}
 .mcb [hidden]{display:none!important}
 .mcb *{box-sizing:border-box}
-.mcb .game-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
-.mcb .game-intro h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.01em}
-.mcb .game-intro p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
-.mcb .game-status{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--card);
-  border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;white-space:nowrap}
-.mcb .game-status-dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;flex:none}
-.mcb .game-status-dot.on{background:var(--ok)}
-.mcb .game-status-dot.wait{background:var(--warn);animation:mcbPulse 1.1s ease-in-out infinite}
-@keyframes mcbPulse{50%{opacity:.35}}
-.mcb .game-panel{padding:0;border:0;background:transparent}
-.mcb-stage{position:relative}
-.mcb-main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;align-items:start}
-.mcb-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
-.mcb-cardhead{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;font-size:13px;font-weight:700}
-.mcb-sub{font-weight:500;color:var(--muted);font-size:11.5px;margin-left:auto}
-.mcb-chips{display:inline-flex;flex-wrap:wrap;gap:6px;margin-left:auto}
-.mcb-chip{display:inline-flex;align-items:center;gap:4px;background:#f3f4f6;border-radius:8px;padding:3px 8px;
-  font-size:11.5px;font-weight:600;color:var(--muted)}
-.mcb-chip b{color:var(--ink);font-size:12.5px;font-variant-numeric:tabular-nums}
-.mcb-chip i{font-style:normal;font-size:10.5px;font-weight:700}
+/* HUD bar: all status info + icon controls above the board */
+.mcb .mcb-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 11px/1 system-ui,sans-serif}
+.mcb-chip{display:inline-flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 8px;
+  font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap}
+.mcb-chip b{color:var(--ink);font-size:12px;font-variant-numeric:tabular-nums}
+.mcb-chip i{font-style:normal;font-size:10px;font-weight:700}
 .mcb-chip i.pos{color:var(--ok)} .mcb-chip i.neg{color:var(--bad)}
 .mcb-chip.mcb-strikes{background:#fef2f2;color:var(--bad)} .mcb-chip.mcb-strikes b{color:var(--bad)}
-.mcb-svg{width:100%;height:auto;display:block;border-radius:10px;touch-action:manipulation}
+.mcb-chip.mcb-rival i{color:var(--muted);font-weight:600}
+.mcb-chip .game-status-dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;flex:none}
+.game-status-dot.on{background:var(--ok)}
+.game-status-dot.wait{background:var(--warn);animation:mcbPulse 1.1s ease-in-out infinite}
+@keyframes mcbPulse{50%{opacity:.35}}
+.mcb-spacer{flex:1 1 auto}
+.mcb .mcb-btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;
+  padding:8px 12px;min-height:44px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.mcb .mcb-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.mcb .mcb-btn:disabled{opacity:.45;cursor:default}
+.mcb .mcb-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.mcb .mcb-btn.primary:hover:not(:disabled){color:#fff;opacity:.9}
+.mcb .mcb-btn.toggled{border-color:var(--bad);color:var(--bad);background:#fef2f2}
+.mcb-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.mcb-icon-btn svg{flex:none;display:block}
+/* Board: arena + content, overlays are direct children */
+.mcb-board{position:relative;display:flex;flex-direction:column;padding:0;border:0;background:transparent;border-radius:12px;overflow:hidden}
+.mcb-main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;align-items:start;flex:1 1 auto;min-height:0}
+.mcb-card{display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.mcb-playcol{min-height:0;align-items:center}
+.mcb-cardhead{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13px;font-weight:700}
+.mcb-sub{font-weight:500;color:var(--muted);font-size:11px;margin-left:auto}
+.mcb-svg{width:100%;max-width:min(560px,72vh);height:auto;aspect-ratio:1;display:block;border-radius:8px;touch-action:manipulation}
+.mcb-opp-svg{width:100%;max-width:180px;height:auto;aspect-ratio:1;display:block;border-radius:8px;margin:0 auto}
 .mcb-cell{transition:fill .12s ease}
 .mcb-cell.ok{fill:#f0fdf4;stroke:#bbf7d0}
 .mcb-cell.ok:hover{fill:#bbf7d0;cursor:pointer}
 .mcb-cell.no:hover{fill:#fee2e2;cursor:not-allowed}
 .mcb-cell.demo:hover{fill:#fecaca;cursor:pointer}
-.mcb-note{min-height:18px;margin-top:8px;font-size:12.5px;color:var(--muted);line-height:1.4}
-.mcb-side{display:flex;flex-direction:column;gap:10px}
-.mcb-opprow{display:flex;gap:10px;align-items:center}
-.mcb-opprow svg{width:132px;height:132px;flex:none;border-radius:8px}
-.mcb-oppstats{display:grid;gap:5px;font-size:12px;color:var(--muted)}
-.mcb-oppstats b{color:var(--ink);font-variant-numeric:tabular-nums}
+.mcb-note{width:100%;min-height:18px;font-size:12px;color:var(--muted);line-height:1.4}
+.mcb-side{display:flex;flex-direction:column;gap:12px;min-height:0}
 .mcb-demands{display:grid;gap:8px}
 .mcb-drow{display:grid;grid-template-columns:20px 1fr 30px;gap:8px;align-items:center;font-size:12px}
 .mcb-dletter{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;
   font-size:11px;font-weight:800;color:#fff}
-.mcb-dtrack{height:6px;border-radius:99px;background:#eef0f2;overflow:hidden}
-.mcb-dfill{height:100%;border-radius:99px;transition:width .3s ease}
+.mcb-dtrack{height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.mcb-dfill{height:100%;border-radius:99px;transition:width .2s ease}
 .mcb-dval{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px}
-.mcb-pal{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.mcb-palbtn{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:7px;text-align:left;
-  border:1px solid var(--line);background:var(--card);border-radius:10px;padding:7px 9px;font:inherit;
-  font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer}
+.mcb-pal{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mcb-palbtn{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:8px;text-align:left;
+  border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 10px;font:inherit;
+  min-height:44px;font-size:12px;font-weight:600;color:var(--ink);cursor:pointer}
 .mcb-palbtn svg{width:22px;height:22px;display:block}
-.mcb-palbtn .cost{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums}
+.mcb-palbtn .cost{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
 .mcb-palbtn.on{border-color:var(--accent);background:#eff6ff}
 .mcb-palbtn:disabled{opacity:.45;cursor:default}
 .mcb-palbtn kbd{font:600 9.5px/1 system-ui;border:1px solid var(--line);border-radius:4px;padding:2px 4px;
-  color:var(--muted);background:#f9fafb;margin-left:4px}
-.mcb-controls{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.mcb-btn{flex:1;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;
-  padding:8px 10px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
-.mcb-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
-.mcb-btn:disabled{opacity:.45;cursor:default}
-.mcb-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.mcb-btn.primary:hover:not(:disabled){color:#fff;opacity:.9}
-.mcb-btn.toggled{border-color:var(--bad);color:var(--bad);background:#fef2f2}
-.mcb-pad{display:none;align-items:center;justify-content:center;gap:14px;margin-top:10px}
+  color:var(--muted);background:var(--bg);margin-left:4px}
+.mcb-controls{display:flex;flex-wrap:wrap;gap:8px}
+.mcb-controls .mcb-btn{flex:1}
+/* Touch pad is a SIBLING after the board, never inside it */
+.mcb-pad{display:none;align-items:center;justify-content:center;gap:12px;margin-top:2px}
 .mcb.pad-on .mcb-pad{display:flex}
-.mcb-dpad{display:grid;grid-template-areas:". u ." "l o r" ". d .";gap:5px}
-.mcb-dpad button,.mcb-vc{width:46px;height:46px;border:1px solid var(--line);background:var(--card);border-radius:12px;
+.mcb-dpad{display:grid;grid-template-areas:". u ." "l o r" ". d .";gap:8px}
+.mcb-dpad button,.mcb-vc{width:46px;height:46px;border:1px solid var(--line);background:var(--card);border-radius:10px;
   font-size:16px;color:var(--ink);cursor:pointer;touch-action:manipulation}
 .mcb-dpad button:active,.mcb-vc:active{background:#eff6ff;border-color:var(--accent)}
 .mcb-vc.ok{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:800}
-.mcb-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  background:rgba(246,247,248,.88);backdrop-filter:blur(3px);border-radius:14px;z-index:5;padding:14px}
-.mcb-ovcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;
-  max-width:440px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.08);max-height:100%;overflow:auto}
-.mcb-ovcard h3{margin:0 0 8px;font-size:17px;letter-spacing:-.01em}
-.mcb-ovcard h3.win{color:var(--ok)} .mcb-ovcard h3.lose{color:var(--bad)}
-.mcb-ovcard p,.mcb-ovcard li{font-size:13px;line-height:1.55;color:var(--muted);margin:6px 0}
-.mcb-ovcard ul{margin:6px 0;padding-left:18px}
-.mcb-ovcard b{color:var(--ink)}
-.mcb-ovbtns{display:flex;gap:8px;margin-top:12px}
-.mcb-cheatlist{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+/* Overlays: flex column cards with scrollable body + sticky footer */
+.mcb-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
+  background:rgba(246,247,248,.88);backdrop-filter:blur(3px);border-radius:12px;padding:12px}
+.mcb-ovcard{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;
+  max-width:480px;width:100%;max-height:100%;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.06)}
+.mcb-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.mcb-head h3{margin:0;font-size:16px;letter-spacing:-.01em}
+.mcb-head h3.win{color:var(--ok)} .mcb-head h3.lose{color:var(--bad)}
+.mcb-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+.mcb-scroll p,.mcb-scroll li{font-size:12.5px;line-height:1.55;color:var(--muted);margin:8px 0}
+.mcb-scroll ul{margin:8px 0;padding-left:18px}
+.mcb-scroll b{color:var(--ink)}
+.mcb-foot{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex:none;margin-top:12px}
+.mcb-cheatlist{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .mcb-cheatlist .mcb-btn{flex:none}
-.mcb .game-actions{margin-top:12px;display:flex;gap:8px}
-.mcb .game-action-button{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:10px;
-  padding:8px 14px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
-.mcb .game-action-button:hover{border-color:var(--bad);color:var(--bad)}
 .mcb button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media (max-width:860px){
-  .mcb{padding:12px}
-  .mcb-main{grid-template-columns:1fr}
-  .mcb-pal{grid-template-columns:repeat(4,1fr)}
-  .mcb-palbtn{grid-template-columns:1fr;justify-items:center;text-align:center;gap:3px;padding:7px 4px}
-  .mcb-palbtn kbd{display:none}
-  .mcb-opprow svg{width:104px;height:104px}
-}
-@media (pointer:coarse){ .mcb-palbtn kbd{display:none} }
-@media (prefers-reduced-motion:reduce){
-  .mcb *{transition:none!important;animation:none!important}
+@media (max-width:860px){.mcb-main{grid-template-columns:1fr}.mcb-pal{grid-template-columns:repeat(4,1fr)}
+  .mcb-palbtn{grid-template-columns:1fr;justify-items:center;text-align:center;gap:4px;padding:8px 4px}.mcb-palbtn kbd{display:none}}
+@media (max-width:480px){.mcb-pal{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){.mcb *{transition:none!important;animation:none!important}}
+@media (pointer:coarse){.mcb button:not(:disabled){min-height:44px}}
+
+/* --- fill height + mobile refinements (LAST: beats pointer:coarse 44px) --- */
+.mcb .mcb-hud .mcb-btn{min-height:32px;padding:5px 9px;font-size:9px}
+@media (max-width:640px){
+ .mcb.game-fill > .mcb-board{flex:0 0 auto;aspect-ratio:auto;min-height:0}
+ .mcb.game-fill > .mcb-board:has(.mcb-ov:not([hidden])){min-height:min(70dvh,620px)}
+ .mcb-main{grid-template-columns:1fr}
+ .mcb-side{flex-direction:row;flex-wrap:wrap}
+ .mcb-side .mcb-card{flex:1 1 240px}
+ .mcb .mcb-hud{gap:5px}
+ .mcb .mcb-hud .mcb-chip{padding:4px 6px;font-size:9px}
+ .mcb .mcb-hud .mcb-chip.mcb-rival i{display:none}
+ .mcb .mcb-hud .mcb-btn-label,.mcb .mcb-hud .mcb-spacer{display:none}
+ .mcb .mcb-ov{padding:8px}
+ .mcb .mcb-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+ .mcb .mcb-scroll{scrollbar-width:none}
+ .mcb .mcb-scroll::-webkit-scrollbar{display:none}
+ .mcb .mcb-foot{justify-content:center}
 }
 </style>
-<div class="game-app mcb${padOn ? " pad-on" : ""}" data-mcb>
-  <div class="game-intro">
-    <div><h2>Mini City Builder</h2><p>Build beside roads · follow the demand bars · first to ${TARGET} citizens wins.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
+<div class="game-app mcb game-fill${padOn ? " pad-on" : ""}" data-mcb>
+  <div class="mcb-hud">
+    <span class="mcb-chip"><i class="game-status-dot" data-dot></i><b data-status>Ready</b></span>
+    <span class="mcb-chip">CASH <b data-hud="money">0</b><i data-hud="net"></i></span>
+    <span class="mcb-chip">POP <b data-hud="pop">0</b>/${TARGET}</span>
+    <span class="mcb-chip">HAPPY <b data-hud="happy">0</b>%</span>
+    <span class="mcb-chip">ROUND <b data-hud="round">1</b>/${ROUNDS}</span>
+    <span class="mcb-chip mcb-strikes" data-hud="strikes" hidden>S <b data-hud="strikesv">0</b>/${STRIKES}</span>
+    <span class="mcb-chip mcb-rival">RIVAL <b data-opp="pop">0</b><i data-opp="money">0</i><i data-opp="happy">0</i>% <i>S<b data-opp="strikes">0</b></i></span>
+    <span class="mcb-spacer"></span>
+    <button class="mcb-btn mcb-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="mcb-btn-label">Help</span></button>
+    <button class="mcb-btn mcb-icon-btn" type="button" data-cheats data-cheatsbtn aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="mcb-btn-label">Cheats</span></button>
+    <button class="mcb-btn mcb-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="mcb-btn-label">Pause</span></button>
+    <button class="mcb-btn mcb-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="mcb-btn-label">Restart</span></button>
+    <button class="mcb-btn mcb-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="mcb-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel">
-    <div class="mcb-stage">
-      <div class="mcb-main">
+  <section class="game-panel mcb-board" data-board>
+    <div class="mcb-main">
+      <div class="mcb-card mcb-playcol">
+        <div class="mcb-cardhead"><span data-me-title>Your city</span><span class="mcb-sub">build beside roads</span></div>
+        <svg class="mcb-svg" viewBox="0 0 396 396" data-grid role="img" aria-label="Your city grid"></svg>
+        <div class="mcb-note" data-note aria-live="polite"></div>
+      </div>
+      <div class="mcb-side">
         <div class="mcb-card">
-          <div class="mcb-cardhead">
-            <span data-me-title>Your city</span>
-            <span class="mcb-chips">
-              <span class="mcb-chip">Cash <b data-hud="money">0</b><i data-hud="net"></i></span>
-              <span class="mcb-chip">Citizens <b data-hud="pop">0</b>/${TARGET}</span>
-              <span class="mcb-chip">Happy <b data-hud="happy">0</b>%</span>
-              <span class="mcb-chip">Round <b data-hud="round">1</b>/${ROUNDS}</span>
-              <span class="mcb-chip mcb-strikes" data-hud="strikes" hidden>Strikes <b data-hud="strikesv">0</b>/${STRIKES}</span>
-            </span>
-          </div>
-          <svg class="mcb-svg" viewBox="0 0 396 396" data-board role="img" aria-label="Your city grid"></svg>
-          <div class="mcb-note" data-note aria-live="polite"></div>
-          <div class="mcb-pad" aria-label="Touch controls">
-            <button type="button" class="mcb-vc" data-vc="cycle" aria-label="Cycle building">⟳</button>
-            <div class="mcb-dpad">
-              <button type="button" data-vc="up" style="grid-area:u" aria-label="Move up">▲</button>
-              <button type="button" data-vc="left" style="grid-area:l" aria-label="Move left">◀</button>
-              <button type="button" class="mcb-vc ok" data-vc="ok" style="grid-area:o" aria-label="Build here">✓</button>
-              <button type="button" data-vc="right" style="grid-area:r" aria-label="Move right">▶</button>
-              <button type="button" data-vc="down" style="grid-area:d" aria-label="Move down">▼</button>
-            </div>
-            <button type="button" class="mcb-vc" data-vc="del" aria-label="Demolish here">⌫</button>
-          </div>
+          <div class="mcb-cardhead"><span data-opp-title>Opponent</span></div>
+          <svg class="mcb-opp-svg" viewBox="0 0 396 396" data-oppboard role="img" aria-label="Opponent city grid"></svg>
         </div>
-        <div class="mcb-side">
-          <div class="mcb-card">
-            <div class="mcb-cardhead"><span data-opp-title>Opponent</span>
-              <span class="mcb-chips"><span class="mcb-chip">Citizens <b data-opp="pop">0</b></span></span>
-            </div>
-            <div class="mcb-opprow">
-              <svg viewBox="0 0 396 396" data-oppboard role="img" aria-label="Opponent city grid"></svg>
-              <div class="mcb-oppstats">
-                <span>Cash <b data-opp="money">0</b></span>
-                <span>Happy <b data-opp="happy">0</b>%</span>
-                <span>Strikes <b data-opp="strikes">0</b>/${STRIKES}</span>
-              </div>
-            </div>
-          </div>
-          <div class="mcb-card">
-            <div class="mcb-cardhead"><span>Demand</span><span class="mcb-sub">build what's high</span></div>
-            <div class="mcb-demands" data-demands></div>
-          </div>
-          <div class="mcb-card">
-            <div class="mcb-pal" data-pal></div>
-            <div class="mcb-controls">
-              <button type="button" class="mcb-btn primary" data-act="pass">Pass</button>
-              <button type="button" class="mcb-btn" data-act="demolish" aria-pressed="false">Demolish</button>
-              <button type="button" class="mcb-btn" data-act="pad" aria-pressed="${padOn}">Pad</button>
-              <button type="button" class="mcb-btn" data-act="help" aria-label="How to play">?</button>
-              <button type="button" class="mcb-btn" data-act="cheats" data-cheatsbtn>Cheats</button>
-            </div>
+        <div class="mcb-card">
+          <div class="mcb-cardhead"><span>Demand</span><span class="mcb-sub">build what's high</span></div>
+          <div class="mcb-demands" data-demands></div>
+        </div>
+        <div class="mcb-card">
+          <div class="mcb-pal" data-pal></div>
+          <div class="mcb-controls">
+            <button type="button" class="mcb-btn primary" data-act="pass">Pass</button>
+            <button type="button" class="mcb-btn" data-act="demolish" aria-pressed="false">Demolish</button>
+            <button type="button" class="mcb-btn" data-act="pad" aria-pressed="${padOn}">Pad</button>
           </div>
         </div>
       </div>
+    </div>
 
-      <div class="mcb-overlay" data-ov="help" hidden>
-        <div class="mcb-ovcard">
-          <h3>How to play</h3>
+    <div class="mcb-ov" data-ov="help" hidden>
+      <div class="mcb-ovcard">
+        <div class="mcb-head"><h3>How to play</h3><button class="mcb-btn" type="button" data-help-close>Close</button></div>
+        <div class="mcb-scroll">
           <ul>
             <li><b>Goal:</b> first mayor to <b>${TARGET} citizens</b> wins. After ${ROUNDS} rounds the bigger city wins; ${STRIKES} bankruptcies and you're out.</li>
             <li><b>One action per turn</b> — build, demolish (half refund) or pass. After both mayors act, taxes collect and both cities grow.</li>
             <li><b>Everything must touch a road.</b> Roads extend from existing roads; water is blocked.</li>
             <li><b>Follow the demand bars:</b> R housing, C shops, I factories, O offices. High demand = faster growth and better income.</li>
             <li><b>Happiness fills housing.</b> Parks and landmarks raise it, factories drag it down. Jobs attract residents.</li>
-            <li><b>Controls:</b> click = build · right-click = demolish · wheel = cycle building · keys 1–8, arrows/WASD, Enter, X, D, P, H, C · touch: tap or the on-screen pad.</li>
+            <li><b>Desktop:</b> click = build · right-click = demolish · wheel = cycle · 1–8 pick building · arrows or W/A/S move · Enter build · X demolish · D demolish mode · Space pass · Q/E cycle · H help · C cheats · P pause · R restart.</li>
+            <li><b>Mobile:</b> tap the grid or use the on-screen pad (⟳ cycle, ▲◀▶▼ move, ✓ build, ⌫ demolish). Enable the pad with the Pad button.</li>
           </ul>
-          <div class="mcb-ovbtns"><button type="button" class="mcb-btn primary" data-act="close-help">Got it</button></div>
         </div>
+        <div class="mcb-foot"><span class="mcb-sub">Press H to reopen this guide</span><button class="mcb-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
+    </div>
 
-      <div class="mcb-overlay" data-ov="cheats" hidden>
-        <div class="mcb-ovcard">
-          <h3>Cheats</h3>
+    <div class="mcb-ov" data-ov="cheats" hidden>
+      <div class="mcb-ovcard">
+        <div class="mcb-head"><h3>Cheats</h3><button class="mcb-btn" type="button" data-close-cheats>Close</button></div>
+        <div class="mcb-scroll">
           <p>Offline only — using any cheat marks this match. Cheats don't spend your turn.</p>
           <div class="mcb-cheatlist">
             <button type="button" class="mcb-btn" data-cheat="money">+500 cash</button>
@@ -639,38 +645,60 @@ export function mount(root, context = {}) {
             <button type="button" class="mcb-btn" data-cheat="upkeep" data-cheatlabel="upkeep">No upkeep: off</button>
             <button type="button" class="mcb-btn" data-cheat="win">Win now</button>
           </div>
-          <div class="mcb-ovbtns"><button type="button" class="mcb-btn" data-act="close-cheats">Close</button></div>
         </div>
       </div>
+    </div>
 
-      <div class="mcb-overlay" data-ov="over" hidden>
-        <div class="mcb-ovcard">
-          <h3 data-over-title>City report</h3>
+    <div class="mcb-ov" data-ov="pause" hidden>
+      <div class="mcb-ovcard">
+        <div class="mcb-head"><h3>Paused</h3></div>
+        <div class="mcb-scroll"><p>The bot and the turn clock are frozen. Resume when you're ready.</p></div>
+        <div class="mcb-foot"><button class="mcb-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+
+    <div class="mcb-ov" data-ov="over" hidden>
+      <div class="mcb-ovcard">
+        <div class="mcb-head"><h3 data-over-title>City report</h3></div>
+        <div class="mcb-scroll">
           <p data-over-reason></p>
           <p data-over-stats></p>
-          <div class="mcb-ovbtns">
-            <button type="button" class="mcb-btn primary" data-act="rematch" data-rematchbtn>New match</button>
-            <button type="button" class="mcb-btn" data-exit>Exit game</button>
-          </div>
+        </div>
+        <div class="mcb-foot">
+          <button type="button" class="mcb-btn primary" data-restart data-rematchbtn>New match</button>
+          <button type="button" class="mcb-btn" data-exit>Exit game</button>
         </div>
       </div>
+    </div>
 
-      <div class="mcb-overlay" data-ov="waiting" hidden>
-        <div class="mcb-ovcard"><h3>Waiting for host…</h3><p>The match will appear here once the host starts it.</p></div>
+    <div class="mcb-ov" data-ov="waiting" hidden>
+      <div class="mcb-ovcard">
+        <div class="mcb-head"><h3>Waiting for host…</h3></div>
+        <div class="mcb-scroll"><p>The match will appear here once the host starts it.</p></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="mcb-pad" aria-label="Touch controls">
+    <button type="button" class="mcb-vc" data-vc="cycle" aria-label="Cycle building">⟳</button>
+    <div class="mcb-dpad">
+      <button type="button" data-vc="up" style="grid-area:u" aria-label="Move up">▲</button>
+      <button type="button" data-vc="left" style="grid-area:l" aria-label="Move left">◀</button>
+      <button type="button" class="mcb-vc ok" data-vc="ok" style="grid-area:o" aria-label="Build here">✓</button>
+      <button type="button" data-vc="right" style="grid-area:r" aria-label="Move right">▶</button>
+      <button type="button" data-vc="down" style="grid-area:d" aria-label="Move down">▼</button>
+    </div>
+    <button type="button" class="mcb-vc" data-vc="del" aria-label="Demolish here">⌫</button>
+  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
     const appEl = $("[data-mcb]");
-    const boardEl = $("[data-board]"), oppBoardEl = $("[data-oppboard]");
+    const boardEl = $("[data-grid]"), oppBoardEl = $("[data-oppboard]");
     const palEl = $("[data-pal]"), demEl = $("[data-demands]"), noteEl = $("[data-note]");
     const statusEl = $("[data-status]"), dotEl = $("[data-dot]");
     const ovHelp = $('[data-ov="help"]'), ovCheats = $('[data-ov="cheats"]'),
-        ovOver = $('[data-ov="over"]'), ovWaiting = $('[data-ov="waiting"]');
+        ovPause = $('[data-ov="pause"]'), ovOver = $('[data-ov="over"]'), ovWaiting = $('[data-ov="waiting"]');
 
     /* palette + demand rows built once */
     palEl.innerHTML = TYPES.map((t, i) =>
@@ -758,7 +786,7 @@ export function mount(root, context = {}) {
     function render() {
         if (destroyed) return;
         if (!state) {
-            ovWaiting.hidden = !online;
+            ovWaiting.hidden = !online || helpOpen || cheatOpen || paused;
             statusEl.textContent = "Connecting…";
             dotEl.className = "game-status-dot wait";
             return;
@@ -770,7 +798,8 @@ export function mount(root, context = {}) {
         const e = econ(my);
 
         /* status */
-        if (state.phase === "over") {
+        if (paused) { statusEl.textContent = "Paused"; dotEl.className = "game-status-dot wait"; }
+        else if (state.phase === "over") {
             const w = state.result.winner;
             statusEl.textContent = w === -1 ? "Draw" : w === me ? "You win" : "You lose";
             dotEl.className = "game-status-dot";
@@ -818,6 +847,18 @@ export function mount(root, context = {}) {
         $('[data-cheatsbtn]').hidden = online;
         $('[data-rematchbtn]').hidden = online && !isHost;
         $('[data-act="pad"]').setAttribute("aria-pressed", String(padOn));
+        /* icon HUD buttons — update label spans, never button.textContent */
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) cbtn.classList.toggle("on", state.cheated);
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const plabel = pbtn.querySelector(".mcb-btn-label");
+            if (plabel) plabel.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pbtn.disabled = online;
+        }
+        const rbtn = root.querySelector("[data-restart]");
+        if (rbtn) rbtn.disabled = online && !isHost;
 
         /* cheat toggle labels */
         const flags = { happy: my.cheatHappy, free: my.cheatFree, upkeep: my.cheatUpkeep };
@@ -832,10 +873,11 @@ export function mount(root, context = {}) {
         boardEl.innerHTML = boardSVG(my, true, myTurn);
         oppBoardEl.innerHTML = boardSVG(other, false, false);
 
-        /* overlays */
+        /* overlays — help > cheats > pause > result, mutually suppressing */
         ovHelp.hidden = !helpOpen;
-        ovCheats.hidden = !cheatOpen || online;
-        if (state.phase === "over") {
+        ovCheats.hidden = !cheatOpen || online || helpOpen;
+        ovPause.hidden = !paused || helpOpen || cheatOpen;
+        if (state.phase === "over" && !helpOpen && !cheatOpen && !paused) {
             const r = state.result, w = r.winner;
             const title = $('[data-over-title]');
             title.textContent = w === -1 ? "Photo finish — it's a draw" : w === me ? "Your city thrives!" : `${state.names[w]} wins`;
@@ -857,7 +899,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- player intents ---------------- */
     function tryBuild(x, y) {
-        if (!state || state.phase !== "playing") return;
+        if (paused || !state || state.phase !== "playing") return;
         if (state.turn !== mySeat()) { note(online ? "Wait for your turn." : "Bot is thinking…"); return; }
         const chk = canPlace(state.cities[mySeat()], selType, x, y);
         if (!chk.ok) {
@@ -871,7 +913,7 @@ export function mount(root, context = {}) {
         submitAction({ t: "build", b: selType, x, y });
     }
     function tryDemolish(x, y) {
-        if (!state || state.phase !== "playing") return;
+        if (paused || !state || state.phase !== "playing") return;
         if (state.turn !== mySeat()) { note(online ? "Wait for your turn." : "Bot is thinking…"); return; }
         const t = state.cities[mySeat()].grid[y]?.[x];
         if (!t || t === "water") { note("Nothing to demolish there."); return; }
@@ -890,23 +932,44 @@ export function mount(root, context = {}) {
         render();
     }
 
+    /* ---------------- overlay / HUD controls ---------------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function togglePause() {
+        if (online) return;
+        paused = !paused;
+        /* Freeze the bot timer while paused; rescheduling on resume shifts its anchor. */
+        if (paused) { if (botTimer) { clearTimeout(botTimer); botTimer = null; } }
+        else scheduleBot();
+        render();
+    }
+    function restartMatch() {
+        if (online && !isHost) return;
+        submitAction({ t: "rematch" });
+    }
+
     /* ---------------- events ---------------- */
     function handleClick(event) {
         const el = event.target;
         if (!(el instanceof Element)) return;
         if (el.closest("[data-exit]")) { onExit(); return; }
+        if (el.closest("[data-help]")) { toggleHelp(); return; }
+        if (el.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (el.closest("[data-cheats]")) { if (!online) { cheatOpen = !cheatOpen; helpOpen = false; render(); } return; }
+        if (el.closest("[data-close-cheats]")) { cheatOpen = false; render(); return; }
+        if (el.closest("[data-pause]")) { togglePause(); return; }
+        if (el.closest("[data-resume]")) { if (paused) togglePause(); return; }
+        if (el.closest("[data-restart]")) { restartMatch(); return; }
 
         const act = el.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
             if (a === "pass") { if (state && state.phase === "playing" && state.turn === mySeat()) submitAction({ t: "pass" }); }
             else if (a === "demolish") { demolishMode = !demolishMode; render(); note(demolishMode ? "Tap a building to demolish it (half refund)." : "Demolish mode off."); }
-            else if (a === "help") { helpOpen = !helpOpen; cheatOpen = false; render(); }
-            else if (a === "close-help") { helpOpen = false; render(); }
-            else if (a === "cheats") { if (!online) { cheatOpen = !cheatOpen; helpOpen = false; render(); } }
-            else if (a === "close-cheats") { cheatOpen = false; render(); }
             else if (a === "pad") { padOn = !padOn; appEl.classList.toggle("pad-on", padOn); render(); }
-            else if (a === "rematch") submitAction({ t: "rematch" });
             return;
         }
         const pick = el.closest("[data-pick]");
@@ -949,7 +1012,7 @@ export function mount(root, context = {}) {
     }
 
     function handleWheel(event) {
-        if (!state || state.phase !== "playing" || helpOpen || cheatOpen) return;
+        if (!state || state.phase !== "playing" || helpOpen || cheatOpen || paused) return;
         event.preventDefault();
         cycleType(event.deltaY > 0 ? 1 : -1);
     }
@@ -958,29 +1021,43 @@ export function mount(root, context = {}) {
         if (destroyed || event.metaKey || event.ctrlKey || event.altKey) return;
         const tag = event.target && event.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        const k = event.key;
-        if (k === "Escape") { if (helpOpen || cheatOpen) { helpOpen = cheatOpen = false; render(); } return; }
-        if (k === "h" || k === "H") { helpOpen = !helpOpen; cheatOpen = false; render(); return; }
-        if ((k === "c" || k === "C") && !online) { cheatOpen = !cheatOpen; helpOpen = false; render(); return; }
-        if (helpOpen || cheatOpen) return;
+        const k = event.key, code = event.code;
+
+        /* Keyboard priority: help → cheats → pause/Escape → game actions */
+        if (code === "KeyH") { toggleHelp(); event.preventDefault(); return; }
+        if (code === "KeyC") {
+            if (!helpOpen && !online) { cheatOpen = !cheatOpen; render(); }
+            event.preventDefault(); return;
+        }
+        if (code === "KeyP" || k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) { cheatOpen = false; render(); }
+            else togglePause();
+            event.preventDefault(); return;
+        }
+        if (helpOpen || cheatOpen || paused) return;
         if (!state) return;
-        if (state.phase === "over") {
-            if ((k === "r" || k === "R") && (!online || isHost)) submitAction({ t: "rematch" });
+
+        if (code === "KeyR") { restartMatch(); event.preventDefault(); return; }
+        if (k === "Enter") {
+            event.preventDefault();
+            if (state.phase === "over") restartMatch();
+            else tryBuild(cursor.x, cursor.y);
+            return;
+        }
+        if (k === " ") {
+            event.preventDefault();
+            if (state.phase === "playing" && state.turn === mySeat()) submitAction({ t: "pass" });
             return;
         }
         const moves = {
             ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
-            w: [0, -1], s: [0, 1], a: [-1, 0], d2: [1, 0]
+            w: [0, -1], W: [0, -1], s: [0, 1], S: [0, 1], a: [-1, 0], A: [-1, 0]
         };
-        if (k in moves && k !== "d2") { event.preventDefault(); moveCursor(...moves[k]); return; }
-        if (k === "w" || k === "W") { event.preventDefault(); moveCursor(0, -1); return; }
-        if (k === "s" || k === "S") { event.preventDefault(); moveCursor(0, 1); return; }
-        if (k === "a" || k === "A") { event.preventDefault(); moveCursor(-1, 0); return; }
+        if (k in moves) { event.preventDefault(); moveCursor(...moves[k]); return; }
         if (k >= "1" && k <= "8") { selType = TYPES[Number(k) - 1]; demolishMode = false; render(); note(`${B[selType].label} — cost ${B[selType].cost}.`); return; }
-        if (k === "Enter" || k === " ") { event.preventDefault(); tryBuild(cursor.x, cursor.y); return; }
         if (k === "x" || k === "X" || k === "Delete" || k === "Backspace") { event.preventDefault(); tryDemolish(cursor.x, cursor.y); return; }
         if (k === "d" || k === "D") { demolishMode = !demolishMode; render(); return; }
-        if (k === "p" || k === "P") { if (state.turn === mySeat()) submitAction({ t: "pass" }); return; }
         if (k === "v" || k === "V") { padOn = !padOn; appEl.classList.toggle("pad-on", padOn); render(); return; }
         if (k === "q" || k === "Q") { cycleType(-1); return; }
         if (k === "e" || k === "E") { cycleType(1); return; }
@@ -1005,7 +1082,7 @@ export function mount(root, context = {}) {
                 if (destroyed || !next) return;
                 const fresh = !state || state.seed !== next.seed;
                 state = next;
-                if (fresh) { cursor = { x: 4, y: 4 }; selType = "house"; demolishMode = false; noteKey = ""; helpOpen = cheatOpen = false; }
+                if (fresh) { cursor = { x: 4, y: 4 }; selType = "house"; demolishMode = false; noteKey = ""; helpOpen = cheatOpen = paused = false; if (botTimer) { clearTimeout(botTimer); botTimer = null; } }
                 render();
             }));
         }

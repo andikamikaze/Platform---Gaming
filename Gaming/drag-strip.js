@@ -5,6 +5,8 @@
  * Kontrol: Spasi / klik / tap area permainan (tanpa tombol virtual).
  * ============================================================ */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "drag-strip",
     name: "Drag Strip",
@@ -203,42 +205,52 @@ export function mount(root, context = {}) {
     /* ---------- kerangka UI minimalis ---------- */
     root.innerHTML = `
 <style>
-.ds-app{color:#111827;-webkit-user-select:none;user-select:none}
+.ds-app{color:#111827;-webkit-user-select:none;user-select:none;line-height:1.5}
 .ds-app [hidden]{display:none!important}
-.ds-app .ds-meta{margin:2px 0 0;font-size:12px;color:#6b7280}
-.ds-app .ds-intro-right{display:flex;align-items:center;gap:10px}
-.ds-app .ds-ghost{border:1px solid #e5e7eb;background:#fff;color:#6b7280;font-size:11px;font-weight:600;letter-spacing:.4px;padding:5px 10px;border-radius:8px;cursor:pointer}
-.ds-app .ds-ghost:hover{border-color:#111827;color:#111827}
-.ds-app .ds-ghost.on{border-color:#f59e0b;color:#b45309}
-.ds-app .ds-panel{padding:0;overflow:hidden}
-.ds-app .ds-track{position:relative;width:100%;aspect-ratio:1280/430;touch-action:manipulation;cursor:pointer;background:#fafbfc}
+.ds-app .ds-panel{padding:0;overflow:hidden;border-radius:12px}
+.ds-app .ds-board{position:relative;width:100%;display:flex;flex-direction:column;background:#fafbfc}
+.ds-app.game-fill > .ds-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.ds-app .ds-track{position:relative;width:100%;aspect-ratio:1280/430;flex:1 1 auto;min-height:0;overflow:hidden;touch-action:manipulation;cursor:pointer;background:#fafbfc}
+.ds-app.game-fill > .ds-board .ds-track{aspect-ratio:auto}
 .ds-app .ds-track svg{display:block;width:100%;height:100%}
-.ds-app .ds-banner{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;background:rgba(250,251,252,.85);padding:10px 20px;border-radius:12px}
-.ds-app .ds-banner b{display:block;font-size:26px;font-weight:800;letter-spacing:.5px}
-.ds-app .ds-banner span{font-size:12px;color:#6b7280}
-.ds-app .ds-tele{display:flex;align-items:center;gap:16px;padding:10px 14px 0;flex-wrap:wrap}
-.ds-app .ds-lab{display:block;font-size:9px;font-weight:700;letter-spacing:1px;color:#9aa1ab}
-.ds-app .ds-cell b{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
-.ds-app .ds-rpm{flex:1;min-width:150px;display:flex;align-items:center;gap:8px}
+.ds-app .ds-hud{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ds-app .ds-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#6b7280;white-space:nowrap}
+.ds-app .ds-chip b{color:#111827;font-weight:700;font-variant-numeric:tabular-nums}
+.ds-app .ds-chip.ds-status i{width:7px;height:7px;border-radius:50%;background:#10b981;flex:none}
+.ds-app .ds-chip.ds-cheat-flag{border-color:#f59e0b;color:#b45309}
+.ds-app .ds-rpm{flex:0 1 116px;min-width:110px;max-width:116px;display:flex;align-items:center;gap:6px}
 .ds-app .ds-rpm-track{position:relative;flex:1;height:8px;border-radius:4px;background:#eef1f4;overflow:hidden}
 .ds-app .ds-zone{position:absolute;top:0;height:100%}
 .ds-app .ds-needle{position:absolute;top:-1px;width:2.5px;height:10px;background:#111827;border-radius:1px}
-.ds-app .ds-rpm b{font-size:12px;font-variant-numeric:tabular-nums;color:#6b7280;min-width:34px;text-align:right}
-.ds-app .ds-opp b{font-size:12px;color:#6b7280;font-weight:600}
-.ds-app .ds-prog{position:relative;height:6px;margin:10px 14px 14px;border-radius:3px;background:#eef1f4}
+.ds-app .ds-rpm b{font-size:11px;font-variant-numeric:tabular-nums;color:#6b7280;min-width:36px;text-align:right}
+.ds-app .ds-opp b{font-size:11px;color:#6b7280;font-weight:700}
+.ds-app .ds-spacer{flex:0 1 4px}
+.ds-app .ds-btn{border:1px solid #e5e7eb;background:#fff;color:#111827;font-size:11px;font-weight:700;min-height:38px;padding:6px 8px;border-radius:9px;cursor:pointer}
+.ds-app .ds-hud .ds-btn{padding:6px 8px}
+.ds-app .ds-btn:hover{border-color:#111827}
+.ds-app .ds-btn.primary{background:#111827;border-color:#111827;color:#fff}
+.ds-app .ds-btn.on{border-color:#f59e0b;color:#b45309;background:#fffbeb}
+.ds-app .ds-btn:disabled{opacity:.45;cursor:not-allowed}
+.ds-app .ds-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ds-app .ds-icon-btn svg{flex:none;display:block}
+.ds-app .ds-banner{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;background:rgba(250,251,252,.85);padding:12px 20px;border-radius:10px}
+.ds-app .ds-banner b{display:block;font-size:24px;font-weight:800;letter-spacing:.5px}
+.ds-app .ds-banner span{font-size:12px;color:#6b7280}
+.ds-app .ds-prog{position:relative;height:6px;margin:8px 16px 10px;border-radius:3px;background:#eef1f4;flex:none}
 .ds-app .ds-prog i{position:absolute;top:-2px;width:10px;height:10px;border-radius:50%;border:2px solid #fff;transform:translateX(-50%);box-shadow:0 0 0 1px #e5e7eb}
 .ds-app .ds-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(250,251,252,.95);overflow:auto;padding:14px}
-.ds-app .ds-modal{width:100%;max-width:760px;margin:auto}
+.ds-app .ds-modal{width:100%;max-width:760px;margin:auto;padding:16px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.08);display:flex;flex-direction:column;overflow:hidden;max-height:100%}
 .ds-app .ds-modal-sm{max-width:420px}
-.ds-app .ds-modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.ds-app .ds-modal-head b{font-size:15px;font-weight:800;letter-spacing:.3px}
+.ds-app .ds-modal.ds-center{align-items:center;justify-content:center;overflow:auto;text-align:center}
+.ds-app .ds-modal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px;flex:none}
+.ds-app .ds-modal-head b{font-size:16px;font-weight:800;letter-spacing:.3px}
 .ds-app .ds-modal-head span{font-size:11px;color:#6b7280}
-.ds-app .ds-veh-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.ds-app .ds-veh{text-align:left;border:1px solid #e5e7eb;background:#fff;border-radius:10px;padding:10px;cursor:pointer;font:inherit;color:inherit}
+.ds-app .ds-veh-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;flex:1 1 auto;min-height:0;overflow:auto}
+.ds-app .ds-veh{text-align:left;border:1px solid #e5e7eb;background:#fff;border-radius:10px;padding:12px;min-height:120px;cursor:pointer;font:inherit;color:inherit}
 .ds-app .ds-veh:hover{border-color:#111827}
 .ds-app .ds-veh.sel{border-color:#111827;box-shadow:inset 0 0 0 1px #111827}
 .ds-app .ds-veh:disabled{opacity:.55;cursor:default}
-.ds-app .ds-veh svg{width:100%;height:44px;display:block}
+.ds-app .ds-veh svg{width:100%;height:48px;display:block}
 .ds-app .ds-veh b{font-size:12.5px}
 .ds-app .ds-veh-tag{display:block;font-size:10px;color:#6b7280;margin:1px 0 6px}
 .ds-app .ds-veh em{display:block;font-style:normal;font-size:9.5px;color:#9aa1ab;margin-top:6px;font-variant-numeric:tabular-nums}
@@ -246,35 +258,80 @@ export function mount(root, context = {}) {
 .ds-app .ds-stat i{font-style:normal;font-size:8px;font-weight:700;letter-spacing:.5px;color:#9aa1ab;width:46px}
 .ds-app .ds-stat-track{flex:1;height:4px;border-radius:2px;background:#eef1f4;overflow:hidden}
 .ds-app .ds-stat-track span{display:block;height:100%;background:#111827;border-radius:2px}
-.ds-app .ds-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 2px;border-bottom:1px solid #f1f2f4;cursor:pointer}
-.ds-app .ds-cheat-row b{display:block;font-size:12.5px}
-.ds-app .ds-cheat-row i{font-style:normal;font-size:10.5px;color:#6b7280}
+.ds-app .ds-cheat-body{flex:1 1 auto;min-height:0;overflow:auto}
+.ds-app .ds-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 2px;min-height:44px;border-bottom:1px solid #f1f2f4;cursor:pointer}
+.ds-app .ds-cheat-row b{display:block;font-size:13px}
+.ds-app .ds-cheat-row i{font-style:normal;font-size:11px;color:#6b7280}
 .ds-app .ds-cheat-row input{width:16px;height:16px;accent-color:#111827}
-.ds-app .ds-note{font-size:10.5px;color:#9aa1ab;margin:10px 0 0}
-.ds-app .ds-center{text-align:center}
-.ds-app .ds-over-title{display:block;font-size:22px;font-weight:800;letter-spacing:.5px}
-.ds-app .ds-over-score{display:block;font-size:13px;color:#6b7280;margin:4px 0 10px;font-variant-numeric:tabular-nums}
-.ds-app .ds-log{list-style:none;margin:0 0 6px;padding:0;font-size:11.5px;color:#6b7280;font-variant-numeric:tabular-nums;line-height:1.8}
+.ds-app .ds-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;flex:1 1 auto;min-height:0;overflow:auto}
+.ds-app .ds-help b{display:block;margin-bottom:4px;font-size:10px;font-weight:700;letter-spacing:.08em;color:#6b7280;text-transform:uppercase}
+.ds-app .ds-help ul{margin:0 0 12px;padding-left:16px;font-size:11px;color:#6b7280;line-height:1.7}
+.ds-app .ds-kbd{display:inline-block;padding:1px 5px;border:1px solid #e5e7eb;border-bottom-width:2px;border-radius:5px;background:#f8fafc;color:#111827;font:inherit}
+.ds-app .ds-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex:none}
+.ds-app .ds-note{font-size:11px;color:#9aa1ab;margin:0}
+.ds-app .ds-center .ds-note{margin:8px 0 0}
+.ds-app .ds-over-title{display:block;font-size:24px;font-weight:800;letter-spacing:.5px}
+.ds-app .ds-over-score{display:block;font-size:13px;color:#6b7280;margin:8px 0 12px;font-variant-numeric:tabular-nums}
+.ds-app .ds-log{list-style:none;margin:0 0 8px;padding:0;font-size:12px;color:#6b7280;font-variant-numeric:tabular-nums;line-height:1.8}
 .ds-app .ds-log .w{color:#059669}.ds-app .ds-log .l{color:#dc2626}
-.ds-app .ds-row{display:flex;gap:8px;justify-content:center;margin-top:12px}
-.ds-app .ds-btn{border:1px solid #111827;background:#111827;color:#fff;font-size:12px;font-weight:600;padding:8px 16px;border-radius:8px;cursor:pointer}
-.ds-app .ds-btn-ghost{background:#fff;color:#111827}
+.ds-app .ds-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+@media (prefers-reduced-motion:reduce){.ds-app .ds-btn,.ds-app .ds-veh{transition:none}}
+
+/* --- fill height + mobile refinements (LAST: beat pointer:coarse 44px) --- */
+@media (pointer:coarse){.ds-app button:not(:disabled){min-height:44px}}
 @media (max-width:640px){
-  .ds-app .ds-track{aspect-ratio:16/9}
-  .ds-app .ds-veh-grid{grid-template-columns:repeat(2,1fr)}
-  .ds-app .ds-banner b{font-size:19px}
-  .ds-app .ds-cell b{font-size:14px}
+.ds-app.game-fill > .ds-board:not(:has(.ds-ov:not([hidden]))){aspect-ratio:1280/430;flex:0 0 auto}
+.ds-app.game-fill > .ds-board:has(.ds-ov:not([hidden])){aspect-ratio:auto;min-height:min(70dvh,620px);flex:0 0 auto}
+.ds-app .ds-hud{gap:5px;margin-bottom:8px}
+.ds-app .ds-hud .ds-chip{padding:4px 6px;font-size:9px}
+.ds-app .ds-hud .ds-chip.ds-cheat-flag{display:none}
+.ds-app .ds-hud .ds-rpm{flex:1 1 120px;min-width:100px;max-width:none}
+.ds-app .ds-hud .ds-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.ds-app .ds-hud .ds-btn-label,.ds-app .ds-hud .ds-spacer{display:none}
+.ds-app .ds-ov{padding:8px}
+.ds-app .ds-modal{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.ds-app .ds-veh-grid,.ds-app .ds-cheat-body,.ds-app .ds-help,.ds-app .ds-modal.ds-center{scrollbar-width:none}
+.ds-app .ds-veh-grid::-webkit-scrollbar,.ds-app .ds-cheat-body::-webkit-scrollbar,.ds-app .ds-help::-webkit-scrollbar,.ds-app .ds-modal.ds-center::-webkit-scrollbar{display:none}
+.ds-app .ds-veh-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ds-app .ds-veh{padding:8px;min-height:0}
+.ds-app .ds-help{grid-template-columns:1fr;gap:8px}
+.ds-app .ds-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid #e5e7eb}
+.ds-app .ds-note{display:none}
+.ds-app .ds-banner{padding:8px 12px}
+.ds-app .ds-banner b{font-size:20px}
+.ds-app .ds-prog{margin:6px 10px 8px}
 }
+@media (pointer:coarse) and (max-width:640px){.ds-app .ds-hud .ds-btn{min-height:32px}}
 </style>
-<div class="game-app ds-app">
-  <div class="game-intro">
-    <div><h2>Drag Strip</h2><p class="ds-meta" data-el="meta">Ronde 1/3</p></div>
-    <div class="ds-intro-right">
-      ${online ? "" : '<button class="ds-ghost" type="button" data-open-cheats>CHEAT</button>'}
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+<div class="game-app ds-app game-fill" data-ds>
+  <div class="ds-hud">
+    <span class="ds-chip">R <b data-el="roundTag">1/3</b></span>
+    <span class="ds-chip">W <b data-el="winTag">0–0</b></span>
+    <span class="ds-chip">BEST <b data-el="bestTag">–</b></span>
+    <span class="ds-chip ds-status"><i></i><span data-status>Siap</span></span>
+    <span class="ds-chip ds-cheat-flag" data-el="cheatTag" hidden>CHEAT</span>
+    <div class="ds-rpm"><span>RPM</span>
+      <div class="ds-rpm-track">
+        <i class="ds-zone" data-el="zGood" style="background:#d1fae5"></i>
+        <i class="ds-zone" data-el="zPerf" style="background:#34d399"></i>
+        <i class="ds-zone" data-el="zRed" style="background:#fecaca"></i>
+        <i class="ds-needle" data-el="needle"></i>
+      </div><b data-el="rpmVal">0</b>
     </div>
+    <span class="ds-chip">GEAR <b data-el="gearVal">&ndash;</b></span>
+    <span class="ds-chip">RT <b data-el="rtVal">&ndash;</b></span>
+    <span class="ds-chip">MPH <b data-el="mphVal">0</b></span>
+    <span class="ds-chip">ET <b data-el="etVal">0.00</b></span>
+    <span class="ds-chip ds-opp"><span data-el="oppLab">LAWAN</span> <b data-el="oppVal">&ndash;</b></span>
+    <span class="ds-spacer"></span>
+    <button class="ds-btn ds-icon-btn" type="button" data-act aria-label="Action" title="Action (Space)">${iconSVG("play", { size: 14 })}<span class="ds-btn-label" data-el="actLabel">GO</span></button>
+    <button class="ds-btn ds-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ds-btn-label">Help</span></button>
+    ${online ? "" : `<button class="ds-btn ds-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ds-btn-label">Cheats</span></button>`}
+    <button class="ds-btn ds-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-icon-pause>${iconSVG("pause", { size: 14 })}</span><span data-icon-play hidden>${iconSVG("play", { size: 14 })}</span><span class="ds-btn-label" data-el="pauseLabel">Pause</span></button>
+    <button class="ds-btn ds-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ds-btn-label">Restart</span></button>
+    <button class="ds-btn ds-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ds-btn-label">Exit</span></button>
   </div>
-  <section class="game-panel ds-panel" data-board>
+  <section class="game-panel ds-panel ds-board" data-board>
     <div class="ds-track" data-track>
       <svg viewBox="0 0 ${VB_W} ${VB_H}" preserveAspectRatio="xMinYMid slice" data-el="svg" aria-hidden="true"></svg>
       <div class="ds-banner" data-el="banner" hidden><b data-el="bTitle"></b><span data-el="bSub"></span></div>
@@ -286,9 +343,10 @@ export function mount(root, context = {}) {
       </div>
       ${online ? "" : `<div class="ds-ov" data-ov="cheat" hidden>
         <div class="ds-modal ds-modal-sm">
-          <div class="ds-modal-head"><b>Cheat</b><button class="ds-ghost" type="button" data-close-cheats>TUTUP</button></div>
-          ${cheatRows}
-          <p class="ds-note">Hanya berlaku saat bermain melawan bot.</p>
+          <div class="ds-modal-head"><b>Cheat</b><button class="ds-btn" type="button" data-close-cheats aria-label="Close cheats" title="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+          <div class="ds-cheat-body">${cheatRows}
+            <p class="ds-note">Hanya berlaku saat bermain melawan bot.</p>
+          </div>
         </div>
       </div>`}
       <div class="ds-ov" data-ov="over" hidden>
@@ -298,30 +356,48 @@ export function mount(root, context = {}) {
           <ul class="ds-log" data-el="overLog"></ul>
           <span class="ds-note" data-el="overBest"></span>
           <div class="ds-row">
-            <button class="ds-btn" type="button" data-rematch>Balapan lagi</button>
-            <button class="ds-btn ds-btn-ghost" type="button" data-repick>Ganti kendaraan</button>
+            <button class="ds-btn primary" type="button" data-rematch>Balapan lagi</button>
+            <button class="ds-btn" type="button" data-repick>Ganti kendaraan</button>
+          </div>
+        </div>
+      </div>
+      <div class="ds-ov" data-ov="pause" hidden>
+        <div class="ds-modal ds-modal-sm ds-center">
+          <b class="ds-over-title">DJEDA</b>
+          <span class="ds-over-score">Balapan sedang ditahan.</span>
+          <div class="ds-row"><button class="ds-btn primary" type="button" data-resume>Resume</button></div>
+        </div>
+      </div>
+      <div class="ds-ov" data-ov="help" hidden>
+        <div class="ds-modal">
+          <div class="ds-modal-head"><b>How to play</b><button class="ds-btn" type="button" data-help-close aria-label="Close help" title="Close help">${iconSVG("x", { size: 14 })}</button></div>
+          <div class="ds-help">
+            <div>
+              <b>Desktop</b>
+              <ul>
+                <li><span class="ds-kbd">Space</span> / klik lintasan: stage → launch → shift → lanjut ronde</li>
+                <li><span class="ds-kbd">H</span> panduan · <span class="ds-kbd">C</span> cheat · <span class="ds-kbd">P</span>/<span class="ds-kbd">Esc</span> jeda · <span class="ds-kbd">R</span> ulang</li>
+              </ul>
+              <b>Mobile</b>
+              <ul><li>Tap lintasan atau tombol ACTION di HUD untuk aksi yang sama.</li></ul>
+            </div>
+            <div>
+              <b>Aturan</b>
+              <ul>
+                <li>Pilih kendaraan, lalu stage. Tunggu tiga lampu kuning menyala.</li>
+                <li>Tekan tepat setelah lampu hijau untuk RT terbaik; terlalu awal = false start.</li>
+                <li>Shift ketika jarum RPM berada di zona hijau/tengah (perfect) agar ET lebih cepat.</li>
+                <li>Best of 3 ronde; lawan dikalahkan bila ET-mu lebih kecil.</li>
+                <li>Cheat hanya berlaku saat melawan bot.</li>
+              </ul>
+              <div class="ds-foot"><span class="ds-note">Tekan H untuk membuka panduan ini lagi</span><button class="ds-btn primary" type="button" data-help-close>Got it</button></div>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    <div class="ds-tele">
-      <div class="ds-rpm"><span class="ds-lab">RPM</span>
-        <div class="ds-rpm-track">
-          <i class="ds-zone" data-el="zGood" style="background:#d1fae5"></i>
-          <i class="ds-zone" data-el="zPerf" style="background:#34d399"></i>
-          <i class="ds-zone" data-el="zRed" style="background:#fecaca"></i>
-          <i class="ds-needle" data-el="needle"></i>
-        </div><b data-el="rpmVal">0</b>
-      </div>
-      <div class="ds-cell"><span class="ds-lab">GEAR</span><b data-el="gearVal">&ndash;</b></div>
-      <div class="ds-cell"><span class="ds-lab">RT</span><b data-el="rtVal">&ndash;</b></div>
-      <div class="ds-cell"><span class="ds-lab">MPH</span><b data-el="mphVal">0</b></div>
-      <div class="ds-cell"><span class="ds-lab">ET</span><b data-el="etVal">0.00</b></div>
-      <div class="ds-cell ds-opp"><span class="ds-lab" data-el="oppLab">LAWAN</span><b data-el="oppVal">&ndash;</b></div>
-    </div>
     <div class="ds-prog"><i data-el="dotMe"></i><i data-el="dotOpp"></i></div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -334,14 +410,26 @@ export function mount(root, context = {}) {
     const trackEl = $("[data-track]");
     const ovPick = $('[data-ov="pick"]'), ovOver = $('[data-ov="over"]');
     const ovCheat = online ? null : $('[data-ov="cheat"]');
+    const ovPause = $('[data-ov="pause"]'), ovHelp = $('[data-ov="help"]');
+    const cheatsBtn = $('[data-cheats]'), pauseBtn = $('[data-pause]');
     const vehBtns = Array.from(root.querySelectorAll("[data-veh]"));
-    const now = () => performance.now();
+    const perfNow = () => performance.now();
+    let timeShift = 0;                       // akumulasi jeda: anchor waktu tidak loncat saat resume
+    const now = () => frozen ? freezeAt - timeShift : perfNow() - timeShift; // jam game, beku saat jeda
 
     /* ---------- state lokal (non-network) ---------- */
     const cheats = { autoLaunch: false, autoShift: false, slowRev: false, wideBand: false, nitro: false };
-    let cheatOpen = false;
+    let cheatsOpen = false, helpOpen = false, paused = false;
+    let frozen = false, freezeAt = 0, resultLeft = 0, resultDueAt = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("dragStripHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("dragStripHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+    const isFrozen = () => paused || helpOpen || cheatsOpen;
     let botPlan = null;
-    let resultTimer = null, raf = null, lastT = now(), lastPub = 0;
+    let resultTimer = null, raf = null, lastT = perfNow(), lastPub = 0;
     let carRefs = [null, null], carSig = "";
     let disp = [{ p: 0, rpm: 0, mph: 0 }, { p: 0, rpm: 0, mph: 0 }];
     let wheelDeg = [0, 0];
@@ -353,6 +441,70 @@ export function mount(root, context = {}) {
     const vehOf = (i, st) => VEHICLES.find((v) => v.id === (st || state).vehicles[i]) || null;
     const anyCheat = () => Object.values(cheats).some(Boolean);
     const wideFor = (i) => !online && i === 0 && cheats.wideBand;
+
+    /* ---------- overlay: help → cheats → pause → Escape → aksi game ---------- */
+    function scheduleResult(ms) {
+        if (!isHost) return;
+        resultDueAt = now() + ms;
+        if (resultTimer) clearTimeout(resultTimer);
+        resultTimer = setTimeout(() => {
+            resultTimer = null; resultDueAt = 0; resultLeft = 0;
+            advance();
+        }, ms);
+    }
+    function syncFreeze() {
+        const shouldFreeze = isFrozen();
+        if (shouldFreeze === frozen) return;
+        if (shouldFreeze) {
+            freezeAt = perfNow();
+            if (resultTimer) {
+                clearTimeout(resultTimer); resultTimer = null;
+                resultLeft = Math.max(0, resultDueAt - now());
+                resultDueAt = 0;
+            }
+        } else {
+            const held = perfNow() - freezeAt;
+            if (held > 0) timeShift += held;
+            lastT = perfNow();
+            if (resultLeft > 0 && state && state.phase === "result") scheduleResult(resultLeft);
+            resultLeft = 0;
+        }
+        frozen = shouldFreeze;
+    }
+    function setPause(on) {
+        paused = Boolean(on);
+        if (paused) cheatsOpen = false;
+        syncFreeze(); render(0);
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        syncFreeze(); render(0);
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { paused = false; helpOpen = false; }
+        syncFreeze(); render(0);
+    }
+    function closeTopOverlay() {
+        if (helpOpen) { toggleHelp(false); return true; }
+        if (cheatsOpen) { toggleCheats(false); return true; }
+        if (paused) { setPause(false); return true; }
+        return false;
+    }
+    function restartMatch() {
+        if (resultTimer) { clearTimeout(resultTimer); resultTimer = null; }
+        resultDueAt = 0; resultLeft = 0;
+        helpOpen = false; cheatsOpen = false; paused = false;
+        disp = [{ p: 0, rpm: 0, mph: 0 }, { p: 0, rpm: 0, mph: 0 }];
+        wheelDeg = [0, 0]; carSig = "";
+        if (online) { submitAction({ type: "rematch" }); syncFreeze(); render(0); return; }
+        state = newMatch(state && state.phase !== "pick" ? state.vehicles : null);
+        botPlan = null;
+        publish(true);
+        syncFreeze(); render(0);
+    }
 
     /* ---------- state pertandingan (serializable, host-authoritative) ---------- */
     function freshRun() {
@@ -395,7 +547,7 @@ export function mount(root, context = {}) {
     function publish(force) {
         if (!state) return;
         state.t = now();
-        view = { s: state, recv: performance.now() };
+        view = { s: state, recv: now() };
         if (online && room.isHost && (force || state.t - lastPub > 90)) {
             lastPub = state.t;
             room.publishState(state).catch(console.warn);
@@ -438,10 +590,7 @@ export function mount(root, context = {}) {
         state.log.push({ r: state.round, e: [state.run[0].et, state.run[1].et], w: winner, fs: reason === "fs" ? 1 - winner : null });
         state.phase = "result";
         publish(true);
-        if (isHost) {
-            if (resultTimer) clearTimeout(resultTimer);
-            resultTimer = setTimeout(() => { resultTimer = null; advance(); }, RESULT_MS);
-        }
+        scheduleResult(RESULT_MS);
     }
     function falseStart(i) {
         state.run[i].fs = true;
@@ -589,10 +738,29 @@ export function mount(root, context = {}) {
         put(E.zPerf, b.band[0], b.band[1]);
         put(E.zRed, b.green[1], 1);
     }
+    function syncOverlays() {
+        syncFreeze();
+        const phase = view.s ? view.s.phase : "pick";
+        const blocked = cheatsOpen || helpOpen || paused;
+        ovPick.hidden = phase !== "pick" || blocked;
+        ovOver.hidden = phase !== "over" || blocked;
+        if (ovCheat) ovCheat.hidden = !cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || cheatsOpen || helpOpen;
+        ovHelp.hidden = !helpOpen;
+        if (pauseBtn) {
+            setTxt(E.pauseLabel, paused ? "Resume" : "Pause");
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            const ip = pauseBtn.querySelector("[data-icon-pause]"), ipl = pauseBtn.querySelector("[data-icon-play]");
+            if (ip) ip.hidden = paused;
+            if (ipl) ipl.hidden = !paused;
+        }
+        if (cheatsBtn && !online) cheatsBtn.classList.toggle("on", anyCheat());
+    }
     function render(dt) {
+        syncOverlays();
         const s = view.s;
         if (!s) { setTxt(statusEl, "Menghubungkan…"); return; }
-        const estNow = s.t + (performance.now() - view.recv);
+        const estNow = s.t + (now() - view.recv);
         rebuildCars(s);
 
         /* best ET lokal (dari log, host & client) */
@@ -659,7 +827,7 @@ export function mount(root, context = {}) {
         setTxt(E.rtVal, mr.fs ? "FS" : mr.rt === null ? "–" : (mr.rt / 1000).toFixed(3) + "s");
         E.rtVal.style.color = mr.fs ? "#dc2626" : "";
         setTxt(E.mphVal, String(Math.round(disp[me].mph)));
-        const simEst = mr.launched && !mr.done ? mr.simMs + (performance.now() - view.recv) * mr.ts : mr.simMs;
+        const simEst = mr.launched && !mr.done ? mr.simMs + (now() - view.recv) * mr.ts : mr.simMs;
         const etShow = mr.et !== null ? Math.min(simEst, mr.et * 1000) : simEst;
         setTxt(E.etVal, mr.fs ? "FS" : (etShow / 1000).toFixed(2));
         setTxt(E.oppLab, oppName);
@@ -669,9 +837,11 @@ export function mount(root, context = {}) {
         E.dotMe.style.background = carRefs[me] ? carRefs[me].color : "#111827";
         E.dotOpp.style.background = carRefs[opp] ? carRefs[opp].color : "#9ca3af";
 
-        /* meta & status */
-        setTxt(E.meta, "Ronde " + s.round + "/3 · " + s.wins[me] + "–" + s.wins[opp] +
-            (bestEt !== null ? " · Best " + bestEt.toFixed(2) + "s" : "") + (!online && anyCheat() ? " · CHEAT" : ""));
+        /* HUD: info pertandingan, status, dan label aksi */
+        setTxt(E.roundTag, "R" + s.round + "/3");
+        setTxt(E.winTag, s.wins[me] + "–" + s.wins[opp]);
+        setTxt(E.bestTag, bestEt !== null ? bestEt.toFixed(2) + "s" : "–");
+        E.cheatTag.hidden = online || !anyCheat();
         let status = "Siap";
         if (s.phase === "pick") status = s.ready[me] ? "Menunggu lawan memilih…" : "Pilih kendaraan";
         else if (s.phase === "stage") status = s.staged[me] ? "Menunggu lawan stage…" : "Ketuk / Spasi: stage";
@@ -681,6 +851,12 @@ export function mount(root, context = {}) {
         else if (s.phase === "result") status = "Ronde selesai";
         else if (s.phase === "over") status = "Match selesai";
         setTxt(statusEl, status);
+        let actLabel = "GO";
+        if (s.phase === "stage") actLabel = "Stage";
+        else if (s.phase === "tree" || (s.phase === "run" && !mr.launched && !mr.fs)) actLabel = "Launch";
+        else if (s.phase === "run") actLabel = "Shift";
+        else if (s.phase === "result") actLabel = "Next";
+        setTxt(E.actLabel, actLabel);
 
         /* banner */
         let bt = "", bs = "", bc = "#111827", show = false;
@@ -703,7 +879,6 @@ export function mount(root, context = {}) {
         if (show) { setTxt(E.bTitle, bt); setTxt(E.bSub, bs); E.bTitle.style.color = bc; }
 
         /* overlay pilih kendaraan */
-        ovPick.hidden = s.phase !== "pick";
         if (s.phase === "pick") {
             setTxt(E.pickWait, s.ready[me] ? "Menunggu lawan…" : "");
             vehBtns.forEach((b) => {
@@ -711,10 +886,8 @@ export function mount(root, context = {}) {
                 b.disabled = s.ready[me];
             });
         }
-        if (ovCheat) ovCheat.hidden = !cheatOpen;
 
         /* overlay hasil akhir */
-        ovOver.hidden = s.phase !== "over";
         if (s.phase === "over") {
             const won = s.wins[me] >= 2;
             setTxt(E.overTitle, won ? "MATCH MENANG" : "MATCH KALAH");
@@ -733,12 +906,20 @@ export function mount(root, context = {}) {
         }
     }
 
-    /* ---------- input: keyboard + mouse (desktop), tap area (mobile) ---------- */
+    /* ---------- input: prioritas help → cheats → pause → Escape → aksi game ---------- */
     function handleClick(e) {
         const t = e.target;
+        if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
-        if (t.closest("[data-open-cheats]")) { cheatOpen = true; return; }
-        if (t.closest("[data-close-cheats]")) { cheatOpen = false; return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-close-cheats]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { if (!closeTopOverlay()) setPause(true); return; }
+        if (t.closest("[data-resume]")) { setPause(false); return; }
+        if (t.closest("[data-restart]")) { restartMatch(); return; }
+        if (t.closest("[data-act]")) { if (!isFrozen()) contextAction(); return; }
+        if (isFrozen()) { const b = t.closest("button"); if (b) b.blur(); return; }
         const vb = t.closest("[data-veh]");
         if (vb) { submitAction({ type: "pick", vehicle: vb.dataset.veh }); return; }
         if (t.closest("[data-rematch]")) { submitAction({ type: "rematch" }); return; }
@@ -749,24 +930,33 @@ export function mount(root, context = {}) {
     function handleChange(e) {
         const c = e.target.closest ? e.target.closest("[data-cheat]") : null;
         if (c) cheats[c.dataset.cheat] = c.checked;
-        const btn = root.querySelector("[data-open-cheats]");
-        if (btn) btn.classList.toggle("on", anyCheat());
+        if (cheatsBtn) cheatsBtn.classList.toggle("on", anyCheat());
+        E.cheatTag.hidden = online || !anyCheat();
+        render(0);
     }
     function handlePointer(e) {
-        if (e.target.closest(".ds-ov") || e.target.closest("button")) return;
+        if (isFrozen() || e.target.closest(".ds-ov") || e.target.closest("button")) return;
         e.preventDefault();
         contextAction();
     }
     function handleKey(e) {
         if (destroyed) return;
-        const tag = e.target ? e.target.tagName : "";
-        if (e.key === " " || e.code === "Space") {
-            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-            e.preventDefault();
-            if (!e.repeat) contextAction();
+        const code = e.code, key = e.key;
+        if (e.repeat && (code === "KeyH" || code === "KeyC" || code === "KeyP" || code === "KeyR" || code === "Space" || code === "Enter" || key === "Escape")) return;
+        if (code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (code === "KeyP" || key === "Escape") { if (!closeTopOverlay()) setPause(true); e.preventDefault(); return; }
+        if (code === "KeyR") {
+            if (isFrozen()) closeTopOverlay(); else restartMatch();
+            e.preventDefault(); return;
         }
-        else if ((e.key === "c" || e.key === "C") && !online) cheatOpen = !cheatOpen;
-        else if (e.key === "Escape") cheatOpen = false;
+        const tag = e.target ? e.target.tagName : "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (isFrozen()) {
+            if (code === "Space" || code === "Enter") { closeTopOverlay(); e.preventDefault(); }
+            return;
+        }
+        if (code === "Space" || code === "Enter") { e.preventDefault(); contextAction(); }
     }
     root.addEventListener("click", handleClick);
     root.addEventListener("change", handleChange);
@@ -781,7 +971,9 @@ export function mount(root, context = {}) {
             publish(true);
             room.onAction((action) => { if (!destroyed) applyAction(action, 1); });
         } else {
-            room.onState((nextState) => { if (!destroyed && nextState) view = { s: nextState, recv: performance.now() }; });
+            room.onState((nextState) => {
+                if (!destroyed && nextState) { view = { s: nextState, recv: now() }; render(0); }
+            });
         }
     } else {
         state = newMatch(null);
@@ -792,8 +984,9 @@ export function mount(root, context = {}) {
         if (destroyed) return;
         const dt = clamp(t - lastT, 0, 66);
         lastT = t;
-        if (isHost && state && (state.phase === "tree" || state.phase === "run")) simTick(dt);
-        render(dt);
+        const held = isFrozen();
+        if (isHost && state && !held && (state.phase === "tree" || state.phase === "run")) simTick(dt);
+        render(held ? 0 : dt);
         raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);

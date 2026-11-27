@@ -5,6 +5,8 @@
 /*   node tools/build-games-manifest.mjs                             */
 /* =============================================================== */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "solitaire", // harus sama dengan nama file tanpa .js
     name: "Solitaire",
@@ -374,41 +376,57 @@ export function mount(root, context = {}) {
     /* local (non-synced) ui state */
     let sel = null, cursor = -1, levelNum = 0, cheated = false, history = [];
     let timers = [], botTimer = 0, flashT = 0, oppOpen = typeof window !== "undefined" && window.innerWidth > 760;
+    let paused = false, pausedAt = 0, botDue = 0, botLeft = 0, flashDue = 0, flashLeft = 0;
+    let helpOpen = false, cheatsOpen = false, overOpen = false;
     const offs = [];
     const later = (fn, ms) => { const t = setTimeout(() => { timers = timers.filter((x) => x !== t); fn(); }, ms); timers.push(t); return t; };
-    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; if (botTimer) { clearTimeout(botTimer); botTimer = 0; } };
+    const clearTimers = () => {
+        timers.forEach(clearTimeout); timers = [];
+        if (botTimer) { clearTimeout(botTimer); botTimer = 0; }
+        botDue = 0; botLeft = 0;
+        if (flashT) { clearTimeout(flashT); flashT = 0; }
+        flashDue = 0; flashLeft = 0;
+    };
+
+    /* internal "How to play" — first run only, no global dialog */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("solitaireHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("solitaireHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     root.innerHTML = `
 <style>
 .sol-app{--bg:#f7f7f8;--panel:#fff;--line:#e6e6ea;--ink:#1c1c22;--mut:#8a8a96;--acc:#0d9488;--acc2:#7c3aed;--red:#dc2626;--blk:#26262e;--board:#eef3f0;--slot:#cfd8d3;
-  font-family:inherit;color:var(--ink);position:relative}
+  font-family:inherit;color:var(--ink);position:relative;min-width:0}
 .sol-app *{box-sizing:border-box}
 .sol-app [hidden]{display:none!important}
-.sol-app .game-intro h2{margin:0 0 2px;font-size:20px;font-weight:800;letter-spacing:-.01em}
-.sol-app .game-intro p{margin:0;color:var(--mut);font-size:13px;max-width:60ch}
-.sol-hud{display:flex;align-items:stretch;gap:10px;margin:12px 0 8px}
-.sol-side{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 11px;min-width:0}
-.sol-side.me{border-color:var(--acc)}
-.sol-side .nm{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sol-tag{font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;color:#fff;background:var(--acc)}
-.sol-tag.p2{background:var(--acc2)}
-.sol-bar{height:6px;border-radius:999px;background:var(--line);margin:7px 0 5px;overflow:hidden}
-.sol-bar i{display:block;height:100%;background:var(--acc);border-radius:999px;transition:width .25s}
-.sol-side.opp .sol-bar i{background:var(--acc2)}
-.sol-sub{display:flex;gap:10px;font-size:11px;color:var(--mut)}
-.sol-sub b{color:var(--ink);font-weight:700}
-.sol-vs{align-self:center;font-weight:800;color:var(--mut);font-size:12px}
-.sol-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.sol-chip{font-size:12px;color:var(--mut);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
-.sol-chip b{color:var(--ink)}
+.sol-app.game-fill{flex:1 1 auto}
+.sol-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;font:600 10px/1.25 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sol-chip{display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:4px 9px;color:var(--mut);background:var(--panel);border:1px solid var(--line);border-radius:999px;white-space:nowrap}
+.sol-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.sol-bar{display:inline-block;width:42px;height:5px;border-radius:999px;background:var(--line);overflow:hidden;vertical-align:middle}
+.sol-bar i{display:block;height:100%;background:var(--acc);border-radius:999px;transition:width .2s}
+.sol-chip.opp .sol-bar i{background:var(--acc2)}
 .sol-turnchip{font-weight:700}
 .sol-turnchip.mine{color:var(--acc);border-color:var(--acc)}
 .sol-turnchip.theirs{color:var(--acc2);border-color:var(--acc2)}
-.sol-panel{padding:10px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
-.sol-scale{margin:0 auto;position:relative}
+.sol-msgchip{max-width:min(280px,24vw);overflow:hidden;text-overflow:ellipsis}
+.sol-spacer{flex:1 1 auto}
+.sol-btn{min-height:32px;display:inline-flex;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:10px;font-weight:700;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:5px 9px;cursor:pointer;touch-action:manipulation;transition:border-color .16s,background .16s}
+.sol-btn:hover{border-color:var(--acc)}
+.sol-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sol-btn.on{border-color:var(--acc);color:var(--acc);background:#eef7f5}
+.sol-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.sol-btn.warn{background:#fff7ed;border-color:#fdba74;color:#9a3412}
+.sol-btn:disabled{opacity:.45;cursor:not-allowed}
+.sol-icon-btn svg{flex:none;display:block}
+.sol-panel{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;min-height:0;overflow:hidden}
+.sol-scale{margin:0 auto;position:relative;max-width:100%;flex:0 0 auto}
 .sol-board{position:relative;width:${BOARD_W}px;transform-origin:top left;background:var(--board);border-radius:12px;user-select:none;-webkit-user-select:none;box-shadow:inset 0 0 0 1px #00000008}
 .sol-board.mini{pointer-events:none}
-.sol-slot{position:absolute;border-radius:8px;border:2px dashed var(--slot);cursor:pointer;touch-action:manipulation}
+.sol-slot{position:absolute;border-radius:8px;border:1px dashed var(--slot);cursor:pointer;touch-action:manipulation}
 .sol-slot .lab{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:19px;color:#00000022}
 .sol-slot.colslot{border-color:transparent}
 .sol-slot.colslot.empty{border-color:var(--slot)}
@@ -425,151 +443,167 @@ export function mount(root, context = {}) {
 .sol-card.ok{box-shadow:0 0 0 2px var(--acc)}
 .sol-count{position:absolute;right:3px;bottom:2px;font-size:10px;font-weight:700;color:#ffffffcc;background:#00000033;border-radius:6px;padding:0 4px}
 .sol-slot .sol-count{color:var(--mut);background:transparent}
-.sol-opp{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
-.sol-opp-head{font-size:12px;font-weight:700;color:var(--mut);margin-bottom:6px;text-align:center}
-.sol-bar-ctl{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 6px}
-.sol-btn{flex:1 1 auto;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:13px;font-weight:700;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer;touch-action:manipulation}
-.sol-btn:hover{border-color:var(--acc)}
-.sol-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
-.sol-btn.warn{background:#fff7ed;border-color:#fdba74;color:#9a3412}
-.sol-btn kbd{font-size:10px;font-weight:700;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--bg)}
-.sol-btn.primary kbd{color:#ffffffcc;border-color:#ffffff55;background:#ffffff22}
-.sol-msg{font-size:12px;color:var(--mut);min-height:18px;margin:2px 2px 8px}
-.sol-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1c1c2266;backdrop-filter:blur(2px);border-radius:14px;z-index:30;padding:16px}
-.sol-modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:460px;width:100%;max-height:100%;overflow:auto;padding:20px;box-shadow:0 12px 40px #00000033}
-.sol-modal h3{margin:0 0 8px;font-size:18px;font-weight:800}
+.sol-opp{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto}
+.sol-opp-head{font-size:11px;font-weight:700;color:var(--mut);text-align:center}
+.sol-ov{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:12px;background:#1c1c2266;backdrop-filter:blur(2px);border-radius:12px}
+.sol-modal{display:flex;flex-direction:column;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:460px;width:100%;max-height:100%;padding:20px;box-shadow:0 12px 32px #00000026}
+.sol-modal h3{margin:0;font-size:18px;font-weight:800}
 .sol-modal h4{margin:14px 0 4px;font-size:13px;font-weight:800;color:var(--acc)}
-.sol-modal p,.sol-modal li{font-size:13px;color:#3f3f46;line-height:1.5;margin:4px 0}
+.sol-modal p,.sol-modal li{font-size:13px;color:#3f3f46;line-height:1.55;margin:4px 0}
 .sol-modal ul{margin:4px 0;padding-left:18px}
-.sol-modal .row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-.sol-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.sol-note{font-size:11px;color:var(--mut);margin-top:10px}
-.sol-big{font-size:26px;font-weight:800;margin:2px 0}
+.sol-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.sol-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;margin-top:14px;flex-wrap:wrap}
+.sol-help,.sol-cheats{flex:1 1 auto;min-height:0;overflow:auto}
+.sol-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.sol-note{font-size:11px;color:var(--mut);margin-top:12px}
+.sol-big{font-size:26px;font-weight:800;margin:4px 0}
 .sol-big.win{color:var(--acc)} .sol-big.lose{color:var(--red)} .sol-big.draw{color:var(--acc2)}
-@media (pointer:coarse){ .sol-btn kbd{display:none} .sol-btn{min-height:48px;font-size:14px} }
-@media (max-width:560px){ .sol-hud{gap:6px} .sol-vs{display:none} .sol-sub{gap:6px} }
+@media (prefers-reduced-motion:reduce){.sol-app *{animation:none!important;transition:none!important}}
+
+/* --- final overrides: fill height + mobile (keep last) --- */
+.sol-app .sol-hud .sol-btn{min-height:32px;padding:5px 9px;font-size:10px}
+.sol-app .sol-hud .sol-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.sol-app .sol-hud .sol-icon-btn svg{flex:none;display:block}
+@media (max-width:640px){
+.sol-app.game-fill > .sol-panel[data-board]:not(:has(.sol-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.sol-app.game-fill > .sol-panel[data-board]:has(.sol-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sol-app .sol-hud{gap:4px;margin-bottom:6px}
+.sol-app .sol-hud .sol-chip{padding:3px 6px;font-size:9px;min-height:24px}
+.sol-app .sol-hud .sol-chip.sol-msgchip,
+.sol-app .sol-hud .sol-chip[data-hud="bestchip"]{display:none}
+.sol-app .sol-hud .sol-btn{min-height:32px;padding:5px 7px;font-size:9px}
+.sol-app .sol-hud [data-act="cancel"]{display:none}
+.sol-app .sol-hud .sol-btn-label{display:none}
+.sol-app .sol-hud .sol-spacer{display:none}
+.sol-app .sol-bar{width:28px}
+.sol-ov{padding:8px}
+.sol-app .sol-modal{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sol-app .sol-help,.sol-app .sol-cheats{scrollbar-width:none}
+.sol-app .sol-help::-webkit-scrollbar,.sol-app .sol-cheats::-webkit-scrollbar{display:none}
+.sol-app .sol-foot{position:static;margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--line)}
+.sol-app .sol-note{display:none}
+.sol-cheatgrid{grid-template-columns:1fr}
+}
 </style>
-<div class="sol-app">
-  <div class="game-app">
-    <div class="game-intro">
-      <div><h2>Solitaire</h2><p>Klondike race on a guaranteed-winnable deal. Build four foundations Ace→King, one suit each. You and your opponent get the same cards and take turns — first to finish wins.</p></div>
-      <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-    </div>
-
-    <div class="sol-hud">
-      <div class="sol-side me" data-side="me">
-        <div class="nm"><span data-mename>You</span><span class="sol-tag" data-metag>P1</span></div>
-        <div class="sol-bar"><i data-mebar style="width:0%"></i></div>
-        <div class="sol-sub"><span>Found <b data-mefound>0</b>/52</span><span>Moves <b data-memoves>0</b></span><span>Pass <b data-mepass>1</b>/${MAX_PASSES}</span></div>
-      </div>
-      <div class="sol-vs">VS</div>
-      <div class="sol-side opp" data-side="opp">
-        <div class="nm"><span data-oppname>Bot</span><span class="sol-tag p2" data-opptag>P2</span></div>
-        <div class="sol-bar"><i data-oppbar style="width:0%"></i></div>
-        <div class="sol-sub"><span>Found <b data-oppfound>0</b>/52</span><span>Moves <b data-oppmoves>0</b></span><span data-opplast></span></div>
-      </div>
-    </div>
-
-    <div class="sol-meta">
-      <span class="sol-chip">Level <b data-level>1</b></span>
-      <span class="sol-chip" data-bestchip>Best <b data-best>0</b></span>
-      <span class="sol-chip sol-turnchip" data-turnchip>Your turn</span>
-    </div>
-
-    <section class="game-panel sol-panel" data-board>
-      <div class="sol-scale" data-scale><div class="sol-board" data-myboard aria-label="Your solitaire board"></div></div>
-      <div class="sol-opp" data-oppwrap hidden>
-        <div class="sol-opp-head" data-opphead>Opponent board</div>
-        <div class="sol-scale" data-oppscale><div class="sol-board mini" data-oppboard></div></div>
-      </div>
-    </section>
-
-    <div class="sol-bar-ctl">
-      <button class="sol-btn primary" type="button" data-act="draw">Draw <kbd>D</kbd></button>
-      <button class="sol-btn" type="button" data-act="auto">To foundation <kbd>A</kbd></button>
-      <button class="sol-btn" type="button" data-act="cancel">Cancel <kbd>Esc</kbd></button>
-      <button class="sol-btn" type="button" data-act="opp">Opponent <kbd>V</kbd></button>
-      <button class="sol-btn" type="button" data-act="help">Help <kbd>H</kbd></button>
-      <button class="sol-btn warn" type="button" data-act="cheat">Cheats <kbd>C</kbd></button>
-      <button class="sol-btn" type="button" data-act="new">New level <kbd>N</kbd></button>
-    </div>
-    <div class="sol-msg" data-msg>Click a card or run to pick it up, then click a destination. Double-click / right-click sends a card to its foundation.</div>
-
-    <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+<div class="game-app sol-app game-fill" data-sol>
+  <div class="sol-hud">
+    <span class="sol-chip">LV <b data-hud="level">1</b></span>
+    <span class="sol-chip" data-hud="youchip" title="You">YOU <b data-hud="mefound">0</b>/52 <span class="sol-bar"><i data-hud="mebar" style="width:0%"></i></span> <b data-hud="memoves">0</b>mv P<b data-hud="mepass">1</b>/${MAX_PASSES}</span>
+    <span class="sol-chip opp" data-hud="oppchip" title="Bot">BOT <b data-hud="oppfound">0</b>/52 <span class="sol-bar"><i data-hud="oppbar" style="width:0%"></i></span> <b data-hud="oppmoves">0</b>mv <span data-hud="opplast"></span></span>
+    <span class="sol-chip" data-hud="bestchip">BEST <b data-hud="best">0</b></span>
+    <span class="sol-chip sol-turnchip" data-hud="turnchip">Your turn</span>
+    <span class="sol-chip sol-msgchip" data-hud="msg" title="Click a card or run to pick it up, then click a destination. Double-click / right-click sends a card to its foundation.">Click a card or run to pick it up, then click a destination. Double-click / right-click sends a card to its foundation.</span>
+    <span class="sol-spacer"></span>
+    <button class="sol-btn sol-icon-btn" type="button" data-act="draw" aria-label="Draw card" title="Draw / recycle (D)">${iconSVG("layers", { size: 14 })}<span class="sol-btn-label" data-hud="drawlabel">Draw</span></button>
+    <button class="sol-btn sol-icon-btn" type="button" data-act="auto" aria-label="Send best card to foundation" title="To foundation (A)">${iconSVG("arrowUp", { size: 14 })}<span class="sol-btn-label">Foundation</span></button>
+    <button class="sol-btn sol-icon-btn" type="button" data-act="cancel" aria-label="Cancel selection" title="Cancel (Esc)">${iconSVG("x", { size: 14 })}<span class="sol-btn-label">Cancel</span></button>
+    <button class="sol-btn sol-icon-btn" type="button" data-act="opp" aria-label="Show opponent board" title="Toggle opponent board (V)">${iconSVG("eye", { size: 14 })}<span class="sol-btn-label">Show bot</span></button>
+    <button class="sol-btn sol-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sol-btn-label">Help</span></button>
+    <button class="sol-btn sol-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sol-btn-label">Cheats</span></button>
+    <button class="sol-btn sol-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sol-btn-label">Pause</span></button>
+    <button class="sol-btn sol-icon-btn" type="button" data-restart aria-label="Restart" title="New level (R)">${iconSVG("refresh", { size: 14 })}<span class="sol-btn-label">Restart</span></button>
+    <button class="sol-btn sol-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sol-btn-label">Exit game</span></button>
   </div>
 
-  <div class="sol-overlay" data-ov="help" hidden>
-    <div class="sol-modal">
-      <h3>How to play</h3>
-      <p><b>Goal.</b> Move all 52 cards to the four foundations, building each suit up from Ace to King. You race an opponent on an identical deal, taking turns. First to finish wins; if both get stuck, the higher foundation count wins.</p>
-      <h4>Rules</h4>
-      <ul>
-        <li>Tableau columns build <b>down in alternating colors</b> (e.g. red 7 on black 8). Only a King may start an empty column.</li>
-        <li>You may pick up a single card or a valid descending run, then drop it on a column or foundation.</li>
-        <li>Foundations build <b>up by suit</b> from the Ace.</li>
-        <li>Click the stock to draw one card. When it empties you may recycle the waste — up to ${MAX_PASSES} passes total.</li>
-        <li>Every level is generated to be <b>winnable</b> (draw-1, within the pass limit).</li>
-      </ul>
-      <h4>Mouse / touch</h4>
-      <ul>
-        <li>Click / tap a card or run to select, click / tap a destination to drop.</li>
-        <li>Double-click / double-tap (or right-click) a top card to send it to its foundation.</li>
-        <li>Use the on-screen buttons for draw, auto-foundation, cancel, etc.</li>
-      </ul>
-      <h4>Keyboard</h4>
-      <ul>
-        <li><b>D / Space</b> draw or recycle · <b>A</b> best card to foundation · <b>F / ↑</b> send selected card to foundation</li>
-        <li><b>1–7</b> select a column's top card, or drop the selection there · <b>← / →</b> move cursor · <b>Enter / ↓</b> select/drop at cursor</li>
-        <li><b>Esc</b> cancel / close · <b>V</b> opponent board · <b>H</b> help · <b>C</b> cheats · <b>N</b> new level · <b>U</b> undo (cheat)</li>
-      </ul>
-      <div class="row"><button class="sol-btn primary" type="button" data-act="closehelp">Got it</button></div>
+  <section class="game-panel sol-panel" data-board>
+    <div class="sol-scale" data-scale><div class="sol-board" data-myboard aria-label="Your solitaire board"></div></div>
+    <div class="sol-opp" data-oppwrap hidden>
+      <div class="sol-opp-head" data-hud="opphead">Opponent board</div>
+      <div class="sol-scale" data-oppscale><div class="sol-board mini" data-oppboard></div></div>
     </div>
-  </div>
 
-  <div class="sol-overlay" data-ov="cheat" hidden>
-    <div class="sol-modal">
-      <h3>Cheats</h3>
-      <p>Single-player vs bot only. Using any cheat disables best-score saving for this level.</p>
-      <div class="sol-cheatgrid">
-        <button class="sol-btn" type="button" data-cheat="reveal">👁 Reveal all cards</button>
-        <button class="sol-btn" type="button" data-cheat="passes">♻ Reset stock passes</button>
-        <button class="sol-btn" type="button" data-cheat="wild">🃏 Wild next move</button>
-        <button class="sol-btn" type="button" data-cheat="collect">⚡ Auto-collect foundations</button>
-        <button class="sol-btn" type="button" data-cheat="undo">↩ Undo last move</button>
-        <button class="sol-btn" type="button" data-act="closecheat">Close</button>
-      </div>
-      <p class="sol-note" data-cheatnote></p>
-    </div>
-  </div>
-
-  <div class="sol-overlay" data-ov="over" hidden>
-    <div class="sol-modal">
-      <h3 data-overtitle>Game over</h3>
-      <div class="sol-big" data-overbig></div>
-      <p data-overreason></p>
-      <p data-overscores></p>
-      <div class="row">
-        <button class="sol-btn primary" type="button" data-act="new">Play again</button>
-        <button class="sol-btn" type="button" data-act="closeover">View board</button>
+    <div class="sol-ov" data-ov="over" hidden>
+      <div class="sol-modal">
+        <div class="sol-head"><h3 data-overtitle>Game over</h3></div>
+        <div class="sol-help">
+          <div class="sol-big" data-overbig></div>
+          <p data-overreason></p>
+          <p data-overscores></p>
+        </div>
+        <div class="sol-foot">
+          <button class="sol-btn" type="button" data-overclose>View board</button>
+          <button class="sol-btn primary" type="button" data-restart>Play again</button>
+        </div>
       </div>
     </div>
-  </div>
+
+    <div class="sol-ov" data-ov="pause" hidden>
+      <div class="sol-modal">
+        <div class="sol-head"><h3>Paused</h3></div>
+        <div class="sol-help"><p>The bot and all timers are frozen. Resume to continue from the same point.</p></div>
+        <div class="sol-foot"><span class="sol-note">Press P / Esc to resume</span><button class="sol-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+
+    <div class="sol-ov" data-ov="cheat" hidden>
+      <div class="sol-modal">
+        <div class="sol-head"><h3>Cheats</h3><button class="sol-btn" type="button" data-close>Close</button></div>
+        <div class="sol-cheats">
+          <p>Single-player vs bot only. Using any cheat disables best-score saving for this level.</p>
+          <div class="sol-cheatgrid">
+            <button class="sol-btn" type="button" data-cheat="reveal">Reveal all cards</button>
+            <button class="sol-btn" type="button" data-cheat="passes">Reset stock passes</button>
+            <button class="sol-btn" type="button" data-cheat="wild">Wild next move</button>
+            <button class="sol-btn" type="button" data-cheat="collect">Auto-collect foundations</button>
+            <button class="sol-btn" type="button" data-cheat="undo">Undo last move</button>
+          </div>
+        </div>
+        <div class="sol-foot"><span class="sol-note" data-cheatnote></span><button class="sol-btn" type="button" data-close>Close</button></div>
+      </div>
+    </div>
+
+    <div class="sol-ov" data-ov="help" hidden>
+      <div class="sol-modal">
+        <div class="sol-head"><h3>How to play</h3><button class="sol-btn" type="button" data-help-close>Close</button></div>
+        <div class="sol-help">
+          <div>
+            <h4>Goal</h4>
+            <p>Move all 52 cards to the four foundations, building each suit up from Ace to King. You race an opponent on an identical deal, taking turns. First to finish wins; if both get stuck, the higher foundation count wins.</p>
+            <h4>Rules</h4>
+            <ul>
+              <li>Tableau columns build <b>down in alternating colors</b> (e.g. red 7 on black 8). Only a King may start an empty column.</li>
+              <li>You may pick up a single card or a valid descending run, then drop it on a column or foundation.</li>
+              <li>Foundations build <b>up by suit</b> from the Ace.</li>
+              <li>Click the stock to draw one card. When it empties you may recycle the waste — up to ${MAX_PASSES} passes total.</li>
+              <li>Every level is generated to be <b>winnable</b> (draw-1, within the pass limit).</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Mouse / touch</h4>
+            <ul>
+              <li>Click / tap a card or run to select, click / tap a destination to drop.</li>
+              <li>Double-click / double-tap (or right-click) a top card to send it to its foundation.</li>
+              <li>Use the on-screen buttons for draw, auto-foundation, cancel, etc.</li>
+            </ul>
+            <h4>Keyboard</h4>
+            <ul>
+              <li><b>D / Space</b> draw or recycle · <b>A</b> best card to foundation · <b>F / ↑</b> send selected card to foundation</li>
+              <li><b>1–7</b> select a column's top card, or drop there · <b>← / →</b> move cursor · <b>Enter / ↓</b> select/drop at cursor</li>
+              <li><b>H</b> help · <b>C</b> cheats · <b>P</b> pause · <b>R / N</b> new level · <b>V</b> opponent board</li>
+              <li><b>Esc</b> cancel / close · <b>U</b> undo (cheat)</li>
+            </ul>
+          </div>
+        </div>
+        <div class="sol-foot"><span class="sol-note">Press H to reopen this guide</span><button class="sol-btn primary" type="button" data-help-close>Got it</button></div>
+      </div>
+    </div>
+  </section>
 </div>`;
 
     /* ---------- refs ---------- */
     const $ = (s) => root.querySelector(s);
-    const app = $(".sol-app");
+    const app = $("[data-sol]");
     const boardEl = $("[data-myboard]"), oppBoardEl = $("[data-oppboard]");
     const scaleEl = $("[data-scale]"), oppScaleEl = $("[data-oppscale]");
     const oppWrap = $("[data-oppwrap]");
-    const msgEl = $("[data-msg]");
-    const DEFAULT_MSG = msgEl.textContent;
-    const statusEl = $("[data-status]");
-    const ovHelp = $('[data-ov="help"]'), ovCheat = $('[data-ov="cheat"]'), ovOver = $('[data-ov="over"]');
+    const ovHelp = $('[data-ov="help"]'), ovCheat = $('[data-ov="cheat"]'), ovOver = $('[data-ov="over"]'), ovPause = $('[data-ov="pause"]');
     const show = (el) => el.removeAttribute("hidden");
     const hide = (el) => el.setAttribute("hidden", "");
-    const cheatBtn = $('[data-act="cheat"]');
-    const bestChip = $("[data-bestchip]");
+    const cheatBtn = $('[data-cheats]');
+    const hudKeys = ["level", "mefound", "memoves", "mepass", "mebar", "oppfound", "oppmoves", "oppbar", "opplast", "opphead", "best", "bestchip", "turnchip", "msg", "drawlabel", "youchip", "oppchip"];
+    const hud = {};
+    for (const k of hudKeys) hud[k] = root.querySelector('[data-hud="' + k + '"]');
+    const DEFAULT_MSG = hud.msg.textContent;
 
     /* ---------- helpers ---------- */
     function getMySeat() { if (!state) return 0; return online ? (room.isHost ? state.seats.host : 1 - state.seats.host) : 0; }
@@ -584,12 +618,85 @@ export function mount(root, context = {}) {
     function nameOf(seat) { return seat === getMySeat() ? "You" : opponentName(); }
     function myBoard() { return state ? state.boards[getMySeat()] : null; }
     function flash(text, ms) {
-        msgEl.textContent = text;
-        if (flashT) clearTimeout(flashT);
-        flashT = setTimeout(() => { flashT = 0; msgEl.textContent = DEFAULT_MSG; }, ms || 2400);
+        if (paused) return; /* frozen while paused */
+        hud.msg.textContent = text;
+        hud.msg.title = text;
+        if (flashT) { const old = flashT; clearTimeout(old); flashT = 0; timers = timers.filter((t) => t !== old); }
+        const dur = ms || 2400;
+        flashDue = Date.now() + dur;
+        flashT = setTimeout(() => { flashT = 0; flashDue = 0; hud.msg.textContent = DEFAULT_MSG; hud.msg.title = DEFAULT_MSG; }, dur);
     }
     function readBest() { try { return +(localStorage.getItem(META.bestKey) || 0); } catch (e) { return 0; } }
     function writeBest(v) { try { localStorage.setItem(META.bestKey, String(v)); } catch (e) { } }
+
+    /* ---------- pause: freeze bot + timer anchors, resume without a jump ---------- */
+    function setPaused(on) {
+        on = Boolean(on);
+        if (paused === on) return;
+        const t = Date.now();
+        if (on) {
+            paused = true; pausedAt = t;
+            if (botTimer) { clearTimeout(botTimer); timers = timers.filter((x) => x !== botTimer); botTimer = 0; }
+            if (botDue) botLeft = Math.max(0, botDue - t);
+            if (flashT) { clearTimeout(flashT); flashT = 0; flashLeft = Math.max(0, flashDue - t); }
+            sel = null;
+        } else {
+            const shift = t - pausedAt; /* geser anchor waktu agar tidak loncat */
+            paused = false; pausedAt = 0;
+            if (botLeft > 0) {
+                botDue += shift;
+                const ms = Math.max(0, botDue - t); botLeft = 0;
+                botTimer = later(() => { botTimer = 0; botDue = 0; botTurn(); }, ms);
+            } else if (state && state.phase === "playing" && state.turn === 1) scheduleBot();
+            if (flashLeft > 0) {
+                flashDue += shift;
+                const ms = Math.max(0, flashDue - t); flashLeft = 0;
+                flashT = setTimeout(() => { flashT = 0; flashDue = 0; hud.msg.textContent = DEFAULT_MSG; hud.msg.title = DEFAULT_MSG; }, ms);
+            }
+        }
+        render();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function syncUI() {
+        const phase = state ? state.phase : "idle";
+        ovOver.hidden = phase !== "over" || !overOpen || cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || cheatsOpen || helpOpen;
+        ovCheat.hidden = !cheatsOpen || helpOpen || online;
+        ovHelp.hidden = !helpOpen;
+        if (cheatBtn) {
+            cheatBtn.classList.toggle("on", cheatsOpen || cheated);
+            cheatBtn.setAttribute("aria-label", cheatsOpen ? "Close cheats (C)" : "Cheats (C)");
+        }
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".sol-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume (P)" : "Pause (P)");
+        }
+        const hbtn = root.querySelector("[data-help]");
+        if (hbtn) {
+            const label = hbtn.querySelector(".sol-btn-label");
+            if (label) label.textContent = helpOpen ? "Close" : "Help";
+            hbtn.setAttribute("aria-label", helpOpen ? "Close help (H)" : "How to play (H)");
+        }
+        const obtn = root.querySelector('[data-act="opp"]');
+        if (obtn) {
+            obtn.classList.toggle("on", oppOpen);
+            const label = obtn.querySelector(".sol-btn-label");
+            if (label) label.textContent = oppOpen ? "Hide bot" : "Show bot";
+            obtn.setAttribute("aria-label", oppOpen ? "Hide opponent board (V)" : "Show opponent board (V)");
+        }
+    }
 
     /* ---------- card html (explicit sizes fix the invisible-card bug) ---------- */
     function cardHTML(card, x, y, attrs, cls) {
@@ -673,13 +780,16 @@ export function mount(root, context = {}) {
     }
 
     function fitScale() {
-        const panel = $('[data-board]');
-        const avail = Math.max(200, panel.clientWidth - 20);
-        const s = Math.min(1, avail / BOARD_W);
+        const panel = $("[data-board]");
+        const availW = Math.max(240, panel.clientWidth - 20);
+        const myH = boardEl.offsetHeight || 460;
+        const oppH = oppWrap.hidden ? 0 : (oppScaleEl.offsetHeight || 120) + 16;
+        const availH = Math.max(150, panel.clientHeight - 20 - oppH);
+        const s = Math.max(0.3, Math.min(1, availW / BOARD_W, availH / myH));
         boardEl.style.transform = "scale(" + s + ")";
         scaleEl.style.width = BOARD_W * s + "px";
         scaleEl.style.height = boardEl.offsetHeight * s + "px";
-        const ms = Math.min(0.5, avail / BOARD_W);
+        const ms = Math.min(0.5, availW / BOARD_W);
         oppBoardEl.style.transform = "scale(" + ms + ")";
         oppScaleEl.style.width = BOARD_W * ms + "px";
         oppScaleEl.style.height = oppBoardEl.offsetHeight * ms + "px";
@@ -687,7 +797,7 @@ export function mount(root, context = {}) {
 
     /* ---------- render ---------- */
     function render() {
-        if (!state) { statusEl.textContent = "Waiting for host…"; return; }
+        if (!state) { hud.turnchip.textContent = "Waiting for host…"; syncUI(); return; }
         const me = getMySeat(), opp = 1 - me;
         const mb = state.boards[me], ob = state.boards[opp];
         if (state.turn !== me || state.phase !== "playing") sel = null;
@@ -697,47 +807,43 @@ export function mount(root, context = {}) {
         const op = renderBoard(ob, false);
         oppBoardEl.innerHTML = op.html; oppBoardEl.style.height = op.height + "px";
 
-        /* hud */
-        $("[data-mename]").textContent = playerName || "You";
-        $("[data-metag]").textContent = "P" + (me + 1);
-        $("[data-metag]").className = "sol-tag" + (me === 1 ? " p2" : "");
-        $("[data-oppname]").textContent = opponentName();
-        $("[data-opptag]").textContent = "P" + (opp + 1);
-        $("[data-mefound]").textContent = foundTotal(mb);
-        $("[data-memoves]").textContent = mb.moves;
-        $("[data-mepass]").textContent = Math.min(mb.passes + 1, MAX_PASSES);
-        $("[data-mebar]").style.width = (foundTotal(mb) / 52 * 100) + "%";
-        $("[data-oppfound]").textContent = foundTotal(ob);
-        $("[data-oppmoves]").textContent = ob.moves;
-        $("[data-oppbar]").style.width = (foundTotal(ob) / 52 * 100) + "%";
-        $("[data-opplast]").textContent = ob.stuck ? "stuck" : "";
-        $("[data-opphead]").textContent = opponentName() + "'s board";
-        $("[data-level]").textContent = state.level;
-        $("[data-best]").textContent = readBest();
+        /* hud (all game info lives here; the board is just the arena) */
+        hud.youchip.title = playerName || "You";
+        hud.oppchip.title = opponentName();
+        hud.mefound.textContent = foundTotal(mb);
+        hud.memoves.textContent = mb.moves;
+        hud.mepass.textContent = Math.min(mb.passes + 1, MAX_PASSES);
+        hud.mebar.style.width = (foundTotal(mb) / 52 * 100) + "%";
+        hud.oppfound.textContent = foundTotal(ob);
+        hud.oppmoves.textContent = ob.moves;
+        hud.oppbar.style.width = (foundTotal(ob) / 52 * 100) + "%";
+        hud.opplast.textContent = ob.stuck ? "stuck" : "";
+        hud.opphead.textContent = opponentName() + "'s board";
+        hud.level.textContent = state.level;
+        hud.best.textContent = readBest();
+        hud.best.hidden = online;
+        hud.bestchip.hidden = online;
 
-        /* status + turn chip */
-        const chip = $("[data-turnchip]");
+        /* turn chip */
+        const chip = hud.turnchip;
         if (state.phase === "over") {
-            statusEl.textContent = "Game over";
             chip.textContent = state.winner === "draw" ? "Draw" : (state.winner === me ? "You win" : "You lose");
             chip.className = "sol-chip sol-turnchip " + (state.winner === me ? "mine" : "theirs");
         } else if (state.turn === me) {
-            statusEl.textContent = "Your turn";
             chip.textContent = mb.stuck ? "You are stuck" : "Your turn";
             chip.className = "sol-chip sol-turnchip mine";
         } else {
-            statusEl.textContent = online ? "Opponent's turn" : "Bot is thinking…";
             chip.textContent = online ? "Waiting for opponent" : "Bot's turn";
             chip.className = "sol-chip sol-turnchip theirs";
         }
 
         /* buttons */
         cheatBtn.hidden = online;
-        bestChip.hidden = online;
-        const drawBtn = $('[data-act="draw"]');
-        drawBtn.innerHTML = (mb.stock.length ? "Draw" : (canRecycle(mb) ? "Recycle" : "Stock empty")) + " <kbd>D</kbd>";
+        hud.drawlabel.textContent = mb.stock.length ? "Draw" : (canRecycle(mb) ? "Recycle" : "Stock empty");
+        root.querySelector('[data-act="draw"]').setAttribute("aria-label", hud.drawlabel.textContent + " card (D)");
         oppWrap.hidden = !oppOpen;
         fitScale();
+        syncUI();
     }
 
     /* ---------- history / cheats (ai only) ---------- */
@@ -798,7 +904,8 @@ export function mount(root, context = {}) {
         $("[data-overtitle]").textContent = winner === "draw" ? "It's a draw" : (winner === me ? "Victory" : "Defeat");
         $("[data-overreason]").textContent = reason + (cheated ? " (cheats were used — score not saved)" : "");
         $("[data-overscores]").textContent = "Foundations — " + (playerName || "You") + ": " + foundTotal(state.boards[me]) + "/52 · " + opponentName() + ": " + foundTotal(state.boards[1 - me]) + "/52.";
-        show(ovOver);
+        overOpen = true;
+        render();
     }
     function endCompare() {
         const f0 = foundTotal(state.boards[0]), f1 = foundTotal(state.boards[1]);
@@ -890,11 +997,15 @@ export function mount(root, context = {}) {
         if (!online && state && state.phase === "playing" && state.turn === 1) scheduleBot();
     }
     function scheduleBot() {
-        if (botTimer) clearTimeout(botTimer);
-        botTimer = later(() => { botTimer = 0; botTurn(); }, 650 + Math.random() * 550);
+        if (botTimer) { clearTimeout(botTimer); timers = timers.filter((x) => x !== botTimer); botTimer = 0; }
+        if (paused || !state || state.phase !== "playing" || state.turn !== 1) return;
+        const delay = 650 + Math.random() * 550;
+        botDue = Date.now() + delay;
+        botTimer = later(() => { botTimer = 0; botDue = 0; botTurn(); }, delay);
     }
     function botTurn() {
         if (!state || state.phase !== "playing" || state.turn !== 1) return;
+        if (paused) { scheduleBot(); return; }
         const b = state.boards[1];
         const a = botChoose(b);
         if (!a) { b.stuck = true; state.last[1] = "Bot is stuck."; resolveTurn(1); publish(); return; }
@@ -904,6 +1015,7 @@ export function mount(root, context = {}) {
     /* ---------- flow ---------- */
     function newRound() {
         clearTimers();
+        paused = false; pausedAt = 0; overOpen = false;
         levelNum++;
         const seed = (Math.random() * 0xffffffff) >>> 0;
         const deal = makeSolvableDeal(seed);
@@ -924,6 +1036,7 @@ export function mount(root, context = {}) {
     /* ---------- local interaction helpers ---------- */
     function canInteract() {
         if (!state || state.phase !== "playing") return false;
+        if (paused || helpOpen || cheatsOpen) return false;
         if (state.turn !== getMySeat()) { flash("Wait for your turn."); return false; }
         return true;
     }
@@ -986,15 +1099,11 @@ export function mount(root, context = {}) {
         if (col.length && col[col.length - 1].up) selectCol(ci, col.length - 1);
         else flash("That column is empty.");
     }
-    function toggleOverlay(which) {
-        const el = which === "help" ? ovHelp : ovCheat;
-        if (el.hasAttribute("hidden")) { hide(ovCheat); hide(ovHelp); show(el); }
-        else hide(el);
-    }
-    function closeOverlaysOrCancel() {
-        if (!ovHelp.hasAttribute("hidden")) { hide(ovHelp); return; }
-        if (!ovCheat.hasAttribute("hidden")) { hide(ovCheat); return; }
-        if (!ovOver.hasAttribute("hidden")) { hide(ovOver); return; }
+    function closeTopOverlay() {
+        if (helpOpen) { toggleHelp(false); return; }
+        if (cheatsOpen) { toggleCheats(false); return; }
+        if (paused) { setPaused(false); return; }
+        if (!ovOver.hidden) { overOpen = false; render(); return; }
         if (sel) { sel = null; render(); }
     }
 
@@ -1003,21 +1112,27 @@ export function mount(root, context = {}) {
         const act = event.target.closest("[data-act]");
         if (act) {
             const a = act.getAttribute("data-act");
-            if (a === "exit") { onExit(); return; }
-            if (a === "help" || a === "closehelp") { toggleOverlay("help"); return; }
-            if (a === "cheat" || a === "closecheat") { if (!online) toggleOverlay("cheat"); return; }
-            if (a === "closeover") { hide(ovOver); return; }
-            if (a === "opp") { oppOpen = !oppOpen; render(); return; }
-            if (a === "new") { submitAction({ type: "restart" }); return; }
-            if (a === "cancel") { sel = null; render(); return; }
             if (a === "draw") { if (!canInteract()) return; sel = null; submitAction({ type: myBoard().stock.length ? "draw" : "recycle" }); return; }
             if (a === "auto") { if (!canInteract()) return; autoFoundation(); return; }
+            if (a === "cancel") { sel = null; render(); return; }
+            if (a === "opp") { oppOpen = !oppOpen; render(); return; }
+            if (a === "new") { setPaused(false); submitAction({ type: "restart" }); return; }
             return;
         }
-        const ch = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { setPaused(!paused); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-restart]")) { setPaused(false); submitAction({ type: "restart" }); return; }
+        if (t.closest("[data-overclose]")) { overOpen = false; render(); return; }
+        const ch = t.closest("[data-cheat]");
         if (ch) { if (!online && state && state.phase === "playing") { submitAction({ type: "cheat", kind: ch.getAttribute("data-cheat") }); } return; }
 
-        const zoneEl = event.target.closest("[data-zone]");
+        const zoneEl = t.closest("[data-zone]");
         if (!zoneEl) { if (sel) { sel = null; render(); } return; }
         if (!canInteract()) return;
         const z = zoneEl.getAttribute("data-zone");
@@ -1057,15 +1172,28 @@ export function mount(root, context = {}) {
     function onKey(e) {
         const tag = e.target && e.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA") return;
-        const k = e.key;
-        if (k === "Escape") { closeOverlaysOrCancel(); return; }
+        const k = e.key, lower = k.toLowerCase(), c = e.code || "";
+        /* priority: help -> cheats -> pause -> Escape -> game actions */
+        if (helpOpen) {
+            if (lower === "h" || k === "?" || k === "Escape" || k === "Enter") { e.preventDefault(); toggleHelp(false); }
+            return;
+        }
+        if (cheatsOpen) {
+            if (lower === "c" || k === "Escape" || k === "Enter") { e.preventDefault(); toggleCheats(false); }
+            return;
+        }
+        if (lower === "p" || c === "KeyP") { e.preventDefault(); setPaused(!paused); return; }
+        if (paused) {
+            if (k === "Escape" || k === "Enter") { e.preventDefault(); setPaused(false); }
+            return;
+        }
+        if (k === "Escape") { closeTopOverlay(); return; }
         if (tag === "BUTTON" && (k === " " || k === "Enter")) return;
         if (!state) return;
-        const lower = k.toLowerCase();
-        if (lower === "h" || k === "?") { e.preventDefault(); toggleOverlay("help"); return; }
-        if (lower === "c" && !online) { e.preventDefault(); toggleOverlay("cheat"); return; }
+        if (lower === "h" || k === "?") { e.preventDefault(); toggleHelp(); return; }
+        if (lower === "c" && !online) { e.preventDefault(); toggleCheats(); return; }
+        if (lower === "r" || lower === "n") { e.preventDefault(); setPaused(false); submitAction({ type: "restart" }); return; }
         if (lower === "v") { e.preventDefault(); oppOpen = !oppOpen; render(); return; }
-        if (lower === "n") { e.preventDefault(); submitAction({ type: "restart" }); return; }
         if (state.phase !== "playing") return;
         if (lower === "u" && !online) { e.preventDefault(); submitAction({ type: "cheat", kind: "undo" }); return; }
         if (state.turn !== getMySeat()) return;
@@ -1105,15 +1233,11 @@ export function mount(root, context = {}) {
         }
     } else {
         newRound(); publish();
-        try {
-            if (!localStorage.getItem("solitaireHelpSeen")) { show(ovHelp); localStorage.setItem("solitaireHelpSeen", "1"); }
-        } catch (e) { }
     }
 
     return {
         destroy() {
             clearTimers();
-            if (flashT) clearTimeout(flashT);
             root.removeEventListener("click", handleClick);
             root.removeEventListener("dblclick", handleDbl);
             root.removeEventListener("contextmenu", handleContext);

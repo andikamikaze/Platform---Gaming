@@ -17,6 +17,8 @@ export const META = {
     bestKey: "wordSearchBestTime",
 };
 
+import { iconSVG } from "../JS/icons.js";
+
 /* ============================================================
    PURE LOGIC — seeded, deterministik, bisa dites (export _test)
    ============================================================ */
@@ -154,9 +156,10 @@ export function mount(root, context = {}) {
     let gridSeed = -1;
     let anchor = null, cur = null, cursor = [0, 0];
     let dragging = false, dragMode = "fresh";
-    let helpOpen = false, cheatOpen = false;
+    let helpOpen = false, cheatOpen = false, paused = false;
     const cheats = { reveal: false, lazy: false };
-    let botTimer = null, tickTimer = null, flashTimer = null, noteTimer = null, padRepeat = null;
+    let tickTimer = null, padRepeat = null;
+    let botTimer = null, flashTimer = null, noteTimer = null;
     let activeFlash = null, localNote = "", seenMoveTs = 0, recordNote = "";
     const offs = [];
     let best = null;
@@ -164,6 +167,64 @@ export function mount(root, context = {}) {
         const v = parseInt(localStorage.getItem(META.bestKey), 10);
         if (Number.isFinite(v) && v >= 0) best = v;
     } catch (_) { }
+
+    /* First-run internal guide (global how-to is disabled for this game). */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("wordSearchHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("wordSearchHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* Virtual clock: help / cheats / pause freeze every Date.now()-based
+       anchor and pending timer. On resume the frozen span is subtracted, so
+       the clock, hint pulses and the bot never jump forward. Online rounds
+       are never frozen, keeping cross-client timestamps comparable. */
+    let frozenAtReal = 0, pauseShift = 0;
+    let timers = [], timerTick = null;
+    const now = () => (frozenAtReal || Date.now()) - pauseShift;
+    const frozen = () => !online && (paused || helpOpen || cheatOpen);
+    function ensureTimer() {
+        if (timerTick || frozen() || !timers.length) return;
+        const next = Math.min.apply(null, timers.map((t) => t.due));
+        timerTick = setTimeout(() => {
+            timerTick = null;
+            if (frozen()) return;
+            const t = now();
+            const due = timers.filter((x) => x.due <= t);
+            timers = timers.filter((x) => x.due > t);
+            due.forEach((x) => x.fn());
+            ensureTimer();
+        }, Math.max(0, next - now()));
+    }
+    function later(fn, ms) {
+        const t = { fn, due: now() + ms };
+        timers.push(t);
+        ensureTimer();
+        return t;
+    }
+    function cancelLater(t) {
+        if (!t) return;
+        timers = timers.filter((x) => x !== t);
+        if (!timers.length && timerTick) { clearTimeout(timerTick); timerTick = null; }
+    }
+    function clearTimers() {
+        if (timerTick) { clearTimeout(timerTick); timerTick = null; }
+        timers = [];
+        botTimer = flashTimer = noteTimer = null;
+    }
+    function freezeClock() {
+        if (frozenAtReal) return;
+        frozenAtReal = Date.now();
+        if (timerTick) { clearTimeout(timerTick); timerTick = null; }
+    }
+    function thawClock() {
+        if (!frozenAtReal) return;
+        pauseShift += Date.now() - frozenAtReal;
+        frozenAtReal = 0;
+        ensureTimer();
+    }
+    const syncFreeze = () => { if (frozen()) freezeClock(); else thawClock(); };
 
     const clamp = (n) => Math.max(0, Math.min(SIZE - 1, n));
     const fmt = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
@@ -194,7 +255,7 @@ export function mount(root, context = {}) {
             hints: [],                   // {word, r, c, ts}
             moves: 0,
             lastMove: { ts: 0, actor: -1, ok: false, word: "", cells: [], pass: false },
-            startAt: phase === "play" ? Date.now() : 0,
+            startAt: phase === "play" ? now() : 0,
             endAt: 0,
             winner: -2,                  // -2 belum, -1 seri, 0/1 pemenang
         };
@@ -204,14 +265,33 @@ export function mount(root, context = {}) {
     root.innerHTML = `
 <style>
 .ws-app{--ws-ink:#111827;--ws-muted:#6b7280;--ws-line:#e5e7eb;--ws-soft:#f6f7f9;--ws-p0:#4f46e5;--ws-p0bg:#eef2ff;--ws-p1:#d97706;--ws-p1bg:#fff7ed;--ws-cell:34px;--ws-gap:3px;color:var(--ws-ink)}
-.ws-app .ws-stage{position:relative}
-.ws-app .ws-main{display:flex;gap:24px;justify-content:center;align-items:flex-start;flex-wrap:wrap;padding:4px 0}
-.ws-app .ws-boardcol{display:flex;flex-direction:column;gap:10px;align-items:center}
-.ws-app .ws-hud{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-.ws-app .ws-chip{font-size:12px;color:var(--ws-muted);border:1px solid var(--ws-line);background:#fff;border-radius:999px;padding:4px 10px}
-.ws-app .ws-chip b{color:var(--ws-ink);font-weight:700}
-.ws-app .ws-turnme{background:var(--ws-p0bg);border-color:transparent;color:var(--ws-p0)}
-.ws-app .ws-grid{display:grid;grid-template-columns:repeat(10,var(--ws-cell));grid-auto-rows:var(--ws-cell);gap:var(--ws-gap);padding:8px;background:var(--ws-soft);border:1px solid var(--ws-line);border-radius:16px;touch-action:none;user-select:none;-webkit-user-select:none}
+.ws-app *{box-sizing:border-box}
+.ws-app [hidden]{display:none!important}
+.ws-app.game-fill{display:flex;flex-direction:column}
+.ws-app .ws-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font:600 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ws-app .ws-hud-info,.ws-app .ws-hud-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.ws-app .ws-hud-actions{margin-left:auto}
+.ws-app .ws-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--ws-line);border-radius:999px;background:#fff;color:var(--ws-muted);white-space:nowrap}
+.ws-app .ws-chip b{color:var(--ws-ink);font-weight:700;font-variant-numeric:tabular-nums}
+.ws-app .ws-dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;flex:none}
+.ws-app[data-turn="me"] .ws-dot{background:#16a34a}
+.ws-app[data-turn="other"] .ws-dot{background:#f59e0b}
+.ws-app .ws-chip.ws-turnme{background:var(--ws-p0bg);border-color:transparent;color:var(--ws-p0)}
+.ws-app .ws-chip.ws-turnme b{color:var(--ws-p0)}
+.ws-app .ws-btn{border:1px solid var(--ws-line);background:#fff;color:var(--ws-ink);border-radius:9px;padding:8px 12px;min-height:38px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;font-family:inherit}
+.ws-app .ws-btn:hover{border-color:var(--ws-p0);color:var(--ws-p0)}
+.ws-app .ws-btn.on{border-color:var(--ws-p0);color:var(--ws-p0);background:var(--ws-p0bg)}
+.ws-app .ws-btn.primary{background:var(--ws-p0);border-color:var(--ws-p0);color:#fff}
+.ws-app .ws-btn.primary:hover{color:#fff;opacity:.92}
+.ws-app .ws-btn:disabled{opacity:.45;cursor:not-allowed}
+.ws-app .ws-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ws-app .ws-icon-btn svg{flex:none;display:block}
+.ws-app .ws-cheatbadge{font-size:9px;font-weight:800;letter-spacing:.08em;color:#b45309;background:#fef3c7;border-radius:6px;padding:2px 6px}
+.ws-app .ws-spacer{flex:1 1 auto}
+.ws-app .ws-board{position:relative;flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;padding:10px;border:1px solid var(--ws-line);border-radius:12px;background:#fbfcfe;overflow:hidden}
+.ws-app .ws-main{display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap;width:100%;height:100%;min-height:0}
+.ws-app .ws-boardcol{display:flex;flex-direction:column;gap:8px;align-items:center;min-width:0}
+.ws-app .ws-grid{display:grid;grid-template-columns:repeat(10,var(--ws-cell));grid-auto-rows:var(--ws-cell);gap:var(--ws-gap);padding:8px;background:var(--ws-soft);border:1px solid var(--ws-line);border-radius:12px;touch-action:none;user-select:none;-webkit-user-select:none}
 .ws-app .ws-grid:focus-visible{outline:2px solid var(--ws-p0);outline-offset:2px}
 .ws-app .ws-cell{display:grid;place-items:center;background:#fff;border-radius:8px;box-shadow:inset 0 0 0 1px var(--ws-line);font-weight:700;font-size:15px;cursor:pointer;color:var(--ws-ink)}
 .ws-app .ws-cell:hover{background:#f3f4f6}
@@ -226,130 +306,156 @@ export function mount(root, context = {}) {
 .ws-app .ws-good{background:#dcfce7!important;color:#166534!important;box-shadow:none}
 .ws-app .ws-bad{background:#fee2e2!important;color:#b91c1c!important;box-shadow:none}
 .ws-app .ws-msg{min-height:18px;margin:0;font-size:12.5px;color:var(--ws-muted);text-align:center}
-.ws-app .ws-side{display:flex;flex-direction:column;gap:14px;width:220px}
-.ws-app .ws-side h3{margin:0 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ws-muted)}
-.ws-app .ws-scores{display:flex;flex-direction:column;gap:6px}
-.ws-app .ws-score{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;border:1px solid var(--ws-line);border-radius:10px;padding:6px 10px;background:#fff}
-.ws-app .ws-score i{width:9px;height:9px;border-radius:50%;flex:none}
-.ws-app .ws-score0 i{background:var(--ws-p0)}
-.ws-app .ws-score1 i{background:var(--ws-p1)}
-.ws-app .ws-score b{margin-left:auto;font-size:15px}
-.ws-app .ws-list,.ws-app .ws-hints{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ws-app .ws-side{display:flex;flex-direction:column;gap:12px;width:220px;min-width:0}
+.ws-app .ws-side h3{margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ws-muted)}
+.ws-app .ws-list,.ws-app .ws-hints{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .ws-app .ws-item{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;letter-spacing:.08em}
 .ws-app .ws-item .ws-dot{width:8px;height:8px;border-radius:50%;flex:none}
 .ws-app .ws-item.ws-done{color:#9ca3af;text-decoration:line-through}
 .ws-app .ws-coord{margin-left:auto;font-style:normal;font-weight:600;font-size:10.5px;color:var(--ws-p0);letter-spacing:0}
-.ws-app .ws-hintchip{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:5px 8px}
-.ws-app .ws-tip{margin:0;font-size:11.5px;line-height:1.55;color:var(--ws-muted)}
-.ws-app .ws-padwrap{display:none;flex-direction:column;gap:8px;align-items:center}
+.ws-app .ws-hintchip{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:6px 8px}
+.ws-app .ws-padwrap{display:none;flex-direction:column;gap:8px;align-items:center;margin-top:10px}
 @media (pointer:coarse){.ws-app .ws-padwrap{display:flex}}
 .ws-app.ws-pad-on .ws-padwrap{display:flex}
-.ws-app .ws-pad{display:grid;grid-template-areas:". u ." "l ok r" ". d .";gap:6px}
-.ws-app .ws-padbtn{width:48px;height:44px;border:1px solid var(--ws-line);background:#fff;border-radius:12px;font-size:15px;cursor:pointer;touch-action:manipulation;color:var(--ws-ink)}
+.ws-app .ws-pad{display:grid;grid-template-areas:". u ." "l ok r" ". d .";gap:8px}
+.ws-app .ws-padbtn{width:48px;height:44px;border:1px solid var(--ws-line);background:#fff;border-radius:10px;font-size:15px;cursor:pointer;touch-action:manipulation;color:var(--ws-ink)}
+.ws-app .ws-padbtn:focus-visible{outline:2px solid var(--ws-p0);outline-offset:2px}
 .ws-app .ws-padbtn:active{background:var(--ws-soft)}
 .ws-app .ws-up{grid-area:u}.ws-app .ws-left{grid-area:l}.ws-app .ws-right{grid-area:r}.ws-app .ws-down{grid-area:d}
 .ws-app .ws-ok{grid-area:ok;background:var(--ws-p0);border-color:var(--ws-p0);color:#fff;font-weight:700;font-size:13px}
-.ws-app .ws-padcancel{border:none;background:none;color:var(--ws-muted);font-size:12px;cursor:pointer;text-decoration:underline}
-.ws-app .ws-padcancel:disabled{opacity:.4;text-decoration:none}
-.ws-app .ws-ov{position:absolute;inset:0;z-index:6;display:grid;place-items:center;padding:14px;background:rgba(249,250,251,.82);backdrop-filter:blur(3px);border-radius:16px}
-.ws-app .ws-ov[hidden]{display:none}
-.ws-app .ws-card{width:100%;max-width:430px;background:#fff;border:1px solid var(--ws-line);border-radius:16px;box-shadow:0 14px 34px rgba(15,23,42,.09);padding:20px 22px;max-height:100%;overflow:auto}
-.ws-app .ws-card h3{margin:0 0 8px;font-size:19px}
-.ws-app .ws-card h4{margin:14px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--ws-muted)}
+.ws-app .ws-padcancel{border:1px solid var(--ws-line);background:#fff;color:var(--ws-muted);font-size:11px;cursor:pointer;font-weight:600;border-radius:9px;padding:7px 12px;min-height:38px;font-family:inherit}
+.ws-app .ws-padcancel:focus-visible{outline:2px solid var(--ws-p0);outline-offset:2px}
+.ws-app .ws-padcancel:disabled{opacity:.4;cursor:default}
+.ws-app .ws-ov{position:absolute;inset:0;z-index:6;display:grid;place-items:center;padding:12px;background:rgba(249,250,251,.9);backdrop-filter:blur(3px);overflow:auto}
+.ws-app .ws-ov[data-ov="help"]{z-index:50}
+.ws-app .ws-card{display:flex;flex-direction:column;width:100%;max-width:460px;max-height:100%;padding:16px 18px;background:#fff;border:1px solid var(--ws-line);border-radius:12px;box-shadow:0 4px 16px rgba(15,23,42,.06);overflow:hidden}
+.ws-app .ws-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px}
+.ws-app .ws-head h3{margin:0;font-size:19px}
+.ws-app .ws-body{flex:1 1 auto;min-height:0;overflow:auto}
+.ws-app .ws-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
 .ws-app .ws-card p{margin:0 0 8px;font-size:13px;line-height:1.6;color:#374151}
-.ws-app .ws-rules{margin:10px 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:#374151}
-.ws-app .ws-meta{font-size:12px;color:var(--ws-muted)}
-.ws-app .ws-ovbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.ws-app .ws-primary{background:var(--ws-p0)!important;border-color:var(--ws-p0)!important;color:#fff!important}
-.ws-app .ws-cardhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-.ws-app .ws-x{border:none;background:none;font-size:15px;cursor:pointer;color:var(--ws-muted);padding:4px}
-.ws-app .ws-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--ws-soft);font-size:13px;font-weight:600}
-.ws-app .ws-toggle,.ws-app .ws-mini{border:1px solid var(--ws-line);background:#fff;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--ws-ink)}
+.ws-app .ws-rules{margin:12px 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:#374151}
+.ws-app .ws-meta,.ws-app .ws-note{font-size:12px;color:var(--ws-muted)}
+.ws-app .ws-ovbtns{display:flex;gap:8px;flex-wrap:wrap}
+.ws-app .ws-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--ws-soft);font-size:13px;font-weight:600}
+.ws-app .ws-toggle,.ws-app .ws-mini{border:1px solid var(--ws-line);background:#fff;border-radius:999px;padding:6px 12px;min-height:38px;font-size:12px;font-weight:700;cursor:pointer;color:var(--ws-ink);font-family:inherit}
+.ws-app .ws-toggle:focus-visible,.ws-app .ws-mini:focus-visible{outline:2px solid var(--ws-p0);outline-offset:2px}
 .ws-app .ws-toggle.ws-on{background:var(--ws-p0);border-color:var(--ws-p0);color:#fff}
 .ws-app .ws-mini:disabled,.ws-app .ws-toggle:disabled{opacity:.4;cursor:default}
-.ws-app .ws-cheatbadge{font-size:10px;font-weight:800;letter-spacing:.08em;color:#b45309;background:#fef3c7;border-radius:6px;padding:2px 6px;margin-left:6px}
+.ws-app .ws-help h4{margin:12px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--ws-muted)}
+.ws-app .ws-help ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.6;color:#374151}
 .ws-app kbd{border:1px solid var(--ws-line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;font-size:11px;background:var(--ws-soft);font-family:inherit}
-.ws-app .game-status-dot{background:#9ca3af}
-.ws-app[data-turn="me"] .game-status-dot{background:#16a34a}
-.ws-app[data-turn="other"] .game-status-dot{background:#f59e0b}
 @media (max-width:760px){
 .ws-app{--ws-cell:min(8.2vw,32px);--ws-gap:2px}
 .ws-app .ws-cell{font-size:13px;border-radius:6px}
 .ws-app .ws-grid{padding:6px;border-radius:12px}
-.ws-app .ws-main{gap:14px}
+.ws-app .ws-main{gap:12px}
 .ws-app .ws-side{width:100%;max-width:420px}
-.ws-app .ws-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ws-app .ws-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 }
-</style>
-<div class="game-app ws-app" data-turn="idle">
-  <div class="game-intro">
-    <div><h2>Word Search</h2><p>Find six hidden words before your rival. Wrong guesses pass the turn — two misses unlock a hint.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span><b class="ws-cheatbadge" data-cheatbadge hidden>CHEATS</b></span>
-  </div>
-  <section class="game-panel">
-    <div class="ws-stage">
-      <div class="ws-main">
-        <div class="ws-boardcol">
-          <div class="ws-hud">
-            <span class="ws-chip">Found <b data-found>0/6</b></span>
-            <span class="ws-chip">Time <b data-time>0:00</b></span>
-            <span class="ws-chip" data-turnchip>Ready</span>
-          </div>
-          <div class="ws-grid" data-grid tabindex="0" aria-label="Word search grid"></div>
-          <p class="ws-msg" data-msg aria-live="polite"></p>
-          <div class="ws-padwrap">
-            <div class="ws-pad" data-pad>
-              <button type="button" class="ws-padbtn ws-up" data-dir="up" aria-label="Move up">▲</button>
-              <button type="button" class="ws-padbtn ws-left" data-dir="left" aria-label="Move left">◀</button>
-              <button type="button" class="ws-padbtn ws-ok" data-act="pad-ok" aria-label="Select">OK</button>
-              <button type="button" class="ws-padbtn ws-right" data-dir="right" aria-label="Move right">▶</button>
-              <button type="button" class="ws-padbtn ws-down" data-dir="down" aria-label="Move down">▼</button>
-            </div>
-            <button type="button" class="ws-padcancel" data-act="pad-cancel">Cancel selection</button>
-          </div>
-        </div>
-        <aside class="ws-side">
-          <div class="ws-scores">
-            <span class="ws-score ws-score0"><i></i><span data-name0>Player 1</span><b data-score0>0</b></span>
-            <span class="ws-score ws-score1"><i></i><span data-name1>Player 2</span><b data-score1>0</b></span>
-          </div>
-          <div><h3>Hidden words</h3><ul class="ws-list" data-list></ul></div>
-          <div data-hintwrap hidden><h3>Hints</h3><ul class="ws-hints" data-hints></ul></div>
-          <p class="ws-tip">Drag across a word, or click its first &amp; last letter. Keyboard: arrows + <b>Enter</b>. Press <b>?</b> for help.</p>
-        </aside>
-      </div>
+@media (max-width:390px){.ws-app{--ws-cell:min(7.6vw,30px)}.ws-app .ws-side{max-width:100%}}
+@media (prefers-reduced-motion:reduce){.ws-app *{animation:none!important;transition:none!important}}
 
-      <div class="ws-ov" data-ov="intro">
-        <div class="ws-card">
-          <h3>Word Search</h3>
+/* --- fill height + mobile refinements (PALING AKHIR) --- */
+.ws-icon-btn svg{flex:none;display:block}
+.ws-card{overflow:hidden}
+.ws-head,.ws-foot{flex:none}
+.ws-body{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+.ws-app.game-fill > .ws-board:not(:has(.ws-ov:not([hidden]))){flex:1 1 auto;min-height:0}
+.ws-app.game-fill > .ws-board:has(.ws-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+.ws-app .ws-hud{gap:5px;margin-bottom:8px}
+.ws-app .ws-hud-info,.ws-app .ws-hud-actions{gap:5px}
+.ws-app .ws-hud .ws-chip{padding:4px 6px;font-size:9px;min-height:0}
+.ws-app .ws-hud .ws-chip[data-hud="pchip1"],.ws-app .ws-hud .ws-chip[data-hud="bestchip"]{display:none}
+.ws-app .ws-hud .ws-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.ws-app .ws-hud .ws-btn-label,.ws-app .ws-hud .ws-spacer{display:none}
+.ws-app .ws-main{gap:10px}
+.ws-app .ws-ov{padding:8px}
+.ws-app .ws-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.ws-app .ws-body{scrollbar-width:none}
+.ws-app .ws-body::-webkit-scrollbar{display:none}
+.ws-app .ws-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--ws-line)}
+.ws-app .ws-note{display:none}
+}
+@media (max-width:390px){.ws-app{--ws-cell:min(7.6vw,30px)}.ws-app .ws-side{max-width:100%}}
+</style>
+<div class="game-app ws-app game-fill" data-turn="idle" data-ws>
+  <div class="ws-hud">
+    <div class="ws-hud-info">
+      <span class="ws-chip"><i class="ws-dot"></i><b data-status>Ready</b></span>
+      <span class="ws-chip">FOUND <b data-found>0/6</b></span>
+      <span class="ws-chip">TIME <b data-time>0:00</b></span>
+      <span class="ws-chip" data-turnchip>Ready</span>
+      <span class="ws-chip" data-hud="pchip0"><i class="ws-dot" style="background:var(--ws-p0)"></i><span data-name0>Player 1</span> · <b data-score0>0</b></span>
+      <span class="ws-chip" data-hud="pchip1"><i class="ws-dot" style="background:var(--ws-p1)"></i><span data-name1>Player 2</span> · <b data-score1>0</b></span>
+      <span class="ws-chip" data-hud="bestchip">BEST <b data-best>—</b></span>
+      <b class="ws-cheatbadge" data-cheatbadge hidden>CHEATS</b>
+    </div>
+    <span class="ws-spacer"></span>
+    <div class="ws-hud-actions">
+      <button class="ws-btn ws-icon-btn" type="button" data-act="pad" aria-label="Toggle D-pad" title="Toggle D-pad (G)" aria-pressed="false">${iconSVG("gamepad2", { size: 14 })}<span class="ws-btn-label">D-pad</span></button>
+      <button class="ws-btn ws-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ws-btn-label">Help</span></button>
+      <button class="ws-btn ws-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ws-btn-label">Cheats</span></button>
+      <button class="ws-btn ws-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="ws-btn-label">Pause</span></button>
+      <button class="ws-btn ws-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ws-btn-label">Restart</span></button>
+      <button class="ws-btn ws-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ws-btn-label">Exit game</span></button>
+    </div>
+  </div>
+
+  <section class="game-panel ws-board" data-board>
+    <div class="ws-main">
+      <div class="ws-boardcol">
+        <div class="ws-grid" data-grid tabindex="0" aria-label="Word search grid"></div>
+        <p class="ws-msg" data-msg aria-live="polite"></p>
+      </div>
+      <aside class="ws-side">
+        <div><h3>Hidden words</h3><ul class="ws-list" data-list></ul></div>
+        <div data-hintwrap hidden><h3>Hints</h3><ul class="ws-hints" data-hints></ul></div>
+      </aside>
+    </div>
+
+    <div class="ws-ov" data-ov="intro">
+      <div class="ws-card">
+        <div class="ws-head"><h3>Word Search</h3><span class="ws-meta" data-intro-meta></span></div>
+        <div class="ws-body">
           <p>Six words hide in the grid — forwards, backwards, across, down, diagonally. Take turns with your rival; each found word scores a point. Most words wins.</p>
           <ul class="ws-rules">
             <li>✔ Correct word = 1 point, then the turn passes.</li>
             <li>✘ Wrong line = turn passes. Two misses in a row reveal a hint.</li>
-            <li>⌨ Arrows/WASD + Enter · 🖱 drag or click both ends · 📱 D-pad below the grid.</li>
+            <li>⌨ Arrows/WASD + Enter · 🖱 drag or click both ends · 📱 D-pad below the board.</li>
           </ul>
-          <p class="ws-meta" data-intro-meta></p>
-          <div class="ws-ovbtns">
-            <button class="game-action-button ws-primary" type="button" data-act="start">Start game</button>
-            <button class="game-action-button" type="button" data-act="help">How to play</button>
-          </div>
         </div>
+        <div class="ws-foot"><span class="ws-note">Press H for the guide</span><div class="ws-ovbtns">
+          <button class="ws-btn primary" type="button" data-act="start">Start game</button>
+          <button class="ws-btn" type="button" data-act="help">How to play</button>
+        </div></div>
       </div>
+    </div>
 
-      <div class="ws-ov" data-ov="over" hidden>
-        <div class="ws-card">
-          <h3 data-over-title>Finished</h3>
-          <p data-over-sub></p>
-          <div class="ws-ovbtns">
-            <button class="game-action-button ws-primary" type="button" data-act="restart">Play again</button>
-            <button class="game-action-button" type="button" data-exit>Exit game</button>
-          </div>
-        </div>
+    <div class="ws-ov" data-ov="over" hidden>
+      <div class="ws-card">
+        <div class="ws-head"><h3 data-over-title>Finished</h3></div>
+        <div class="ws-body"><p data-over-sub></p></div>
+        <div class="ws-foot"><span class="ws-note">Best is kept on this device</span><div class="ws-ovbtns">
+          <button class="ws-btn primary" type="button" data-restart>Play again</button>
+          <button class="ws-btn" type="button" data-exit>Exit game</button>
+        </div></div>
       </div>
+    </div>
 
-      <div class="ws-ov" data-ov="cheats" hidden>
-        <div class="ws-card">
-          <div class="ws-cardhead"><h3>Cheats</h3><button class="ws-x" type="button" data-act="cheats-close" aria-label="Close">✕</button></div>
+    <div class="ws-ov" data-ov="pause" hidden>
+      <div class="ws-card">
+        <div class="ws-head"><h3>Paused</h3></div>
+        <div class="ws-body"><p>The clock, the bot and pending timers are frozen. Online rounds never pause.</p></div>
+        <div class="ws-foot"><span class="ws-note">Press P or Esc to resume</span><button class="ws-btn primary" type="button" data-act="resume">Resume</button></div>
+      </div>
+    </div>
+
+    <div class="ws-ov" data-ov="cheats" hidden>
+      <div class="ws-card">
+        <div class="ws-head"><h3>Cheats</h3><button class="ws-btn" type="button" data-act="cheatsclose" aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="ws-body">
           <p>Casual helpers. “Reveal” &amp; “Lazy bot” are local-only; the rest go through normal game actions.</p>
           <div class="ws-cheatrow"><span>Reveal hidden words</span><button type="button" class="ws-toggle" data-act="cheat-reveal" data-cheat="reveal">Off</button></div>
           <div class="ws-cheatrow" data-row-lazy><span>Lazy bot (slower &amp; clumsy)</span><button type="button" class="ws-toggle" data-act="cheat-lazy" data-cheat="lazy">Off</button></div>
@@ -358,30 +464,38 @@ export function mount(root, context = {}) {
           <div class="ws-cheatrow"><span>Solve everything</span><button type="button" class="ws-mini" data-act="cheat-solve">Solve</button></div>
           <div class="ws-cheatrow" data-row-skip><span>Skip bot turn</span><button type="button" class="ws-mini" data-act="cheat-skip">Skip</button></div>
         </div>
+        <div class="ws-foot"><span class="ws-note">Solo helpers are local-only</span><button class="ws-btn" type="button" data-act="cheatsclose">Close</button></div>
       </div>
+    </div>
 
-      <div class="ws-ov" data-ov="help" hidden>
-        <div class="ws-card">
-          <div class="ws-cardhead"><h3>How to play</h3><button class="ws-x" type="button" data-act="help-close" aria-label="Close">✕</button></div>
+    <div class="ws-ov" data-ov="help" hidden>
+      <div class="ws-card">
+        <div class="ws-head"><h3>How to play</h3><button class="ws-btn" type="button" data-act="helpclose" aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="ws-body ws-help">
           <h4>Goal</h4>
           <p>Find the six hidden words in the 10×10 grid. Words run in straight lines — horizontal, vertical, diagonal — and may read backwards. Each word you lock in scores one point; the highest score when all six are found wins.</p>
           <h4>Turns &amp; hints</h4>
           <p>Players alternate turns (the starting player is a coin toss). A correct selection scores and passes the turn. A wrong selection also passes the turn — and after <b>two misses in a row</b>, a hint reveals where one hidden word starts (its first cell pulses amber).</p>
           <h4>Desktop — mouse &amp; keyboard</h4>
           <p>Mouse: drag from the first letter to the last, or click the first letter then the last.<br>
-          Keyboard: <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>WASD</kbd> move the cursor · <kbd>Enter</kbd>/<kbd>Space</kbd> set the start, then the end · <kbd>Esc</kbd> cancel · <kbd>N</kbd> new game · <kbd>C</kbd> cheats · <kbd>P</kbd> D-pad · <kbd>?</kbd> this help.</p>
+          Keyboard: <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>WASD</kbd> move the cursor · <kbd>Enter</kbd>/<kbd>Space</kbd> set the start, then the end · <kbd>Esc</kbd> cancel · <kbd>H</kbd> help · <kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>R</kbd> new game · <kbd>G</kbd> D-pad · <kbd>?</kbd> this guide.</p>
           <h4>Mobile</h4>
-          <p>Drag on the grid, or tap the first letter then the last. Prefer buttons? Use the D-pad: arrows move the cursor, <b>OK</b> sets start/end, <b>Cancel selection</b> resets.</p>
+          <p>Drag on the grid, or tap the first letter then the last. Prefer buttons? Toggle the D-pad in the HUD: arrows move the cursor, <b>OK</b> sets start/end, <b>Cancel selection</b> resets.</p>
         </div>
+        <div class="ws-foot"><span class="ws-note">Press H to reopen this guide</span><button class="ws-btn primary" type="button" data-act="helpclose">Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="help">How to play</button>
-    <button class="game-action-button" type="button" data-act="cheats">Cheats</button>
-    <button class="game-action-button" type="button" data-act="pad" aria-pressed="false">D-pad</button>
-    <button class="game-action-button" type="button" data-act="restart">New game</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+
+  <div class="ws-padwrap">
+    <div class="ws-pad" data-pad>
+      <button type="button" class="ws-padbtn ws-up" data-dir="up" aria-label="Move up">▲</button>
+      <button type="button" class="ws-padbtn ws-left" data-dir="left" aria-label="Move left">◀</button>
+      <button type="button" class="ws-padbtn ws-ok" data-act="pad-ok" aria-label="Select">OK</button>
+      <button type="button" class="ws-padbtn ws-right" data-dir="right" aria-label="Move right">▶</button>
+      <button type="button" class="ws-padbtn ws-down" data-dir="down" aria-label="Move down">▼</button>
+    </div>
+    <button type="button" class="ws-btn ws-padcancel" data-act="pad-cancel">Cancel selection</button>
   </div>
 </div>`;
 
@@ -398,10 +512,13 @@ export function mount(root, context = {}) {
     const foundEl = $("[data-found]");
     const timeEl = $("[data-time]");
     const turnChip = $("[data-turnchip]");
+    const bestEl = $("[data-best]");
+    const bestChip = $('[data-hud="bestchip"]');
     const nameEls = [$("[data-name0]"), $("[data-name1]")];
     const scoreEls = [$("[data-score0]"), $("[data-score1]")];
     const ovIntro = $('[data-ov="intro"]');
     const ovOver = $('[data-ov="over"]');
+    const ovPause = $('[data-ov="pause"]');
     const ovHelp = $('[data-ov="help"]');
     const ovCheats = $('[data-ov="cheats"]');
     const introMeta = $("[data-intro-meta]");
@@ -460,28 +577,28 @@ export function mount(root, context = {}) {
     }
     function elapsed() {
         if (!state || !state.startAt) return 0;
-        const end = state.phase === "over" ? state.endAt : Date.now();
+        const end = state.phase === "over" ? state.endAt : now();
         return Math.max(0, Math.floor((end - state.startAt) / 1000));
     }
     function note(text) {
         localNote = text;
-        if (noteTimer) clearTimeout(noteTimer);
-        noteTimer = setTimeout(() => { localNote = ""; noteTimer = null; render(); }, 1800);
+        if (noteTimer) cancelLater(noteTimer);
+        noteTimer = later(() => { localNote = ""; noteTimer = null; render(); }, 1800);
     }
     function flashCells(cells, cls) {
-        if (flashTimer) clearTimeout(flashTimer);
+        if (flashTimer) cancelLater(flashTimer);
         activeFlash = { set: new Set(cells.map((rc) => key(rc[0], rc[1]))), cls };
-        flashTimer = setTimeout(() => { activeFlash = null; flashTimer = null; render(); }, 700);
+        flashTimer = later(() => { activeFlash = null; flashTimer = null; render(); }, 700);
     }
     function addHint() {
         const un = unfoundList().filter((x) => !state.hints.some((h) => h.word === x.p.word));
         if (!un.length) return;
         const { p } = un[(Math.random() * un.length) | 0];
-        state.hints.push({ word: p.word, r: p.cells[0][0], c: p.cells[0][1], ts: Date.now() });
+        state.hints.push({ word: p.word, r: p.cells[0][0], c: p.cells[0][1], ts: now() });
     }
     function finish() {
         state.phase = "over";
-        state.endAt = Date.now();
+        state.endAt = now();
         const s = scores();
         state.winner = s[0] === s[1] ? -1 : (s[0] > s[1] ? 0 : 1);
         if (!online && state.winner === 0) {
@@ -498,9 +615,14 @@ export function mount(root, context = {}) {
     function render() {
         if (!state) {
             statusEl.textContent = "Connecting…";
-            ovIntro.hidden = false;
+            ovIntro.hidden = helpOpen || cheatOpen || paused;
             introMeta.textContent = "Waiting for room state…";
             startBtn.disabled = true;
+            ovOver.hidden = true;
+            ovPause.hidden = !paused || helpOpen || cheatOpen;
+            ovCheats.hidden = !cheatOpen || helpOpen || paused;
+            ovHelp.hidden = !helpOpen;
+            syncHudButtons();
             return;
         }
         startBtn.disabled = false;
@@ -525,7 +647,7 @@ export function mount(root, context = {}) {
             const idx = puzzle.placed.findIndex((p) => p.word === h.word);
             if (idx === -1 || state.foundBy[idx] !== -1) return;
             hintSet.add(key(h.r, h.c));
-            if (Date.now() - h.ts < 4000) pulseSet.add(key(h.r, h.c));
+            if (now() - h.ts < 4000) pulseSet.add(key(h.r, h.c));
         });
         const sel = new Set();
         if (state.phase === "play" && anchor) {
@@ -565,6 +687,8 @@ export function mount(root, context = {}) {
         const found = state.foundBy.filter((v) => v !== -1).length;
         foundEl.textContent = found + "/" + WORD_COUNT;
         timeEl.textContent = fmt(elapsed());
+        bestEl.textContent = best == null ? "—" : fmt(best);
+        bestChip.hidden = best == null;
         nameEls[0].textContent = seatName(0) + (me === 0 ? " · you" : "");
         nameEls[1].textContent = seatName(1) + (me === 1 ? " · you" : "");
         scoreEls[0].textContent = s[0];
@@ -596,10 +720,11 @@ export function mount(root, context = {}) {
         } else if (state.phase === "play") msg = myTurn ? "Select a word." : "Waiting for " + seatName(state.turn) + "…";
         msgEl.textContent = msg;
 
-        ovIntro.hidden = state.phase !== "intro";
-        ovOver.hidden = state.phase !== "over";
+        ovIntro.hidden = state.phase !== "intro" || helpOpen || cheatOpen || paused;
+        ovOver.hidden = state.phase !== "over" || helpOpen || cheatOpen || paused;
+        ovPause.hidden = !paused || helpOpen || cheatOpen;
+        ovCheats.hidden = !cheatOpen || helpOpen || paused;
         ovHelp.hidden = !helpOpen;
-        ovCheats.hidden = !cheatOpen;
 
         if (state.phase === "intro") {
             introMeta.textContent = "Coin toss: " +
@@ -626,6 +751,28 @@ export function mount(root, context = {}) {
         cheatBtns.solve.disabled = !myTurn;
         cheatBtns.skip.disabled = !(!online && state.phase === "play" && state.turn === 1);
         padCancel.disabled = !anchor;
+        syncHudButtons();
+    }
+
+    /* Update label spans only — never button.textContent (it kills the icon). */
+    function syncHudButtons() {
+        const pbtn = root.querySelector("[data-pause]");
+        if (pbtn) {
+            const label = pbtn.querySelector(".ws-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pbtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+            pbtn.disabled = online;
+        }
+        const cbtn = root.querySelector("[data-cheats]");
+        if (cbtn) {
+            const active = cheats.reveal || cheats.lazy;
+            cbtn.classList.toggle("on", active || cheatOpen);
+            const label = cbtn.querySelector(".ws-btn-label");
+            if (label) label.textContent = cheatOpen ? "Close cheats" : (active ? "Cheats •" : "Cheats");
+        }
+        const padbtn = root.querySelector('[data-act="pad"]');
+        if (padbtn) padbtn.setAttribute("aria-pressed", String(wrapper.classList.contains("ws-pad-on")));
     }
 
     /* ---------- canonical state flow (host-authoritative) ---------- */
@@ -664,7 +811,7 @@ export function mount(root, context = {}) {
         if (t === "start") {
             if (state.phase !== "intro") return;
             state.phase = "play";
-            state.startAt = Date.now();
+            state.startAt = now();
         } else if (t === "restart") {
             const keepSeat = state.hostSeat;
             state = freshState("play");
@@ -674,6 +821,10 @@ export function mount(root, context = {}) {
             activeFlash = null;
             seenMoveTs = 0;
             recordNote = "";
+            paused = false;
+            frozenAtReal = 0;
+            pauseShift = 0;
+            clearTimers();
         } else if (t === "select") {
             if (state.phase !== "play" || actor !== state.turn) return;
             const { r1, c1, r2, c2 } = action;
@@ -686,12 +837,12 @@ export function mount(root, context = {}) {
                 const idx = puzzle.placed.findIndex((p) => p.word === hit.word);
                 state.foundBy[idx] = actor;
                 state.misses[actor] = 0;
-                state.lastMove = { ts: Date.now(), actor, ok: true, word: hit.word, cells, pass: false };
+                state.lastMove = { ts: now(), actor, ok: true, word: hit.word, cells, pass: false };
                 if (state.foundBy.every((v) => v !== -1)) finish();
                 else state.turn = 1 - actor;
             } else {
                 state.misses[actor]++;
-                state.lastMove = { ts: Date.now(), actor, ok: false, word: "", cells, pass: false };
+                state.lastMove = { ts: now(), actor, ok: false, word: "", cells, pass: false };
                 if (state.misses[actor] >= 2) { addHint(); state.misses[actor] = 0; }
                 state.turn = 1 - actor;
             }
@@ -701,11 +852,11 @@ export function mount(root, context = {}) {
         } else if (t === "pass") {
             if (state.phase !== "play" || actor !== state.turn) return;
             state.turn = 1 - actor;
-            state.lastMove = { ts: Date.now(), actor, ok: false, word: "", cells: [], pass: true };
+            state.lastMove = { ts: now(), actor, ok: false, word: "", cells: [], pass: true };
         } else if (t === "solve") {
             if (state.phase !== "play" || actor !== state.turn) return;
             state.foundBy = state.foundBy.map((v) => (v === -1 ? actor : v));
-            state.lastMove = { ts: Date.now(), actor, ok: true, word: "ALL", cells: [], pass: false };
+            state.lastMove = { ts: now(), actor, ok: true, word: "ALL", cells: [], pass: false };
             finish();
         } else return;
 
@@ -722,11 +873,11 @@ export function mount(root, context = {}) {
 
     /* ---------- bot (AI mode) ---------- */
     function scheduleBot() {
-        if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+        if (botTimer) cancelLater(botTimer);
         if (online || !state) return;
-        if (state.phase !== "play" || state.turn !== 1 || helpOpen) return;
+        if (state.phase !== "play" || state.turn !== 1 || helpOpen || paused || cheatOpen) return;
         const delay = cheats.lazy ? 3200 + Math.random() * 2000 : 1100 + Math.random() * 1200;
-        botTimer = setTimeout(() => { botTimer = null; botMove(); }, delay);
+        botTimer = later(() => { botTimer = null; botMove(); }, delay);
     }
     function botMove() {
         if (!state || state.phase !== "play" || state.turn !== 1) return;
@@ -775,13 +926,14 @@ export function mount(root, context = {}) {
         render();
     }
     function stepCursor(v) {
+        if (helpOpen || cheatOpen || paused) return;
         cursor = [clamp(cursor[0] + v[0]), clamp(cursor[1] + v[1])];
         if (anchor) cur = [...cursor];
         render();
     }
 
     function onGridDown(e) {
-        if (!isMyTurn() || helpOpen || cheatOpen) return;
+        if (!isMyTurn() || helpOpen || cheatOpen || paused) return;
         const cell = e.target.closest && e.target.closest("[data-cell]");
         if (!cell) return;
         e.preventDefault();
@@ -840,22 +992,73 @@ export function mount(root, context = {}) {
         ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
         w: [-1, 0], s: [1, 0], a: [0, -1], d: [0, 1],
     };
+    /* Overlays are mutually exclusive and share the frozen clock. */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatOpen = false; paused = false; }
+        stopPadRepeat();
+        syncFreeze();
+        render();
+        scheduleBot();
+    }
+    function toggleCheats(on) {
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) { helpOpen = false; paused = false; }
+        stopPadRepeat();
+        syncFreeze();
+        render();
+        scheduleBot();
+    }
+    function setPaused(on) {
+        if (online) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { helpOpen = false; cheatOpen = false; }
+        stopPadRepeat();
+        syncFreeze();
+        render();
+        scheduleBot();
+    }
+    function togglePad() {
+        const on = wrapper.classList.toggle("ws-pad-on");
+        const b = root.querySelector('[data-act="pad"]');
+        if (b) b.setAttribute("aria-pressed", String(on));
+    }
+    function restartGame() {
+        if (!state) return;
+        paused = false;
+        frozenAtReal = 0;
+        pauseShift = 0;
+        clearTimers();
+        stopPadRepeat();
+        submitAction({ type: "restart" });
+    }
+
     function onKey(e) {
         if (!root.isConnected || e.defaultPrevented) return;
         const t = e.target;
         if (t && t.closest && t.closest('input,textarea,select,[contenteditable="true"]')) return;
-        const k = e.key;
-        if (k === "Escape") {
-            if (helpOpen) { helpOpen = false; render(); scheduleBot(); e.preventDefault(); return; }
-            if (cheatOpen) { cheatOpen = false; render(); e.preventDefault(); return; }
-            if (anchor) { anchor = cur = null; render(); e.preventDefault(); }
-            return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const k = e.key, code = e.code || "";
+        const hit = (c) => code === c || String(k).toLowerCase() === c.slice(3).toLowerCase();
+        /* priority: help → cheats → pause/Escape → restart → game actions */
+        if (hit("KeyH") || k === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (hit("KeyC")) { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (hit("KeyP")) {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else setPaused();
+            e.preventDefault(); return;
         }
-        if (k === "?") { helpOpen = !helpOpen; render(); scheduleBot(); e.preventDefault(); return; }
-        if (k === "c" || k === "C") { cheatOpen = !cheatOpen; render(); e.preventDefault(); return; }
-        if (helpOpen || cheatOpen) return;
-        if (k === "n" || k === "N") { submitAction({ type: "restart" }); e.preventDefault(); return; }
-        if (k === "p" || k === "P") { wrapper.classList.toggle("ws-pad-on"); e.preventDefault(); return; }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            else if (anchor) { anchor = cur = null; render(); }
+            e.preventDefault(); return;
+        }
+        if (hit("KeyR") || hit("KeyN")) { restartGame(); e.preventDefault(); return; }
+        if (hit("KeyG")) { togglePad(); e.preventDefault(); return; }
+        if (helpOpen || cheatOpen || paused) return;
         if (!state) return;
         const onButton = t && t.closest && t.closest("button");
         if (state.phase === "intro" && (k === "Enter" || k === " ") && !onButton) {
@@ -877,21 +1080,22 @@ export function mount(root, context = {}) {
         submitAction({ type: "select", r1: a[0], c1: a[1], r2: b[0], c2: b[1] });
     }
     function handleClick(e) {
-        const el = e.target.closest && e.target.closest("[data-exit],[data-act]");
+        const el = e.target.closest && e.target.closest("[data-exit],[data-act],[data-help],[data-cheats],[data-pause],[data-restart]");
         if (!el || !root.contains(el)) return;
         if (el.hasAttribute("data-exit")) { onExit(); return; }
+        if (el.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (el.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (el.hasAttribute("data-pause")) { setPaused(); return; }
+        if (el.hasAttribute("data-restart")) { restartGame(); return; }
         switch (el.dataset.act) {
             case "start": submitAction({ type: "start" }); break;
-            case "restart": submitAction({ type: "restart" }); break;
-            case "help": helpOpen = true; render(); scheduleBot(); break;
-            case "help-close": helpOpen = false; render(); scheduleBot(); break;
-            case "cheats": cheatOpen = true; render(); break;
-            case "cheats-close": cheatOpen = false; render(); break;
-            case "pad": {
-                const on = wrapper.classList.toggle("ws-pad-on");
-                el.setAttribute("aria-pressed", String(on));
-                break;
-            }
+            case "restart": restartGame(); break;
+            case "help": toggleHelp(); break;
+            case "helpclose": toggleHelp(false); break;
+            case "cheats": toggleCheats(); break;
+            case "cheatsclose": toggleCheats(false); break;
+            case "resume": setPaused(false); break;
+            case "pad": togglePad(); break;
             case "pad-ok": confirmSelect(); break;
             case "pad-cancel": anchor = cur = null; render(); break;
             case "cheat-reveal": cheats.reveal = !cheats.reveal; render(); break;
@@ -915,8 +1119,10 @@ export function mount(root, context = {}) {
     document.addEventListener("pointerup", onDocPointerUp);
     document.addEventListener("keydown", onKey);
     tickTimer = setInterval(() => {
+        if (frozen()) return;
         if (state && state.phase !== "intro") timeEl.textContent = fmt(elapsed());
     }, 500);
+    syncFreeze();
 
     if (online) {
         const offRoom = room.onRoom((nextRoom) => { roomData = nextRoom; render(); });
@@ -947,9 +1153,7 @@ export function mount(root, context = {}) {
             document.removeEventListener("pointerup", onDocPointerUp);
             document.removeEventListener("keydown", onKey);
             if (tickTimer) clearInterval(tickTimer);
-            if (botTimer) clearTimeout(botTimer);
-            if (flashTimer) clearTimeout(flashTimer);
-            if (noteTimer) clearTimeout(noteTimer);
+            clearTimers();
             stopPadRepeat();
             offs.forEach((off) => { try { off(); } catch (_) { } });
             state = null;

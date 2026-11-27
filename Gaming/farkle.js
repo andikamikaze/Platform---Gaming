@@ -5,6 +5,8 @@
  * Setelah menyalin file ini, jalankan: node tools/build-games-manifest.mjs
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "farkle", // harus sama dengan nama file (tanpa .js)
     name: "Farkle",
@@ -195,120 +197,206 @@ export function mount(root, context = {}) {
     const mySeat = () =>
         online ? (room.isHost ? (state ? state.hostSeat : 0) : state ? 1 - state.hostSeat : 1) : 0;
 
-    /* ---------------- shell (minimalist) ---------------- */
+    /* UI overlay state: help outranks cheats, cheats outranks pause */
+    let helpOpen = false;
+    let cheatsOpen = false;
+    let paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("farkleHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("farkleHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
+
+    /* ---------------- shell: single HUD + fill-height board ---------------- */
     root.innerHTML = `
 <style>
 #farkle-root [hidden]{display:none!important}
-#farkle-root .fk-panel{position:relative;overflow:hidden;background:#ffffff;border:1px solid #e5e7eb;border-radius:18px;padding:18px;color:#0f172a;display:flex;flex-direction:column;gap:14px}
-#farkle-root .fk-scoreboard{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch}
-#farkle-root .fk-seat{background:#f8fafc;border:1px solid #eef2f7;border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;transition:border-color .2s,background .2s}
-#farkle-root .fk-seat.active{border-color:#6366f1;background:#eef2ff}
-#farkle-root .fk-seat-top{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#64748b}
-#farkle-root .fk-you{background:#4f46e5;color:#fff;border-radius:999px;padding:1px 7px;font-size:9.5px;letter-spacing:.04em}
+#farkle-root{--fk-surface:var(--color-surface);--fk-soft:var(--color-surface-muted);--fk-ink:var(--color-text);--fk-mut:var(--color-text-muted);--fk-line:var(--color-border);display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0;user-select:none;-webkit-user-select:none;color:var(--fk-ink)}
+#farkle-root .fk-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+#farkle-root .fk-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--fk-line);border-radius:999px;background:var(--fk-surface);color:var(--fk-mut);white-space:nowrap}
+#farkle-root .fk-chip b{color:var(--fk-ink);font-weight:700;font-variant-numeric:tabular-nums}
+#farkle-root .fk-chip small{font-size:9px;opacity:.7}
+#farkle-root .fk-chip.active{border-color:#6366f1;background:#eef2ff}
+#farkle-root .fk-status{gap:7px}
+#farkle-root .fk-status .game-status-dot{width:7px;height:7px;border-radius:50%;background:#059669;flex:none}
+#farkle-root .fk-bar{display:block;width:40px;height:4px;border-radius:99px;background:var(--fk-line);overflow:hidden}
+#farkle-root .fk-bar i{display:block;height:100%;width:0;background:#6366f1;border-radius:99px;transition:width .2s ease}
 #farkle-root .fk-lucky{font-size:12px}
-#farkle-root .fk-seat-score{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
-#farkle-root .fk-seat-score small{font-size:11px;font-weight:600;color:#94a3b8}
-#farkle-root .fk-bar{display:block;height:4px;border-radius:99px;background:#e2e8f0;overflow:hidden}
-#farkle-root .fk-bar i{display:block;height:100%;width:0;background:#6366f1;border-radius:99px;transition:width .35s ease}
-#farkle-root .fk-streak{font-size:10.5px;font-weight:700;color:#ef4444;min-height:13px}
-#farkle-root .fk-pot{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 6px;text-align:center}
-#farkle-root .fk-pot span{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}
-#farkle-root .fk-pot b{font-size:20px;font-weight:800;color:#4f46e5;font-variant-numeric:tabular-nums}
-#farkle-root .fk-pot em{font-style:normal;font-size:11px;color:#94a3b8}
-#farkle-root .fk-dice{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:flex-end;min-height:66px;user-select:none;touch-action:manipulation}
-#farkle-root .fk-die{width:56px;height:56px;background:#fff;border:2px solid #cbd5e1;border-radius:12px;padding:0;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,opacity .2s ease}
+#farkle-root .fk-spacer{flex:1 1 auto}
+#farkle-root .fk-btn{height:48px;padding:0 24px;border-radius:10px;border:1px solid var(--fk-line);background:var(--fk-surface);color:var(--fk-ink);font-size:14px;font-weight:700;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease;touch-action:manipulation}
+#farkle-root .fk-btn:hover:not(:disabled){border-color:#6366f1;color:#4f46e5}
+#farkle-root .fk-btn.primary{background:#4f46e5;border-color:#4f46e5;color:#fff}
+#farkle-root .fk-btn.primary:hover:not(:disabled){background:#4338ca;color:#fff}
+#farkle-root .fk-btn:disabled{opacity:.4;cursor:default}
+#farkle-root .fk-hud .fk-btn{height:34px;min-height:34px;padding:0 10px;border-radius:8px;font-size:11px}
+#farkle-root .fk-hud .fk-btn.on{border-color:#6366f1;color:#4f46e5}
+#farkle-root .fk-icon-btn{display:inline-flex;align-items:center;gap:6px}
+#farkle-root .fk-icon-btn svg{flex:none;display:block}
+#farkle-root .fk-board{position:relative;width:100%;flex:1 1 auto;min-height:0;aspect-ratio:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;border:1px solid var(--fk-line);border-radius:12px;background:var(--fk-surface);overflow:hidden;min-width:0}
+#farkle-root .fk-dice{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:flex-end;min-height:66px;user-select:none;touch-action:manipulation;max-width:100%}
+#farkle-root .fk-die{width:56px;height:56px;background:var(--fk-surface);border:2px solid var(--fk-line);border-radius:12px;padding:0;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,opacity .2s ease}
 #farkle-root .fk-die svg{display:block;width:100%;height:100%}
 #farkle-root .fk-die-bg{fill:transparent}
-#farkle-root .fk-pip{fill:#0f172a}
-#farkle-root .fk-die.sel{transform:translateY(-6px);border-color:#6366f1;box-shadow:0 8px 14px rgba(79,70,229,.22)}
-#farkle-root .fk-die.ghost{border-style:dashed;border-color:#e2e8f0;background:transparent;cursor:default}
+#farkle-root .fk-pip{fill:var(--fk-ink)}
+#farkle-root .fk-die.sel{transform:translateY(-6px);border-color:#6366f1;box-shadow:0 6px 12px rgba(79,70,229,.2)}
+#farkle-root .fk-die.ghost{border-style:dashed;border-color:var(--fk-line);background:transparent;cursor:default}
 #farkle-root .fk-die.off{display:none}
 #farkle-root .fk-die.locked{cursor:default}
 #farkle-root .fk-die.dead{opacity:.4;filter:grayscale(1)}
 #farkle-root .fk-die.spent{opacity:.55}
 #farkle-root .fk-die.rolling{animation:fkRoll .24s linear infinite}
 #farkle-root .fk-die.nope{animation:fkNope .32s ease}
-#farkle-root .fk-note{min-height:20px;font-size:13px;font-weight:600;color:#64748b;text-align:center;line-height:1.4}
-#farkle-root .fk-controls{display:flex;gap:10px;justify-content:center}
-#farkle-root .fk-btn{height:44px;padding:0 20px;border-radius:12px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,color .15s;touch-action:manipulation}
-#farkle-root .fk-btn:hover:not(:disabled){border-color:#6366f1;color:#4f46e5}
-#farkle-root .fk-btn.primary{background:#4f46e5;border-color:transparent;color:#fff}
-#farkle-root .fk-btn.primary:hover:not(:disabled){background:#4338ca;color:#fff}
-#farkle-root .fk-btn:disabled{opacity:.4;cursor:default}
-#farkle-root .fk-result{display:flex;flex-direction:column;align-items:center;gap:8px;padding:4px 0}
-#farkle-root .fk-result b{font-size:19px;font-weight:800}
-#farkle-root .fk-result.win b{color:#16a34a}
-#farkle-root .fk-result.lose b{color:#dc2626}
-#farkle-root .fk-result.draw b{color:#64748b}
-#farkle-root .fk-result span{font-size:12.5px;color:#94a3b8;font-variant-numeric:tabular-nums}
-#farkle-root .fk-cheats{position:absolute;inset:0;background:rgba(15,23,42,.35);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:5}
-#farkle-root .fk-cheat-card{width:min(320px,92%);background:#fff;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 18px 40px rgba(15,23,42,.25)}
-#farkle-root .fk-cheat-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
-#farkle-root .fk-cheat-head b{font-size:14px;font-weight:800;letter-spacing:.02em}
-#farkle-root .fk-x{width:28px;height:28px;border:none;border-radius:8px;background:#f1f5f9;color:#64748b;font-size:16px;line-height:1;cursor:pointer}
-#farkle-root .fk-x:hover{background:#e2e8f0}
-#farkle-root .fk-cheat-btn{width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;font-size:13px;font-weight:600;color:#0f172a;cursor:pointer;transition:background .15s,border-color .15s}
+#farkle-root .fk-note{min-height:20px;font-size:13px;font-weight:600;color:var(--fk-mut);text-align:center;line-height:1.4}
+#farkle-root .fk-controls{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;width:100%}
+#farkle-root .fk-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.35);backdrop-filter:blur(2px)}
+#farkle-root .fk-ovcard{width:min(520px,100%);max-height:100%;display:flex;flex-direction:column;gap:12px;overflow:hidden;padding:16px;background:var(--fk-surface);border:1px solid var(--fk-line);border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.18)}
+#farkle-root .fk-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px}
+#farkle-root .fk-head b{font-size:14px;font-weight:800;letter-spacing:.02em}
+#farkle-root .fk-help,#farkle-root .fk-cheats,#farkle-root .fk-body{flex:1 1 auto;min-height:0;overflow:auto}
+#farkle-root .fk-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;align-content:start}
+#farkle-root .fk-help b{display:block;margin-bottom:6px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--fk-mut);text-transform:uppercase}
+#farkle-root .fk-help ul{margin:0 0 12px;padding-left:16px;font:600 11px/1.7 ui-monospace,monospace;color:var(--fk-mut)}
+#farkle-root .fk-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--fk-line);border-bottom-width:2px;border-radius:5px;background:var(--fk-soft);color:var(--fk-ink);font:inherit}
+#farkle-root .fk-cheats{display:flex;flex-direction:column;gap:8px}
+#farkle-root .fk-cheat-btn{width:100%;min-height:44px;text-align:left;padding:10px 12px;border-radius:9px;border:1px solid var(--fk-line);background:var(--fk-surface);font-size:13px;font-weight:600;color:var(--fk-ink);cursor:pointer;transition:background .15s ease,border-color .15s ease}
 #farkle-root .fk-cheat-btn:hover:not(:disabled){background:#eef2ff;border-color:#6366f1}
 #farkle-root .fk-cheat-btn:disabled{opacity:.4;cursor:default}
+#farkle-root .fk-x{width:44px;height:44px;border:1px solid var(--fk-line);border-radius:9px;background:var(--fk-soft);color:var(--fk-mut);font-size:16px;line-height:1;cursor:pointer}
+#farkle-root .fk-x:hover{background:var(--fk-line)}
+#farkle-root .fk-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:10px;border-top:1px solid var(--fk-line)}
+#farkle-root .fk-note-sm{font:600 10px/1.4 ui-monospace,monospace;color:var(--fk-mut)}
+#farkle-root .fk-result{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:4px 0;text-align:center}
+#farkle-root .fk-result b{font-size:20px;font-weight:800}
+#farkle-root .fk-result.win b{color:#16a34a}
+#farkle-root .fk-result.lose b{color:#dc2626}
+#farkle-root .fk-result.draw b{color:var(--fk-mut)}
+#farkle-root .fk-result span{font-size:12.5px;color:var(--fk-mut);font-variant-numeric:tabular-nums}
+#farkle-root button:focus-visible{outline:2px solid #6366f1;outline-offset:2px}
 @keyframes fkRoll{0%{transform:rotate(0) translateY(0)}25%{transform:rotate(-11deg) translateY(-7px)}50%{transform:rotate(8deg) translateY(-3px)}75%{transform:rotate(-5deg) translateY(-8px)}100%{transform:rotate(0) translateY(0)}}
 @keyframes fkNope{0%,100%{transform:translateX(0)}30%{transform:translateX(-6px)}60%{transform:translateX(6px)}}
 @media (max-width:560px){
-  #farkle-root .fk-panel{padding:14px;gap:12px}
-  #farkle-root .fk-die{width:46px;height:46px;border-radius:10px}
-  #farkle-root .fk-dice{gap:8px;min-height:56px}
-  #farkle-root .fk-seat-score{font-size:18px}
-  #farkle-root .fk-pot b{font-size:16px}
-  #farkle-root .fk-controls .fk-btn{flex:1;padding:0 10px}
+#farkle-root{gap:8px}
+#farkle-root .fk-board{padding:12px;gap:12px}
+#farkle-root .fk-die{width:48px;height:48px;border-radius:10px}
+#farkle-root .fk-dice{gap:8px;min-height:56px}
+#farkle-root .fk-controls{gap:8px}
+#farkle-root .fk-controls .fk-btn{flex:1;padding:0 12px}
+}
+@media (pointer:coarse){#farkle-root .fk-btn{min-height:48px}#farkle-root .fk-cheat-btn{min-height:44px}}
+@media (prefers-reduced-motion:reduce){#farkle-root .fk-die.rolling,#farkle-root .fk-die.nope{animation:none}#farkle-root .fk-bar i,#farkle-root .fk-btn,#farkle-root .fk-cheat-btn{transition:none}#farkle-root .fk-die.sel{transform:none}}
+/* --- layout redesign overrides (keep last) --- */
+#farkle-root.game-fill > .fk-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+#farkle-root.game-fill > .fk-board:not(:has(.fk-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+#farkle-root.game-fill > .fk-board:has(.fk-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+#farkle-root .fk-hud{gap:5px}
+#farkle-root .fk-hud .fk-chip{padding:4px 6px;font-size:9px}
+#farkle-root .fk-hud .fk-chip small,
+#farkle-root .fk-hud .fk-chip .fk-bar,
+#farkle-root .fk-hud .fk-chip[data-hud="streak0"],
+#farkle-root .fk-hud .fk-chip[data-hud="streak1"],
+#farkle-root .fk-hud .fk-chip[data-hud="lucky0"],
+#farkle-root .fk-hud .fk-chip[data-hud="lucky1"]{display:none}
+#farkle-root .fk-hud .fk-btn{min-height:32px;padding:5px 9px;font-size:9px}
+#farkle-root .fk-hud .fk-btn-label,
+#farkle-root .fk-spacer{display:none}
+#farkle-root .fk-ov{padding:8px}
+#farkle-root .fk-ovcard{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+#farkle-root .fk-help,#farkle-root .fk-cheats,#farkle-root .fk-body{scrollbar-width:none}
+#farkle-root .fk-help::-webkit-scrollbar,
+#farkle-root .fk-cheats::-webkit-scrollbar,
+#farkle-root .fk-body::-webkit-scrollbar{display:none}
+#farkle-root .fk-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--fk-line)}
+#farkle-root .fk-note-sm{display:none}
 }
 </style>
-<div class="game-app" id="farkle-root">
-  <div class="game-intro">
-    <div><h2>Farkle</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app fk-game game-fill" id="farkle-root" data-fk>
+  <div class="fk-hud">
+    <span class="fk-chip fk-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+    <span class="fk-chip" data-seat-chip="0"><span data-hud-name="0">You</span> <b data-hud="score0">0</b> <small>/ ${fmt(TARGET)}</small> <span class="fk-bar"><i data-hud="bar0"></i></span></span>
+    <span class="fk-chip" data-seat-chip="1"><span data-hud-name="1">Rival</span> <b data-hud="score1">0</b> <small>/ ${fmt(TARGET)}</small> <span class="fk-bar"><i data-hud="bar1"></i></span></span>
+    <span class="fk-chip" data-hud="streak0" hidden>F×0</span>
+    <span class="fk-chip" data-hud="streak1" hidden>F×0</span>
+    <span class="fk-chip fk-lucky" data-hud="lucky0" hidden>🍀 You</span>
+    <span class="fk-chip fk-lucky" data-hud="lucky1" hidden>🍀 Rival</span>
+    <span class="fk-chip">POT <b data-hud="pot">0</b></span>
+    <span class="fk-chip">DICE <b data-hud="left">6</b></span>
+    <span class="fk-spacer"></span>
+    <button class="fk-btn fk-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="fk-btn-label">Help</span></button>
+    <button class="fk-btn fk-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="fk-btn-label">Cheats</span></button>
+    <button class="fk-btn fk-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="fk-btn-label">Pause</span></button>
+    <button class="fk-btn fk-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="fk-btn-label">Restart</span></button>
+    <button class="fk-btn fk-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="fk-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel fk-panel" data-board>
-    <div class="fk-scoreboard">
-      <div class="fk-seat" data-seat="0">
-        <span class="fk-seat-top"><span data-name>Player 1</span><span class="fk-you" data-you hidden>You</span><span class="fk-lucky" data-lucky hidden>🍀</span></span>
-        <b class="fk-seat-score"><span data-score>0</span> <small>/ ${fmt(TARGET)}</small></b>
-        <i class="fk-bar"><i data-bar></i></i>
-        <span class="fk-streak" data-streak></span>
-      </div>
-      <div class="fk-pot"><span>Turn pot</span><b data-pot>0</b><em data-left>6 dice</em></div>
-      <div class="fk-seat" data-seat="1">
-        <span class="fk-seat-top"><span data-name>Player 2</span><span class="fk-you" data-you hidden>You</span><span class="fk-lucky" data-lucky hidden>🍀</span></span>
-        <b class="fk-seat-score"><span data-score>0</span> <small>/ ${fmt(TARGET)}</small></b>
-        <i class="fk-bar"><i data-bar></i></i>
-        <span class="fk-streak" data-streak></span>
-      </div>
-    </div>
+  <section class="game-panel fk-board" data-board>
     <div class="fk-dice" data-dice></div>
     <div class="fk-note" data-note></div>
     <div class="fk-controls" data-controls>
       <button class="fk-btn primary" type="button" data-act="roll" title="Space / Enter">Roll 6 dice</button>
       <button class="fk-btn" type="button" data-act="bank" title="B">Bank</button>
     </div>
-    <div class="fk-result" data-result hidden>
-      <b data-result-text></b>
-      <span data-result-score></span>
-      <button class="fk-btn primary" type="button" data-act="restart">Play again</button>
+    <div class="fk-ov" data-ov="over" hidden>
+      <div class="fk-ovcard">
+        <div class="fk-head"><b>Game over</b></div>
+        <div class="fk-body fk-result" data-result>
+          <b data-result-text></b>
+          <span data-result-score></span>
+        </div>
+        <div class="fk-foot"><span class="fk-note-sm">R to restart</span><button class="fk-btn primary" type="button" data-act="restart" data-restart>Play again</button></div>
+      </div>
     </div>
-    <div class="fk-cheats" data-cheats hidden>
-      <div class="fk-cheat-card">
-        <div class="fk-cheat-head"><b>Cheats</b><button class="fk-x" type="button" data-cheat-close aria-label="Close">×</button></div>
-        <button class="fk-cheat-btn" type="button" data-cheat="turn500">+500 turn pot</button>
-        <button class="fk-cheat-btn" type="button" data-cheat="score1000">+1,000 score</button>
-        <button class="fk-cheat-btn" type="button" data-cheat="lucky">Lucky next roll (no farkle)</button>
-        <button class="fk-cheat-btn" type="button" data-cheat="straight">Serve a straight (1–6)</button>
-        <button class="fk-cheat-btn" type="button" data-cheat="win">Instant win</button>
+    <div class="fk-ov" data-ov="pause" hidden>
+      <div class="fk-ovcard">
+        <div class="fk-head"><b>Paused</b></div>
+        <div class="fk-body"><span class="fk-note-sm">Your turn, bot steps and dice timers are frozen.</span></div>
+        <div class="fk-foot"><span class="fk-note-sm">Press P or Esc to resume</span><button class="fk-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="fk-ov" data-ov="cheats" hidden>
+      <div class="fk-ovcard">
+        <div class="fk-head"><b>Cheats</b><button class="fk-x" type="button" data-cheat-close aria-label="Close cheats">×</button></div>
+        <div class="fk-cheats">
+          <button class="fk-cheat-btn" type="button" data-cheat="turn500">+500 turn pot</button>
+          <button class="fk-cheat-btn" type="button" data-cheat="score1000">+1,000 score</button>
+          <button class="fk-cheat-btn" type="button" data-cheat="lucky">Lucky next roll (no farkle)</button>
+          <button class="fk-cheat-btn" type="button" data-cheat="straight">Serve a straight (1–6)</button>
+          <button class="fk-cheat-btn" type="button" data-cheat="win">Instant win</button>
+        </div>
+        <div class="fk-foot"><span class="fk-note-sm">Press C to toggle this panel</span><button class="fk-btn" type="button" data-cheat-close>Done</button></div>
+      </div>
+    </div>
+    <div class="fk-ov" data-ov="help" hidden>
+      <div class="fk-ovcard">
+        <div class="fk-head"><b>How to play</b><button class="fk-x" type="button" data-help-close aria-label="Close help">×</button></div>
+        <div class="fk-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Click scoring dice, then <span class="fk-kbd">Space</span> / <span class="fk-kbd">Enter</span> to roll again, or <span class="fk-kbd">B</span> to bank.</li>
+              <li><span class="fk-kbd">1</span>–<span class="fk-kbd">6</span> select the matching die.</li>
+              <li><span class="fk-kbd">H</span> help · <span class="fk-kbd">C</span> cheats · <span class="fk-kbd">P</span>/<span class="fk-kbd">Esc</span> pause · <span class="fk-kbd">R</span> restart.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap dice to select them, then tap Roll again or Bank.</li>
+              <li>Use the HUD icons for help, cheats, pause, restart and exit.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Score with 1s (100), 5s (50), triples and above, straights (1,500) or three pairs (1,500).</li>
+              <li>All six scoring dice roll again for free — hot dice.</li>
+              <li>A farkle loses the turn pot; three in a row cost 1,000 points.</li>
+              <li>First to 10,000 triggers one final turn for the opponent.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="fk-foot"><span class="fk-note-sm">Press H to reopen this guide</span><button class="fk-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="restart" title="N">New game</button>
-    <button class="game-action-button" type="button" data-cheat-open title="C">Cheats</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
@@ -316,27 +404,31 @@ export function mount(root, context = {}) {
     const statusEl = $("[data-status]");
     const diceBox = $("[data-dice]");
     const noteEl = $("[data-note]");
-    const potEl = $("[data-pot]");
-    const leftEl = $("[data-left]");
+    const potEl = $("[data-hud='pot']");
+    const leftEl = $("[data-hud='left']");
     const controlsEl = $("[data-controls]");
     const rollBtn = $('[data-act="roll"]');
     const bankBtn = $('[data-act="bank"]');
     const resultEl = $("[data-result]");
     const resultText = $("[data-result-text]");
     const resultScore = $("[data-result-score]");
-    const cheatsEl = $("[data-cheats]");
-    const seats = [0, 1].map((i) => {
-        const el = root.querySelector('[data-seat="' + i + '"]');
-        return {
-            el,
-            name: el.querySelector("[data-name]"),
-            you: el.querySelector("[data-you]"),
-            lucky: el.querySelector("[data-lucky]"),
-            score: el.querySelector("[data-score]"),
-            bar: el.querySelector("[data-bar]"),
-            streak: el.querySelector("[data-streak]"),
-        };
-    });
+    const ov = {
+        over: $('[data-ov="over"]'),
+        pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheats"]'),
+        help: $('[data-ov="help"]'),
+    };
+    const hud = {
+        name: [0, 1].map((i) => $('[data-hud-name="' + i + '"]')),
+        score: [0, 1].map((i) => $('[data-hud="score' + i + '"]')),
+        bar: [0, 1].map((i) => $('[data-hud="bar' + i + '"]')),
+        seat: [0, 1].map((i) => $('[data-seat-chip="' + i + '"]')),
+        streak: [0, 1].map((i) => $('[data-hud="streak' + i + '"]')),
+        lucky: [0, 1].map((i) => $('[data-hud="lucky' + i + '"]')),
+    };
+    const pauseBtn = $("[data-pause]");
+    const pauseIcon = $("[data-pause-icon]");
+    const cheatsBtn = $("[data-cheats]");
     const show = (el) => el.removeAttribute("hidden");
     const hide = (el) => el.setAttribute("hidden", "");
 
@@ -363,35 +455,75 @@ export function mount(root, context = {}) {
         for (let i = 0; i < 6; i++) setFace(dieEls[i], i < n ? state.dice[i] : 0);
     }
 
-    /* ---------------- timers ---------------- */
+    /* ---------------- pause-aware timers ---------------- */
+    /* Wall-clock anchors shift on resume: flow, bot steps, FX and the dice
+       roll animation never jump forward after help / cheats / pause. */
     const timers = new Set();
-    function later(fn, ms) {
-        const t = setTimeout(() => {
-            timers.delete(t);
-            if (!destroyed) fn();
-        }, ms);
-        timers.add(t);
-        return t;
+    let freezeAt = 0;
+    function schedule(ms, fn) {
+        const rec = { fn, due: (freezeAt || Date.now()) + ms, id: 0 };
+        rec.arm = () => {
+            if (rec.id) clearTimeout(rec.id);
+            rec.id = setTimeout(() => {
+                rec.id = 0;
+                if (freezeAt) return;
+                timers.delete(rec);
+                if (!destroyed) fn();
+            }, Math.max(0, rec.due - Date.now()));
+        };
+        timers.add(rec);
+        if (!freezeAt) rec.arm();
+        return rec;
     }
+    function later(fn, ms) { return schedule(ms, fn); }
     function clearTimers() {
-        timers.forEach((t) => clearTimeout(t));
+        timers.forEach((rec) => { if (rec.id) clearTimeout(rec.id); });
         timers.clear();
     }
     let flowTimer = null;
     function clearFlow() {
         if (flowTimer) {
-            clearTimeout(flowTimer);
+            if (flowTimer.id) clearTimeout(flowTimer.id);
             timers.delete(flowTimer);
             flowTimer = null;
         }
     }
 
     /* ---------------- roll animation (cosmetic, keyed by rollSeq) ---------------- */
-    let seenRoll = -1, animTimer = null, animInterval = null;
+    let seenRoll = -1, animTimer = null, animInterval = null, animFrozen = false;
+    function startRolling() {
+        if (animInterval || !state || !state.dice.length) return;
+        const els = dieEls.slice(0, state.dice.length);
+        animInterval = setInterval(() => {
+            els.forEach((el) => setFace(el, 1 + ((Math.random() * 6) | 0)));
+        }, 85);
+    }
     function stopAnim() {
         if (animInterval) { clearInterval(animInterval); animInterval = null; }
-        if (animTimer) { clearTimeout(animTimer); timers.delete(animTimer); animTimer = null; }
+        if (animTimer) {
+            if (animTimer.id) clearTimeout(animTimer.id);
+            timers.delete(animTimer);
+            animTimer = null;
+        }
+        animFrozen = false;
         dieEls.forEach((el) => el.classList.remove("rolling"));
+    }
+    function freezeTimers() {
+        if (freezeAt) return;
+        freezeAt = Date.now();
+        timers.forEach((rec) => { if (rec.id) { clearTimeout(rec.id); rec.id = 0; } });
+        if (animInterval) { clearInterval(animInterval); animInterval = null; animFrozen = true; }
+    }
+    function thawTimers() {
+        if (!freezeAt) return;
+        const shift = Date.now() - freezeAt;
+        freezeAt = 0;
+        timers.forEach((rec) => { rec.due += shift; rec.arm(); });
+        if (animFrozen) { animFrozen = false; startRolling(); }
+    }
+    function syncFreeze() {
+        if (paused || helpOpen || cheatsOpen) freezeTimers();
+        else thawTimers();
     }
     function syncDice() {
         const n = state ? state.dice.length : 0;
@@ -406,9 +538,8 @@ export function mount(root, context = {}) {
             stopAnim();
             const els = dieEls.slice(0, n);
             els.forEach((el) => el.classList.add("rolling"));
-            animInterval = setInterval(() => {
-                els.forEach((el) => setFace(el, 1 + ((Math.random() * 6) | 0)));
-            }, 85);
+            if (freezeAt) animFrozen = true;
+            else startRolling();
             animTimer = later(() => { stopAnim(); paintFaces(); }, 460);
         } else {
             paintFaces();
@@ -634,35 +765,28 @@ export function mount(root, context = {}) {
     }
 
     /* ---------------- render ---------------- */
-    let cheatOpen = false;
-    function toggleCheat(force) {
-        cheatOpen = force === undefined ? !cheatOpen : Boolean(force);
-        if (cheatOpen) show(cheatsEl); else hide(cheatsEl);
-    }
-
     function render() {
         const me = mySeat();
         const over = Boolean(state && state.phase === "over");
         const myTurn = Boolean(state && !over && state.turn === me);
         const phase = state ? state.phase : "";
 
-        /* status */
+        /* status (in the HUD) */
         if (!state) statusEl.textContent = "Waiting for host…";
         else if (over) statusEl.textContent = state.winner === -1 ? "Draw" : state.winner === me ? "You win!" : seatName(state.winner) + " wins";
         else statusEl.textContent = myTurn ? "Your turn" : seatName(state.turn) + "'s turn";
 
-        /* scoreboard */
+        /* HUD scoreboard */
         for (let i = 0; i < 2; i++) {
-            const s = seats[i];
             const total = state ? state.totals[i] : 0;
-            s.name.textContent = NAMES[i];
-            s.you.hidden = !(online && i === me);
-            s.you.title = playerName;
-            s.lucky.hidden = !(state && state.lucky[i]);
-            s.score.textContent = fmt(total);
-            s.bar.style.width = Math.max(0, Math.min(100, (total / TARGET) * 100)) + "%";
-            s.streak.textContent = state && state.streak[i] > 0 ? "Farkle ×" + state.streak[i] : "";
-            s.el.classList.toggle("active", Boolean(state && !over && state.turn === i));
+            hud.name[i].textContent = i === me ? "You" : seatName(i);
+            hud.score[i].textContent = fmt(total);
+            hud.bar[i].style.width = Math.max(0, Math.min(100, (total / TARGET) * 100)) + "%";
+            hud.seat[i].classList.toggle("active", Boolean(state && !over && state.turn === i));
+            const f = state && state.streak[i] > 0 ? "F×" + state.streak[i] : "";
+            hud.streak[i].textContent = f;
+            if (f) show(hud.streak[i]); else hide(hud.streak[i]);
+            if (state && state.lucky[i]) show(hud.lucky[i]); else hide(hud.lucky[i]);
         }
 
         /* pot + dice left */
@@ -708,10 +832,10 @@ export function mount(root, context = {}) {
             bankBtn.textContent = "Bank";
         }
 
-        /* result */
+        /* result overlay */
         if (over) {
             show(resultEl);
-            resultEl.className = "fk-result " + (state.winner === -1 ? "draw" : state.winner === me ? "win" : "lose");
+            resultEl.className = "fk-body fk-result " + (state.winner === -1 ? "draw" : state.winner === me ? "win" : "lose");
             resultText.textContent = state.winner === -1 ? "Draw!" : state.winner === me ? "You win!" : seatName(state.winner) + " wins!";
             resultScore.textContent = NAMES[0] + " " + fmt(state.totals[0]) + " — " + NAMES[1] + " " + fmt(state.totals[1]);
         } else {
@@ -726,6 +850,42 @@ export function mount(root, context = {}) {
         root.querySelector('[data-cheat="score1000"]').disabled = !alive;
         root.querySelector('[data-cheat="lucky"]').disabled = !alive;
         root.querySelector('[data-cheat="win"]').disabled = !alive;
+
+        /* overlay priority: help > cheats > pause > result */
+        ov.help.hidden = !helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+        ov.over.hidden = !over || helpOpen || cheatsOpen || paused;
+
+        const pLabel = pauseBtn.querySelector(".fk-btn-label");
+        if (pLabel) pLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseIcon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+        cheatsBtn.classList.toggle("on", Boolean(state && (state.lucky[0] || state.lucky[1])));
+    }
+
+    /* ---------------- overlay controls ---------------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        syncFreeze();
+        render();
+    }
+    function togglePause(on) {
+        paused = typeof on === "boolean" ? on : !paused;
+        syncFreeze();
+        render();
+    }
+    function restartGame() {
+        paused = false; helpOpen = false; cheatsOpen = false;
+        syncFreeze();
+        submitAction({ type: "restart" });
     }
 
     /* ---------------- input (mouse / touch / keyboard) ---------------- */
@@ -754,16 +914,26 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
-        if (cheatOpen && event.target === cheatsEl) { toggleCheat(false); return; }
-        const b = event.target.closest("button");
-        if (!b || !root.contains(b)) return;
-        if (b.hasAttribute("data-exit")) { onExit(); return; }
-        if (b.hasAttribute("data-cheat-open")) { toggleCheat(); return; }
-        if (b.hasAttribute("data-cheat-close")) { toggleCheat(false); return; }
-        if (b.dataset.cheat) { submitAction({ type: "cheat", kind: b.dataset.cheat }); return; }
+        if (destroyed) return;
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheat-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        const b = t.closest("button");
+        if (!b || !root.contains(b) || b.disabled) return;
+        if (b.dataset.cheat) {
+            if (cheatsOpen && !helpOpen && !paused) submitAction({ type: "cheat", kind: b.dataset.cheat });
+            return;
+        }
+        if (paused || helpOpen || cheatsOpen) return;
         if (b.dataset.act === "roll") { tryRoll(); return; }
         if (b.dataset.act === "bank") { tryBank(); return; }
-        if (b.dataset.act === "restart") { toggleCheat(false); submitAction({ type: "restart" }); return; }
         if (b.dataset.die !== undefined) toggleDie(+b.dataset.die);
     }
 
@@ -771,14 +941,28 @@ export function mount(root, context = {}) {
         if (destroyed || !root.isConnected) return;
         if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
         const tag = e.target && e.target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        if (e.code === "Escape") { toggleCheat(false); return; }
-        if (e.code === "KeyC") { toggleCheat(); return; }
-        if (cheatOpen) return;
-        if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); tryRoll(); }
-        else if (e.code === "KeyB") tryBank();
-        else if (e.code === "KeyN") { toggleCheat(false); submitAction({ type: "restart" }); }
-        else if (/^Digit[1-6]$/.test(e.code)) toggleDie(+e.code.slice(5) - 1);
+        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target && e.target.isContentEditable)) return;
+        const code = e.code;
+
+        /* UI priority: help → cheats → pause/Escape → restart → game actions */
+        if (code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (code === "KeyP" || code === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else togglePause();
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR") { restartGame(); e.preventDefault(); return; }
+        if (helpOpen || cheatsOpen) return;
+        if (paused) {
+            if (code === "Space" || code === "Enter") { togglePause(false); e.preventDefault(); }
+            return;
+        }
+        if (code === "Space" || code === "Enter") { e.preventDefault(); tryRoll(); }
+        else if (code === "KeyB") tryBank();
+        else if (code === "KeyN") restartGame();
+        else if (/^Digit[1-6]$/.test(code)) toggleDie(+code.slice(5) - 1);
     }
 
     root.addEventListener("click", handleClick);
@@ -788,6 +972,7 @@ export function mount(root, context = {}) {
     const unsubs = [];
     const keepUnsub = (u) => { if (typeof u === "function") unsubs.push(u); };
 
+    syncFreeze(); // first-run help must freeze the flow before any timer is armed
     if (online) {
         keepUnsub(room.onRoom((nextRoom) => {
             if (destroyed) return;

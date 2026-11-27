@@ -3,9 +3,11 @@
  * Slot Machine — duel slot 3 gulungan (vs Bot / multiplayer room).
  * - Level acak yang DIVERIFIKASI bisa diselesaikan (simulasi Monte Carlo).
  * - Koin acak menentukan giliran pertama; kursi pemain diacak tiap ronde.
- * - Tutorial, cheat overlay (solo), tombol virtual mobile, keyboard/mouse desktop.
+ * - Tutorial internal (sekali jalan), cheat overlay (solo), pause, HUD bar.
  * - 4 tema minimalis x 2 pack simbol = variasi tampilan slot.
  */
+
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "slot-machine", // harus sama dengan nama file (tanpa .js)
@@ -308,105 +310,131 @@ export function mount(root, context = {}) {
     try { bestLevel = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { }
 
     root.innerHTML = `
-<div class="game-app sm-wrap">
+<div class="game-app sm-wrap game-fill" data-sm>
   <style>
-  .sm-wrap{--sm-bg:#f7f7f8;--sm-panel:#fff;--sm-ink:#1f2937;--sm-muted:#6b7280;--sm-line:#e5e7eb;--sm-accent:#4f46e5;--sm-soft:#eef2ff;--sm-reel:#f3f4f6;--sm-gold:#b45309;--sm-cell:92px;color:var(--sm-ink)}
-  .sm-wrap [hidden]{display:none!important}
-  .sm-wrap button{font-family:inherit;touch-action:manipulation}
-  .sm-wrap button:focus-visible{outline:2px solid var(--sm-accent);outline-offset:2px}
-  .sm-wrap button:disabled{opacity:.4;cursor:default}
-  .sm-panel{position:relative;background:var(--sm-bg);border:1px solid var(--sm-line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:14px;overflow:hidden}
-  .sm-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .sm-chip{font-size:11.5px;font-weight:700;letter-spacing:.04em;padding:5px 10px;border-radius:999px;background:var(--sm-soft);color:var(--sm-accent);border:1px solid var(--sm-line)}
-  .sm-chip.sm-dim{background:var(--sm-panel);color:var(--sm-muted);font-weight:600}
-  .sm-flex{flex:1}
-  .sm-icobtn{width:32px;height:32px;display:grid;place-items:center;background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:9px;color:var(--sm-muted);cursor:pointer}
-  .sm-icobtn:hover{color:var(--sm-accent);border-color:var(--sm-accent)}
-  .sm-seats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .sm-seat{background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;transition:border-color .2s,box-shadow .2s}
-  .sm-seat.active{border-color:var(--sm-accent);box-shadow:0 0 0 3px var(--sm-soft)}
-  .sm-seat-top{display:flex;align-items:center;gap:6px;font-size:12.5px}
-  .sm-tag{font-size:9.5px;font-weight:800;letter-spacing:.06em;color:var(--sm-accent);background:var(--sm-soft);padding:2px 7px;border-radius:999px}
-  .sm-tag:empty{display:none}
-  .sm-credits{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
-  .sm-bar{height:4px;border-radius:999px;background:var(--sm-reel);overflow:hidden}
-  .sm-bar i{display:block;height:100%;width:0;background:var(--sm-accent);border-radius:999px;transition:width .5s}
-  .sm-seat-sub{display:flex;justify-content:space-between;font-size:11px;color:var(--sm-muted)}
-  .sm-machine{display:flex;flex-direction:column;gap:10px;align-items:center;background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:14px;padding:14px}
-  .sm-marquee{font-size:11px;font-weight:800;letter-spacing:.28em;text-transform:uppercase;color:var(--sm-gold)}
-  .sm-reels{display:flex;gap:10px;cursor:pointer;user-select:none;touch-action:manipulation}
-  .sm-window{position:relative;width:calc(var(--sm-cell) + 10px);height:var(--sm-cell);overflow:hidden;border-radius:10px;background:var(--sm-reel);border:1px solid var(--sm-line)}
-  .sm-strip{display:flex;flex-direction:column;will-change:transform}
-  .sm-cell{width:100%;height:var(--sm-cell);display:grid;place-items:center}
-  .sm-window.blur .sm-strip{filter:blur(2.4px)}
-  .sm-reels.win .sm-window{border-color:var(--sm-gold);animation:sm-flash .45s ease-in-out 4}
-  .sm-win{min-height:22px;font-size:15px;font-weight:800;color:var(--sm-accent);font-variant-numeric:tabular-nums;text-align:center}
-  .sm-win.pop{animation:sm-pop .5s ease-out}
-  .sm-controls{display:flex;align-items:stretch;justify-content:center;gap:8px;flex-wrap:wrap}
-  .sm-betbox{display:flex;align-items:center;gap:6px;background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:12px;padding:4px 8px}
-  .sm-step{width:34px;height:34px;border-radius:9px;border:1px solid var(--sm-line);background:var(--sm-bg);font-size:18px;font-weight:800;color:var(--sm-ink);cursor:pointer}
-  .sm-betval{display:flex;flex-direction:column;align-items:center;min-width:52px}
-  .sm-betval span{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--sm-muted)}
-  .sm-betval b{font-size:17px;font-variant-numeric:tabular-nums}
-  .sm-chips{display:flex;align-items:center;gap:6px}
-  .sm-chipbtn{border:1px solid var(--sm-line);background:var(--sm-panel);border-radius:999px;padding:8px 13px;font-weight:700;font-size:12.5px;color:var(--sm-ink);cursor:pointer}
-  .sm-chipbtn.sel{background:var(--sm-accent);border-color:var(--sm-accent);color:#fff}
-  .sm-btn{border:1px solid var(--sm-line);background:var(--sm-panel);color:var(--sm-ink);border-radius:12px;padding:0 16px;font-weight:700;font-size:13px;cursor:pointer;min-height:44px}
-  .sm-btn.on{background:var(--sm-soft);border-color:var(--sm-accent);color:var(--sm-accent)}
-  .sm-spin{background:var(--sm-accent);border-color:var(--sm-accent);color:#fff;font-size:15px;font-weight:800;letter-spacing:.08em;padding:0 26px}
-  .sm-pay{background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:12px;padding:10px 14px;font-size:12px}
-  .sm-pay summary{cursor:pointer;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--sm-muted)}
-  .sm-row{display:flex;align-items:center;gap:4px;min-height:22px;color:var(--sm-ink)}
-  .sm-row b{margin-left:auto;color:var(--sm-gold)}
-  .sm-any{font-size:9.5px;color:var(--sm-muted);margin:0 2px}
-  .sm-note{font-size:10.5px;color:var(--sm-muted);margin:6px 0 0}
-  .sm-hint{font-size:11px;color:var(--sm-muted);text-align:center;margin:0}
-  .sm-toss{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:5;display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:14px;padding:10px 18px;box-shadow:0 8px 24px rgba(0,0,0,.12);text-align:center}
-  .sm-coin{animation:sm-coin 1s linear infinite}
-  .sm-toss b{font-size:13px}
-  .sm-toss span{font-size:10.5px;color:var(--sm-muted)}
-  .sm-toast{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:6;background:var(--sm-ink);color:var(--sm-bg);font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.18);white-space:nowrap}
-  .sm-ov{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:rgba(15,18,25,.45);backdrop-filter:blur(3px);padding:16px;box-sizing:border-box}
-  .sm-card{background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:16px;padding:20px;max-width:430px;width:100%;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px;box-shadow:0 16px 48px rgba(0,0,0,.2);box-sizing:border-box}
-  .sm-ov-title{margin:0;font-size:19px}
-  .sm-ov-title.good{color:var(--sm-accent)}
-  .sm-ov-title.bad{color:#dc2626}
-  .sm-card h3{margin:4px 0 0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--sm-muted)}
-  .sm-card p,.sm-card li{font-size:12.5px;line-height:1.55;margin:0;color:var(--sm-ink)}
-  .sm-card ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px}
-  .sm-keys{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11.5px;color:var(--sm-muted);align-items:center}
-  .sm-keys b{color:var(--sm-ink);font-family:ui-monospace,monospace;font-size:11px;background:var(--sm-reel);border:1px solid var(--sm-line);border-radius:5px;padding:1px 6px;justify-self:start}
-  .sm-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px}
-  .sm-toggle{min-width:56px;padding:6px 10px;border-radius:999px;border:1px solid var(--sm-line);background:var(--sm-bg);font-weight:800;font-size:11px;cursor:pointer;color:var(--sm-muted)}
-  .sm-toggle.on{background:var(--sm-soft);border-color:var(--sm-accent);color:var(--sm-accent)}
-  .sm-force{display:flex;gap:6px;flex-wrap:wrap}
-  .sm-forcebtn{width:40px;height:40px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--sm-line);background:var(--sm-bg);cursor:pointer}
-  .sm-forcebtn.sel{border-color:var(--sm-accent);box-shadow:0 0 0 2px var(--sm-soft)}
-  .sm-cheat-actions{display:flex;gap:6px;flex-wrap:wrap}
-  .sm-cheat-actions .sm-btn{min-height:36px;font-size:12px;padding:0 12px}
-  .sm-stats{font-size:12px;color:var(--sm-muted)}
-  @keyframes sm-flash{from{box-shadow:0 0 3px var(--sm-soft)}to{box-shadow:0 0 14px var(--sm-gold)}}
-  @keyframes sm-pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
-  @keyframes sm-coin{from{transform:rotateY(0)}to{transform:rotateY(360deg)}}
-  @media (max-width:620px){.sm-wrap{--sm-cell:72px}.sm-credits{font-size:21px}.sm-spin{flex:1 1 100%;order:9}.sm-controls{gap:6px}.sm-panel{padding:12px}}
-  @media (pointer:coarse){.sm-step{width:44px;height:44px}.sm-btn{min-height:50px}.sm-chipbtn{padding:10px 16px;font-size:14px}.sm-icobtn{width:40px;height:40px}}
-  @media (prefers-reduced-motion:reduce){.sm-coin{animation:none}.sm-reels.win .sm-window{animation:none}}
-  </style>
-  <div class="game-intro">
-    <div><h2>Slot Machine</h2><p>Duel slot: capai target kredit level sebelum lawanmu.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+.sm-wrap{--sm-bg:#f7f7f8;--sm-panel:#fff;--sm-ink:#1f2937;--sm-muted:#6b7280;--sm-line:#e5e7eb;--sm-accent:#4f46e5;--sm-soft:#eef2ff;--sm-reel:#f3f4f6;--sm-gold:#b45309;--sm-cell:clamp(64px,20vw,92px);color:var(--sm-ink);min-width:0}
+.sm-wrap [hidden]{display:none!important}
+.sm-wrap button{font-family:inherit;touch-action:manipulation}
+.sm-wrap button:focus-visible{outline:2px solid var(--sm-accent);outline-offset:2px}
+.sm-wrap button:disabled{opacity:.4;cursor:default}
+.sm-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0;margin-bottom:2px;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sm-chip{font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:5px 9px;border-radius:999px;background:var(--sm-soft);color:var(--sm-accent);border:1px solid var(--sm-line);white-space:nowrap}
+.sm-chip.sm-dim{background:var(--sm-panel);color:var(--sm-muted);font-weight:600}
+.sm-chip b{color:var(--sm-ink);font-variant-numeric:tabular-nums}
+.sm-spacer{flex:1 1 auto}
+.sm-btn{border:1px solid var(--sm-line);background:var(--sm-panel);color:var(--sm-ink);border-radius:9px;padding:0 16px;font-weight:700;font-size:13px;cursor:pointer;min-height:44px}
+.sm-btn.on{background:var(--sm-soft);border-color:var(--sm-accent);color:var(--sm-accent)}
+.sm-icon-btn{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:5px 8px;font-size:10px}
+.sm-icon-btn svg{flex:none;display:block}
+.sm-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;background:var(--sm-bg);border:1px solid var(--sm-line);border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:center;gap:12px;overflow:hidden;min-width:0}
+.sm-seats{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:0}
+.sm-seat{background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0;transition:border-color .16s ease,box-shadow .16s ease}
+.sm-seat.active{border-color:var(--sm-accent);box-shadow:0 0 0 2px var(--sm-soft)}
+.sm-seat-top{display:flex;align-items:center;gap:8px;font-size:12.5px;min-width:0;flex-wrap:wrap}
+.sm-tag{font-size:9.5px;font-weight:800;letter-spacing:.06em;color:var(--sm-accent);background:var(--sm-soft);padding:2px 8px;border-radius:999px}
+.sm-tag:empty{display:none}
+.sm-credits{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.sm-bar{height:4px;border-radius:999px;background:var(--sm-reel);overflow:hidden}
+.sm-bar i{display:block;height:100%;width:0;background:var(--sm-accent);border-radius:999px;transition:width .2s ease}
+.sm-seat-sub{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--sm-muted)}
+.sm-machine{display:flex;flex-direction:column;gap:12px;align-items:center;background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:12px;padding:16px;min-width:0;max-width:100%}
+.sm-marquee{font-size:11px;font-weight:800;letter-spacing:.24em;text-transform:uppercase;color:var(--sm-gold);text-align:center}
+.sm-reels{display:flex;gap:10px;cursor:pointer;user-select:none;touch-action:manipulation;max-width:100%}
+.sm-window{position:relative;width:calc(var(--sm-cell) + 10px);height:var(--sm-cell);overflow:hidden;border-radius:8px;background:var(--sm-reel);border:1px solid var(--sm-line)}
+.sm-strip{display:flex;flex-direction:column;will-change:transform}
+.sm-cell{width:100%;height:var(--sm-cell);display:grid;place-items:center}
+.sm-window.blur .sm-strip{filter:blur(2.4px)}
+.sm-reels.win .sm-window{border-color:var(--sm-gold);animation:sm-flash .45s ease-in-out 4}
+.sm-win{min-height:24px;font-size:16px;font-weight:800;color:var(--sm-accent);font-variant-numeric:tabular-nums;text-align:center}
+.sm-win.pop{animation:sm-pop .5s ease-out}
+.sm-controls{display:flex;align-items:stretch;justify-content:center;gap:8px;flex-wrap:wrap;width:100%}
+.sm-betbox{display:flex;align-items:center;gap:8px;background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:10px;padding:4px 8px}
+.sm-step{width:44px;height:44px;border-radius:9px;border:1px solid var(--sm-line);background:var(--sm-bg);font-size:18px;font-weight:800;color:var(--sm-ink);cursor:pointer}
+.sm-betval{display:flex;flex-direction:column;align-items:center;min-width:52px}
+.sm-betval span{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--sm-muted)}
+.sm-betval b{font-size:17px;font-variant-numeric:tabular-nums}
+.sm-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sm-chipbtn{border:1px solid var(--sm-line);background:var(--sm-panel);border-radius:999px;padding:8px 16px;min-height:44px;font-weight:700;font-size:12.5px;color:var(--sm-ink);cursor:pointer}
+.sm-chipbtn.sel{background:var(--sm-accent);border-color:var(--sm-accent);color:#fff}
+.sm-btn{border:1px solid var(--sm-line);background:var(--sm-panel);color:var(--sm-ink);border-radius:9px;padding:0 16px;font-weight:700;font-size:13px;cursor:pointer;min-height:44px}
+.sm-btn.on{background:var(--sm-soft);border-color:var(--sm-accent);color:var(--sm-accent)}
+.sm-spin{background:var(--sm-accent);border-color:var(--sm-accent);color:#fff;font-size:15px;font-weight:800;letter-spacing:.08em;padding:0 28px}
+.sm-pay{background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:10px;padding:12px 16px;font-size:12px;min-width:0}
+.sm-pay summary{cursor:pointer;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--sm-muted)}
+.sm-row{display:flex;align-items:center;gap:4px;min-height:24px;color:var(--sm-ink);flex-wrap:wrap}
+.sm-row b{margin-left:auto;color:var(--sm-gold)}
+.sm-any{font-size:9.5px;color:var(--sm-muted);margin:0 2px}
+.sm-note{font-size:10.5px;color:var(--sm-muted);margin:8px 0 0;line-height:1.5}
+.sm-hint{font-size:11px;color:var(--sm-muted);text-align:center;margin:0;line-height:1.5}
+.sm-toss{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:5;display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:12px;padding:10px 18px;box-shadow:0 8px 20px rgba(0,0,0,.12);text-align:center;max-width:calc(100% - 32px)}
+.sm-coin{animation:sm-coin 1s linear infinite}
+.sm-toss b{font-size:13px}
+.sm-toss span{font-size:10.5px;color:var(--sm-muted)}
+.sm-toast{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:6;background:var(--sm-ink);color:var(--sm-bg);font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.18);white-space:normal;max-width:calc(100% - 32px);text-align:center}
+.sm-ov{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:rgba(15,18,25,.45);backdrop-filter:blur(3px);padding:16px;box-sizing:border-box}
+.sm-card{background:var(--sm-panel);border:1px solid var(--sm-line);border-radius:12px;padding:16px;max-width:430px;width:100%;max-height:100%;overflow:hidden;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.16);box-sizing:border-box}
+.sm-head,.sm-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.sm-foot{padding-top:10px;border-top:1px solid var(--sm-line)}
+.sm-help,.sm-cheats,.sm-stats{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.sm-ov-title{margin:0;font-size:19px}
+.sm-ov-title.good{color:var(--sm-accent)}
+.sm-ov-title.bad{color:#dc2626}
+.sm-card h3{margin:4px 0 0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--sm-muted)}
+.sm-card p,.sm-card li{font-size:12.5px;line-height:1.55;margin:0;color:var(--sm-ink)}
+.sm-card ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.sm-keys{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11.5px;color:var(--sm-muted);align-items:center}
+.sm-keys b{color:var(--sm-ink);font-family:ui-monospace,monospace;font-size:11px;background:var(--sm-reel);border:1px solid var(--sm-line);border-radius:5px;padding:1px 6px;justify-self:start}
+.sm-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12.5px;flex-wrap:wrap}
+.sm-toggle{min-width:64px;min-height:44px;padding:6px 14px;border-radius:999px;border:1px solid var(--sm-line);background:var(--sm-bg);font-weight:800;font-size:11px;cursor:pointer;color:var(--sm-muted)}
+.sm-toggle.on{background:var(--sm-soft);border-color:var(--sm-accent);color:var(--sm-accent)}
+.sm-force{display:flex;gap:8px;flex-wrap:wrap}
+.sm-forcebtn{width:44px;height:44px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--sm-line);background:var(--sm-bg);cursor:pointer}
+.sm-forcebtn.sel{border-color:var(--sm-accent);box-shadow:0 0 0 2px var(--sm-soft)}
+.sm-cheat-actions{display:flex;gap:8px;flex-wrap:wrap}
+.sm-cheat-actions .sm-btn{min-height:44px;font-size:12px;padding:0 12px}
+.sm-stats{font-size:12px;color:var(--sm-muted)}
+@keyframes sm-flash{from{box-shadow:0 0 3px var(--sm-soft)}to{box-shadow:0 0 14px var(--sm-gold)}}
+@keyframes sm-pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@keyframes sm-coin{from{transform:rotateY(0)}to{transform:rotateY(360deg)}}
+@media (max-width:620px){.sm-wrap{--sm-cell:clamp(60px,18vw,80px)}.sm-credits{font-size:24px}.sm-spin{flex:1 1 100%;order:9}.sm-controls{gap:8px}.sm-panel{padding:12px;gap:10px}.sm-seats{gap:8px}}
+@media (pointer:coarse){.sm-step{width:44px;height:44px}.sm-btn{min-height:48px}.sm-chipbtn{min-height:48px}.sm-icon-btn{width:44px;height:44px;justify-content:center;padding:0}.sm-forcebtn{width:44px;height:44px}.sm-toggle{min-height:44px}}
+@media (prefers-reduced-motion:reduce){.sm-coin,.sm-win.pop,.sm-reels.win .sm-window{animation:none}.sm-bar i,.sm-seat{transition:none}}
+
+/* --- fill height + mobile refinements (last, higher specificity) --- */
+.sm-wrap.game-fill > .sm-panel{min-height:0;aspect-ratio:auto}
+.sm-card{overflow:hidden}
+@media (max-width:640px){
+.sm-wrap.game-fill > .sm-panel:not(:has(.sm-ov:not([hidden]))){flex:0 0 auto;min-height:0;aspect-ratio:auto}
+.sm-wrap.game-fill > .sm-panel:has(.sm-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sm-wrap .sm-hud{gap:5px;margin-bottom:6px}
+.sm-wrap .sm-hud .sm-chip{padding:4px 6px;font-size:9px}
+.sm-wrap .sm-hud .sm-chip.sm-low{display:none}
+.sm-wrap .sm-hud .sm-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.sm-wrap .sm-hud .sm-btn-label,.sm-wrap .sm-spacer{display:none}
+.sm-wrap .sm-ov{padding:8px}
+.sm-wrap .sm-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sm-wrap .sm-help,.sm-wrap .sm-cheats,.sm-wrap .sm-stats{scrollbar-width:none}
+.sm-wrap .sm-help::-webkit-scrollbar,.sm-wrap .sm-cheats::-webkit-scrollbar,.sm-wrap .sm-stats::-webkit-scrollbar{display:none}
+.sm-wrap .sm-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--sm-line)}
+.sm-wrap .sm-note{display:none}
+}
+</style>
+  <div class="sm-hud">
+    <span class="sm-chip">LV <b data-hud="level">1</b></span>
+    <span class="sm-chip">TGT <b data-hud="target">–</b></span>
+    <span class="sm-chip">SPIN <b data-hud="spins">–</b></span>
+    <span class="sm-chip sm-dim sm-low">PASS <b data-hud="rate">–</b></span>
+    <span class="sm-chip sm-dim sm-low">BEST <b data-hud="best">–</b></span>
+    <span class="sm-chip sm-dim sm-low" data-hud="status">Siap</span>
+    <span class="sm-spacer"></span>
+    <button class="sm-btn sm-icon-btn" type="button" data-act="theme" data-el="themeBtn" aria-label="Ganti tema" title="Ganti tema (V)">${iconSVG("settings", { size: 14 })}<span class="sm-btn-label">Theme</span></button>
+    <button class="sm-btn sm-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sm-btn-label">Help</span></button>
+    <button class="sm-btn sm-icon-btn" type="button" data-cheats data-el="cheatBtn" aria-label="Cheats" title="Cheats (C) — vs Bot only">${iconSVG("wrench", { size: 14 })}<span class="sm-btn-label">Cheats</span></button>
+    <button class="sm-btn sm-icon-btn" type="button" data-pause data-el="pauseBtn" aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sm-btn-label">Pause</span></button>
+    <button class="sm-btn sm-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sm-btn-label">Restart</span></button>
+    <button class="sm-btn sm-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sm-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel sm-panel" data-board>
-    <div class="sm-top">
-      <span class="sm-chip" data-el="level">LV 1</span>
-      <span class="sm-chip sm-dim" data-el="goal"></span>
-      <span class="sm-chip sm-dim" data-el="best"></span>
-      <span class="sm-flex"></span>
-      <button class="sm-icobtn" type="button" data-act="theme" data-el="themeBtn" aria-label="Ganti tema" title="Ganti tema (V)"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6.2"/><circle cx="6" cy="6" r=".9" fill="currentColor"/><circle cx="10" cy="6.5" r=".9" fill="currentColor"/><circle cx="7" cy="10" r=".9" fill="currentColor"/></svg></button>
-      <button class="sm-icobtn" type="button" data-act="help" aria-label="Cara bermain" title="Cara bermain (H)"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5.6 5.7a2.5 2.5 0 1 1 3.6 2.6c-.8.4-1.2.9-1.2 1.7"/><circle cx="8" cy="12.6" r=".9" fill="currentColor" stroke="none"/></svg></button>
-      <button class="sm-icobtn" type="button" data-act="cheats" data-el="cheatBtn" aria-label="Cheat" title="Cheat (C) — hanya vs Bot"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 13 10.5 5.5"/><path d="M11 2.5v2M12.5 4h2M12 7.5l1.4 1.4M9 2l1 1"/></svg></button>
-      <button class="sm-icobtn" type="button" data-act="restart" aria-label="Mulai ulang" title="Mulai ulang dari LV 1"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.7 2.8v2.7h-2.7"/></svg></button>
-    </div>
     <div class="sm-seats">
       <div class="sm-seat" data-seat="0">
         <div class="sm-seat-top"><b data-el="name"></b><span class="sm-tag" data-el="tag"></span></div>
@@ -454,76 +482,87 @@ export function mount(root, context = {}) {
     </div>
     <div class="sm-toast" data-el="toast" hidden></div>
 
-    <div class="sm-ov" data-ov="help">
+    <div class="sm-ov" data-ov="help" hidden>
       <div class="sm-card">
-        <h2 class="sm-ov-title">Cara bermain</h2>
-        <h3>Tujuan</h3>
-        <p>Kamu berduel melawan ${online ? "pemain lain" : "Bot"}. Capai <b>target kredit</b> level lebih dulu untuk menang. Setiap putaran memotong taruhan dari kreditmu; simbol yang cocok membayar sesuai tabel (× taruhan).</p>
-        <h3>Aturan duel</h3>
-        <ul>
-          <li><b>Koin dilempar tiap ronde</b> — giliran pertama diacak, lalu bergantian.</li>
-          <li><b>Kursi (Seat 1/2) juga diacak</b> setiap ronde.</li>
-          <li>Kredit ≥ target → menang instan. Kredit &lt; ${MIN_BET} → bangkrut, lawan menang.</li>
-          <li>Spin habis di kedua sisi → kredit akhir dibandingkan (bisa seri).</li>
-        </ul>
-        <h3>Level acak yang adil</h3>
-        <p>Target, modal, dan jumlah spin dibuat acak lalu <b>diverifikasi lewat ratusan simulasi</b> — hanya level dengan peluang lolos 18–80% yang dipakai. Persentasenya tampil di chip atas.</p>
-        <h3>Kontrol desktop</h3>
-        <div class="sm-keys">
-          <b>Spasi / Enter</b><span>Putar</span>
-          <b>↑ / ↓</b><span>Naik / turun taruhan</span>
-          <b>1 · 2 · 3</b><span>Preset taruhan 5 / 10 / 25</span>
-          <b>M</b><span>Taruhan maksimum</span>
-          <b>T</b><span>Turbo on/off</span>
-          <b>V</b><span>Ganti tema slot</span>
-          <b>H / C</b><span>Bantuan / Cheat</span>
-          <b>Esc</b><span>Tutup overlay</span>
-          <b>Klik / scroll</b><span>Klik gulungan = putar, scroll di gulungan = ubah taruhan</span>
+        <div class="sm-head"><h2 class="sm-ov-title">Cara bermain</h2><button class="sm-btn" type="button" data-help-close aria-label="Close help" title="Close">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="sm-help">
+          <h3>Tujuan</h3>
+          <p>Kamu berduel melawan ${online ? "pemain lain" : "Bot"}. Capai <b>target kredit</b> level lebih dulu untuk menang. Setiap putaran memotong taruhan dari kreditmu; simbol yang cocok membayar sesuai tabel (× taruhan).</p>
+          <h3>Aturan duel</h3>
+          <ul>
+            <li><b>Koin dilempar tiap ronde</b> — giliran pertama diacak, lalu bergantian.</li>
+            <li><b>Kursi (Seat 1/2) juga diacak</b> setiap ronde.</li>
+            <li>Kredit ≥ target → menang instan. Kredit &lt; ${MIN_BET} → bangkrut, lawan menang.</li>
+            <li>Spin habis di kedua sisi → kredit akhir dibandingkan (bisa seri).</li>
+          </ul>
+          <h3>Level acak yang adil</h3>
+          <p>Target, modal, dan jumlah spin dibuat acak lalu <b>diverifikasi lewat ratusan simulasi</b> — hanya level dengan peluang lolos 18–80% yang dipakai. Persentasenya tampil di HUD.</p>
+          <h3>Kontrol desktop</h3>
+          <div class="sm-keys">
+            <b>Spasi / Enter</b><span>Putar</span>
+            <b>↑ / ↓</b><span>Naik / turun taruhan</span>
+            <b>1 · 2 · 3</b><span>Preset taruhan 5 / 10 / 25</span>
+            <b>M</b><span>Taruhan maksimum</span>
+            <b>T</b><span>Turbo on/off</span>
+            <b>V</b><span>Ganti tema slot</span>
+            <b>H / C / P / R</b><span>Bantuan / Cheat / Pause / Restart</span>
+            <b>Esc</b><span>Tutup overlay</span>
+            <b>Klik / scroll</b><span>Klik gulungan = putar, scroll di gulungan = ubah taruhan</span>
+          </div>
+          <h3>Mobile</h3>
+          <p>Semua kontrol tersedia sebagai tombol besar: stepper − / +, chip taruhan, MAX, Turbo, dan PUTAR. Ketuk gulungan juga bisa untuk memutar.</p>
+          ${online ? "" : '<h3>Cheat</h3><p>Tombol kunci pas (C) membuka overlay cheat: kredit ekstra, putaran gratis, gulungan beruntung, paksa jackpot, selesaikan level, dan acak ulang level. Run akan ditandai "cheat".</p>'}
         </div>
-        <h3>Mobile</h3>
-        <p>Semua kontrol tersedia sebagai tombol besar: stepper − / +, chip taruhan, MAX, Turbo, dan PUTAR. Ketuk gulungan juga bisa untuk memutar.</p>
-        ${online ? "" : '<h3>Cheat</h3><p>Tombol tongkat (C) membuka overlay cheat: kredit ekstra, putaran gratis, gulungan beruntung, paksa jackpot, selesaikan level, dan acak ulang level. Run akan ditandai "cheat".</p>'}
-        <button class="sm-btn sm-spin" type="button" data-act="close-help">Mengerti, mulai!</button>
+        <div class="sm-foot"><span class="sm-note">Tekan H untuk membuka lagi</span><button class="sm-btn sm-spin" type="button" data-help-close>Mengerti, mulai!</button></div>
       </div>
     </div>
 
     <div class="sm-ov" data-ov="cheats" hidden>
       <div class="sm-card">
-        <h2 class="sm-ov-title">Cheat</h2>
-        <div class="sm-cheat-row"><span>Putaran gratis (tanpa potong taruhan)</span><button class="sm-toggle" type="button" data-op="free" data-el="tgFree">OFF</button></div>
-        <div class="sm-cheat-row"><span>Gulungan beruntung (bobot simbol bagus ↑)</span><button class="sm-toggle" type="button" data-op="lucky" data-el="tgLucky">OFF</button></div>
-        <div class="sm-cheat-row"><span>Paksa 3 simbol di putaran berikutnya</span><span class="sm-note" data-el="forceLabel"></span></div>
-        <div class="sm-force" data-el="forceRow"></div>
-        <div class="sm-cheat-actions">
-          <button class="sm-btn" type="button" data-op="credits">+100 kredit</button>
-          <button class="sm-btn" type="button" data-op="win">Selesaikan level</button>
-          <button class="sm-btn" type="button" data-op="reroll">Acak ulang level</button>
+        <div class="sm-head"><h2 class="sm-ov-title">Cheat</h2><button class="sm-btn" type="button" data-cheats-close aria-label="Close cheats" title="Close">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="sm-cheats">
+          <div class="sm-cheat-row"><span>Putaran gratis (tanpa potong taruhan)</span><button class="sm-toggle" type="button" data-op="free" data-el="tgFree">OFF</button></div>
+          <div class="sm-cheat-row"><span>Gulungan beruntung (bobot simbol bagus ↑)</span><button class="sm-toggle" type="button" data-op="lucky" data-el="tgLucky">OFF</button></div>
+          <div class="sm-cheat-row"><span>Paksa 3 simbol di putaran berikutnya</span><span class="sm-note" data-el="forceLabel"></span></div>
+          <div class="sm-force" data-el="forceRow"></div>
+          <div class="sm-cheat-actions">
+            <button class="sm-btn" type="button" data-op="credits">+100 kredit</button>
+            <button class="sm-btn" type="button" data-op="win">Selesaikan level</button>
+            <button class="sm-btn" type="button" data-op="reroll">Acak ulang level</button>
+          </div>
         </div>
-        <p class="sm-note">Hanya berlaku di mode vs Bot. Run ditandai "cheat" di statistik.</p>
-        <button class="sm-btn" type="button" data-act="close-cheats">Tutup</button>
+        <div class="sm-foot"><span class="sm-note">Hanya vs Bot • run ditandai "cheat"</span><button class="sm-btn" type="button" data-cheats-close>Tutup</button></div>
       </div>
     </div>
 
     <div class="sm-ov" data-ov="over" hidden>
       <div class="sm-card">
-        <h2 class="sm-ov-title" data-el="ovTitle"></h2>
-        <p data-el="ovSub"></p>
-        <p class="sm-stats" data-el="ovStats"></p>
-        <button class="sm-btn sm-spin" type="button" data-act="next" data-el="nextBtn">Level berikutnya</button>
-        <button class="sm-btn" type="button" data-act="restart">Mulai ulang dari LV 1</button>
+        <div class="sm-head"><h2 class="sm-ov-title" data-el="ovTitle"></h2></div>
+        <div class="sm-stats"><p data-el="ovSub"></p><p data-el="ovStats"></p></div>
+        <div class="sm-foot"><button class="sm-btn sm-spin" type="button" data-act="next" data-el="nextBtn">Level berikutnya</button><button class="sm-btn" type="button" data-act="restart">Mulai ulang dari LV 1</button></div>
+      </div>
+    </div>
+
+    <div class="sm-ov" data-ov="pause" hidden>
+      <div class="sm-card">
+        <div class="sm-head"><h2 class="sm-ov-title">Dijeda</h2></div>
+        <div class="sm-foot"><span class="sm-note">Tekan P atau Esc untuk melanjutkan</span><button class="sm-btn sm-spin" type="button" data-resume>Resume</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar</button></div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
     const wrap = $(".sm-wrap");
-    const statusEl = $("[data-status]");
-    const levelEl = $('[data-el="level"]');
-    const goalEl = $('[data-el="goal"]');
-    const bestEl = $('[data-el="best"]');
+    const hud = {
+        level: $('[data-hud="level"]'),
+        target: $('[data-hud="target"]'),
+        spins: $('[data-hud="spins"]'),
+        rate: $('[data-hud="rate"]'),
+        best: $('[data-hud="best"]'),
+        status: $('[data-hud="status"]'),
+    };
     const marqueeEl = $('[data-el="marquee"]');
     const reelsBox = $('[data-el="reels"]');
     const strips = [$('[data-el="strip0"]'), $('[data-el="strip1"]'), $('[data-el="strip2"]')];
@@ -545,6 +584,8 @@ export function mount(root, context = {}) {
     const ovHelp = $('[data-ov="help"]');
     const ovCheats = $('[data-ov="cheats"]');
     const ovOver = $('[data-ov="over"]');
+    const ovPause = $('[data-ov="pause"]');
+    const pauseBtn = $('[data-el="pauseBtn"]');
     const ovTitle = $('[data-el="ovTitle"]');
     const ovSub = $('[data-el="ovSub"]');
     const ovStats = $('[data-el="ovStats"]');
@@ -577,12 +618,57 @@ export function mount(root, context = {}) {
     let seenRound = 0;
     let seenSeq = 0;
     let tossing = false;
+    let helpOpen = false;
+    let cheatsOpen = false;
+    let paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("slotMachineHelpSeen") === "1"; } catch (e) { /* storage blocked */ }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("slotMachineHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
     const anim = { spinning: false };
+    const animStartAt = [0, 0, 0];
+    let animFreeze = [];
     let timers = [];
     let animTimers = [];
     let botTimer = null;
     let toastTimer = null;
     const offs = [];
+
+    /* Timer yang bisa dijeda: potong setTimeout saat pause, geser anchor
+       Date.now() saat resume supaya durasi tidak loncat. */
+    const timersLive = new Set();
+    function later(fn, ms) {
+        const e = { fn, ms, left: ms, at: 0, id: 0 };
+        timersLive.add(e);
+        e.arm = () => {
+            e.at = Date.now();
+            e.id = setTimeout(() => {
+                e.id = 0;
+                timersLive.delete(e);
+                if (!destroyed) e.fn();
+            }, e.left);
+        };
+        if (!paused) e.arm();
+        return e;
+    }
+    function cancelTimer(e) {
+        if (!e) return;
+        if (e.id) clearTimeout(e.id);
+        e.id = 0;
+        timersLive.delete(e);
+    }
+    function freezeTimers() {
+        timersLive.forEach((e) => {
+            if (e.id) {
+                clearTimeout(e.id);
+                e.id = 0;
+                e.left = Math.max(0, e.left - (Date.now() - e.at));
+            }
+        });
+    }
+    function thawTimers() { timersLive.forEach((e) => { if (!e.id) e.arm(); }); }
 
     const mySeat = () => (state ? seatOf(state, playerIndex) : playerIndex);
     const seatName = (s) =>
@@ -652,10 +738,47 @@ export function mount(root, context = {}) {
 
     /* ---------------- animasi gulungan ---------------- */
     function cancelAnim() {
-        animTimers.forEach(clearTimeout);
+        animTimers.forEach(cancelTimer);
         animTimers = [];
+        animFreeze = [];
         anim.spinning = false;
         windows.forEach((w) => w.classList.remove("blur"));
+    }
+    function stripY(el) {
+        const t = getComputedStyle(el).transform;
+        if (!t || t === "none") return 0;
+        try { return new DOMMatrixReadOnly(t).m42; } catch (e) {
+            const m = /matrix\([^)]*,\s*([-\d.]+)\s*\)$/.exec(t);
+            return m ? parseFloat(m[1]) : 0;
+        }
+    }
+    function freezeAnim() {
+        if (!anim.spinning) return;
+        const fast = turbo || REDUCED;
+        const durs = fast ? TURBO_DUR : REEL_DUR;
+        const FILL = fast ? 4 : 9;
+        animFreeze = [];
+        for (let i = 0; i < 3; i++) {
+            const st = strips[i];
+            const y = stripY(st);
+            const h = st.firstElementChild.getBoundingClientRect().height || 92;
+            animFreeze.push({
+                i, y,
+                left: Math.max(0, durs[i] * 1000 - (Date.now() - animStartAt[i])),
+                target: -(FILL + 1) * h,
+            });
+            st.style.transition = "none";
+            st.style.transform = "translateY(" + y + "px)";
+        }
+    }
+    function thawAnim() {
+        animFreeze.forEach((f) => {
+            const st = strips[f.i];
+            void st.offsetWidth;
+            st.style.transition = "transform " + f.left + "ms cubic-bezier(.24,.9,.34,1.1)";
+            st.style.transform = "translateY(" + f.target + "px)";
+        });
+        animFreeze = [];
     }
     function startSpinAnim(spin) {
         anim.spinning = true;
@@ -677,9 +800,10 @@ export function mount(root, context = {}) {
             if (!REDUCED) windows[i].classList.add("blur");
             st.style.transition = "transform " + durs[i] + "s cubic-bezier(.24,.9,.34,1.1)";
             st.style.transform = "translateY(" + -(FILL + 1) * h + "px)";
-            animTimers.push(setTimeout(() => windows[i].classList.remove("blur"), durs[i] * 1000 + 120));
+            animStartAt[i] = Date.now();
+            animTimers.push(later(() => windows[i].classList.remove("blur"), durs[i] * 1000 + 120));
         }
-        animTimers.push(setTimeout(() => resolveAnim(spin), durs[2] * 1000 + 240));
+        animTimers.push(later(() => resolveAnim(spin), durs[2] * 1000 + 240));
     }
     function resolveAnim(spin) {
         if (destroyed) return;
@@ -709,12 +833,12 @@ export function mount(root, context = {}) {
         tossText.textContent = "Lempar koin…";
         tossSub.textContent = "Menentukan giliran & kursi";
         show(tossEl);
-        timers.push(setTimeout(() => {
+        timers.push(later(() => {
             if (destroyed || !state) return;
             tossText.textContent = seatName(state.firstSeat) + " jalan lebih dulu";
             tossSub.textContent = "Kursimu: Seat " + (mySeat() + 1) + " (diacak)";
         }, 900));
-        timers.push(setTimeout(() => {
+        timers.push(later(() => {
             if (destroyed) return;
             hide(tossEl);
             tossing = false;
@@ -724,7 +848,7 @@ export function mount(root, context = {}) {
     }
 
     /* ---------------- render ---------------- */
-    const overlayOpen = () => !ovHelp.hidden || !ovCheats.hidden;
+    const overlayOpen = () => helpOpen || cheatsOpen || paused;
 
     function fillOver() {
         const w = state.winner, me = mySeat(), L = state.level;
@@ -751,7 +875,7 @@ export function mount(root, context = {}) {
     function render() {
         if (destroyed) return;
         if (!state) {
-            statusEl.textContent = "Menunggu host…";
+            hud.status.textContent = "Menunggu host…";
             spinBtn.disabled = true;
             return;
         }
@@ -773,9 +897,11 @@ export function mount(root, context = {}) {
         /* spin baru dari state (local, bot, atau host) → animasikan */
         if (state.last && state.last.seq !== seenSeq && !anim.spinning) startSpinAnim(state.last);
 
-        levelEl.textContent = "LV " + L.num;
-        goalEl.textContent = "Target " + L.target + " • " + L.spins + " spin • lolos ±" + L.rate + "%";
-        bestEl.textContent = "Rekor LV " + (bestLevel || "–");
+        hud.level.textContent = L.num;
+        hud.target.textContent = L.target;
+        hud.spins.textContent = L.spins;
+        hud.rate.textContent = L.rate + "%";
+        hud.best.textContent = bestLevel || "–";
         marqueeEl.textContent = L.marquee;
 
         for (let s = 0; s < 2; s++) {
@@ -796,12 +922,12 @@ export function mount(root, context = {}) {
         const lock = anim.spinning || tossing;
         const myTurn = playing && state.turn === me;
         const credits = state.seats[me].credits;
-        statusEl.textContent =
-            !playing ? "Ronde selesai"
-                : tossing ? "Lempar koin…"
-                    : anim.spinning ? "Memutar…"
+        hud.status.textContent = paused ? "Dijeda"
+            : !playing ? "Selesai"
+                : tossing ? "Koin…"
+                    : anim.spinning ? "Putar…"
                         : myTurn ? "Giliranmu"
-                            : online ? "Giliran lawan" : "Bot berpikir…";
+                            : online ? "Lawan" : "Bot";
 
         betValEl.textContent = String(state.seats[me].bet);
         chipBtns.forEach((b) => {
@@ -816,6 +942,7 @@ export function mount(root, context = {}) {
         turboBtn.setAttribute("aria-pressed", String(turbo));
 
         cheatBtn.hidden = online;
+        cheatBtn.classList.toggle("on", state.cheats.free || state.cheats.lucky || Boolean(state.cheats.force));
         if (!online) {
             tgFree.textContent = state.cheats.free ? "ON" : "OFF";
             tgFree.classList.toggle("on", state.cheats.free);
@@ -826,15 +953,28 @@ export function mount(root, context = {}) {
                 b.classList.toggle("sel", b.dataset.force === state.cheats.force));
             ovCheats.querySelectorAll("[data-op],[data-force]").forEach((b) => { b.disabled = !playing; });
         }
+        pauseBtn.disabled = online;
+        pauseBtn.classList.toggle("on", paused);
+        const pauseLabel = pauseBtn.querySelector(".sm-btn-label");
+        if (pauseLabel) pauseLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
 
-        if (!playing && !anim.spinning && !tossing) {
-            fillOver();
-            show(ovOver);
-        } else hide(ovOver);
+        ovHelp.hidden = !helpOpen;
+        ovCheats.hidden = !cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || cheatsOpen || helpOpen;
+        const overVisible = !playing && !anim.spinning && !tossing;
+        if (overVisible) fillOver();
+        ovOver.hidden = !overVisible || helpOpen || cheatsOpen || paused;
+        spinBtn.disabled = spinBtn.disabled || overlayOpen();
+        chipBtns.forEach((b) => { b.disabled = b.disabled || overlayOpen(); });
+        minusBtn.disabled = minusBtn.disabled || overlayOpen();
+        plusBtn.disabled = plusBtn.disabled || overlayOpen();
+        maxBtn.disabled = maxBtn.disabled || overlayOpen();
 
         hintEl.textContent = COARSE
             ? "Ketuk gulungan atau tombol PUTAR • stepper −/+ untuk taruhan"
-            : "Spasi: putar • ↑/↓: taruhan • 1–3: preset • M: max • T: turbo • V: tema • H: bantuan • C: cheat";
+            : "Spasi: putar • ↑/↓: taruhan • 1–3: preset • M: max • T: turbo • V: tema • H/C/P/R: bantuan/cheat/pause/restart";
     }
 
     /* ---------------- alur state (template) ---------------- */
@@ -860,7 +1000,7 @@ export function mount(root, context = {}) {
         if (online || destroyed || !state || botTimer) return;
         if (state.phase !== "playing" || seatOf(state, 1) !== state.turn) return;
         if (anim.spinning || tossing || overlayOpen()) return;
-        botTimer = setTimeout(() => {
+        botTimer = later(() => {
             botTimer = null;
             if (destroyed || !state || state.phase !== "playing") return;
             if (seatOf(state, 1) !== state.turn || anim.spinning || tossing || overlayOpen()) return;
@@ -872,8 +1012,8 @@ export function mount(root, context = {}) {
     function toast(msg) {
         toastEl.textContent = msg;
         show(toastEl);
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => hide(toastEl), 1600);
+        cancelTimer(toastTimer);
+        toastTimer = later(() => hide(toastEl), 1600);
     }
     const myBet = () => (state ? state.seats[mySeat()].bet : BET_VALUES[0]);
     function setBet(v) { if (state && state.phase === "playing") submitAction({ type: "bet", bet: v }); }
@@ -910,12 +1050,43 @@ export function mount(root, context = {}) {
         else if (op === "reroll") toast("Level diacak ulang");
     }
 
+    /* ---------------- overlay & pause ---------------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) { freezeTimers(); freezeAnim(); }
+        else { thawAnim(); thawTimers(); maybeScheduleBot(); }
+        render();
+    }
+
     /* ---------------- klik (mouse + tombol virtual mobile) ---------------- */
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
         if (t.closest("[data-exit]")) { onExit(); return; }
-        if (t === ovHelp) { hide(ovHelp); maybeScheduleBot(); return; }
-        if (t === ovCheats) { hide(ovCheats); maybeScheduleBot(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); maybeScheduleBot(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); maybeScheduleBot(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t === ovHelp) { toggleHelp(false); maybeScheduleBot(); return; }
+        if (t === ovCheats) { toggleCheats(false); maybeScheduleBot(); return; }
+        if (t === ovPause) { togglePause(false); return; }
+        if (overlayOpen()) return;
         const betB = t.closest("[data-bet]");
         if (betB && !betB.disabled) { setBet(+betB.dataset.bet); return; }
         const opB = t.closest("[data-op]");
@@ -931,10 +1102,6 @@ export function mount(root, context = {}) {
             else if (act === "bet-max") betMax();
             else if (act === "turbo") { turbo = !turbo; toast(turbo ? "Turbo aktif" : "Turbo nonaktif"); render(); }
             else if (act === "theme") cycleTheme();
-            else if (act === "help") show(ovHelp);
-            else if (act === "cheats") { if (!online) show(ovCheats); }
-            else if (act === "close-help") { hide(ovHelp); maybeScheduleBot(); }
-            else if (act === "close-cheats") { hide(ovCheats); maybeScheduleBot(); }
             else if (act === "restart") { submitAction({ type: "restart" }); toast("Run baru dimulai"); }
             else if (act === "next") submitAction({ type: "next" });
             return;
@@ -948,24 +1115,24 @@ export function mount(root, context = {}) {
         const tag = e.target && e.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
-        const k = e.key;
+        const k = e.key, code = e.code || "";
+        /* prioritas: help → cheats → pause → Escape → aksi game */
+        if (code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") { if (!helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (code === "KeyP") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else togglePause();
+            e.preventDefault(); return;
+        }
         if (k === "Escape") {
-            if (overlayOpen()) { hide(ovHelp); hide(ovCheats); maybeScheduleBot(); }
-            return;
-        }
-        if (k === "h" || k === "H") {
-            if (ovHelp.hidden) show(ovHelp);
-            else { hide(ovHelp); maybeScheduleBot(); }
-            return;
-        }
-        if (k === "c" || k === "C") {
-            if (online) return;
-            if (ovCheats.hidden) show(ovCheats);
-            else { hide(ovCheats); maybeScheduleBot(); }
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
             return;
         }
         if (overlayOpen()) return;
-        if (k === " " || e.code === "Space") { e.preventDefault(); if (!e.repeat) doSpin(); return; }
+        if (k === " " || code === "Space") { e.preventDefault(); if (!e.repeat) doSpin(); return; }
         if (k === "Enter") {
             e.preventDefault();
             if (!e.repeat) {
@@ -980,7 +1147,7 @@ export function mount(root, context = {}) {
         if (k === "m" || k === "M") { betMax(); return; }
         if (k === "t" || k === "T") { turbo = !turbo; toast(turbo ? "Turbo aktif" : "Turbo nonaktif"); render(); return; }
         if (k === "v" || k === "V") { cycleTheme(); return; }
-        if ((k === "r" || k === "R") && state.phase === "over") submitAction({ type: "next" });
+        if (code === "KeyR") { submitAction({ type: "restart" }); toast("Run baru dimulai"); return; }
     }
 
     /* scroll mouse di area gulungan = ubah taruhan */
@@ -1018,10 +1185,10 @@ export function mount(root, context = {}) {
             root.removeEventListener("click", handleClick);
             document.removeEventListener("keydown", onKey);
             reelsBox.removeEventListener("wheel", onWheel);
-            clearTimeout(botTimer);
-            clearTimeout(toastTimer);
-            timers.forEach(clearTimeout);
-            animTimers.forEach(clearTimeout);
+            cancelTimer(botTimer);
+            cancelTimer(toastTimer);
+            timers.forEach(cancelTimer);
+            animTimers.forEach(cancelTimer);
             timers = [];
             animTimers = [];
             offs.forEach((fn) => { try { fn(); } catch (e) { } });

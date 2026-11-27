@@ -1,13 +1,14 @@
 /* ==== GAME: whack-a-mole.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
-  Whack-a-Mole — turn-based duel (vs Bot / vs Player online).
+  Whack A Mole — turn-based duel (vs Bot / vs Player online).
   - Template baru: export META + export mount(root, context).
   - Setelah edit: node tools/build-games-manifest.mjs
 */
 
 export const META = {
     id: "whack-a-mole", // harus sama dengan nama file (tanpa .js)
-    name: "Whack-a-Mole",
+    name: "Whack A Mole",
     category: "action",
     catLabel: "Action",
     desc: "Whack the moles, spare the dolls. Take turns and race your rival to 300 points.",
@@ -179,7 +180,11 @@ export function mount(root, context = {}) {
     /* ---------- local (non-synced) runtime ---------- */
     const SLOWMO = 0.55, LONGUP = 2.2;
     const cheats = { slowmo: false, longup: false, auto: false, shield: false, reveal: false };
-    let helpOpen = false, cheatsOpen = false, paused = false, autoPaused = false;
+    let cheatsOpen = false, paused = false, autoPaused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("wamHelpSeen") === "1"; } catch (_) { /* storage blocked */ }
+    let helpOpen = !seenHelp;
+    if (helpOpen) { try { localStorage.setItem("wamHelpSeen", "1"); } catch (_) { /* storage blocked */ } }
     let padOn = typeof matchMedia === "function" && matchMedia("(pointer:coarse)").matches;
     let raf = 0, lastT = 0, phaseClock = 0, prevPhase = "";
     let waveElapsed = 0, waveStartPerf = 0, waveSeenId = -1, spritesHidden = false;
@@ -196,37 +201,41 @@ export function mount(root, context = {}) {
     /* ---------- shell (minimalist light UI) ---------- */
     root.innerHTML = `
 <style>
-.wam-app{--bg:#fafaf9;--card:#fff;--ink:#292524;--mut:#78716c;--line:#e7e5e4;--amber:#d97706;--sky:#0284c7;--red:#dc2626;--green:#059669;--pink:#db2777;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;max-width:600px;margin:0 auto}
+.wam-app{--bg:#fafaf9;--card:#fff;--ink:#292524;--mut:#78716c;--line:#e7e5e4;--amber:#d97706;--sky:#0284c7;--red:#dc2626;--green:#059669;--pink:#db2777;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;width:100%;max-width:100%;margin:0 auto;padding:0 12px calc(12px + env(safe-area-inset-bottom));box-sizing:border-box}
+.wam-app *{box-sizing:border-box}
 .wam-app [hidden]{display:none!important}
-.wam-app .game-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:4px 2px 10px}
-.wam-app .game-intro h2{margin:0;font-size:18px;letter-spacing:-.01em}
-.wam-app .game-intro p{margin:2px 0 0;font-size:12.5px;color:var(--mut)}
-.wam-app .game-status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);white-space:nowrap;padding-top:4px}
-.wam-app .game-status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block}
-.wam-hud{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;margin-bottom:10px}
-.wam-pcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;min-width:0}
-.wam-pcard.seat0{color:var(--amber)}.wam-pcard.seat1{color:var(--sky)}
-.wam-pcard.is-active{border-color:currentColor}
-.wam-pname{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wam-pcard.is-active .wam-pname{color:currentColor}
-.wam-you{font-size:9px;border:1px solid currentColor;border-radius:99px;padding:0 5px;flex:0 0 auto}
-.wam-pscore{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.1}
-.wam-pbar{height:3px;background:var(--line);border-radius:99px;margin-top:5px;overflow:hidden}
-.wam-pbar i{display:block;height:100%;width:0;background:currentColor;transition:width .25s}
-.wam-center{text-align:center;display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:96px}
-.wam-time{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1}
+.wam.game-fill{display:flex;flex-direction:column;gap:10px;min-height:0}
+/* HUD — semua info & kontrol ada di sini; board hanya arena bermain */
+.wam-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+.wam-chip{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--mut);white-space:nowrap}
+.wam-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+.wam-chip.is-active{border-color:currentColor;box-shadow:0 0 0 1px currentColor}
+.wam-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
+.wam-seat{--seatc:var(--amber);color:var(--seatc)}
+.wam-seat[data-seat="1"]{--seatc:var(--sky)}
+.wam-pname{max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.wam-you{font-size:9px;border:1px solid currentColor;border-radius:99px;padding:0 5px;flex:0 0 auto;font-style:normal}
+.wam-bar{width:46px;height:4px;border-radius:99px;background:var(--line);overflow:hidden}
+.wam-bar i{display:block;height:100%;width:0;background:currentColor;transition:width .25s}
+.wam-time{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
 .wam-time.is-low{color:var(--red)}
-.wam-level{font-size:10.5px;color:var(--mut);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
-.wam-pips{display:flex;gap:3px;justify-content:center}
+.wam-pips{display:flex;gap:3px}
 .wam-pips i{width:6px;height:6px;border-radius:50%;background:var(--line)}
 .wam-pips i.on{background:var(--red)}
-.wam-toolbar{display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px;flex-wrap:wrap}
-.wam-tbtn{font:inherit;font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--mut);cursor:pointer}
-.wam-tbtn:hover{color:var(--ink);border-color:#d6d3d1}
-.wam-tbtn.is-on{color:var(--amber);border-color:var(--amber)}
-.wam-tbtn:disabled{opacity:.4;cursor:default}
-.wam-stage{position:relative}
-.wam-board{display:block;width:100%;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.wam-spacer{flex:1 1 auto}
+.wam-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:10px;font-weight:700;border-radius:9px;min-height:34px;padding:6px 9px;cursor:pointer;touch-action:manipulation}
+.wam-btn:hover:not(:disabled){background:#f5f5f4;border-color:#d6d3d1}
+.wam-btn:disabled{opacity:.4;cursor:default}
+.wam-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.wam-btn.primary:hover:not(:disabled){background:#44403c;color:#fff}
+.wam-btn.ghost{background:var(--card);color:var(--ink)}
+.wam-btn.on{border-color:var(--amber);color:var(--amber);background:#fffbeb}
+.wam-icon-btn svg{flex:none;display:block}
+.wam-btn-label{white-space:nowrap}
+.wam :focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+/* board mengisi sisa tinggi window; rasio SVG tetap dijaga */
+.wam.game-fill > .game-panel[data-board]{position:relative;width:100%;flex:1 1 auto;min-height:0;aspect-ratio:auto;padding:0;border:1px solid var(--line);border-radius:14px;background:#f5f5f4;overflow:hidden}
+.wam-board{display:block;width:100%;height:100%;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .wam-bg{fill:#f5f5f4;stroke:var(--line);stroke-width:1.5}
 .wam-pit,.wam-lip{fill:#292524}
 .wam-rim{fill:none;stroke:#d6d3d1;stroke-width:1.5}
@@ -248,149 +257,161 @@ export function mount(root, context = {}) {
 .wam-doll-eye{fill:#fff;stroke:#be185d;stroke-width:1.4}
 .wam-doll-stitch{stroke:#be185d;stroke-width:1.3;stroke-linecap:round;fill:none}
 .wam-doll-heart{fill:#ec4899}
-.wam-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(250,250,249,.88);backdrop-filter:blur(3px);border-radius:14px;z-index:5;padding:12px;overflow:auto}
-.wam-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;max-width:360px;width:100%;box-shadow:0 8px 30px rgba(28,25,23,.08);text-align:center}
-.wam-card h3{margin:0 0 6px;font-size:19px;letter-spacing:-.01em}
-.wam-card .sub{margin:0 0 12px;font-size:12.5px;color:var(--mut);line-height:1.5}
-.wam-btn{font:inherit;font-size:13px;font-weight:700;padding:9px 18px;border-radius:10px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
-.wam-btn:hover{opacity:.9}
-.wam-btn.ghost{background:var(--card);color:var(--ink);border-color:var(--line)}
-.wam-how{list-style:none;margin:0 0 12px;padding:0;text-align:left;display:grid;gap:7px}
+.wam-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);max-width:calc(100% - 16px);background:var(--ink);color:#fff;font-size:11.5px;font-weight:600;padding:6px 14px;border-radius:99px;z-index:6;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap;box-sizing:border-box}
+.wam-toast.show{opacity:1}
+/* overlay: head/foot tetap, body bisa scroll */
+.wam-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(250,250,249,.92);backdrop-filter:blur(3px)}
+.wam-card{display:flex;flex-direction:column;width:min(420px,100%);max-width:100%;max-height:100%;overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 6px 18px rgba(28,25,23,.08);text-align:left}
+.wam-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:10px}
+.wam-head h3{margin:0;font-size:16px;letter-spacing:-.01em}
+.wam-body{flex:1 1 auto;min-height:0;overflow:auto}
+.wam-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:12px}
+.wam-sub{margin:0 0 10px;font-size:12.5px;color:var(--mut);line-height:1.5}
+.wam-how{list-style:none;margin:0 0 10px;padding:0;text-align:left;display:grid;gap:7px}
 .wam-how li{display:flex;gap:9px;font-size:12.5px;line-height:1.45;align-items:flex-start}
 .wam-how .ic{flex:0 0 auto;width:22px;text-align:center}
-.wam-keys{font-size:11px;color:var(--mut);margin:0 0 12px;line-height:1.8}
+.wam-how b{color:var(--ink)}
+.wam-keys{font-size:11px;color:var(--mut);margin:0;line-height:1.8}
 .wam-app kbd{font-family:ui-monospace,monospace;font-size:10px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:#fafaf9}
-.wam-badge{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:99px;padding:3px 10px;margin-bottom:8px}
+.wam-badge{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:99px;padding:3px 10px}
 .wam-badge.seat0{background:#fef3c7;color:#92400e}
 .wam-badge.seat1{background:#e0f2fe;color:#075985}
 .wam-badge.warn{background:#fee2e2;color:#991b1b}
 .wam-big{font-size:30px;font-weight:800;margin:2px 0 6px;font-variant-numeric:tabular-nums}
 .wam-coin{font-size:34px;display:inline-block;animation:wamflip 1.1s ease-in-out infinite}
 @keyframes wamflip{0%,100%{transform:scaleX(1)}50%{transform:scaleX(.15)}}
-@media (prefers-reduced-motion:reduce){.wam-coin{animation:none}}
-.wam-cheats{display:grid;gap:6px;margin-bottom:10px;text-align:left}
-.wam-cheat{display:flex;justify-content:space-between;align-items:center;gap:8px;font:inherit;font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;text-align:left}
+.wam-cheats{display:flex;flex-direction:column;gap:7px}
+.wam-cheat{display:flex;justify-content:space-between;align-items:center;gap:8px;font:inherit;font-size:12.5px;font-weight:600;min-height:44px;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;text-align:left}
 .wam-cheat small{display:block;font-weight:500;color:var(--mut);font-size:10.5px}
 .wam-cheat .st{font-size:10px;font-weight:800;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:2px 8px;flex:0 0 auto}
 .wam-cheat[aria-pressed="true"]{border-color:var(--amber);background:#fffbeb}
 .wam-cheat[aria-pressed="true"] .st{color:#92400e;border-color:var(--amber);background:#fef3c7}
 .wam-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.wam-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:11.5px;font-weight:600;padding:6px 14px;border-radius:99px;z-index:6;pointer-events:none;opacity:0;transition:opacity .25s;white-space:nowrap}
-.wam-toast.show{opacity:1}
-.wam-stats{font-size:12.5px;color:var(--mut);margin:0 0 12px;line-height:1.7}
-.wam-final{display:grid;gap:4px;margin:0 0 12px;font-size:13px}
+.wam-note{font-size:10.5px;color:var(--mut)}
+.wam-stats{font-size:12.5px;color:var(--mut);margin:0;line-height:1.7}
+.wam-final{display:grid;gap:4px;font-size:13px}
 .wam-final div{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;border:1px solid var(--line);border-radius:9px}
 .wam-final b{font-variant-numeric:tabular-nums}
 .wam-final .win{border-color:var(--green);background:#ecfdf5}
-.wam-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px auto 0;max-width:340px}
-.wam-pad button{font:inherit;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;min-height:56px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+/* touch pad adalah sibling board, bukan di dalamnya */
+.wam-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 auto;max-width:340px;width:100%}
+.wam-pad button{font:inherit;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;min-height:56px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .wam-pad button:active{background:#f5f5f4;transform:scale(.97)}
 .wam-pad button:disabled{opacity:.35;cursor:default}
-.wam-hint{font-size:11px;color:var(--mut);text-align:center;margin-top:9px;line-height:1.6}
-@media (pointer:fine){.wam-hint .touch{display:none}}
-@media (pointer:coarse){.wam-hint .desktop{display:none}}
-.wam-app .game-actions{margin-top:12px;display:flex;justify-content:center}
-.wam-app .game-action-button{font:inherit;font-size:12.5px;font-weight:600;padding:8px 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--mut);cursor:pointer}
-@media (max-width:480px){.wam-pscore{font-size:18px}.wam-time{font-size:22px}.wam-center{min-width:78px}.wam-card{padding:14px}}
+/* --- layout redesign overrides (keep last) --- */
+.wam.game-fill > .game-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.wam.game-fill > .game-panel[data-board]:not(:has(.wam-ov:not([hidden]))){flex:0 0 auto;aspect-ratio:480/396;min-height:0}
+.wam.game-fill > .game-panel[data-board]:has(.wam-ov:not([hidden])){flex:0 0 auto;aspect-ratio:auto;min-height:min(70dvh,620px)}
+.wam .wam-hud{gap:5px}
+.wam .wam-hud .wam-chip{padding:4px 6px;min-height:0;font-size:9px}
+.wam .wam-hud .wam-chip[data-hud="level"],.wam .wam-hud .wam-chip[data-hud="best"]{display:none}
+.wam .wam-hud .wam-bar{width:30px}
+.wam .wam-hud .wam-time{font-size:14px}
+.wam .wam-hud .wam-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.wam .wam-hud .wam-btn-label,.wam .wam-hud .wam-spacer{display:none}
+.wam .wam-ov{padding:8px}
+.wam .wam-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.wam .wam-body,.wam .wam-cheats{scrollbar-width:none}
+.wam .wam-body::-webkit-scrollbar,.wam .wam-cheats::-webkit-scrollbar{display:none}
+.wam .wam-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.wam .wam-note{display:none}
+}
+@media (pointer:coarse){
+.wam .wam-hud .wam-btn{min-height:32px;padding:5px 9px;font-size:9px}
+}
+@media (prefers-reduced-motion:reduce){.wam-app *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 </style>
-<div class="game-app wam-app">
-  <div class="game-intro">
-    <div><h2>Whack-a-Mole</h2><p>Whack moles, spare the dolls. First to ${GAME.TARGET} wins.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app wam-app game-fill" data-wam>
+  <div class="wam-hud">
+    <span class="wam-chip" data-hud="status"><i class="dot"></i><span data-status>Ready</span></span>
+    <span class="wam-chip wam-seat" data-seat="0" data-card="0">
+      <span class="wam-pname"><span data-name="0">Player 1</span><span class="wam-you" data-you="0" hidden>you</span></span>
+      <b data-score="0">0</b><span class="wam-bar"><i data-bar="0"></i></span>
+    </span>
+    <span class="wam-chip"><span data-time>–</span>s</span>
+    <span class="wam-chip" data-hud="level"><span data-level>Level 1/${GAME.MAX_LEVEL}</span></span>
+    <span class="wam-chip" data-pips title="Misses this turn">${'<i></i>'.repeat(GAME.MISS_LIMIT)}</span>
+    <span class="wam-chip wam-seat" data-seat="1" data-card="1">
+      <span class="wam-pname"><span data-name="1">Player 2</span><span class="wam-you" data-you="1" hidden>you</span></span>
+      <b data-score="1">0</b><span class="wam-bar"><i data-bar="1"></i></span>
+    </span>
+    <span class="wam-chip" data-hud="best">BEST <b data-besthud>0</b></span>
+    <span class="wam-spacer"></span>
+    <button class="wam-btn wam-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="wam-btn-label">Help</span></button>
+    <button class="wam-btn wam-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C) — offline only">${iconSVG("wrench", { size: 14 })}<span class="wam-btn-label">Cheats</span></button>
+    <button class="wam-btn wam-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P) — offline only">${iconSVG("pause", { size: 14 })}<span class="wam-btn-label" data-pauselabel>Pause</span></button>
+    <button class="wam-btn wam-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="wam-btn-label" data-restartlabel>Restart</span></button>
+    <button class="wam-btn wam-icon-btn" type="button" data-pad-toggle aria-label="Virtual pad" title="Toggle virtual pad" aria-pressed="false">${iconSVG("gamepad2", { size: 14 })}<span class="wam-btn-label">Pad</span></button>
+    <button class="wam-btn wam-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="wam-btn-label">Exit</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="wam-hud">
-      <div class="wam-pcard seat0" data-card="0">
-        <span class="wam-pname"><span data-name="0">Player 1</span><span class="wam-you" data-you="0" hidden>you</span></span>
-        <div class="wam-pscore" data-score="0">0</div>
-        <div class="wam-pbar"><i data-bar="0"></i></div>
-      </div>
-      <div class="wam-center">
-        <div class="wam-time" data-time>–</div>
-        <div class="wam-level" data-level>Level 1/${GAME.MAX_LEVEL}</div>
-        <div class="wam-pips" data-pips title="Misses this turn">${'<i></i>'.repeat(GAME.MISS_LIMIT)}</div>
-      </div>
-      <div class="wam-pcard seat1" data-card="1">
-        <span class="wam-pname"><span data-name="1">Player 2</span><span class="wam-you" data-you="1" hidden>you</span></span>
-        <div class="wam-pscore" data-score="1">0</div>
-        <div class="wam-pbar"><i data-bar="1"></i></div>
+
+  <section class="game-panel wam-panel" data-board>
+    <svg class="wam-board" data-svg viewBox="0 0 480 396" preserveAspectRatio="xMidYMid meet" aria-label="Whack A Mole board">
+      <rect class="wam-bg" x="1" y="1" width="478" height="394" rx="14"></rect>
+      <g data-field></g>
+      <g data-fx></g>
+    </svg>
+    <div class="wam-toast" data-toast aria-live="polite"></div>
+
+    <div class="wam-ov" data-ov="intro">
+      <div class="wam-card">
+        <div class="wam-head"><h3>Whack A Mole</h3><span class="wam-badge seat0" data-seatbadge>You are Player 1</span></div>
+        <div class="wam-body">
+          <p class="wam-sub">Whack moles, spare the dolls. First to ${GAME.TARGET} wins.</p>
+          <p class="wam-keys">Holes <kbd>1</kbd>–<kbd>9</kbd> / numpad · click or tap a hole · <kbd>P</kbd> pause · <kbd>H</kbd> help</p>
+          <p class="wam-sub" data-bestline hidden></p>
+        </div>
+        <div class="wam-foot"><span class="wam-note" data-waitstart hidden>Waiting for the host to start…</span><button class="wam-btn primary" type="button" data-act="start" data-startbtn>Start match</button></div>
       </div>
     </div>
-    <div class="wam-toolbar">
-      <button class="wam-tbtn" type="button" data-act="help" title="How to play (H)">? Help</button>
-      <button class="wam-tbtn" type="button" data-act="cheats" data-cheatsbtn title="Cheats (C) — offline only">🧪 Cheats</button>
-      <button class="wam-tbtn" type="button" data-act="pad" data-padbtn title="Toggle virtual pad">⌨ Pad</button>
-      <button class="wam-tbtn" type="button" data-act="pause" data-pausebtn title="Pause (P) — offline only">⏸ Pause</button>
-      <button class="wam-tbtn" type="button" data-act="restart" data-restartbtn title="Restart (R)">↺ Restart</button>
+
+    <div class="wam-ov" data-ov="toss" hidden>
+      <div class="wam-card">
+        <div class="wam-head"><h3 data-tosstitle>Coin toss…</h3></div>
+        <div class="wam-body"><span class="wam-coin">🪙</span><p class="wam-sub" data-tosssub></p></div>
+      </div>
     </div>
-    <div class="wam-stage">
-      <svg class="wam-board" data-svg viewBox="0 0 480 396" preserveAspectRatio="xMidYMid meet" aria-label="Whack-a-Mole board">
-        <rect class="wam-bg" x="1" y="1" width="478" height="394" rx="14"></rect>
-        <g data-field></g>
-        <g data-fx></g>
-      </svg>
-      <div class="wam-toast" data-toast aria-live="polite"></div>
 
-      <div class="wam-ov" data-ov="intro">
-        <div class="wam-card">
-          <h3>Whack-a-Mole</h3>
-          <span class="wam-badge seat0" data-seatbadge>You are Player 1</span>
-          <ul class="wam-how">
-            <li><span class="ic">🐹</span><span><b>Whack the mole</b> (brown) → <b>+${GAME.HIT} pts</b>.</span></li>
-            <li><span class="ic">🧸</span><span><b>Spare the doll</b> (pink, has ears!) → hitting it costs <b>${GAME.DECOY} pts</b>.</span></li>
-            <li><span class="ic">🕳️</span><span>Empty hole = miss. <b>${GAME.MISS_LIMIT} misses</b> ends your turn early.</span></li>
-            <li><span class="ic">🔁</span><span>You and your rival play the <b>same wave</b> each level. First to <b>${GAME.TARGET}</b> after a full round wins (level ${GAME.MAX_LEVEL} cap → highest score).</span></li>
-            <li><span class="ic">🎲</span><span>Seats and the first turn are <b>drawn at random</b>.</span></li>
-          </ul>
-          <p class="wam-keys"><span class="desktop"><kbd>1</kbd>–<kbd>9</kbd> or numpad · click · </span><span class="touch">tap holes or use the pad · </span><kbd>P</kbd> pause · <kbd>R</kbd> restart · <kbd>C</kbd> cheats · <kbd>H</kbd> help</p>
-          <p class="sub" data-bestline hidden></p>
-          <button class="wam-btn" type="button" data-act="start" data-startbtn>Start match</button>
-          <p class="sub" data-waitstart hidden>Waiting for the host to start…</p>
-        </div>
-      </div>
-
-      <div class="wam-ov" data-ov="toss" hidden>
-        <div class="wam-card">
-          <span class="wam-coin">🪙</span>
-          <h3 data-tosstitle>Coin toss…</h3>
-          <p class="sub" data-tosssub></p>
-        </div>
-      </div>
-
-      <div class="wam-ov" data-ov="result" hidden>
-        <div class="wam-card">
-          <h3 data-restitle>Turn complete</h3>
+    <div class="wam-ov" data-ov="result" hidden>
+      <div class="wam-card">
+        <div class="wam-head"><h3 data-restitle>Turn complete</h3></div>
+        <div class="wam-body">
           <div class="wam-big" data-resgain>+0</div>
           <p class="wam-stats" data-resstats></p>
-          <button class="wam-btn" type="button" data-act="next" data-nextbtn>Continue ⏵</button>
-          <p class="sub" data-reswait hidden>Next turn starting…</p>
+          <p class="wam-sub" data-reswait hidden>Next turn starting…</p>
         </div>
+        <div class="wam-foot"><span class="wam-note">Space to continue</span><button class="wam-btn primary" type="button" data-act="next" data-nextbtn>Continue ⏵</button></div>
       </div>
+    </div>
 
-      <div class="wam-ov" data-ov="over" hidden>
-        <div class="wam-card">
-          <h3 data-overtitle>Game over</h3>
-          <p class="sub" data-oversub></p>
+    <div class="wam-ov" data-ov="over" hidden>
+      <div class="wam-card">
+        <div class="wam-head"><h3 data-overtitle>Game over</h3></div>
+        <div class="wam-body">
+          <p class="wam-sub" data-oversub></p>
           <div class="wam-final" data-overfinal></div>
           <p class="wam-stats" data-overstats></p>
           <span class="wam-badge warn" data-overcheat hidden>🧪 Cheats used — score not saved</span>
-          <p class="sub" data-overbest hidden></p>
-          <button class="wam-btn" type="button" data-act="rematch" data-rematchbtn>Rematch</button>
-          <p class="sub" data-overwait hidden>Waiting for the host to rematch…</p>
+          <p class="wam-sub" data-overbest hidden></p>
+          <p class="wam-sub" data-overwait hidden>Waiting for the host to rematch…</p>
         </div>
+        <div class="wam-foot"><span class="wam-note">Press R to restart</span><button class="wam-btn primary" type="button" data-act="rematch" data-rematchbtn>Rematch</button></div>
       </div>
+    </div>
 
-      <div class="wam-ov" data-ov="pause" hidden>
-        <div class="wam-card">
-          <h3>Paused</h3>
-          <p class="sub">The wave is frozen. Take a breath.</p>
-          <button class="wam-btn" type="button" data-act="resume">Resume</button>
-        </div>
+    <div class="wam-ov" data-ov="pause" hidden>
+      <div class="wam-card">
+        <div class="wam-head"><h3>Paused</h3></div>
+        <div class="wam-body"><p class="wam-sub">The wave, timer and bot are frozen. Resume to continue.</p></div>
+        <div class="wam-foot"><span class="wam-note">Press P or Esc to resume</span><button class="wam-btn primary" type="button" data-resume>Resume</button></div>
       </div>
+    </div>
 
-      <div class="wam-ov" data-ov="help" hidden>
-        <div class="wam-card">
-          <h3>How to play</h3>
+    <div class="wam-ov" data-ov="help" hidden>
+      <div class="wam-card">
+        <div class="wam-head"><h3>How to play</h3><button class="wam-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wam-body">
           <ul class="wam-how">
             <li><span class="ic">🐹</span><span>Mole (brown, round head) → <b>+${GAME.HIT}</b>. It must be at least halfway out.</span></li>
             <li><span class="ic">🧸</span><span>Decoy doll (pink, ears + button eyes) → <b>${GAME.DECOY}</b>. Let it sink!</span></li>
@@ -399,15 +420,17 @@ export function mount(root, context = {}) {
             <li><span class="ic">🎲</span><span>Random seat draw + coin toss decide positions and who starts. The starting seat alternates every level.</span></li>
           </ul>
           <p class="wam-keys">Holes map to <kbd>1</kbd>–<kbd>9</kbd> (reading order) or numpad <kbd>7 8 9 / 4 5 6 / 1 2 3</kbd>.<br><kbd>Space</kbd> start/continue · <kbd>P</kbd> pause · <kbd>R</kbd> restart · <kbd>C</kbd> cheats · <kbd>Esc</kbd> close</p>
-          <p class="sub" data-helpnote hidden>Online match: the timer keeps running while this panel is open.</p>
-          <button class="wam-btn ghost" type="button" data-act="close">Close</button>
+          <p class="wam-sub" data-helpnote hidden>Online match: the timer keeps running while this panel is open.</p>
         </div>
+        <div class="wam-foot"><span class="wam-note">Press H to reopen this guide</span><button class="wam-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
+    </div>
 
-      <div class="wam-ov" data-ov="cheats" hidden>
-        <div class="wam-card">
-          <h3>🧪 Cheats</h3>
-          <p class="sub">Offline only. Any cheat disables best-score saving.</p>
+    <div class="wam-ov" data-ov="cheats" hidden>
+      <div class="wam-card">
+        <div class="wam-head"><h3>🧪 Cheats</h3><button class="wam-btn" type="button" data-cheats-close aria-label="Close cheats">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="wam-body">
+          <p class="wam-sub">Offline only. Any cheat disables best-score saving.</p>
           <div class="wam-cheats">
             <button class="wam-cheat" type="button" data-cheat="slowmo" aria-pressed="false"><span>🐢 Slow motion<small>Wave runs at 55% speed.</small></span><span class="st">OFF</span></button>
             <button class="wam-cheat" type="button" data-cheat="longup" aria-pressed="false"><span>⏱ Long uptime<small>Moles stay up 2.2× longer.</small></span><span class="st">OFF</span></button>
@@ -420,20 +443,15 @@ export function mount(root, context = {}) {
             <button class="wam-btn ghost" type="button" data-cheatcmd="win">Instant win</button>
             <button class="wam-btn ghost" type="button" data-cheatcmd="reset">Reset all</button>
           </div>
-          <p class="sub" style="margin-top:10px"><button class="wam-btn" type="button" data-act="close">Done</button></p>
         </div>
+        <div class="wam-foot"><span class="wam-note">Cheats apply immediately</span><button class="wam-btn primary" type="button" data-cheats-close>Done</button></div>
       </div>
     </div>
-
-    <div class="wam-pad" data-pad hidden>${Array.from({ length: 9 }, (_, i) =>
-        `<button type="button" data-pad="${i}" aria-label="Whack hole ${i + 1}">${i + 1}</button>`).join("")}
-    </div>
-    <p class="wam-hint">
-      <span class="desktop">Keys <b>1–9</b> / numpad · click a hole · <b>P</b> pause · <b>H</b> help</span>
-      <span class="touch">Tap a hole or use the pad · 🐹 +${GAME.HIT} · 🧸 ${GAME.DECOY}</span>
-    </p>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+
+  <div class="wam-pad" data-pad hidden>${Array.from({ length: 9 }, (_, i) =>
+        `<button type="button" data-pad="${i}" aria-label="Whack hole ${i + 1}">${i + 1}</button>`).join("")}
+  </div>
 </div>`;
 
     /* ---------- refs ---------- */
@@ -442,6 +460,8 @@ export function mount(root, context = {}) {
     const fieldG = $("[data-field]"), fxG = $("[data-fx]"), boardSvg = $("[data-svg]");
     const statusEl = $("[data-status]"), timeEl = $("[data-time]"), levelEl = $("[data-level]");
     const pipsEl = $("[data-pips]"), toastEl = $("[data-toast]"), padEl = $("[data-pad]");
+    const helpBtn = $("[data-help]"), cheatsBtn = $("[data-cheats]"), pauseBtn = $("[data-pause]");
+    const restartBtn = $("[data-restart]"), padBtn = $("[data-pad-toggle]");
     const ov = {
         intro: $('[data-ov="intro"]'), toss: $('[data-ov="toss"]'), result: $('[data-ov="result"]'),
         over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'), help: $('[data-ov="help"]'),
@@ -907,7 +927,8 @@ export function mount(root, context = {}) {
             $('[data-card="' + s + '"]').classList.toggle("is-active", !!state && state.phase === "turn" && state.turnSeat === s);
         }
         const info = state && state.wave ? waveInfo() : null;
-        levelEl.textContent = "Level " + (state ? state.level : 1) + "/" + GAME.MAX_LEVEL + (info ? " · par " + info.par : "");
+        levelEl.textContent = "L" + (state ? state.level : 1) + "/" + GAME.MAX_LEVEL;
+        levelEl.parentElement.title = info ? "Par " + info.par : "";
         if (!state || state.phase !== "turn") timeEl.textContent = "–";
         const pips = pipsEl.children;
         for (let i = 0; i < pips.length; i++) pips[i].classList.toggle("on", !!state && i < state.waveMisses);
@@ -916,25 +937,32 @@ export function mount(root, context = {}) {
         boardSvg.classList.toggle("is-waiting", !myTurn);
         boardSvg.classList.toggle("is-reveal", !online && cheats.reveal);
         padEl.toggleAttribute("hidden", !padOn);
-        $('[data-padbtn]').classList.toggle("is-on", padOn);
+        padBtn.classList.toggle("on", padOn);
+        padBtn.setAttribute("aria-pressed", padOn ? "true" : "false");
         padEl.querySelectorAll("button").forEach((b) => { b.disabled = !myTurn || paused; });
 
-        $('[data-cheatsbtn]').toggleAttribute("hidden", online);
-        $('[data-pausebtn]').toggleAttribute("hidden", online);
-        $('[data-pausebtn]').disabled = !state || state.phase !== "turn";
-        $('[data-restartbtn]').toggleAttribute("hidden", online && !room.isHost);
-        $('[data-restartbtn]').textContent = online ? "↺ Rematch" : "↺ Restart";
+        cheatsBtn.toggleAttribute("hidden", online);
+        pauseBtn.toggleAttribute("hidden", online);
+        pauseBtn.disabled = !state || state.phase !== "turn";
+        const pauseLabel = pauseBtn.querySelector(".wam-btn-label");
+        if (pauseLabel) pauseLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", (paused ? "Resume" : "Pause") + " (P) — offline only");
+        restartBtn.toggleAttribute("hidden", online && !room.isHost);
+        const restartLabel = restartBtn.querySelector(".wam-btn-label");
+        if (restartLabel) restartLabel.textContent = online ? "Rematch" : "Restart";
+        restartBtn.setAttribute("aria-label", online ? "Rematch" : "Restart");
         $('[data-helpnote]').toggleAttribute("hidden", !online);
 
-        /* overlays by phase */
+        /* overlays by phase — help/cheats suppress everything else */
         const phase = state ? state.phase : "intro";
-        ov.intro.toggleAttribute("hidden", phase !== "intro");
-        ov.toss.toggleAttribute("hidden", phase !== "toss");
-        ov.result.toggleAttribute("hidden", phase !== "turnResult");
-        ov.over.toggleAttribute("hidden", phase !== "gameOver");
+        ov.intro.toggleAttribute("hidden", phase !== "intro" || helpOpen || cheatsOpen);
+        ov.toss.toggleAttribute("hidden", phase !== "toss" || helpOpen || cheatsOpen);
+        ov.result.toggleAttribute("hidden", phase !== "turnResult" || helpOpen || cheatsOpen);
+        ov.over.toggleAttribute("hidden", phase !== "gameOver" || helpOpen || cheatsOpen);
         ov.pause.toggleAttribute("hidden", !(paused && !autoPaused && phase === "turn" && !helpOpen && !cheatsOpen));
         ov.help.toggleAttribute("hidden", !helpOpen);
-        ov.cheats.toggleAttribute("hidden", !cheatsOpen);
+        ov.cheats.toggleAttribute("hidden", !cheatsOpen || helpOpen);
 
         /* status */
         let st = "Ready";
@@ -945,6 +973,7 @@ export function mount(root, context = {}) {
         else if (phase === "turnResult") st = "Turn result";
         else if (phase === "gameOver") st = state.winner === mySeat() ? "You win!" : "Match over";
         statusEl.textContent = st;
+        $('[data-besthud]').textContent = String(readBest());
 
         /* intro */
         const badge = $("[data-seatbadge]");
@@ -1017,26 +1046,53 @@ export function mount(root, context = {}) {
     }
 
     /* ---------- overlay / pause helpers ---------- */
-    function openPanel(name) {
-        if (name === "cheats" && online) { toast("Cheats are offline-only"); return; }
-        helpOpen = name === "help";
-        cheatsOpen = name === "cheats";
+    function setPaused(next) {
+        if (next === paused) return;
+        paused = next;
+        if (!next) {
+            /* Resume: geser anchor wall-clock agar waktu tidak loncat saat pause. */
+            waveStartPerf = performance.now() - waveElapsed * 1000;
+        }
+    }
+    function freezeForPanel() {
         if (!online && state && state.phase === "turn" && !paused) { paused = true; autoPaused = true; }
+    }
+    function releasePanelFreeze() {
+        if (autoPaused) { setPaused(false); autoPaused = false; }
+    }
+    function toggleHelp(on) {
+        const next = typeof on === "boolean" ? on : !helpOpen;
+        if (next === helpOpen) return;
+        helpOpen = next;
+        if (helpOpen) { cheatsOpen = false; freezeForPanel(); }
+        else releasePanelFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) { toast("Cheats are offline-only"); return; }
+        const next = typeof on === "boolean" ? on : !cheatsOpen;
+        if (next === cheatsOpen) return;
+        cheatsOpen = next;
+        if (cheatsOpen) { helpOpen = false; freezeForPanel(); }
+        else releasePanelFreeze();
+        render();
+    }
+    function togglePause(on) {
+        if (online || !state || state.phase !== "turn" || helpOpen || cheatsOpen) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        setPaused(next);
+        autoPaused = false;
         render();
     }
     function closePanels() {
         helpOpen = false; cheatsOpen = false;
-        if (autoPaused) { paused = false; autoPaused = false; }
-        render();
-    }
-    function togglePause() {
-        if (online || !state || state.phase !== "turn" || helpOpen || cheatsOpen) return;
-        paused = !paused; autoPaused = false;
+        releasePanelFreeze();
         render();
     }
     function contextAction() {
         if (helpOpen || cheatsOpen) { closePanels(); return; }
-        if (paused) { paused = false; autoPaused = false; render(); return; }
+        if (paused) { togglePause(false); return; }
         if (!state) return;
         if (state.phase === "intro" || state.phase === "gameOver") { if (isAuthority()) submitAction({ type: state.phase === "intro" ? "start" : "rematch" }); }
         else if (state.phase === "turnResult" && isAuthority()) submitAction({ type: "next" });
@@ -1083,8 +1139,18 @@ export function mount(root, context = {}) {
         tryWhack(+(zone.dataset.hole ?? zone.dataset.pad));
     }
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const cheatBtn = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { if (isAuthority() && state) startMatch(); return; }
+        if (t.closest("[data-pad-toggle]")) { padOn = !padOn; render(); return; }
+        const cheatBtn = t.closest("[data-cheat]");
         if (cheatBtn) {
             if (online) return;
             const key = cheatBtn.dataset.cheat;
@@ -1097,7 +1163,7 @@ export function mount(root, context = {}) {
             publish();
             return;
         }
-        const cmdBtn = event.target.closest("[data-cheatcmd]");
+        const cmdBtn = t.closest("[data-cheatcmd]");
         if (cmdBtn) {
             if (online) return;
             const cmd = cmdBtn.dataset.cheatcmd;
@@ -1109,18 +1175,11 @@ export function mount(root, context = {}) {
             } else submitAction({ type: "cheat", key: cmd });
             return;
         }
-        const actBtn = event.target.closest("[data-act]");
+        const actBtn = t.closest("[data-act]");
         if (!actBtn) return;
         switch (actBtn.dataset.act) {
             case "start": case "rematch": if (isAuthority()) submitAction({ type: actBtn.dataset.act }); break;
             case "next": if (isAuthority()) submitAction({ type: "next" }); break;
-            case "restart": if (isAuthority() && state) startMatch(); break;
-            case "resume": paused = false; autoPaused = false; render(); break;
-            case "pause": togglePause(); break;
-            case "help": helpOpen ? closePanels() : openPanel("help"); break;
-            case "cheats": cheatsOpen ? closePanels() : openPanel("cheats"); break;
-            case "close": closePanels(); break;
-            case "pad": padOn = !padOn; render(); break;
         }
     }
 
@@ -1132,24 +1191,32 @@ export function mount(root, context = {}) {
     function handleKey(event) {
         if (!root.isConnected) return;
         const code = event.code;
-        if (code in KEYMAP) {
-            if (event.repeat) return;
+        const inButton = event.target && event.target.closest && event.target.closest("button");
+        /* prioritas: help -> cheats -> pause/escape -> restart -> aksi game */
+        if (code === "KeyH") { event.preventDefault(); toggleHelp(); return; }
+        if (code === "KeyC") { event.preventDefault(); toggleCheats(); return; }
+        if (code === "KeyP" || code === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else togglePause();
             event.preventDefault();
-            tryWhack(KEYMAP[code]);
+            return;
+        }
+        if (code === "KeyR") {
+            if (isAuthority() && state) { event.preventDefault(); startMatch(); }
             return;
         }
         if (code === "Space" || code === "Enter") {
-            if (event.target.closest && event.target.closest("button")) return; // let native click work
+            if (inButton) return; // biarkan klik native tombol bekerja
             event.preventDefault();
             contextAction();
             return;
         }
-        switch (code) {
-            case "KeyP": event.preventDefault(); togglePause(); break;
-            case "KeyR": if (isAuthority() && state) { event.preventDefault(); startMatch(); } break;
-            case "KeyC": event.preventDefault(); cheatsOpen ? closePanels() : openPanel("cheats"); break;
-            case "KeyH": event.preventDefault(); helpOpen ? closePanels() : openPanel("help"); break;
-            case "Escape": if (helpOpen || cheatsOpen) closePanels(); else if (paused) { paused = false; autoPaused = false; render(); } break;
+        if (helpOpen || cheatsOpen) return;
+        if (code in KEYMAP) {
+            if (event.repeat) return;
+            event.preventDefault();
+            tryWhack(KEYMAP[code]);
         }
     }
 

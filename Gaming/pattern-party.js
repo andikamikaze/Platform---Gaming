@@ -15,6 +15,8 @@
  *   - kursi pemain (multiplayer: host/guest bisa duduk di seat 0/1 acak).
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "pattern-party", // harus sama dengan nama file (tanpa .js)
     name: "Pattern Party",
@@ -257,34 +259,38 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.pp-app{--pp-accent:#6d28d9;--pp-soft:#ede9fe;--pp-ink:#0f172a;--pp-muted:#64748b;--pp-line:#e2e8f0;--pp-ok:#10b981;--pp-bad:#ef4444;--pp-tile:clamp(52px,11vw,84px);color:var(--pp-ink)}
+.pp-app{--pp-accent:#6d28d9;--pp-soft:#ede9fe;--pp-paper:#ffffff;--pp-ink:#0f172a;--pp-muted:#64748b;--pp-line:#e2e8f0;--pp-ok:#10b981;--pp-bad:#ef4444;--pp-tile:clamp(52px,11vw,84px);color:var(--pp-ink);width:100%}
+.pp-app *{box-sizing:border-box}
 .pp-app [hidden]{display:none!important}
-.pp-app .pp-panel{position:relative;background:#fff;border:1px solid var(--pp-line);border-radius:20px;padding:clamp(14px,3vw,26px);box-shadow:0 1px 2px rgba(15,23,42,.05),0 12px 32px rgba(15,23,42,.06);display:flex;flex-direction:column;gap:16px}
-.pp-app .pp-top{display:flex;align-items:stretch;gap:12px}
-.pp-app .pp-card{flex:1;min-width:0;border:1px solid var(--pp-line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:3px;background:#fff;transition:border-color .2s,box-shadow .2s}
+.pp-app .game-intro{flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:var(--pp-paper);border:1px solid var(--pp-line);border-radius:10px}
+.pp-app .game-intro>div{min-width:0;flex:1 1 240px}
+.pp-app .game-intro p{font-size:12px;line-height:1.5;color:var(--pp-muted)}
+.pp-app .pp-panel{position:relative;background:#fff;border:1px solid var(--pp-line);border-radius:12px;padding:clamp(12px,3vw,20px);display:flex;flex-direction:column;gap:12px}
+.pp-app .pp-top{display:flex;align-items:stretch;gap:8px}
+.pp-app .pp-card{flex:1;min-width:0;border:1px solid var(--pp-line);border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:4px;background:#fff;transition:border-color .16s,box-shadow .16s}
 .pp-app .pp-card.is-turn{border-color:var(--pp-accent);box-shadow:0 0 0 3px var(--pp-soft)}
 .pp-app .pp-card.is-turn .pp-name{color:var(--pp-accent)}
-.pp-app .pp-name{font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--pp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pp-app .pp-score{font-size:26px;font-weight:800;line-height:1.1}
+.pp-app .pp-name{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--pp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-app .pp-score{font-size:24px;font-weight:800;line-height:1.1}
 .pp-app .pp-mid{flex:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-width:0}
-.pp-app .pp-round{font-size:11.5px;font-weight:700;color:var(--pp-muted);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
-.pp-app .pp-dots{display:flex;gap:5px}
+.pp-app .pp-round{font-size:11px;font-weight:700;color:var(--pp-muted);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.pp-app .pp-dots{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;max-width:100%}
 .pp-app .pp-dot{width:9px;height:9px;border-radius:50%;background:var(--pp-line);box-sizing:border-box}
 .pp-app .pp-dot.ok{background:var(--pp-ok)}
 .pp-app .pp-dot.bad{background:var(--pp-bad)}
 .pp-app .pp-dot.now{background:#fff;border:2px solid var(--pp-accent)}
-.pp-app .pp-stage{position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;padding:10px 0 4px;min-height:360px}
-.pp-app .pp-tag{font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--pp-accent);background:var(--pp-soft);padding:5px 12px;border-radius:999px;text-align:center}
-.pp-app .pp-row{display:flex;gap:clamp(6px,1.6vw,14px);justify-content:center}
-.pp-app .pp-tile{width:var(--pp-tile);height:var(--pp-tile);border-radius:18px;background:#f8fafc;border:1.5px solid var(--pp-line);display:flex;align-items:center;justify-content:center;position:relative;flex:0 0 auto;box-sizing:border-box}
+.pp-app .pp-stage{position:relative;display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0 4px;min-height:340px}
+.pp-app .pp-tag{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--pp-accent);background:var(--pp-soft);padding:6px 12px;border-radius:999px;text-align:center;max-width:100%;line-height:1.4}
+.pp-app .pp-row{display:flex;gap:clamp(6px,1.6vw,12px);justify-content:center;max-width:100%}
+.pp-app .pp-tile{width:var(--pp-tile);height:var(--pp-tile);border-radius:12px;background:#f8fafc;border:1px solid var(--pp-line);display:flex;align-items:center;justify-content:center;position:relative;flex:0 0 auto;box-sizing:border-box}
 .pp-app .pp-tile svg{width:66%;height:66%;display:block}
-.pp-app .pp-hole{background:#fff;border:2px dashed #94a3b8}
+.pp-app .pp-hole{background:#fff;border:1px dashed #94a3b8}
 .pp-app .pp-q{font-size:calc(var(--pp-tile)*.42);font-weight:800;color:#94a3b8;line-height:1}
 .pp-app .pp-hole.filled{border-style:solid;border-color:var(--pp-ok);background:#ecfdf5}
 .pp-app .pp-pop{animation:pp-pop .45s cubic-bezier(.34,1.56,.64,1)}
-.pp-app .pp-prompt{font-size:13.5px;font-weight:600;color:var(--pp-muted)}
-.pp-app .pp-opt{cursor:pointer;padding:0;font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;transition:transform .15s ease,border-color .15s,box-shadow .15s,opacity .15s}
-.pp-app .pp-opt:not(:disabled):hover{transform:translateY(-3px);border-color:#cbd5e1;box-shadow:0 6px 16px rgba(15,23,42,.08)}
+.pp-app .pp-prompt{font-size:13px;font-weight:600;color:var(--pp-muted);text-align:center}
+.pp-app .pp-opt{cursor:pointer;padding:0;font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;transition:transform .16s ease,border-color .16s,box-shadow .16s,opacity .16s}
+.pp-app .pp-opt:not(:disabled):hover{transform:translateY(-2px);border-color:#cbd5e1}
 .pp-app .pp-opt:focus-visible{outline:3px solid var(--pp-accent);outline-offset:2px}
 .pp-app .pp-opt.sel,.pp-app .pp-opt.hint{border-color:var(--pp-accent);box-shadow:0 0 0 3px var(--pp-soft)}
 .pp-app .pp-opt.cut{opacity:.28;filter:grayscale(1)}
@@ -292,79 +298,130 @@ export function mount(root, context = {}) {
 .pp-app .pp-opt.wrong{border-color:var(--pp-bad);background:#fef2f2;box-shadow:0 0 0 3px #ef444433;animation:pp-shake .5s ease}
 .pp-app .pp-opt.dim{opacity:.4}
 .pp-app .pp-opt:disabled{cursor:default}
-.pp-app .pp-kbd{position:absolute;top:5px;left:7px;font-size:10px;font-weight:700;color:#94a3b8;border:1px solid var(--pp-line);border-radius:5px;padding:1px 4px;background:#fff;line-height:1.2}
-.pp-app .pp-fb{min-height:24px;font-size:15px;font-weight:700;text-align:center}
+.pp-app .pp-kbd{position:absolute;top:5px;left:7px;font-size:10px;font-weight:700;color:var(--pp-muted);border:1px solid var(--pp-line);border-radius:5px;padding:1px 4px;background:#fff;line-height:1.2}
+.pp-app .pp-fb{min-height:24px;font-size:14px;font-weight:700;text-align:center;line-height:1.4}
 .pp-app .pp-fb.ok{color:var(--pp-ok)}
 .pp-app .pp-fb.bad{color:var(--pp-bad)}
 .pp-app .pp-fb.wait{color:var(--pp-muted);font-weight:600}
 .pp-app .pp-burst{position:absolute;inset:0;pointer-events:none;overflow:visible}
 .pp-app .pp-star{position:absolute;width:26px;height:26px;animation:pp-fly .9s ease-out forwards}
 .pp-app .pp-star svg{width:100%;height:100%;display:block}
-.pp-app .pp-toast{position:absolute;top:2px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;font-size:12.5px;font-weight:700;padding:7px 14px;border-radius:999px;opacity:0;pointer-events:none;white-space:nowrap;z-index:5}
+.pp-app .pp-toast{position:absolute;top:4px;left:50%;transform:translateX(-50%);background:var(--pp-ink);color:#fff;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:9px;opacity:0;pointer-events:none;white-space:nowrap;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;z-index:5}
 .pp-app .pp-toast.show{animation:pp-toast 2.4s ease forwards}
-.pp-app .pp-pad{display:none;justify-content:center;align-items:center;gap:16px}
-.pp-app .pp-pad-btn{width:54px;height:54px;border-radius:50%;border:1.5px solid var(--pp-line);background:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(15,23,42,.06);color:var(--pp-ink);-webkit-tap-highlight-color:transparent}
+.pp-app .pp-pad{display:none;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap}
+.pp-app .pp-pad-btn{width:54px;height:54px;border-radius:50%;border:1px solid var(--pp-line);background:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--pp-ink);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .pp-app .pp-pad-btn:active{transform:scale(.94)}
 .pp-app .pp-pad-btn:disabled{opacity:.4;cursor:default}
-.pp-app .pp-pad-ok{width:auto;min-width:104px;border-radius:999px;background:var(--pp-accent);border-color:var(--pp-accent);color:#fff;font-weight:800;font-size:14px;letter-spacing:.08em}
+.pp-app .pp-pad-ok{width:auto;min-width:104px;min-height:48px;border-radius:999px;background:var(--pp-accent);border-color:var(--pp-accent);color:#fff;font-weight:800;font-size:14px;letter-spacing:.08em}
 .pp-app .pp-toolbar{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
-.pp-app .pp-btn{font:inherit;font-size:14px;font-weight:600;color:var(--pp-ink);background:#fff;border:1px solid var(--pp-line);border-radius:12px;padding:10px 16px;cursor:pointer;transition:background .15s,transform .15s;-webkit-tap-highlight-color:transparent}
+.pp-app .pp-btn{font:inherit;font-size:13.5px;font-weight:600;color:var(--pp-ink);background:#fff;border:1px solid var(--pp-line);border-radius:9px;padding:8px 12px;min-height:40px;cursor:pointer;transition:background .16s,transform .16s;-webkit-tap-highlight-color:transparent}
 .pp-app .pp-btn:hover{background:#f8fafc}
 .pp-app .pp-btn:focus-visible{outline:3px solid var(--pp-accent);outline-offset:2px}
 .pp-app .pp-btn.primary{background:var(--pp-accent);border-color:var(--pp-accent);color:#fff;font-weight:700}
 .pp-app .pp-btn.primary:hover{background:#5b21b6}
-.pp-app .pp-btn.tiny{font-size:12.5px;padding:7px 12px;border-radius:10px}
+.pp-app .pp-btn.tiny{font-size:12.5px;padding:6px 12px}
 .pp-app .pp-cheat-dot{width:7px;height:7px;border-radius:50%;background:var(--pp-bad);display:inline-block;margin-left:6px;vertical-align:middle}
-.pp-app .pp-ov{position:absolute;inset:0;background:rgba(255,255,255,.93);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:10;border-radius:16px;padding:10px}
-.pp-app .pp-ov-card{max-width:460px;width:100%;max-height:100%;overflow:auto;background:#fff;border:1px solid var(--pp-line);border-radius:18px;padding:22px;box-shadow:0 16px 40px rgba(15,23,42,.12);display:flex;flex-direction:column;gap:12px;text-align:center}
-.pp-app .pp-ov-card h3{margin:0;font-size:22px;font-weight:800}
-.pp-app .pp-ov-card p{margin:0;color:var(--pp-muted);font-size:13.5px;line-height:1.55}
+.pp-app .pp-ov{position:absolute;inset:0;background:rgba(255,255,255,.93);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:10;border-radius:12px;padding:12px}
+.pp-app .pp-ov-card{max-width:460px;width:100%;max-height:100%;overflow:auto;background:#fff;border:1px solid var(--pp-line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;text-align:center}
+.pp-app .pp-ov-card h3{margin:0;font-size:20px;font-weight:800}
+.pp-app .pp-ov-card p{margin:0;color:var(--pp-muted);font-size:13px;line-height:1.55}
 .pp-app .pp-ov-actions{display:flex;flex-direction:column;gap:8px}
-.pp-app .pp-howto{display:flex;flex-direction:column;gap:10px;text-align:left}
-.pp-app .pp-step{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;color:#334155}
+.pp-app .pp-howto{display:flex;flex-direction:column;gap:8px;text-align:left}
+.pp-app .pp-step{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;line-height:1.5;color:var(--pp-ink)}
 .pp-app .pp-step .num{flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:var(--pp-soft);color:var(--pp-accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
-.pp-app .pp-demo{display:flex;gap:6px;justify-content:center;padding:2px 0}
+.pp-app .pp-demo{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;padding:4px 0}
 .pp-app .pp-demo .pp-tile{width:44px;height:44px;border-radius:10px}
-.pp-app .pp-keys{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:12.5px;color:#334155;text-align:left;align-items:center}
+.pp-app .pp-keys{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:12.5px;color:var(--pp-ink);text-align:left;align-items:center}
 .pp-app kbd{border:1px solid var(--pp-line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:#f8fafc;font:inherit;font-weight:700;font-size:11px;white-space:nowrap;justify-self:start}
 .pp-app .pp-cheats{display:flex;flex-direction:column;gap:8px;text-align:left}
-.pp-app .pp-cheat{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--pp-line);border-radius:12px;padding:10px 12px;cursor:pointer}
+.pp-app .pp-cheat{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--pp-line);border-radius:10px;padding:8px 12px;cursor:pointer;min-height:44px}
 .pp-app .pp-cheat input{margin-top:3px;accent-color:var(--pp-accent);width:16px;height:16px;flex:0 0 auto}
-.pp-app .pp-cheat .t{display:block;font-size:13.5px;font-weight:700}
+.pp-app .pp-cheat .t{display:block;font-size:13px;font-weight:700}
 .pp-app .pp-cheat .d{display:block;font-size:12px;color:var(--pp-muted);line-height:1.4}
 .pp-app .pp-cheat.off{opacity:.45;cursor:not-allowed}
-.pp-app .pp-note{font-size:11.5px;color:#94a3b8;line-height:1.5}
+.pp-app .pp-note{font-size:11.5px;color:var(--pp-muted);line-height:1.5}
 @media (pointer:coarse),(max-width:720px){.pp-app .pp-pad{display:flex}.pp-app .pp-kbd{display:none}}
-@media (max-width:560px){.pp-app .pp-top{flex-wrap:wrap}.pp-app .pp-mid{order:-1;flex-basis:100%}.pp-app .pp-score{font-size:22px}.pp-app .pp-stage{min-height:330px}}
+@media (max-width:560px){
+  .pp-app .pp-top{flex-wrap:wrap}
+  .pp-app .pp-mid{order:-1;flex-basis:100%}
+  .pp-app .pp-score{font-size:22px}
+  .pp-app .pp-stage{min-height:320px}
+  .pp-app{--pp-tile:clamp(48px,12vw,64px)}
+}
+@media (pointer:coarse){.pp-app .pp-btn,.pp-app .pp-pad-btn{min-height:44px}}
 @keyframes pp-pop{0%{transform:scale(.2);opacity:0}60%{transform:scale(1.2)}100%{transform:scale(1);opacity:1}}
 @keyframes pp-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 @keyframes pp-fly{0%{transform:translate(-50%,-50%) scale(.3) rotate(0deg);opacity:1}100%{transform:translate(calc(-50% + var(--pp-dx,0px)),calc(-50% + var(--pp-dy,0px))) scale(1.2) rotate(210deg);opacity:0}}
 @keyframes pp-toast{0%{opacity:0;transform:translate(-50%,-6px)}12%{opacity:1;transform:translate(-50%,0)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,0)}}
-@media (prefers-reduced-motion:reduce){.pp-app *{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion:reduce){.pp-app *{animation:none!important;transition-duration:.01ms!important}}
+
+/* --- layout redesign: HUD + fill board + modal overlays (keep last) --- */
+.pp-app .pp-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.pp-app .pp-hud .pp-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--pp-line);border-radius:999px;background:var(--pp-paper);color:var(--pp-muted);white-space:nowrap}
+.pp-app .pp-hud .pp-chip b{color:var(--pp-ink);font-weight:700;font-variant-numeric:tabular-nums}
+.pp-app .pp-hud .pp-chip.is-turn{border-color:var(--pp-accent);box-shadow:0 0 0 3px var(--pp-soft)}
+.pp-app .pp-hud .pp-chip.is-turn b{color:var(--pp-accent)}
+.pp-app .pp-hud .pp-dots{gap:4px;padding:6px 9px;flex-wrap:nowrap}
+.pp-app .pp-hud .pp-spacer{flex:1 1 auto}
+.pp-app .pp-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.pp-app .pp-icon-btn svg{flex:none;display:block}
+.pp-app .pp-hud .pp-icon-btn.on{border-color:var(--pp-accent);color:var(--pp-accent)}
+.pp-app.game-fill > .pp-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto;overflow:hidden}
+.pp-app .pp-stage{flex:1 1 auto;min-height:0;justify-content:center;padding:8px 0 4px}
+.pp-app .pp-ov-card{display:flex;flex-direction:column;overflow:hidden;max-height:100%;width:min(480px,100%);text-align:center;padding:14px 16px}
+.pp-app .pp-head,.pp-app .pp-foot{flex:none}
+.pp-app .pp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left}
+.pp-app .pp-head h3{margin:0}
+.pp-app .pp-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:4px;padding-top:10px;border-top:1px solid var(--pp-line)}
+.pp-app .pp-body,.pp-app .pp-howto,.pp-app .pp-cheats,.pp-app .pp-keys{flex:1 1 auto;min-height:0;overflow:auto}
+.pp-app .pp-howto,.pp-app .pp-cheats,.pp-app .pp-keys{text-align:left}
+.pp-app .pp-keys{grid-template-columns:auto 1fr}
+@media (max-width:640px){
+ .pp-app.game-fill > .pp-panel:not(:has(.pp-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+ .pp-app.game-fill > .pp-panel:has(.pp-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+ .pp-app .pp-hud{gap:5px;margin-bottom:8px}
+ .pp-app .pp-hud .pp-chip{padding:4px 6px;font-size:9px;min-height:24px}
+ .pp-app .pp-hud .pp-chip[data-hud="rulewrap"],.pp-app .pp-hud .pp-chip[data-hud="roundwrap"]{display:none}
+ .pp-app .pp-hud .pp-btn{min-height:32px;padding:5px 9px;font-size:9px}
+ .pp-app .pp-hud .pp-btn-label,.pp-app .pp-hud .pp-spacer{display:none}
+ .pp-app .pp-stage{min-height:0}
+ .pp-app .pp-ov{padding:8px}
+ .pp-app .pp-ov-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+ .pp-app .pp-body,.pp-app .pp-howto,.pp-app .pp-cheats,.pp-app .pp-keys{scrollbar-width:none}
+ .pp-app .pp-body::-webkit-scrollbar,.pp-app .pp-howto::-webkit-scrollbar,.pp-app .pp-cheats::-webkit-scrollbar,.pp-app .pp-keys::-webkit-scrollbar{display:none}
+ .pp-app .pp-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--pp-line)}
+ .pp-app .pp-note{display:none}
+}
 </style>
-<div class="game-app pp-app">
-  <div class="game-intro">
-    <div><h2>Pattern Party</h2><p>Spot the rule, then pick the tile that comes next.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Ready</span></span>
+<div class="game-app pp-app game-fill" data-pp>
+  <div class="pp-hud">
+    <span class="pp-chip pp-status"><i class="game-status-dot"></i><span data-status aria-live="polite">Ready</span></span>
+    <span class="pp-chip" data-hud="roundwrap">ROUND <b data-round>1 / ${ROUNDS}</b></span>
+    <span class="pp-chip" data-card="0"><b data-name="0">You</b> <b data-score="0">0</b></span>
+    <span class="pp-chip" data-card="1"><b data-name="1">Bot</b> <b data-score="1">0</b></span>
+    <span class="pp-chip pp-dots" data-dots></span>
+    <span class="pp-chip" data-hud="rulewrap">RULE <b data-tag></b></span>
+    <span class="pp-spacer"></span>
+    <button class="pp-btn pp-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="pp-btn-label">Help</span></button>
+    <button class="pp-btn pp-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="pp-btn-label">Cheats</span><span class="pp-cheat-dot" data-cheat-dot hidden></span></button>
+    <button class="pp-btn pp-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="pp-btn-label">Pause</span></button>
+    <button class="pp-btn pp-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="pp-btn-label">Restart</span></button>
+    <button class="pp-btn pp-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="pp-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel pp-panel" data-board>
-    <div class="pp-top">
-      <div class="pp-card" data-card="0"><span class="pp-name" data-name="0">You</span><span class="pp-score" data-score="0">0</span></div>
-      <div class="pp-mid"><span class="pp-round" data-round>${ROUNDS} rounds</span><span class="pp-dots" data-dots></span></div>
-      <div class="pp-card" data-card="1"><span class="pp-name" data-name="1">Bot</span><span class="pp-score" data-score="1">0</span></div>
-    </div>
     <div class="pp-stage" data-stage>
-      <div class="pp-tag" data-tag></div>
       <div class="pp-row" data-seq></div>
       <div class="pp-prompt">Which tile comes next?</div>
       <div class="pp-row pp-opts" data-opts role="group" aria-label="Answer tiles"></div>
       <div class="pp-fb" data-fb aria-live="polite"></div>
       <div class="pp-burst" data-burst></div>
       <div class="pp-toast" data-toast></div>
+    </div>
 
-      <div class="pp-ov" data-ov="start">
-        <div class="pp-ov-card">
-          <h3>Pattern Party</h3>
+    <div class="pp-ov" data-ov="start">
+      <div class="pp-ov-card">
+        <div class="pp-head"><h3>Pattern Party</h3></div>
+        <div class="pp-body">
           <p>Look at the row of tiles, find the repeating rule, and pick the tile that finishes it. ${ROUNDS} rounds, one pick each — choose carefully!</p>
           <div class="pp-ov-actions" data-start-local>
             <button type="button" class="pp-btn primary" data-act="start" data-opp="bot">Play vs Bot</button>
@@ -378,21 +435,20 @@ export function mount(root, context = {}) {
             <p><b>Waiting for the host to start…</b></p>
             <p class="pp-note">Seats and the first turn are random — you might go first!</p>
           </div>
-          <button type="button" class="pp-btn tiny" data-act="help">How to play</button>
-          <p class="pp-note" data-best-line hidden></p>
         </div>
+        <div class="pp-foot"><span class="pp-note" data-best-line hidden></span><button type="button" class="pp-btn tiny" data-act="help">How to play</button></div>
       </div>
+    </div>
 
-      <div class="pp-ov" data-ov="help" hidden>
-        <div class="pp-ov-card">
-          <h3>How to play</h3>
-          <div class="pp-howto">
-            <div class="pp-step"><b class="num">1</b><span>Four tiles follow a secret rule — shapes, colors, or both. The dashed box is the missing tile.</span></div>
-            <div class="pp-step"><b class="num">2</b><span>Find the rule. Example: circle, square, circle, square… the next tile is a <b>circle</b>.</span></div>
-            <div class="pp-demo">${demoRow}</div>
-            <div class="pp-step"><b class="num">3</b><span>Tap the matching tile below, or press <b>1–3</b>. One pick per round — no second try!</span></div>
-            <div class="pp-step"><b class="num">4</b><span>${ROUNDS} rounds. Solo: score ${NEED}+ to win. Vs Bot / online duel: turns alternate (who starts is random) — most points wins.</span></div>
-          </div>
+    <div class="pp-ov" data-ov="help" hidden>
+      <div class="pp-ov-card">
+        <div class="pp-head"><h3>How to play</h3><button type="button" class="pp-btn tiny" data-help-close aria-label="Close help">Close</button></div>
+        <div class="pp-body pp-howto">
+          <div class="pp-step"><b class="num">1</b><span>Four tiles follow a secret rule — shapes, colors, or both. The dashed box is the missing tile.</span></div>
+          <div class="pp-step"><b class="num">2</b><span>Find the rule. Example: circle, square, circle, square… the next tile is a <b>circle</b>.</span></div>
+          <div class="pp-demo">${demoRow}</div>
+          <div class="pp-step"><b class="num">3</b><span>Tap the matching tile below, or press <b>1–3</b>. One pick per round — no second try!</span></div>
+          <div class="pp-step"><b class="num">4</b><span>${ROUNDS} rounds. Solo: score ${NEED}+ to win. Vs Bot / online duel: turns alternate (who starts is random) — most points wins.</span></div>
           <div class="pp-keys">
             <kbd>1 · 2 · 3</kbd><span>Pick a tile</span>
             <kbd>← →</kbd><span>Move the selection</span>
@@ -400,56 +456,58 @@ export function mount(root, context = {}) {
             <kbd>R</kbd><span>Restart match</span>
             <kbd>H</kbd><span>Toggle this help</span>
             <kbd>C</kbd><span>Toggle the cheat lab</span>
-            <kbd>Esc</kbd><span>Close overlays</span>
+            <kbd>P / Esc</kbd><span>Pause / close overlays</span>
           </div>
           <p class="pp-note">On touch screens, tap tiles directly or use the ◀ PICK ▶ pad under the board.</p>
-          <button type="button" class="pp-btn primary" data-act="help">Got it</button>
         </div>
+        <div class="pp-foot"><span class="pp-note">Press H to reopen this guide</span><button type="button" class="pp-btn primary" data-help-close>Got it</button></div>
       </div>
+    </div>
 
-      <div class="pp-ov" data-ov="cheat" hidden>
-        <div class="pp-ov-card">
-          <h3>Cheat lab</h3>
+    <div class="pp-ov" data-ov="cheat" hidden>
+      <div class="pp-ov-card">
+        <div class="pp-head"><h3>Cheat lab</h3><button type="button" class="pp-btn tiny" data-cheats-close aria-label="Close cheats">Close</button></div>
+        <div class="pp-body pp-cheats">
           <p>Little helpers to make the party easier. Toggle anytime with <kbd>C</kbd>.</p>
-          <div class="pp-cheats">
-            <label class="pp-cheat"><input type="checkbox" data-cheat="hint"><span><span class="t">Answer hint</span><span class="d">A soft violet ring marks the correct tile on your turn.</span></span></label>
-            <label class="pp-cheat"><input type="checkbox" data-cheat="fifty"><span><span class="t">50 / 50</span><span class="d">Fades out one wrong tile every round.</span></span></label>
-            <label class="pp-cheat"><input type="checkbox" data-cheat="auto"><span><span class="t">Auto answer</span><span class="d">Plays the correct tile for you after a short pause.</span></span></label>
-            <label class="pp-cheat" data-weak-row><input type="checkbox" data-cheat="weak"><span><span class="t">Clumsy bot</span><span class="d">The bot always misses (vs Bot mode only).</span></span></label>
-          </div>
-          <button type="button" class="pp-btn" data-act="cheat-point">+1 point for me</button>
+          <label class="pp-cheat"><input type="checkbox" data-cheat="hint"><span><span class="t">Answer hint</span><span class="d">A soft violet ring marks the correct tile on your turn.</span></span></label>
+          <label class="pp-cheat"><input type="checkbox" data-cheat="fifty"><span><span class="t">50 / 50</span><span class="d">Fades out one wrong tile every round.</span></span></label>
+          <label class="pp-cheat"><input type="checkbox" data-cheat="auto"><span><span class="t">Auto answer</span><span class="d">Plays the correct tile for you after a short pause.</span></span></label>
+          <label class="pp-cheat" data-weak-row><input type="checkbox" data-cheat="weak"><span><span class="t">Clumsy bot</span><span class="d">The bot always misses (vs Bot mode only).</span></span></label>
           <p class="pp-note">Hint, 50/50 and Auto only change your own screen. “+1 point” changes the real score — your rival will see it in an online duel. Play fair-ish!</p>
-          <button type="button" class="pp-btn primary" data-act="cheats">Back to the game</button>
         </div>
+        <div class="pp-foot"><button type="button" class="pp-btn" data-act="cheat-point">+1 point for me</button><button type="button" class="pp-btn primary" data-cheats-close>Back to the game</button></div>
       </div>
+    </div>
 
-      <div class="pp-ov" data-ov="over" hidden>
-        <div class="pp-ov-card">
-          <h3 data-over-title>Party time!</h3>
+    <div class="pp-ov" data-ov="pause" hidden>
+      <div class="pp-ov-card">
+        <div class="pp-head"><h3>Paused</h3></div>
+        <div class="pp-body"><p>The board, bot and all timers are frozen. Resume when you are ready — nothing jumps ahead.</p></div>
+        <div class="pp-foot"><span class="pp-note">P or Esc to resume</span><button type="button" class="pp-btn primary" data-resume>Resume</button></div>
+      </div>
+    </div>
+
+    <div class="pp-ov" data-ov="over" hidden>
+      <div class="pp-ov-card">
+        <div class="pp-head"><h3 data-over-title>Party time!</h3></div>
+        <div class="pp-body">
           <p data-over-scores></p>
           <p data-over-sub></p>
           <p class="pp-note" data-over-best hidden></p>
-          <div class="pp-ov-actions">
-            <button type="button" class="pp-btn primary" data-act="restart">Rematch</button>
-            <button type="button" class="pp-btn" data-act="lobby" data-lobby-btn>Change mode</button>
-          </div>
           <p class="pp-note">Seats and the first turn are re-randomized every match.</p>
+        </div>
+        <div class="pp-foot">
+          <button type="button" class="pp-btn" data-act="lobby" data-lobby-btn>Change mode</button>
+          <button type="button" class="pp-btn primary" data-act="restart">Rematch</button>
         </div>
       </div>
     </div>
-
-    <div class="pp-pad" aria-label="Touch controls">
-      <button type="button" class="pp-pad-btn" data-pad="left" aria-label="Select previous tile">◀</button>
-      <button type="button" class="pp-pad-btn pp-pad-ok" data-pad="ok" aria-label="Pick selected tile">PICK</button>
-      <button type="button" class="pp-pad-btn" data-pad="right" aria-label="Select next tile">▶</button>
-    </div>
-    <div class="pp-toolbar">
-      <button type="button" class="pp-btn tiny" data-act="help">How to play</button>
-      <button type="button" class="pp-btn tiny" data-act="cheats">Cheats<span class="pp-cheat-dot" data-cheat-dot hidden></span></button>
-      <button type="button" class="pp-btn tiny" data-act="restart" data-restart hidden>Restart</button>
-    </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="pp-pad" aria-label="Touch controls">
+    <button type="button" class="pp-pad-btn" data-pad="left" aria-label="Select previous tile">◀</button>
+    <button type="button" class="pp-pad-btn pp-pad-ok" data-pad="ok" aria-label="Pick selected tile">PICK</button>
+    <button type="button" class="pp-pad-btn" data-pad="right" aria-label="Select next tile">▶</button>
+  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
@@ -469,7 +527,11 @@ export function mount(root, context = {}) {
     const ovStart = $('[data-ov="start"]');
     const ovHelp = $('[data-ov="help"]');
     const ovCheat = $('[data-ov="cheat"]');
+    const ovPause = $('[data-ov="pause"]');
     const ovOver = $('[data-ov="over"]');
+    const helpBtn = $("[data-help]");
+    const cheatsBtn = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]");
     const startLocal = $("[data-start-local]");
     const startHost = $("[data-start-host]");
     const startWait = $("[data-start-wait]");
@@ -486,7 +548,16 @@ export function mount(root, context = {}) {
 
     /* ---------------- local (tidak di-sync) ---------------- */
     let destroyed = false;
-    let helpOpen = false, cheatOpen = false;
+    let helpOpen = false, cheatOpen = false, paused = false;
+    let clockShift = 0, perfShift = 0, pauseAt = 0, perfPauseAt = 0;
+    const shiftedNow = () => Date.now() - clockShift;
+    const shiftedPerf = () => performance.now() - perfShift;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("patternPartyHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("patternPartyHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
     let sel = 0, selVisible = false;
     const cheats = { hint: false, fifty: false, auto: false, weak: false };
     let nextTimer = null, actorTimer = null, burstTimer = null, actorKey = "";
@@ -495,9 +566,54 @@ export function mount(root, context = {}) {
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { /* private mode */ }
     function saveBest() { try { localStorage.setItem(META.bestKey, String(best)); } catch (e) { /* ignore */ } }
 
+    /* Semua timer game lewat wrapper ini: saat pause/help/cheat timer dibekukan,
+     * lalu dipasang ulang dengan sisa durasi saat lanjut (anchor waktu digeser). */
+    let frozenNow = helpOpen || cheatOpen || paused;
+    const pending = new Map();
+    let timerSeq = 0;
+    function armTimer(rec, delay) {
+        rec.left = Math.max(0, Number(delay) || 0);
+        rec.due = shiftedNow() + rec.left;
+        rec.handle = setTimeout(() => {
+            pending.delete(rec.id);
+            if (!destroyed) rec.fn();
+        }, rec.left);
+    }
+    function setGameTimer(fn, delay) {
+        const id = ++timerSeq;
+        const rec = { id, fn, handle: null, left: Math.max(0, Number(delay) || 0), due: 0 };
+        pending.set(id, rec);
+        if (!frozenNow) armTimer(rec, rec.left);
+        return id;
+    }
+    function clearGameTimer(id) {
+        const rec = pending.get(id);
+        if (!rec) return;
+        if (rec.handle !== null) clearTimeout(rec.handle);
+        pending.delete(id);
+    }
+    function freezeGameTimers() {
+        for (const rec of pending.values()) {
+            if (rec.handle !== null) {
+                clearTimeout(rec.handle);
+                rec.handle = null;
+                rec.left = Math.max(0, rec.due - shiftedNow());
+            }
+        }
+    }
+    function thawGameTimers() {
+        for (const rec of pending.values()) if (rec.handle === null) armTimer(rec, rec.left);
+    }
+    function syncFreeze() {
+        const f = paused || helpOpen || cheatOpen;
+        if (f === frozenNow) return;
+        frozenNow = f;
+        if (f) freezeGameTimers(); else thawGameTimers();
+    }
+
     function clearRoundTimers() {
-        clearTimeout(nextTimer); nextTimer = null;
-        clearTimeout(actorTimer); actorTimer = null; actorKey = "";
+        clearGameTimer(nextTimer); nextTimer = null;
+        clearGameTimer(actorTimer); actorTimer = null; actorKey = "";
     }
 
     /* ---------------- state factory ---------------- */
@@ -555,6 +671,7 @@ export function mount(root, context = {}) {
         else if (playing) status = solo || mine ? "Your turn" : st.mode === "bot" ? "Bot is thinking…" : "Rival's turn";
         else if (st.phase === "reveal") status = st.ok ? "Correct!" : "Not quite";
         else status = "Match over";
+        if (paused) status = "Paused";
         statusEl.textContent = status;
 
         /* scoreboard */
@@ -622,19 +739,28 @@ export function mount(root, context = {}) {
             }
         }
 
-        /* pad + toolbar */
-        padBtns.forEach((b) => { b.disabled = !mine; });
+        /* pad + HUD controls */
+        padBtns.forEach((b) => { b.disabled = !mine || paused; });
         restartBtn.hidden = !st || st.phase === "lobby";
         cheatDot.hidden = !(cheats.hint || cheats.fifty || cheats.auto || cheats.weak);
+        const pauseLabel = pauseBtn.querySelector(".pp-btn-label");
+        if (pauseLabel) pauseLabel.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.hidden = online;
+        pauseBtn.disabled = !st || st.phase === "lobby";
+        cheatsBtn.setAttribute("aria-label", cheatDot.hidden ? "Cheats" : "Cheats active");
+        cheatsBtn.classList.toggle("on", !cheatDot.hidden);
+        helpBtn.setAttribute("aria-expanded", String(helpOpen));
 
-        /* overlays */
-        ovStart.hidden = Boolean(st && st.phase !== "lobby");
+        /* overlays: help > cheats > pause > phase */
+        ovStart.hidden = Boolean(st && st.phase !== "lobby") || paused || helpOpen || cheatOpen;
         startLocal.hidden = online;
         startHost.hidden = !online || !room.isHost;
         startWait.hidden = !online || room.isHost;
-        ovOver.hidden = !st || st.phase !== "over";
+        ovOver.hidden = !st || st.phase !== "over" || paused || helpOpen || cheatOpen;
+        ovPause.hidden = !paused || helpOpen || cheatOpen;
         ovHelp.hidden = !helpOpen;
-        ovCheat.hidden = !cheatOpen;
+        ovCheat.hidden = !cheatOpen || helpOpen;
         lobbyBtn.hidden = online;
 
         /* cheat controls */
@@ -681,6 +807,7 @@ export function mount(root, context = {}) {
         /* efek hanya sekali per transisi */
         if (fresh) { lastFx = fxKey; if (st.ok) burst(); }
 
+        syncFreeze();
         scheduleActors();
     }
 
@@ -694,7 +821,7 @@ export function mount(root, context = {}) {
     function burst() {
         const hole = $('[data-hole]');
         if (!hole) return;
-        clearTimeout(burstTimer);
+        clearGameTimer(burstTimer);
         burstEl.innerHTML = "";
         const bb = stageEl.getBoundingClientRect();
         const hb = hole.getBoundingClientRect();
@@ -714,7 +841,7 @@ export function mount(root, context = {}) {
             el.innerHTML = STAR_SVG;
             burstEl.appendChild(el);
         }
-        burstTimer = setTimeout(() => { burstEl.innerHTML = ""; }, 950);
+        burstTimer = setGameTimer(() => { burstTimer = null; burstEl.innerHTML = ""; }, 950);
     }
 
     /* ---------------- bot & auto-answer ---------------- */
@@ -742,10 +869,10 @@ export function mount(root, context = {}) {
             }
         }
         if (key !== actorKey) {
-            clearTimeout(actorTimer);
+            clearGameTimer(actorTimer);
             actorTimer = null;
             actorKey = key;
-            if (fn) actorTimer = setTimeout(() => { actorTimer = null; fn(); }, delay);
+            if (fn) actorTimer = setGameTimer(() => { actorTimer = null; fn(); }, delay);
         }
     }
 
@@ -809,7 +936,7 @@ export function mount(root, context = {}) {
             state.log.push(ok ? 1 : 0);
             if (ok) state.scores[seat] += 1;
             publish();
-            nextTimer = setTimeout(advance, ok ? 1150 : 1700);
+            nextTimer = setGameTimer(advance, ok ? 1150 : 1700);
         }
     }
 
@@ -823,7 +950,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- input: mouse / touch ---------------- */
     function moveSel(dir) {
-        if (!myTurn() || helpOpen || cheatOpen) return;
+        if (!myTurn() || helpOpen || cheatOpen || paused) return;
         let n = sel;
         for (let k = 0; k < 3; k++) {
             n = (n + dir + 3) % 3;
@@ -834,18 +961,53 @@ export function mount(root, context = {}) {
         render();
     }
 
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) helpOpen = false;
+        render();
+    }
+    function setPaused(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) { render(); return; }
+        if (next) {
+            pauseAt = shiftedNow();
+            perfPauseAt = shiftedPerf();
+            helpOpen = false;
+            cheatOpen = false;
+        } else {
+            /* Resume: geser anchor Date.now()/performance.now() agar tidak loncat. */
+            clockShift += shiftedNow() - pauseAt;
+            perfShift += shiftedPerf() - perfPauseAt;
+        }
+        paused = next;
+        render();
+    }
+
     function handleClick(event) {
-        const el = event.target.closest("[data-exit],[data-act],[data-opt],[data-pad],[data-cheat]");
+        const el = event.target.closest("[data-exit],[data-help],[data-help-close],[data-cheats],[data-cheats-close],[data-pause],[data-resume],[data-restart],[data-act],[data-opt],[data-pad],[data-cheat]");
         if (!el) return;
         if (el.hasAttribute("data-exit")) { onExit(); return; }
+        if (el.hasAttribute("data-help")) { toggleHelp(); return; }
+        if (el.hasAttribute("data-help-close")) { toggleHelp(false); return; }
+        if (el.hasAttribute("data-cheats")) { toggleCheats(); return; }
+        if (el.hasAttribute("data-cheats-close")) { toggleCheats(false); return; }
+        if (el.hasAttribute("data-pause")) { setPaused(!paused); return; }
+        if (el.hasAttribute("data-resume")) { setPaused(false); return; }
+        if (el.hasAttribute("data-restart")) { helpOpen = false; cheatOpen = false; paused = false; submitAction({ type: "restart" }); return; }
         if (el.dataset.cheat) {
             cheats[el.dataset.cheat] = el.checked;
             if (el.dataset.cheat === "fifty" && el.checked && sel === cutIdx()) moveSel(1);
-            else render();
+            render();
             return;
         }
         if (el.dataset.pad) {
-            if (helpOpen || cheatOpen) return;
+            if (helpOpen || cheatOpen || paused) return;
             if (el.dataset.pad === "ok") {
                 if (myTurn() && sel !== cutIdx()) submitAction({ type: "pick", i: sel, round: state.round });
             } else moveSel(el.dataset.pad === "left" ? -1 : 1);
@@ -853,16 +1015,16 @@ export function mount(root, context = {}) {
         }
         if (el.dataset.act) {
             const a = el.dataset.act;
-            if (a === "start") { helpOpen = false; cheatOpen = false; submitAction({ type: "start", opp: el.dataset.opp || "bot" }); }
-            else if (a === "restart") { helpOpen = false; cheatOpen = false; submitAction({ type: "restart" }); }
+            if (a === "start") { helpOpen = false; cheatOpen = false; paused = false; submitAction({ type: "start", opp: el.dataset.opp || "bot" }); }
+            else if (a === "restart") { helpOpen = false; cheatOpen = false; paused = false; submitAction({ type: "restart" }); }
             else if (a === "lobby") submitAction({ type: "lobby" });
-            else if (a === "help") { helpOpen = !helpOpen; cheatOpen = false; render(); }
-            else if (a === "cheats") { cheatOpen = !cheatOpen; helpOpen = false; render(); }
+            else if (a === "help") toggleHelp(true);
+            else if (a === "cheats") toggleCheats(false);
             else if (a === "cheat-point") submitAction({ type: "cheatPoint" });
             return;
         }
         if (el.dataset.opt !== undefined) {
-            if (helpOpen || cheatOpen) return;
+            if (helpOpen || cheatOpen || paused) return;
             const i = parseInt(el.dataset.opt, 10);
             if (myTurn() && i !== cutIdx()) submitAction({ type: "pick", i, round: state.round });
         }
@@ -875,17 +1037,26 @@ export function mount(root, context = {}) {
         const t = e.target;
         if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !root.contains(t)) return;
         const k = e.key;
+        /* prioritas: help → cheats → pause → Escape → aksi game (H/C/P/R) */
+        if (k === "h" || k === "H" || k === "?") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "c" || k === "C") { toggleCheats(); e.preventDefault(); return; }
+        if (k === "p" || k === "P") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else setPaused(!paused);
+            e.preventDefault(); return;
+        }
         if (k === "Escape") {
-            if (helpOpen || cheatOpen) { helpOpen = false; cheatOpen = false; render(); e.preventDefault(); }
-            return;
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            e.preventDefault(); return;
         }
-        if (k === "c" || k === "C") { cheatOpen = !cheatOpen; helpOpen = false; render(); e.preventDefault(); return; }
-        if (k === "h" || k === "H" || k === "?") { helpOpen = !helpOpen; cheatOpen = false; render(); e.preventDefault(); return; }
-        if (helpOpen || cheatOpen) return;
         if (k === "r" || k === "R") {
-            if (state && state.phase !== "lobby") { submitAction({ type: "restart" }); e.preventDefault(); }
-            return;
+            if (!helpOpen && !cheatOpen && !paused && state && state.phase !== "lobby") submitAction({ type: "restart" });
+            e.preventDefault(); return;
         }
+        if (helpOpen || cheatOpen || paused) return;
         if (!state) return;
         /* Enter/Space pada tombol yang ter-focus dibiarkan native (klik). */
         const nativeBtn = (k === "Enter" || k === " ") && t && t.tagName === "BUTTON" && root.contains(t);
@@ -938,7 +1109,8 @@ export function mount(root, context = {}) {
         destroy() {
             destroyed = true;
             clearRoundTimers();
-            clearTimeout(burstTimer);
+            clearGameTimer(burstTimer);
+            pending.clear();
             root.removeEventListener("click", handleClick);
             document.removeEventListener("keydown", onKey);
             subs.forEach((u) => { try { u(); } catch (err) { /* ignore */ } });

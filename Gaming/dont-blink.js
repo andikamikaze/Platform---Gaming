@@ -1,20 +1,23 @@
 /* ==== GAME: dont-blink.js ==== */
 /*
- * Don't Blink - ported to the game template (export META + mount).
+ * Dont Blink - ported to the game template (export META + mount).
  * Setelah edit: node tools/build-games-manifest.mjs
  *
  * - 8 ronde tetap (bukan generator level acak tanpa akhir), pembuatan grid
  *   seeded per-match dan SELALU ada tepat 1 perubahan -> selalu bisa diselesaikan.
  * - Turn-based: vs Bot (mode "ai") atau 1v1 (mode "room", host authoritative).
  * - Giliran pertama diacak tiap match; kursi P1/P2 diacak tiap match (online).
- * - Tanpa teks tutorial; tanpa tombol virtual (mobile tap langsung grid).
- * - Desktop: mouse + keyboard (1-9, panah + Enter, Space, R, C, Esc).
+ * - Layout: HUD bar (info + tombol ikon), board penuh tinggi, overlay
+ *   start/result/pause/cheat/help di dalam board. Bantuan internal sekali jalan.
+ * - Desktop: mouse + keyboard (1-9, panah + Enter, Space, H, C, P, R, Esc).
  * - Cheat overlay: reveal target, slow watch, infinite lives, auto spot.
  */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "dont-blink", // harus sama dengan nama file (tanpa .js)
-    name: "Don't Blink",
+    name: "Dont Blink",
     category: "educational",
     catLabel: "Educational",
     desc: "Memorize the grid, then spot the one shape that changed after the blink.",
@@ -111,6 +114,11 @@ export function mount(root, context = {}) {
 
     let destroyed = false;
     let cheatsOpen = false;
+    let helpOpen = false;
+    let paused = false;
+    let frozen = false;
+    let freezeAt = 0;
+    let freezePerfAt = 0;
     let kbMode = false;
     let cursor = 0;
     let botPlan = null;      /* lokal (offline), tidak diserialisasi */
@@ -121,109 +129,211 @@ export function mount(root, context = {}) {
     let changeApplied = true;
     const offs = [];
 
+    /* bantuan internal: tampil sekali per perangkat, dibuka lagi lewat H / tombol Help */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("dontBlinkHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("dontBlinkHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
     root.innerHTML = `
 <style>
-.db-app{--db-bg:#0f1216;--db-panel:#171b22;--db-line:#242b36;--db-text:#e8edf4;--db-mut:#8a93a2;--db-acc:#8b9cf9;--db-good:#34d399;--db-bad:#f87171;color:var(--db-text)}
+.db-app{--db-bg:#0f1216;--db-panel:#171b22;--db-line:#242b36;--db-text:#e8edf4;--db-mut:#8a93a2;--db-acc:#8b9cf9;--db-good:#34d399;--db-bad:#f87171;color:var(--db-text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0}
+.db-app *{box-sizing:border-box}
 .db-app [hidden]{display:none!important}
-.db-app .db-panel{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--db-bg);border:1px solid var(--db-line);border-radius:16px}
-.db-app .db-top{display:flex;align-items:flex-start;justify-content:space-between;width:100%;gap:12px}
-.db-app .db-seat{display:flex;flex-direction:column;gap:5px;min-width:88px}
-.db-app .db-seat.right{align-items:flex-end;text-align:right}
-.db-app .db-seat-name{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--db-mut)}
-.db-app .db-seat.right .db-seat-name{flex-direction:row-reverse}
-.db-app .db-seat-name b{font-size:10px;font-weight:700;letter-spacing:.06em;padding:1px 5px;border:1px solid var(--db-line);border-radius:5px;color:var(--db-mut)}
-.db-app .db-seat.on .db-seat-name{color:var(--db-acc)}
-.db-app .db-seat.on .db-seat-name b{border-color:var(--db-acc);color:var(--db-acc)}
-.db-app .db-cflag{font-style:normal;font-size:9px;font-weight:800;color:#f59e0b;border:1px solid rgba(245,158,11,.4);border-radius:4px;padding:0 3px}
-.db-app .db-seat-score{font-size:24px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
-.db-app .db-lives{display:flex;gap:4px}
-.db-app .db-lives i{width:7px;height:7px;border-radius:50%;background:var(--db-bad)}
-.db-app .db-lives i.off{background:var(--db-line)}
-.db-app .db-round{font-size:10px;letter-spacing:.14em;color:var(--db-mut);text-align:center;padding-top:2px}
-.db-app .db-round b{display:block;font-size:14px;letter-spacing:.02em;color:var(--db-text);margin-top:2px;font-variant-numeric:tabular-nums}
-.db-app .db-phase{display:flex;align-items:center;gap:8px;min-height:22px;font-size:14px;color:var(--db-mut)}
-.db-app .db-count{font-size:14px;font-weight:800;color:var(--db-acc);font-variant-numeric:tabular-nums}
-.db-app .db-board{position:relative;width:min(100%,420px);min-height:264px;display:grid;align-items:center}
-.db-app .db-grid{display:grid;grid-template-columns:repeat(var(--n),1fr);gap:8px;width:min(100%,calc(var(--n)*72px + (var(--n) - 1)*8px));margin:0 auto;user-select:none;-webkit-user-select:none;touch-action:manipulation}
-.db-app .db-cell{aspect-ratio:1;display:grid;place-items:center;padding:0;background:var(--db-panel);border:1px solid var(--db-line);border-radius:12px;cursor:pointer;transition:border-color .12s,background .12s,transform .12s}
+.db-app button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
+.db-app :focus-visible{outline:2px solid var(--db-acc);outline-offset:2px}
+.db-hud{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.db-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--db-line);border-radius:999px;background:var(--db-panel);color:var(--db-mut);white-space:nowrap}
+.db-chip b{color:var(--db-text);font-weight:700;font-variant-numeric:tabular-nums}
+.db-seat-name{display:inline-flex;align-items:center;gap:6px;max-width:130px}
+.db-seat-name>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.db-seat-name b,.db-tag{font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 6px;border:1px solid var(--db-line);border-radius:6px;color:var(--db-mut);flex:none}
+.db-seat.on .db-seat-name{color:var(--db-acc)}
+.db-seat.on .db-seat-name b{border-color:var(--db-acc);color:var(--db-acc)}
+.db-cflag{font-style:normal;font-size:9px;font-weight:800;color:#f59e0b;border:1px solid rgba(245,158,11,.4);border-radius:4px;padding:0 3px}
+.db-lives{display:inline-flex;gap:4px;flex:none}
+.db-lives i{width:7px;height:7px;border-radius:50%;background:var(--db-bad)}
+.db-lives i.off{background:var(--db-line)}
+.db-status-dot{width:7px;height:7px;border-radius:50%;background:var(--db-good);flex:none}
+.db-count{color:var(--db-acc);font-variant-numeric:tabular-nums}
+.db-spacer{flex:1 1 auto}
+.db-btn{appearance:none;border:1px solid var(--db-line);background:var(--db-panel);color:var(--db-text);border-radius:8px;min-height:44px;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;touch-action:manipulation}
+.db-btn:hover{border-color:var(--db-acc);color:var(--db-acc)}
+.db-btn:focus-visible{outline:2px solid var(--db-acc);outline-offset:2px}
+.db-btn:disabled{opacity:.45;cursor:default}
+.db-btn.primary{background:var(--db-acc);border-color:var(--db-acc);color:#0f1216}
+.db-btn.primary:hover{color:#0f1216;opacity:.92}
+.db-btn.on{border-color:var(--db-acc);color:var(--db-acc)}
+.db-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.db-icon-btn svg{flex:none;display:block}
+.db-hud .db-btn{min-height:34px;padding:6px 9px;font-size:10px}
+.db-board{position:relative;width:100%;flex:1 1 auto;min-height:0;display:grid;place-items:center;padding:12px;background:var(--db-bg);border:1px solid var(--db-line);border-radius:12px;overflow:hidden}
+.db-grid{display:grid;grid-template-columns:repeat(var(--n),1fr);gap:8px;width:min(100%,calc(var(--n)*72px + (var(--n) - 1)*8px));margin:0 auto;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.db-cell{aspect-ratio:1;display:grid;place-items:center;padding:0;background:var(--db-panel);border:1px solid var(--db-line);border-radius:10px;cursor:pointer;transition:border-color .12s,background .12s,transform .12s;-webkit-tap-highlight-color:transparent}
 @media (hover:hover){.db-app .db-grid:not(.locked) .db-cell:hover{border-color:var(--db-acc);transform:translateY(-1px)}}
-.db-app .db-grid.locked .db-cell{cursor:default}
-.db-app .db-cell svg{width:62%;height:62%;display:block}
-.db-app .db-cell.good{border-color:var(--db-good);background:rgba(52,211,153,.1)}
-.db-app .db-cell.bad{border-color:var(--db-bad);background:rgba(248,113,113,.1)}
-.db-app .db-cell.hint{border-color:var(--db-acc);border-style:dashed}
-.db-app .db-cell.cursor{box-shadow:0 0 0 2px var(--db-acc) inset}
-.db-app .db-flash{position:absolute;inset:0;background:#fff;border-radius:12px;opacity:0;pointer-events:none;z-index:3}
-.db-app .db-flash.go{animation:db-blink .46s ease-out}
+.db-grid.locked .db-cell{cursor:default}
+.db-cell svg{width:62%;height:62%;display:block}
+.db-cell.good{border-color:var(--db-good);background:rgba(52,211,153,.1)}
+.db-cell.bad{border-color:var(--db-bad);background:rgba(248,113,113,.1)}
+.db-cell.hint{border-color:var(--db-acc);border-style:dashed}
+.db-cell.cursor{box-shadow:0 0 0 2px var(--db-acc) inset}
+.db-flash{position:absolute;inset:0;background:#fff;border-radius:10px;opacity:0;pointer-events:none;z-index:3}
+.db-flash.go{animation:db-blink .46s ease-out}
 @keyframes db-blink{0%{opacity:0}30%{opacity:.95}100%{opacity:0}}
-.db-app .db-cover{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(15,18,22,.94);border-radius:12px;text-align:center;padding:16px}
-.db-app .db-cover-title{font-size:22px;font-weight:800}
-.db-app .db-cover-sub{font-size:13px;color:var(--db-mut)}
-.db-app .db-cheats{position:absolute;top:8px;right:8px;z-index:5;width:min(230px,calc(100% - 16px));background:var(--db-panel);border:1px solid var(--db-line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
-.db-app .db-cheats-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--db-mut);text-transform:uppercase}
-.db-app .db-x{background:none;border:0;color:var(--db-mut);font-size:16px;line-height:1;cursor:pointer;padding:2px 4px}
-.db-app .db-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;cursor:pointer}
-.db-app .db-cheat-row input{appearance:none;-webkit-appearance:none;width:34px;height:20px;border-radius:999px;background:var(--db-line);position:relative;cursor:pointer;transition:background .15s;flex:none;margin:0}
-.db-app .db-cheat-row input::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
-.db-app .db-cheat-row input:checked{background:var(--db-acc)}
-.db-app .db-cheat-row input:checked::after{left:17px}
-@media (max-width:480px){.db-app .db-panel{padding:12px}.db-app .db-grid{gap:6px}.db-app .db-seat-score{font-size:20px}}
+.db-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:12px;background:rgba(15,18,22,.94);border-radius:inherit}
+.db-card{width:min(560px,100%);max-height:100%;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--db-line);border-radius:14px;background:var(--db-panel);text-align:left;overflow:hidden}
+.db-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.db-head h3{margin:0;font-size:14px;font-weight:800}
+.db-stats,.db-cheats,.db-help{flex:1 1 auto;min-height:0;overflow:auto}
+.db-cover-title{font-size:22px;font-weight:800;text-align:center}
+.db-cover-sub{font-size:13px;color:var(--db-mut);line-height:1.5;text-align:center}
+.db-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:auto;padding-top:10px;border-top:1px solid var(--db-line)}
+.db-note{font-size:11px;color:var(--db-mut);line-height:1.5}
+.db-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:13px;cursor:pointer}
+.db-cheat-row input{appearance:none;-webkit-appearance:none;width:40px;height:24px;border:1px solid var(--db-line);border-radius:999px;background:var(--db-line);position:relative;cursor:pointer;transition:background .16s;flex:none;margin:0}
+.db-cheat-row input::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .16s}
+.db-cheat-row input:checked{background:var(--db-acc)}
+.db-cheat-row input:checked::after{left:19px}
+.db-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.db-help b{display:block;margin-bottom:6px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--db-mut);text-transform:uppercase}
+.db-help ul{margin:0 0 12px;padding-left:16px;font:600 11px/1.7 ui-monospace,monospace;color:var(--db-mut)}
+.db-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--db-line);border-bottom-width:2px;border-radius:5px;background:var(--db-bg);color:var(--db-text);font:inherit}
+@media (max-width:480px){
+.db-board{padding:8px}
+.db-grid{gap:6px}
+.db-cover-title{font-size:20px}
+.db-app .db-hud{gap:6px}
+}
+@media (pointer:coarse){
+.db-app .db-cheat-row input{width:52px;height:44px}
+.db-app .db-cheat-row input::after{top:14px}
+}
+@media (prefers-reduced-motion:reduce){.db-app *{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+/* --- layout overrides (keep last) --- */
+.db-app.game-fill > .db-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.db-app.game-fill > .db-board:not(:has(.db-ov:not([hidden]))){aspect-ratio:4/3;flex:0 0 auto}
+.db-app.game-fill > .db-board:has(.db-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.db-app .db-hud{gap:5px;margin-bottom:0}
+.db-app .db-hud .db-chip{padding:4px 6px;font-size:9px}
+.db-app .db-hud .db-chip[data-hud="status"],
+.db-app .db-hud .db-seat-name>span{display:none}
+.db-app .db-hud .db-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.db-app .db-hud .db-btn-label,
+.db-app .db-hud .db-spacer{display:none}
+.db-app .db-ov{padding:8px}
+.db-app .db-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.db-app .db-stats,.db-app .db-cheats,.db-app .db-help{scrollbar-width:none}
+.db-app .db-stats::-webkit-scrollbar,
+.db-app .db-cheats::-webkit-scrollbar,
+.db-app .db-help::-webkit-scrollbar{display:none}
+.db-app .db-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--db-line)}
+.db-app .db-note{display:none}
+}
 </style>
-<div class="game-app db-app">
-  <div class="game-intro">
-    <div><h2>Don't Blink</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app db-app game-fill" data-db>
+  <div class="db-hud">
+    <span class="db-chip db-seat" data-seat="0">
+      <span class="db-seat-name"><b data-tag>P1</b><span data-name>You</span><i class="db-cflag" data-cflag hidden>C</i></span>
+      <b data-score>0</b>
+      <span class="db-lives"><i data-life></i><i data-life></i><i data-life></i></span>
+    </span>
+    <span class="db-chip">ROUND <b data-round>1/${ROUNDS}</b></span>
+    <span class="db-chip db-seat" data-seat="1">
+      <span class="db-seat-name"><b data-tag>P2</b><span data-name>${online ? "Player 2" : "Bot"}</span><i class="db-cflag" data-cflag hidden>C</i></span>
+      <b data-score>0</b>
+      <span class="db-lives"><i data-life></i><i data-life></i><i data-life></i></span>
+    </span>
+    <span class="db-chip" data-hud="status"><i class="db-status-dot"></i><span data-status aria-live="polite">Ready</span></span>
+    <span class="db-chip"><span data-phase aria-live="polite"></span><b class="db-count" data-count></b></span>
+    <span class="db-spacer"></span>
+    <button class="db-btn db-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="db-btn-label">Help</span></button>
+    <button class="db-btn db-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="db-btn-label">Cheats</span></button>
+    <button class="db-btn db-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="db-btn-label">Pause</span></button>
+    <button class="db-btn db-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="db-btn-label">Restart</span></button>
+    <button class="db-btn db-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="db-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel db-panel">
-    <div class="db-top">
-      <div class="db-seat" data-seat="0">
-        <span class="db-seat-name"><b data-tag>P1</b><span data-name>You</span><i class="db-cflag" data-cflag hidden>C</i></span>
-        <span class="db-seat-score" data-score>0</span>
-        <span class="db-lives"><i data-life></i><i data-life></i><i data-life></i></span>
-      </div>
-      <div class="db-round">ROUND<b data-round>1/${ROUNDS}</b></div>
-      <div class="db-seat right" data-seat="1">
-        <span class="db-seat-name"><b data-tag>P2</b><span data-name>${online ? "Player 2" : "Bot"}</span><i class="db-cflag" data-cflag hidden>C</i></span>
-        <span class="db-seat-score" data-score>0</span>
-        <span class="db-lives"><i data-life></i><i data-life></i><i data-life></i></span>
+  <section class="game-panel db-board" data-board>
+    <div class="db-grid" data-grid style="--n:3"></div>
+    <div class="db-flash" data-flash aria-hidden="true"></div>
+    <div class="db-ov" data-ov="cover">
+      <div class="db-card">
+        <div class="db-head"><h3 data-cover-title>Dont Blink</h3><span class="db-tag">${online ? "Online" : "vs Bot"}</span></div>
+        <div class="db-stats"><p class="db-cover-sub" data-cover-sub hidden></p></div>
+        <div class="db-foot"><span class="db-note">8 rounds &middot; first to run the rival out of lives wins</span><button type="button" class="db-btn primary" data-act="start" data-cover-btn>Start</button></div>
       </div>
     </div>
-    <div class="db-phase"><span data-phase aria-live="polite"></span><b class="db-count" data-count></b></div>
-    <div class="db-board">
-      <div class="db-grid" data-grid style="--n:3"></div>
-      <div class="db-flash" data-flash aria-hidden="true"></div>
-      <div class="db-cheats" data-cheats hidden>
-        <div class="db-cheats-head"><span>Cheats - you</span><button type="button" class="db-x" data-act="cheats-close" aria-label="Close cheats">&#215;</button></div>
-        ${CHEAT_DEFS.map((d) => '<label class="db-cheat-row"><span>' + d.label + '</span><input type="checkbox" data-cheat="' + d.key + '"></label>').join("")}
+    <div class="db-ov" data-ov="pause" hidden>
+      <div class="db-card">
+        <div class="db-head"><h3>Paused</h3></div>
+        <div class="db-foot"><span class="db-note">Press P or Esc to resume</span><button type="button" class="db-btn primary" data-resume>Resume</button></div>
       </div>
-      <div class="db-cover" data-cover>
-        <div class="db-cover-title" data-cover-title>Don't Blink</div>
-        <div class="db-cover-sub" data-cover-sub hidden></div>
-        <button type="button" class="game-action-button" data-act="start" data-cover-btn>Start</button>
+    </div>
+    <div class="db-ov" data-ov="cheat" hidden>
+      <div class="db-card">
+        <div class="db-head"><h3>Cheats</h3><button class="db-btn" type="button" data-act="cheats-close" aria-label="Close cheats">Close</button></div>
+        <div class="db-cheats">
+          ${CHEAT_DEFS.map((d) => '<label class="db-cheat-row"><span>' + d.label + '</span><input type="checkbox" data-cheat="' + d.key + '"></label>').join("")}
+        </div>
+        <div class="db-foot"><span class="db-note">Cheats apply to your seat only</span><button type="button" class="db-btn" data-act="cheats-close">Close</button></div>
+      </div>
+    </div>
+    <div class="db-ov" data-ov="help" hidden>
+      <div class="db-card">
+        <div class="db-head"><h3>How to play</h3><button class="db-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="db-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Memorize the grid during <span class="db-kbd">watch</span>, then spot the one shape that changed after the blink.</li>
+              <li>Click the changed cell, or press <span class="db-kbd">1</span>&ndash;<span class="db-kbd">9</span> to pick by index.</li>
+              <li><span class="db-kbd">&#8592;</span><span class="db-kbd">&#8594;</span><span class="db-kbd">&#8593;</span><span class="db-kbd">&#8595;</span> move the cursor, <span class="db-kbd">Enter</span> / <span class="db-kbd">Space</span> confirms.</li>
+              <li><span class="db-kbd">H</span> help &middot; <span class="db-kbd">C</span> cheats &middot; <span class="db-kbd">P</span>/<span class="db-kbd">Esc</span> pause &middot; <span class="db-kbd">R</span> restart.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap the changed cell directly; no virtual buttons needed.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>There are ${ROUNDS} rounds; exactly one cell changes (color, shape or size) every round.</li>
+              <li>You have ${LIVES} lives. A wrong pick or a timeout costs one life unless cheat is on.</li>
+              <li>Players alternate who goes first; seats are shuffled online.</li>
+              <li>Run the rival out of lives, or lead in score after ${ROUNDS} rounds, to win.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="db-foot"><span class="db-note">Press H to reopen this guide</span><button type="button" class="db-btn primary" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-act="cheats" data-cheats-btn aria-expanded="false">Cheats</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
+    const board = $("[data-board]");
     const statusEl = $("[data-status]"),
         phaseEl = $("[data-phase]"),
         countEl = $("[data-count]"),
         roundEl = $("[data-round]"),
         gridEl = $("[data-grid]"),
         flashEl = $("[data-flash]"),
-        coverEl = $("[data-cover]"),
+        coverEl = $('[data-ov="cover"]'),
         coverTitleEl = $("[data-cover-title]"),
         coverSubEl = $("[data-cover-sub]"),
         coverBtnEl = $("[data-cover-btn]"),
-        cheatsEl = $("[data-cheats]"),
-        cheatsBtnEl = $("[data-cheats-btn]");
+        pauseBtnEl = $("[data-pause]"),
+        cheatsBtnEl = $("[data-cheats]");
+    const ov = {
+        cover: coverEl,
+        pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'),
+        help: $('[data-ov="help"]'),
+    };
     const seatEls = Array.from(root.querySelectorAll(".db-seat"));
     const cheatInputs = Array.from(root.querySelectorAll("input[data-cheat]"));
 
@@ -240,6 +350,73 @@ export function mount(root, context = {}) {
         const rec = roomData && roomData.players && roomData.players[p];
         return (rec && rec.name) || "Player " + (p + 1);
     };
+
+    /* ---------------- freeze / overlays ---------------- */
+    function shiftClock(ms) {
+        if (!authority || !state || !ms || ms < 0) return;
+        if (state.endsAt) state.endsAt += ms;
+        if (state.changeAt) state.changeAt += ms;
+        if (state.findAt) state.findAt += ms;
+        if (botPlan) botPlan.at += ms;
+    }
+    function syncFreeze() {
+        const next = paused || helpOpen || cheatsOpen;
+        if (next === frozen) return;
+        frozen = next;
+        if (frozen) {
+            freezeAt = Date.now();
+            freezePerfAt = performance.now();
+        } else {
+            const shift = freezeAt ? Date.now() - freezeAt : 0;
+            const perfShift = freezePerfAt ? performance.now() - freezePerfAt : 0;
+            freezeAt = 0;
+            freezePerfAt = 0;
+            void perfShift; /* penanda performa: tidak dipakai engine turn-based */
+            shiftClock(shift);
+            if (online && authority && state) publish();
+        }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; paused = false; }
+        syncFreeze();
+        render();
+    }
+    function togglePause(on) {
+        if (!authority) return;
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { cheatsOpen = false; helpOpen = false; }
+        syncFreeze();
+        render();
+    }
+    function syncOverlays() {
+        const showCover = !state || state.phase === "idle" || showOver();
+        ov.cover.hidden = !showCover || cheatsOpen || helpOpen || paused;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen || paused;
+        ov.help.hidden = !helpOpen;
+        if (cheatsBtnEl) {
+            const c = myCheats();
+            const active = Object.keys(c).filter((k) => c[k]).length;
+            cheatsBtnEl.classList.toggle("on", active > 0);
+            const label = cheatsBtnEl.querySelector(".db-btn-label");
+            if (label) label.textContent = active > 0 ? "Cheats " + active : "Cheats";
+        }
+        if (pauseBtnEl) {
+            const label = pauseBtnEl.querySelector(".db-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtnEl.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtnEl.title = paused ? "Resume (P)" : "Pause (P)";
+            pauseBtnEl.disabled = !authority;
+        }
+    }
+    function showOver() { return Boolean(state && state.phase === "over"); }
 
     /* ---------------- state (serializable, host-authoritative) ---------------- */
     function blankState() {
@@ -423,6 +600,7 @@ export function mount(root, context = {}) {
     function tickText() {
         const s = state;
         if (!s) { countEl.textContent = ""; return; }
+        if (frozen) return; /* zaman dibekukan: jangan hitung mundur saat pause/help/cheat */
         if (s.phase === "watch" || s.phase === "find") {
             countEl.textContent = String(Math.max(0, Math.ceil((s.endsAt - now()) / 1000)));
         } else countEl.textContent = "";
@@ -435,12 +613,11 @@ export function mount(root, context = {}) {
             statusEl.textContent = "Connecting...";
             phaseEl.textContent = "";
             countEl.textContent = "";
-            coverEl.hidden = false;
             coverTitleEl.textContent = META.name;
             coverSubEl.hidden = false;
             coverSubEl.textContent = "Waiting for host...";
             coverBtnEl.hidden = true;
-            cheatsEl.hidden = true;
+            syncOverlays();
             return;
         }
 
@@ -493,11 +670,9 @@ export function mount(root, context = {}) {
         }
         lastPhase = s.phase;
 
-        const showCover = s.phase === "idle" || s.phase === "over";
-        coverEl.hidden = !showCover;
-        if (showCover) {
+        if (s.phase === "idle" || showOver()) {
             let title = META.name, sub = "", btn = "Start";
-            if (s.phase === "over") {
+            if (showOver()) {
                 title = s.winner === -1 ? "Draw" : s.winner === mySeat() ? "You win" : seatName(s.winner) + " wins";
                 sub = s.scores[0] + " - " + s.scores[1] + (s.reason === "lives" ? " | out of lives" : "");
                 btn = "Play again";
@@ -509,31 +684,45 @@ export function mount(root, context = {}) {
             coverBtnEl.textContent = btn;
         }
 
-        cheatsEl.hidden = !cheatsOpen;
-        cheatsBtnEl.setAttribute("aria-expanded", String(cheatsOpen));
         cheatInputs.forEach((input) => { input.checked = !!myCheats()[input.dataset.cheat]; });
         tickText();
+        syncOverlays();
     }
 
     /* ---------------- input ---------------- */
     function tap(i) {
         const s = state;
-        if (!s || s.phase !== "find" || activeSeat() !== mySeat()) return;
+        if (frozen || !s || s.phase !== "find" || activeSeat() !== mySeat()) return;
         kbMode = false;
         submitAction({ type: "tap", i });
     }
+    function restartGame() {
+        paused = false;
+        helpOpen = false;
+        cheatsOpen = false;
+        syncFreeze();
+        submitAction({ type: "start" });
+    }
 
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const act = event.target.closest("[data-act]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartGame(); return; }
+        const act = t.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
-            if (a === "start" || a === "restart") submitAction({ type: "start" });
-            else if (a === "cheats") { cheatsOpen = !cheatsOpen; render(); }
-            else if (a === "cheats-close") { cheatsOpen = false; render(); }
+            if (a === "start") submitAction({ type: "start" });
+            else if (a === "cheats") toggleCheats();
+            else if (a === "cheats-close") toggleCheats(false);
             return;
         }
-        const cell = event.target.closest(".db-cell");
+        const cell = t.closest(".db-cell");
         if (cell) tap(Number(cell.dataset.i));
     }
 
@@ -554,14 +743,35 @@ export function mount(root, context = {}) {
 
     function handleKey(event) {
         if (destroyed || !root.isConnected) return;
-        if (event.target && event.target.closest && event.target.closest("input,textarea,select")) return;
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
         const k = event.key;
-        if (k === "c" || k === "C") { event.preventDefault(); cheatsOpen = !cheatsOpen; render(); return; }
-        if (k === "Escape") { if (cheatsOpen) { cheatsOpen = false; render(); } return; }
-        if (k === "r" || k === "R") { submitAction({ type: "start" }); return; }
+        const code = event.code || "";
+        const tag = event.target && event.target.tagName;
+        const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+        const is = (letter) => code === "Key" + letter || k === letter.toLowerCase() || k === letter.toUpperCase();
+
+        /* prioritas: help -> cheats -> pause/Escape -> aksi game */
+        if (is("H")) { event.preventDefault(); toggleHelp(); return; }
+        if (is("C")) { event.preventDefault(); if (!helpOpen && !paused) toggleCheats(); return; }
+        if (is("P") || k === "Escape") {
+            event.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) toggleCheats(false);
+            else if (authority) togglePause();
+            return;
+        }
+        if (is("R") && !typing) { event.preventDefault(); restartGame(); return; }
+        if (k === "Enter" || k === " ") {
+            if (helpOpen) { event.preventDefault(); toggleHelp(false); return; }
+            if (cheatsOpen) { event.preventDefault(); toggleCheats(false); return; }
+            if (paused) { event.preventDefault(); togglePause(false); return; }
+            if (frozen || typing || (event.target && event.target.closest && event.target.closest("button"))) return;
+        }
+        if (frozen || typing) { event.preventDefault(); return; }
+
         const s = state;
         if (!s) return;
-        if (s.phase === "idle" || s.phase === "over") {
+        if (s.phase === "idle" || showOver()) {
             if (k === " " || k === "Enter") {
                 if (event.target.closest && event.target.closest("button")) return; /* aktivasi native */
                 event.preventDefault();
@@ -585,7 +795,6 @@ export function mount(root, context = {}) {
         else moved = false;
         if (moved) { event.preventDefault(); kbMode = true; cursor = r * n + c; decorate(); return; }
         if (k === "Enter" || k === " ") {
-            if (event.target.closest && event.target.closest("button")) return; /* sel fokus / tombol UI: klik native */
             event.preventDefault();
             kbMode = true;
             tap(cursor);
@@ -594,7 +803,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- clock: 1 tick ringan, tanpa write Firebase per detik ---------------- */
     const tickId = setInterval(() => {
-        if (destroyed || !state) return;
+        if (destroyed || !state || frozen) return;
         const s = state, t = now();
         tickText();
         if (s.phase === "blink" && !changeApplied && t >= s.changeAt) {
@@ -626,6 +835,7 @@ export function mount(root, context = {}) {
     gridEl.addEventListener("pointerdown", handlePointer);
     document.addEventListener("keydown", handleKey);
 
+    syncFreeze();
     if (online) {
         offs.push(room.onRoom((nextRoom) => { roomData = nextRoom; render(); }));
         if (room.isHost) {

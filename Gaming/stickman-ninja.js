@@ -1,4 +1,5 @@
 /* ==== GAME: stickman-ninja.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
   Stickman Ninja — realtime 2D side-scrolling stealth race.
   Template: export META + mount(root, context). Regenerate manifest:
@@ -195,42 +196,47 @@ export function mount(root, context = {}) {
     /* ================= DOM & CSS (minimalis) ================= */
     root.innerHTML = `
 <style>
-.sn-app{--bg:#0b0f1a;--panel:#0f1526;--line:#223052;--text:#e2e8f0;--dim:#7c8db5;--acc:#22d3ee;--warn:#fbbf24;--bad:#f87171;--ok:#34d399;color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;gap:10px}
-.sn-app *{box-sizing:border-box}
-.sn-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.sn-title{font-weight:800;font-size:16px;letter-spacing:.3px;margin-right:4px}
-.sn-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12px;color:var(--dim);white-space:nowrap}
+.sn{--bg:#0b0f1a;--panel:#0f1526;--line:#223052;--text:#e2e8f0;--dim:#7c8db5;--acc:#22d3ee;--warn:#fbbf24;--bad:#f87171;--ok:#34d399;color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.sn [hidden]{display:none!important}
+.sn *{box-sizing:border-box}
+.sn-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sn-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:10px;color:var(--dim);white-space:nowrap}
 .sn-chip b{color:var(--text);font-variant-numeric:tabular-nums}
 .sn-chip.acc{border-color:#155e6b;color:#a5f3fc}
 .sn-chip.bad{border-color:#7f1d1d;color:#fecaca}
-.sn-spacer{flex:1}
-.sn-btn{appearance:none;border:1px solid var(--line);background:#141c33;color:var(--text);border-radius:9px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;transition:border-color .15s,transform .05s,background .15s}
+.sn-spacer{flex:1 1 auto}
+.sn-btn{appearance:none;border:1px solid var(--line);background:#141c33;color:var(--text);border-radius:9px;padding:7px 9px;min-height:32px;font-weight:700;font-size:10px;cursor:pointer;transition:border-color .15s,transform .05s,background .15s}
 .sn-btn:hover{border-color:var(--acc)}
 .sn-btn:active{transform:scale(.97)}
 .sn-btn.primary{background:var(--acc);border-color:var(--acc);color:#06222a}
 .sn-btn.primary:hover{background:#67e8f9}
 .sn-btn.ghost{background:transparent}
 .sn-btn[disabled]{opacity:.4;cursor:default}
-.sn-icon{width:34px;height:34px;padding:0;display:grid;place-items:center;font-size:15px;border-radius:9px}
-.sn-icon.on{border-color:var(--acc);color:var(--acc)}
-.sn-stage{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg);touch-action:none}
-.sn-cv{display:block;width:100%;height:auto;aspect-ratio:960/440;cursor:crosshair}
-.sn-meter{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:min(240px,40%);height:6px;border-radius:3px;background:#1e293b;border:1px solid var(--line);overflow:hidden;pointer-events:none}
+.sn-btn.on{border-color:var(--acc);color:var(--acc)}
+.sn-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sn-icon-btn svg{flex:none;display:block}
+.sn-board{position:relative;width:100%;aspect-ratio:960/440;padding:0;border:0;border-radius:14px;overflow:hidden;background:var(--bg)}
+.sn-cv{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.sn-meter{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:min(240px,40%);height:6px;border-radius:3px;background:#1e293b;border:1px solid var(--line);overflow:hidden;pointer-events:none;z-index:5}
 .sn-meter i{display:block;height:100%;width:0;background:var(--warn);transition:width .12s linear}
 .sn-meter.hot i{background:var(--bad);animation:snPulse .5s infinite alternate}
 @keyframes snPulse{to{opacity:.55}}
-.sn-toasts{position:absolute;top:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;z-index:5}
+.sn-toasts{position:absolute;top:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;z-index:6}
 .sn-toast{background:rgba(15,21,38,.92);border:1px solid var(--line);border-left:3px solid var(--acc);padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;animation:snIn .25s ease-out}
 @keyframes snIn{from{opacity:0;transform:translateY(-8px)}}
-.sn-count{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:6}
+.sn-count{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:7}
 .sn-count b{font-size:88px;font-weight:900;color:var(--acc);text-shadow:0 0 30px rgba(34,211,238,.5);animation:snPop .9s ease-out infinite}
 @keyframes snPop{0%{transform:scale(1.35);opacity:.2}30%{transform:scale(1);opacity:1}}
-.sn-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(6,9,18,.74);backdrop-filter:blur(3px);z-index:10;padding:14px;overflow:auto}
-.sn-ov[hidden]{display:none}
-.sn-card{width:min(480px,94%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:12px}
-.sn-card h2{margin:0;font-size:22px;font-weight:800}
+.sn-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(6,9,18,.78);backdrop-filter:blur(3px);z-index:10;padding:12px;overflow:auto}
+.sn-card{width:min(480px,94%);max-height:100%;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.sn-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.sn-head h3{margin:0;font-size:18px;font-weight:800}
+.sn-tag{font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:5px 9px}
+.sn-body,.sn-help,.sn-cheats-list,.sn-stats{flex:1 1 auto;min-height:0;overflow:auto}
 .sn-card p{margin:0;color:var(--dim);font-size:13px}
 .sn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sn-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap}
+.sn-note{font-size:11px;color:var(--dim)}
 .sn-big{font-size:56px;font-weight:900;line-height:1;text-align:center}
 .sn-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:13px;color:var(--dim)}
 .sn-stats b{color:var(--text);float:right;font-variant-numeric:tabular-nums}
@@ -238,29 +244,42 @@ export function mount(root, context = {}) {
 .sn-help h3{margin:4px 0 0;font-size:13px;color:var(--text)}
 .sn-help kbd{background:#141c33;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font:11px/1.4 ui-monospace,monospace;color:var(--text)}
 .sn-help ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
-.sn-cheat{position:absolute;top:12px;right:12px;width:230px;z-index:11;background:rgba(15,21,38,.96);border:1px solid #4c1d95;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
-.sn-cheat[hidden]{display:none}
-.sn-cheat h3{margin:0;font-size:13px;color:#c4b5fd;display:flex;justify-content:space-between;align-items:center}
-.sn-cheat label{display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;color:var(--text)}
-.sn-cheat input{accent-color:#a78bfa;width:15px;height:15px}
-.sn-cheat .sn-btn{padding:6px 10px;font-size:12px}
-.sn-cheat small{color:var(--dim);font-size:11px}
-.sn-touch{position:absolute;left:12px;right:12px;bottom:10px;display:none;justify-content:space-between;align-items:flex-end;pointer-events:none;z-index:8}
-.sn-touch.show{display:flex}
+.sn-cheats-list{display:flex;flex-direction:column;gap:8px}
+.sn-cheats-list label{display:flex;align-items:center;gap:8px;min-height:32px;font-size:12.5px;cursor:pointer;color:var(--text)}
+.sn-cheats-list input{accent-color:#a78bfa;width:18px;height:18px}
+.sn-cheats-list small{color:var(--dim);font-size:11px}
+.sn-pad{display:none;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:10px;user-select:none;-webkit-user-select:none}
+.sn.touch .sn-pad{display:flex}
 .sn-tg{display:flex;gap:10px;align-items:flex-end}
 .sn-tbtn{pointer-events:auto;width:58px;height:58px;border-radius:50%;border:1.5px solid var(--line);background:rgba(15,21,38,.72);color:var(--text);font-weight:800;font-size:13px;display:grid;place-items:center;user-select:none;-webkit-user-select:none;touch-action:none}
 .sn-tbtn:active,.sn-tbtn.held{border-color:var(--acc);background:rgba(34,211,238,.2);transform:scale(.94)}
 .sn-tbtn.big{width:72px;height:72px;font-size:15px;border-color:#155e6b}
 .sn-tbtn.act{border-color:#7f1d1d;color:#fecaca}
 .sn-tbtn.sm{width:46px;height:46px;font-size:11px;color:#c4b5fd}
-.sn-foot{font-size:12px;color:var(--dim)}
 .sn-rank-S{color:#fde047}.sn-rank-A{color:#34d399}.sn-rank-B{color:#22d3ee}.sn-rank-C{color:#7c8db5}
-@media (max-width:640px){.sn-title{font-size:14px}.sn-chip{font-size:11px;padding:3px 8px}.sn-card{padding:16px}}
-@media (prefers-reduced-motion:reduce){.sn-count b,.sn-meter.hot i{animation:none}}
+.sn :focus-visible,.sn button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.sn *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+@media (max-width:640px){
+.sn.game-fill > .sn-board:not(:has(.sn-ov:not([hidden]))){aspect-ratio:960/440;flex:0 0 auto}
+.sn.game-fill > .sn-board:has(.sn-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sn .sn-hud{gap:5px;margin-bottom:8px}
+.sn .sn-hud .sn-chip{padding:4px 6px;font-size:9px}
+.sn .sn-hud .sn-chip[data-h-seed]{display:none}
+.sn .sn-hud .sn-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.sn .sn-hud .sn-btn-label,.sn .sn-hud .sn-spacer{display:none}
+.sn .sn-ov{padding:8px}
+.sn .sn-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sn .sn-body,.sn .sn-help,.sn .sn-cheats-list,.sn .sn-stats{scrollbar-width:none}
+.sn .sn-body::-webkit-scrollbar,.sn .sn-help::-webkit-scrollbar,.sn .sn-cheats-list::-webkit-scrollbar,.sn .sn-stats::-webkit-scrollbar{display:none}
+.sn .sn-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.sn .sn-note{display:none}
+.sn .sn-tbtn{width:50px;height:50px}
+.sn .sn-tbtn.big{width:62px;height:62px}
+.sn .sn-tbtn.sm{width:40px;height:40px}
+}
 </style>
-<div class="sn-app">
-  <div class="sn-top">
-    <span class="sn-title">🥷 Stickman Ninja</span>
+<div class="game-app sn game-fill" data-sn>
+  <div class="sn-hud">
     <span class="sn-chip" data-h-mode>Solo</span>
     <span class="sn-chip">⏱ <b data-h-time>0.0</b>s</span>
     <span class="sn-chip" data-h-scroll>📜 —</span>
@@ -270,55 +289,44 @@ export function mount(root, context = {}) {
     <span class="sn-chip acc" data-h-best>Best —</span>
     <span class="sn-chip bad" data-h-cheat hidden>CHEAT</span>
     <span class="sn-spacer"></span>
-    <button class="sn-btn sn-icon" data-act="help" title="Cara main (H)">?</button>
-    <button class="sn-btn sn-icon" data-act="sound" title="Suara (M)">🔊</button>
-    <button class="sn-btn sn-icon" data-act="touch" title="Tombol virtual">🎮</button>
-    <button class="sn-btn sn-icon" data-act="cheat" title="Cheat (C)" data-cheat-btn>⚡</button>
-    <button class="sn-btn sn-icon" data-act="pause" title="Jeda (P)" data-pause-btn>⏸</button>
-    <button class="sn-btn sn-icon" data-act="retry" title="Ulangi level (R)">↻</button>
-    <button class="sn-btn sn-icon" data-act="exit" title="Keluar">✕</button>
+    <button class="sn-btn sn-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sn-btn-label">Help</span></button>
+    <button class="sn-btn sn-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)" data-cheat-btn>${iconSVG("wrench", { size: 14 })}<span class="sn-btn-label">Cheats</span></button>
+    <button class="sn-btn sn-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" data-pause-btn>${iconSVG("pause", { size: 14 })}<span class="sn-btn-label">Pause</span></button>
+    <button class="sn-btn sn-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)" data-restart-btn>${iconSVG("refresh", { size: 14 })}<span class="sn-btn-label">Restart</span></button>
+    <button class="sn-btn sn-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sn-btn-label">Exit game</span></button>
+    <button class="sn-btn sn-icon-btn" type="button" data-act="sound" aria-label="Mute" title="Sound (M)">${iconSVG("volume", { size: 14 })}<span class="sn-btn-label">Sound</span></button>
+    <button class="sn-btn sn-icon-btn" type="button" data-act="touch" aria-label="Toggle touch controls" title="Touch controls">${iconSVG("gamepad2", { size: 14 })}<span class="sn-btn-label">Touch</span></button>
   </div>
-  <div class="sn-stage" data-stage>
+  <section class="game-panel sn-board" data-board>
     <canvas class="sn-cv" data-cv width="960" height="440"></canvas>
     <div class="sn-meter" data-meter><i></i></div>
     <div class="sn-toasts" data-toasts></div>
     <div class="sn-count" data-count hidden><b>3</b></div>
-    <div class="sn-touch" data-touch>
-      <div class="sn-tg">
-        <button class="sn-tbtn" data-tc="l">◀</button>
-        <button class="sn-tbtn" data-tc="r">▶</button>
-      </div>
-      <div class="sn-tg">
-        <button class="sn-tbtn sm" data-tc="s1">SMK</button>
-        <button class="sn-tbtn sm" data-tc="s2">STN</button>
-        <button class="sn-tbtn" data-tc="c">▼</button>
-        <button class="sn-tbtn act" data-tc="a">ACT</button>
-        <button class="sn-tbtn big" data-tc="j">⤒</button>
-      </div>
-    </div>
 
     <div class="sn-ov" data-ov="menu">
       <div class="sn-card">
-        <h2>🥷 Stickman Ninja</h2>
-        <p>Lari &amp; menyelinap ke kanan, <b style="color:#fbbf24">ambil gulungan 📜</b>, lalu capai <b style="color:#34d399">gerbang ⛩️</b> — semuanya otomatis saat disentuh. Hindari kerucut pandang penjaga, merunduk di semak/gelap, dan takedown dari belakang.</p>
-        <div class="sn-row" data-menu-modes>
-          <button class="sn-btn primary" data-act="solo">▶ Solo</button>
-          <button class="sn-btn" data-act="bot">🤖 Balapan vs Bot</button>
-          <button class="sn-btn primary" data-act="online" hidden>🏁 Mulai Balapan</button>
+        <div class="sn-head"><h3>🥷 Stickman Ninja</h3><span class="sn-tag">Stealth race</span></div>
+        <div class="sn-body">
+          <p>Lari &amp; menyelinap ke kanan, <b style="color:#fbbf24">ambil gulungan 📜</b>, lalu capai <b style="color:#34d399">gerbang ⛩️</b> — semuanya otomatis saat disentuh. Hindari kerucut pandang penjaga, merunduk di semak/gelap, dan takedown dari belakang.</p>
+          <div class="sn-row" data-menu-modes>
+            <button class="sn-btn primary" data-act="solo">▶ Solo</button>
+            <button class="sn-btn" data-act="bot">🤖 Balapan vs Bot</button>
+            <button class="sn-btn primary" data-act="online" hidden>🏁 Mulai Balapan</button>
+          </div>
+          <p data-menu-wait hidden>Menunggu host memulai balapan… Kamu bisa baca cara main dulu.</p>
+          <div class="sn-row">
+            <span class="sn-chip" data-menu-seed>Seed —</span>
+            <button class="sn-btn ghost" data-act="shuffle" data-shuffle-btn>🎲 Acak Level</button>
+            <span class="sn-chip acc" data-menu-best>Best —</span>
+          </div>
         </div>
-        <p data-menu-wait hidden>Menunggu host memulai balapan… Kamu bisa baca cara main dulu.</p>
-        <div class="sn-row">
-          <span class="sn-chip" data-menu-seed>Seed —</span>
-          <button class="sn-btn ghost" data-act="shuffle" data-shuffle-btn>🎲 Acak Level</button>
-          <span class="sn-chip acc" data-menu-best>Best —</span>
-        </div>
-        <div class="sn-row"><button class="sn-btn ghost" data-act="help">📖 Cara Main</button></div>
+        <div class="sn-foot"><span class="sn-note">Tekan H untuk bantuan</span><button class="sn-btn" data-act="help">📖 Cara Main</button></div>
       </div>
     </div>
 
     <div class="sn-ov" data-ov="help" hidden>
       <div class="sn-card">
-        <h2>📖 Cara Main</h2>
+        <div class="sn-head"><h3>📖 Cara Main</h3><button class="sn-btn" type="button" data-help-close>Close</button></div>
         <div class="sn-help">
           <h3>Tujuan</h3>
           <ul><li>Ambil 📜 lalu masuk ⛩️ (otomatis). Mode balapan: sentuh pembawa gulungan untuk <b>merebutnya</b>!</li></ul>
@@ -328,10 +336,10 @@ export function mount(root, context = {}) {
             <li><kbd>S</kbd>/<kbd>▼</kbd> merunduk — sembunyi di semak &amp; gelap</li>
             <li><kbd>E</kbd> / <b>klik kanan</b> takedown (prompt <kbd>E</kbd> muncul saat bisa)</li>
             <li><kbd>1</kbd> bom asap · <kbd>2</kbd> lempar batu pengalih</li>
-            <li><kbd>P</kbd> jeda · <kbd>R</kbd> ulang · <kbd>C</kbd> cheat · <kbd>H</kbd> bantuan</li>
+            <li><kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> jeda · <kbd>R</kbd> ulang · <kbd>M</kbd> suara</li>
           </ul>
           <h3>Kontrol Mobile</h3>
-          <ul><li>Tombol virtual di layar · ketuk area game = lompat.</li></ul>
+          <ul><li>Tombol virtual di bawah layar · ketuk area game = lompat.</li></ul>
           <h3>Aturan</h3>
           <ul>
             <li>Meter deteksi penuh → tertangkap → ulang dari checkpoint. 3× tertangkap = gagal.</li>
@@ -340,51 +348,72 @@ export function mount(root, context = {}) {
             <li>Siapa yang jalan duluan &amp; posisi ninja diacak tiap pertandingan.</li>
           </ul>
         </div>
-        <div class="sn-row"><button class="sn-btn primary" data-act="help-close">Mengerti</button></div>
+        <div class="sn-foot"><span class="sn-note">Tekan H untuk membuka lagi</span><button class="sn-btn primary" type="button" data-help-close>Mengerti</button></div>
       </div>
     </div>
 
-    <div class="sn-cheat" data-ov="cheat" hidden>
-      <h3>⚡ CHEAT <button class="sn-btn ghost" data-act="cheat-close" style="padding:2px 8px">✕</button></h3>
-      <label><input type="checkbox" data-cheat="god"> Kebal deteksi + takedown bebas</label>
-      <label><input type="checkbox" data-cheat="speed"> Lari super (+60%)</label>
-      <label><input type="checkbox" data-cheat="jump"> Lompat super</label>
-      <label><input type="checkbox" data-cheat="freeze"> Bekukan penjaga</label>
-      <label><input type="checkbox" data-cheat="gad"> Gadget tak terbatas</label>
-      <div class="sn-row">
-        <button class="sn-btn" data-act="tp-scroll">→ 📜</button>
-        <button class="sn-btn" data-act="tp-gate">→ ⛩️</button>
-        <button class="sn-btn" data-act="win">Menang</button>
+    <div class="sn-ov" data-ov="cheat" hidden>
+      <div class="sn-card">
+        <div class="sn-head"><h3>⚡ Cheats</h3><button class="sn-btn" type="button" data-cheat-close>Close</button></div>
+        <div class="sn-cheats-list">
+          <label><input type="checkbox" data-cheat="god"> Kebal deteksi + takedown bebas</label>
+          <label><input type="checkbox" data-cheat="speed"> Lari super (+60%)</label>
+          <label><input type="checkbox" data-cheat="jump"> Lompat super</label>
+          <label><input type="checkbox" data-cheat="freeze"> Bekukan penjaga</label>
+          <label><input type="checkbox" data-cheat="gad"> Gadget tak terbatas</label>
+          <div class="sn-row">
+            <button class="sn-btn" data-act="tp-scroll">→ 📜</button>
+            <button class="sn-btn" data-act="tp-gate">→ ⛩️</button>
+            <button class="sn-btn" data-act="win">Menang</button>
+          </div>
+          <small>Skor terbaik tidak disimpan saat cheat aktif.</small>
+        </div>
       </div>
-      <small>Skor terbaik tidak disimpan saat cheat aktif.</small>
     </div>
 
     <div class="sn-ov" data-ov="pause" hidden>
-      <div class="sn-card"><h2>⏸ Jeda</h2>
-        <div class="sn-row"><button class="sn-btn primary" data-act="resume">Lanjut</button><button class="sn-btn" data-act="menu">Menu</button></div>
+      <div class="sn-card">
+        <div class="sn-head"><h3>⏸ Jeda</h3><span class="sn-tag">P / Esc</span></div>
+        <div class="sn-foot"><span class="sn-note">Waktu &amp; penjaga dibekukan</span><button class="sn-btn primary" data-act="resume">Lanjut</button><button class="sn-btn" data-act="menu">Menu</button></div>
       </div>
     </div>
 
     <div class="sn-ov" data-ov="end" hidden>
       <div class="sn-card">
-        <h2 data-end-title>Misi Selesai</h2>
-        <div class="sn-big" data-end-rank>S</div>
-        <div class="sn-stats" data-end-stats></div>
-        <div class="sn-row" data-end-btns>
-          <button class="sn-btn primary" data-act="new">🎲 Level Baru</button>
-          <button class="sn-btn" data-act="again">↻ Level Sama</button>
-          <button class="sn-btn ghost" data-act="menu">Menu</button>
+        <div class="sn-head"><h3 data-end-title>Misi Selesai</h3><span class="sn-tag">Hasil</span></div>
+        <div class="sn-body" style="text-align:center">
+          <div class="sn-big" data-end-rank>S</div>
+          <div class="sn-stats" data-end-stats></div>
         </div>
-        <p data-end-wait hidden>Menunggu host memulai level baru…</p>
+        <div class="sn-foot">
+          <div class="sn-row" data-end-btns>
+            <button class="sn-btn primary" data-act="new">🎲 Level Baru</button>
+            <button class="sn-btn" data-act="again">↻ Level Sama</button>
+            <button class="sn-btn ghost" data-act="menu">Menu</button>
+          </div>
+          <p data-end-wait hidden>Menunggu host memulai level baru…</p>
+        </div>
       </div>
     </div>
+  </section>
+  <div class="sn-pad" data-touch>
+    <div class="sn-tg">
+      <button class="sn-tbtn" data-tc="l" aria-label="Left">◀</button>
+      <button class="sn-tbtn" data-tc="r" aria-label="Right">▶</button>
+    </div>
+    <div class="sn-tg">
+      <button class="sn-tbtn sm" data-tc="s1">SMK</button>
+      <button class="sn-tbtn sm" data-tc="s2">STN</button>
+      <button class="sn-tbtn" data-tc="c">▼</button>
+      <button class="sn-tbtn act" data-tc="a">ACT</button>
+      <button class="sn-tbtn big" data-tc="j">⤒</button>
+    </div>
   </div>
-  <div class="sn-foot" data-foot>Keyboard: A/D gerak · Space lompat ganda · S merunduk · E takedown · 1 asap · 2 batu · klik kiri lompat, klik kanan takedown.</div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const el = {
-        cv: $("[data-cv]"), stage: $("[data-stage]"), meter: $("[data-meter]"), meterFill: $("[data-meter] i"),
+        app: $("[data-sn]"), cv: $("[data-cv]"), board: $("[data-board]"), meter: $("[data-meter]"), meterFill: $("[data-meter] i"),
         toasts: $("[data-toasts]"), count: $("[data-count]"), countNum: $("[data-count] b"), touch: $("[data-touch]"),
         ovMenu: $('[data-ov="menu"]'), ovHelp: $('[data-ov="help"]'), ovCheat: $('[data-ov="cheat"]'), ovPause: $('[data-ov="pause"]'), ovEnd: $('[data-ov="end"]'),
         menuModes: $("[data-menu-modes]"), menuWait: $("[data-menu-wait]"), menuSeed: $("[data-menu-seed]"), menuBest: $("[data-menu-best]"),
@@ -392,7 +421,7 @@ export function mount(root, context = {}) {
         endTitle: $("[data-end-title]"), endRank: $("[data-end-rank]"), endStats: $("[data-end-stats]"), endBtns: $("[data-end-btns]"), endWait: $("[data-end-wait]"),
         hMode: $("[data-h-mode]"), hTime: $("[data-h-time]"), hScroll: $("[data-h-scroll]"), hAlarm: $("[data-h-alarm]"),
         hSmk: $("[data-h-smk]"), hStn: $("[data-h-stn]"), hSeed: $("[data-h-seed]"), hBest: $("[data-h-best]"), hCheat: $("[data-h-cheat]"),
-        cheatBtn: $("[data-cheat-btn]"), pauseBtn: $("[data-pause-btn]"), foot: $("[data-foot]"), soundBtn: $('[data-act="sound"]'),
+        cheatBtn: $("[data-cheat-btn]"), pauseBtn: $("[data-pause-btn]"), restartBtn: $("[data-restart-btn]"), soundBtn: $('[data-act="sound"]'),
     };
     const ctx = el.cv.getContext("2d");
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -408,8 +437,16 @@ export function mount(root, context = {}) {
     const cheats = { god: false, speed: false, jump: false, freeze: false, gad: false };
     let camX = 0, shake = 0, hitstop = 0, menuT = 0, parts = [], leafT = 0;
     let raf = 0, lastT = 0, hudT = 0, netT = 0, hbT = 0, lastGuestInput = 0, autopilot = false;
+    let helpOpen = false, cheatsOpen = false, nowShift = 0, pauseStart = 0;
+    const nowMs = () => performance.now() - nowShift;
     let best = 0; try { best = parseInt(localStorage.getItem(BEST_KEY) || "0", 10) || 0; } catch (e) { }
     let muted = false; try { muted = localStorage.getItem("snMuted") === "1"; } catch (e) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("sn-help-seen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("sn-help-seen", "1"); } catch (e) { /* storage blocked */ }
+    }
     const coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
     let touchForce = coarse;
     const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -502,7 +539,7 @@ export function mount(root, context = {}) {
         root.querySelectorAll("[data-cheat]").forEach((c) => (c.checked = false));
         S = freshState(kind, seed);
         inputs = [{ ...keys }, {}];
-        autopilot = false; lastGuestInput = performance.now();
+        autopilot = false; lastGuestInput = nowMs();
         parts = []; camX = 0; shake = 0; hitstop = 0;
         hideAllOv(); el.count.hidden = false;
         if (online) {
@@ -511,7 +548,6 @@ export function mount(root, context = {}) {
         } else if (kind === "bot") toast(`${S.first === 0 ? "Kamu" : "Bot"} jalan duluan! (diacak)`);
         publish(true);
     }
-    function hideAllOv() { [el.ovMenu, el.ovHelp, el.ovPause, el.ovEnd].forEach((o) => (o.hidden = true)); el.ovCheat.hidden = true; }
 
     /* ================= fisika & simulasi ================= */
     function groundTopAt(x) {
@@ -773,7 +809,7 @@ export function mount(root, context = {}) {
         if (online && S.racers[1 - mySeat]) {
             const gs = S.roles.guest;
             if (isHost) {
-                if (!autopilot && performance.now() - lastGuestInput > 6000) { autopilot = true; netToast("Pemain 2 dialihkan ke autopilot."); }
+                if (!autopilot && nowMs() - lastGuestInput > 6000) { autopilot = true; netToast("Pemain 2 dialihkan ke autopilot."); }
                 if (autopilot) inputs[gs] = botThink(S.racers[gs], dt);
             }
         }
@@ -797,7 +833,7 @@ export function mount(root, context = {}) {
     }
     function publish(force) {
         if (!online || !isHost || !S) return;
-        const now = performance.now();
+        const now = nowMs();
         if (!force && now - netT < 100) return;
         netT = now;
         try { room.publishState(makeSnap()).catch(console.warn); } catch (e) { console.warn(e); }
@@ -806,7 +842,7 @@ export function mount(root, context = {}) {
         if (!online || !isHost || !S || !action) return;
         if (action.type === "input" && action.k) {
             const seat = S.roles.guest;
-            inputs[seat] = action.k; lastGuestInput = performance.now();
+            inputs[seat] = action.k; lastGuestInput = nowMs();
             if (autopilot) { autopilot = false; netToast("Pemain 2 kembali mengambil alih."); }
         }
     }
@@ -823,7 +859,7 @@ export function mount(root, context = {}) {
             L = buildLevel(s.seed); curSeed = L.seed;
             S = freshState("online", s.seed);
             S.phase = keepMenu ? "menu" : s.phase;
-            if (keepMenu) { showMenu(); return; }
+            if (keepMenu) { hideAllOv(); showMenu(); return; }
             hideAllOv();
             toast(`Kamu: ${SEAT_NAME[mySeat]} — posisi diacak!`);
         }
@@ -933,7 +969,7 @@ export function mount(root, context = {}) {
         camX = lerp(camX, target, 0.08);
         shake = Math.max(0, shake - 0.35);
         const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
-        const T = performance.now() / 1000;
+        const T = nowMs() / 1000;
 
         /* langit */
         const sky = ctx.createLinearGradient(0, 0, 0, VH);
@@ -1109,18 +1145,32 @@ export function mount(root, context = {}) {
         if (S.phase === "count") { el.count.hidden = false; el.countNum.textContent = S.count > 0.4 ? Math.ceil(S.count - 0.4) : "GO!"; }
         else el.count.hidden = true;
     }
+    function hideAllOv() { helpOpen = false; cheatsOpen = false; syncUI(); }
+    function syncUI() {
+        hud();
+        const ph = S ? S.phase : "menu";
+        el.ovMenu.hidden = ph !== "menu" || cheatsOpen || helpOpen;
+        el.ovEnd.hidden = ph !== "end" || cheatsOpen || helpOpen;
+        el.ovPause.hidden = ph !== "pause" || cheatsOpen || helpOpen;
+        el.ovCheat.hidden = !cheatsOpen || helpOpen;
+        el.ovHelp.hidden = !helpOpen;
+        const label = el.pauseBtn.querySelector(".sn-btn-label");
+        if (label) label.textContent = ph === "pause" ? "Resume" : "Pause";
+        el.pauseBtn.setAttribute("aria-label", ph === "pause" ? "Resume" : "Pause");
+        el.pauseBtn.disabled = online;
+        el.cheatBtn.hidden = online;
+        el.cheatBtn.classList.toggle("on", cheatActive());
+        el.restartBtn.disabled = online && !isHost;
+    }
     function showMenu() {
-        hideAllOv(); el.ovMenu.hidden = false; el.count.hidden = true;
         const guest = online && !isHost;
         el.btnSolo.hidden = online; el.btnBot.hidden = online;
         el.btnOnline.hidden = !online || !isHost;
         el.menuWait.hidden = !guest;
         el.btnShuffle.hidden = guest;
-        el.pauseBtn.disabled = online; el.cheatBtn.hidden = online;
-        $('[data-act="retry"]').disabled = guest;
+        syncUI();
     }
     function showEnd() {
-        hideAllOv(); el.ovEnd.hidden = false; el.count.hidden = true;
         const me = myRacer(), win = S.winner === mySeat;
         const winnerName = S.winner < 0 ? null : S.winner === mySeat ? "Kamu" : (S.racers[S.winner] ? S.racers[S.winner].name : "Lawan");
         el.endTitle.textContent = S.winner < 0 ? "💀 Misi Gagal" : win ? "🏆 Misi Selesai!" : `🏁 ${winnerName} Menang`;
@@ -1134,21 +1184,24 @@ export function mount(root, context = {}) {
       ${cheatActive() || S.cheated ? '<span style="grid-column:1/-1;color:#c4b5fd">Cheat aktif — skor tidak disimpan</span>' : ""}` : "";
         const guest = online && !isHost;
         el.endBtns.hidden = guest; el.endWait.hidden = !guest;
+        syncUI();
     }
 
     /* ================= input ================= */
     const KEYMAP = { ArrowLeft: "l", KeyA: "l", ArrowRight: "r", KeyD: "r", ArrowUp: "j", KeyW: "j", Space: "j", ArrowDown: "c", KeyS: "c", KeyE: "a", KeyJ: "a", Digit1: "s1", Numpad1: "s1", Digit2: "s2", Numpad2: "s2" };
     function onKeyDown(e) {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
-        const k = KEYMAP[e.code];
-        if (k) { e.preventDefault(); if (!keys[k]) { keys[k] = true; sendInput(); } return; }
-        if (e.code === "KeyH") { e.preventDefault(); toggleHelp(); }
-        else if (e.code === "KeyC" && !online) { e.preventDefault(); el.ovCheat.hidden = !el.ovCheat.hidden; }
-        else if (e.code === "KeyP" && !online) { e.preventDefault(); togglePause(); }
-        else if (e.code === "KeyM") { e.preventDefault(); toggleSound(); }
-        else if (e.code === "KeyR" && (!online || isHost)) { e.preventDefault(); if (S.phase !== "menu") startMatch(S.kind, curSeed); }
-        else if (e.code === "Escape") { el.ovCheat.hidden = true; if (!el.ovHelp.hidden) toggleHelp(); else if (!el.ovPause.hidden) togglePause(); }
-        else if (e.code === "Enter" && S.phase === "menu" && (!online || isHost)) { e.preventDefault(); startMatch(online ? "online" : "solo", curSeed); }
+        const c = e.code;
+        /* prioritas: help → cheats → pause → Escape → aksi game */
+        if (c === "KeyH") { e.preventDefault(); toggleHelp(); return; }
+        if (c === "KeyC") { e.preventDefault(); if (!online && !helpOpen) { cheatsOpen = !cheatsOpen; syncUI(); } return; }
+        if (c === "KeyP") { e.preventDefault(); pauseAction(); return; }
+        if (c === "Escape") { e.preventDefault(); escapeAction(); return; }
+        if (c === "KeyM") { e.preventDefault(); toggleSound(); return; }
+        if (c === "KeyR" && (!online || isHost)) { e.preventDefault(); if (S.phase !== "menu") startMatch(S.kind, curSeed); return; }
+        if (c === "Enter") { e.preventDefault(); enterAction(); return; }
+        const k = KEYMAP[c];
+        if (k) { e.preventDefault(); if (!helpOpen && !cheatsOpen && !keys[k]) { keys[k] = true; sendInput(); } }
     }
     function onKeyUp(e) { const k = KEYMAP[e.code]; if (k) { keys[k] = false; sendInput(); } }
     document.addEventListener("keydown", onKeyDown);
@@ -1163,7 +1216,7 @@ export function mount(root, context = {}) {
     const cvUp = (e) => { if (e.button === 2) keys.a = false; else keys.j = false; sendInput(); };
     el.cv.addEventListener("pointerup", cvUp);
     el.cv.addEventListener("pointerleave", () => { keys.j = false; keys.a = false; sendInput(); });
-    el.stage.addEventListener("contextmenu", (e) => e.preventDefault());
+    el.board.addEventListener("contextmenu", (e) => e.preventDefault());
 
     /* tombol virtual multi-touch */
     const heldPointers = new Map();
@@ -1186,47 +1239,72 @@ export function mount(root, context = {}) {
     el.touch.addEventListener("pointerup", touchEnd);
     el.touch.addEventListener("pointercancel", touchEnd);
     function refreshTouch() {
-        el.touch.classList.toggle("show", touchForce);
-        el.foot.textContent = touchForce
-            ? "Sentuh: ◀▶ gerak · ⤒ lompat (2×) · ▼ merunduk · ACT takedown · SMK asap · STN batu. Ketuk layar = lompat."
-            : "Keyboard: A/D gerak · Space lompat ganda · S merunduk · E takedown · 1 asap · 2 batu · klik kiri lompat, klik kanan takedown.";
+        el.app.classList.toggle("touch", touchForce);
     }
     refreshTouch();
 
     /* klik UI */
-    function toggleHelp() {
-        const opening = el.ovHelp.hidden;
-        el.ovHelp.hidden = !opening;
-        if (!online && S.phase === "run") { if (opening) S.pausedByHelp = true; else if (S.pausedByHelp) { S.pausedByHelp = false; } }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        if (S) S.pausedByHelp = helpOpen && S.phase === "run";
+        syncUI();
     }
     function togglePause() {
         if (online || !S) return;
-        if (S.phase === "run") { S.phase = "pause"; el.ovPause.hidden = false; }
-        else if (S.phase === "pause") { S.phase = "run"; el.ovPause.hidden = true; }
+        if (S.phase === "run") { S.phase = "pause"; pauseStart = nowMs(); }
+        else if (S.phase === "pause") { S.phase = "run"; nowShift += nowMs() - pauseStart; }
+        syncUI();
     }
-    function toggleSound() { muted = !muted; el.soundBtn.textContent = muted ? "🔇" : "🔊"; el.soundBtn.classList.toggle("on", !muted); try { localStorage.setItem("snMuted", muted ? "1" : "0"); } catch (e) { } }
-    el.soundBtn.textContent = muted ? "🔇" : "🔊";
+    function pauseAction() {
+        if (helpOpen) { toggleHelp(false); return; }
+        if (cheatsOpen) { cheatsOpen = false; syncUI(); return; }
+        togglePause();
+    }
+    function escapeAction() {
+        if (helpOpen) { toggleHelp(false); return; }
+        if (cheatsOpen) { cheatsOpen = false; syncUI(); return; }
+        if (S && S.phase === "pause") togglePause();
+    }
+    function enterAction() {
+        if (helpOpen) { toggleHelp(false); return; }
+        if (cheatsOpen) { cheatsOpen = false; syncUI(); return; }
+        if (S && S.phase === "menu" && (!online || isHost)) startMatch(online ? "online" : "solo", curSeed);
+    }
+    function renderSound() {
+        el.soundBtn.innerHTML = iconSVG(muted ? "volumeX" : "volume", { size: 14 }) + '<span class="sn-btn-label">Sound</span>';
+        el.soundBtn.classList.toggle("on", !muted);
+        el.soundBtn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+    }
+    function toggleSound() { muted = !muted; renderSound(); try { localStorage.setItem("snMuted", muted ? "1" : "0"); } catch (e) { } }
+    renderSound();
 
     function handleClick(e) {
-        const b = e.target.closest("[data-act]"); if (!b) return;
-        const a = b.dataset.act; ac(); snd.click();
-        if (a === "exit") { onExit(); return; }
+        const t = e.target;
+        if (!t || !t.closest) return;
+        const anyBtn = t.closest("button"); if (anyBtn) { ac(); snd.click(); }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]") || t.closest('[data-act="cheat"]')) { if (!helpOpen && !online) { cheatsOpen = !cheatsOpen; syncUI(); } return; }
+        if (t.closest("[data-cheat-close]")) { cheatsOpen = false; syncUI(); return; }
+        if (t.closest("[data-pause]") || t.closest("[data-resume]") || t.closest('[data-act="pause"]') || t.closest('[data-act="resume"]')) { pauseAction(); return; }
+        if (t.closest("[data-restart]")) { if ((!online || isHost) && S.phase !== "menu") startMatch(S.kind, curSeed); return; }
+        const b = t.closest("[data-act]"); if (!b) return;
+        const a = b.dataset.act;
         if (a === "help") toggleHelp();
-        else if (a === "help-close") toggleHelp();
+        else if (a === "help-close") toggleHelp(false);
         else if (a === "sound") toggleSound();
         else if (a === "touch") { touchForce = !touchForce; refreshTouch(); b.classList.toggle("on", touchForce); }
-        else if (a === "cheat" && !online) el.ovCheat.hidden = !el.ovCheat.hidden;
-        else if (a === "cheat-close") el.ovCheat.hidden = true;
-        else if (a === "pause") togglePause();
-        else if (a === "resume") togglePause();
+        else if (a === "cheat-close") { cheatsOpen = false; syncUI(); }
         else if (a === "solo" && !online) startMatch("solo", curSeed);
         else if (a === "bot" && !online) startMatch("bot", curSeed);
         else if (a === "online" && online && isHost) startMatch("online", curSeed);
-        else if (a === "shuffle" && (!online || isHost)) { curSeed = randomSeed(); S = menuState(); showMenu(); publish(true); }
+        else if (a === "shuffle" && (!online || isHost)) { hideAllOv(); curSeed = randomSeed(); S = menuState(); showMenu(); publish(true); }
         else if (a === "retry" && (!online || isHost) && S.phase !== "menu") startMatch(S.kind, curSeed);
         else if (a === "again" && (!online || isHost)) startMatch(S.kind, curSeed);
         else if (a === "new" && (!online || isHost)) startMatch(S.kind, randomSeed());
-        else if (a === "menu") { S = menuState(); showMenu(); publish(true); }
+        else if (a === "menu") { hideAllOv(); S = menuState(); showMenu(); publish(true); }
         else if (a === "tp-scroll" && cheatActive()) { const r = myRacer(); if (r) { r.x = L.scroll.x - 20; r.y = GY; r.vy = 0; S.cheated = true; } }
         else if (a === "tp-gate" && cheatActive()) { const r = myRacer(); if (r) { r.x = L.gate.x - 40; r.y = GY; r.vy = 0; S.cheated = true; } }
         else if (a === "win" && cheatActive()) { const r = myRacer(); if (r && S.phase === "run") { S.cheated = true; r.scroll = true; S.scrollTaken = r.seat; r.finished = true; endMatch(r.seat); } }
@@ -1236,6 +1314,7 @@ export function mount(root, context = {}) {
         const c = e.target.closest("[data-cheat]"); if (!c || online) return;
         cheats[c.dataset.cheat] = c.checked;
         if (c.checked && S) S.cheated = true;
+        syncUI();
     });
 
     /* ================= loop utama ================= */
@@ -1255,11 +1334,13 @@ export function mount(root, context = {}) {
 
         if (hitstop > 0) hitstop -= dt;
         else if (S.phase === "count") {
-            S.count -= dt;
-            if (S.count <= 0) { S.phase = "run"; el.count.hidden = true; publish(true); }
+            if (!helpOpen) {
+                S.count -= dt;
+                if (S.count <= 0) { S.phase = "run"; el.count.hidden = true; publish(true); }
+            }
         } else if (S.phase === "run") {
             if (online && !isHost) guestFrame(dt);
-            else if (!(S.pausedByHelp && !el.ovHelp.hidden)) simulate(dt);
+            else if (!helpOpen) simulate(dt);
         } else if (S.phase === "menu") {
             for (const g of S.guards) stepGuard(g, dt); // attract mode
         } else if (S.phase === "pause" || S.phase === "end") {

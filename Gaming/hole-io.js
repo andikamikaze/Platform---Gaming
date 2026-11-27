@@ -1,6 +1,6 @@
 /* ==== GAME: hole-io.js ==== */
 /*
-  Hole.io — versi template baru (export META + mount).
+  Hole Io — versi template baru (export META + mount).
   - Dunia 1600x1000 dengan kamera mengikuti pemain (area ~3.8x lebih luas).
   - 103+ objek per wave, 3 bot rival, generator kota dijamin bisa diselesaikan.
   - Kota dibangkitkan deterministik dari seed => state online tetap kecil.
@@ -8,9 +8,11 @@
     node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "hole-io", // harus sama dengan nama file (tanpa .js)
-    name: "Hole.io",
+    name: "Hole Io",
     category: "arcade",
     catLabel: "Arcade",
     desc: "Telan seisi kota dengan lubang hitam yang membesar dan kalahkan para rival.",
@@ -248,122 +250,189 @@ export function mount(root, context = {}) {
     let roomData = room?.room || null;
     let state = null;
 
-    /* ---------- shell: minimalis, tanpa teks tutorial ---------- */
+    /* ---------- shell: HUD satu baris + board penuh + overlay ---------- */
     root.innerHTML = `
 <style>
 #hole-io-app{--hi-line:#e6e8ee;--hi-ink:#111827;--hi-mut:#6b7280;--hi-acc:#6366f1;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--hi-ink)}
 #hole-io-app [hidden]{display:none!important}
-#hole-io-app .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
-#hole-io-app .game-intro h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.02em}
-#hole-io-app .game-intro p{margin:2px 0 0;font-size:12px;color:var(--hi-mut)}
-#hole-io-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--hi-mut);border:1px solid var(--hi-line);border-radius:999px;padding:5px 11px;background:#fff;white-space:nowrap}
-#hole-io-app .game-status-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block}
-#hole-io-app .game-panel{border:1px solid var(--hi-line);border-radius:16px;background:#fff;padding:10px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-#hole-io-app .hi-hud{display:flex;flex-wrap:wrap;gap:6px;margin:0 2px 9px}
-#hole-io-app .hi-chip{display:inline-flex;align-items:baseline;gap:6px;border:1px solid var(--hi-line);background:#fafafa;border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:600;color:var(--hi-mut)}
-#hole-io-app .hi-chip b{color:var(--hi-ink);font-variant-numeric:tabular-nums;font-size:12.5px}
-#hole-io-app .hi-chip[data-accent]{border-color:#c7d2fe;background:#eef2ff;color:#4f46e5}
-#hole-io-app .hi-chip[data-accent] b{color:#4338ca}
-#hole-io-app .hi-wrap{position:relative;width:min(100%,calc((100vh - 260px)*1.5385));min-width:min(100%,300px);aspect-ratio:800/520;margin-inline:auto;-webkit-user-select:none;user-select:none}
-#hole-io-app .hi-svg{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;border-radius:12px;background:#fbfbfd;cursor:crosshair}
-#hole-io-app .hi-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:7;white-space:nowrap}
-#hole-io-app .hi-toast[data-show="1"]{opacity:.92}
-#hole-io-app .hi-pad{position:absolute;left:12px;bottom:12px;display:none;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:6px;z-index:5}
-@media (pointer:coarse){#hole-io-app .hi-pad{display:grid}}
-#hole-io-app .hi-pbtn{border:1px solid var(--hi-line);background:rgba(255,255,255,.92);border-radius:12px;display:grid;place-items:center;color:#374151;touch-action:none;padding:0;cursor:pointer}
-#hole-io-app .hi-pbtn:active{background:#eef2ff;border-color:#c7d2fe;color:#4f46e5}
-#hole-io-app .hi-pbtn svg{width:20px;height:20px}
-#hole-io-app .hi-cheats,#hole-io-app .hi-over{position:absolute;inset:0;display:grid;place-items:center;border-radius:12px;z-index:8}
-#hole-io-app .hi-cheats{background:rgba(17,24,39,.18);backdrop-filter:blur(2px)}
-#hole-io-app .hi-over{background:rgba(251,251,253,.8);backdrop-filter:blur(3px);z-index:9}
-#hole-io-app .hi-card{width:min(300px,92%);background:#fff;border:1px solid var(--hi-line);border-radius:14px;padding:14px 16px;box-shadow:0 12px 32px rgba(16,24,40,.14)}
-#hole-io-app .hi-card h3{margin:0 0 8px;font-size:14px;font-weight:800}
-#hole-io-app .hi-crow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #f1f2f6;font-size:13px}
-#hole-io-app .hi-cfoot{margin-top:10px;text-align:right}
-#hole-io-app .hi-switch{width:36px;height:21px;border-radius:999px;border:1px solid var(--hi-line);background:#f3f4f6;position:relative;cursor:pointer;padding:0;transition:background .15s;flex:none}
-#hole-io-app .hi-switch::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;border:1px solid #d1d5db;transition:left .15s}
-#hole-io-app .hi-switch[aria-pressed="true"]{background:var(--hi-acc);border-color:var(--hi-acc)}
-#hole-io-app .hi-switch[aria-pressed="true"]::after{left:17px;border-color:#fff}
-#hole-io-app .hi-over-card{text-align:center;padding:20px 26px}
-#hole-io-app .hi-over-card h3{font-size:22px;letter-spacing:-.02em;margin-bottom:6px}
-#hole-io-app .hi-over-card p{margin:0 0 14px;font-size:13px;color:var(--hi-mut)}
-#hole-io-app .hi-win{color:#16a34a}
-#hole-io-app .hi-lose{color:#dc2626}
-#hole-io-app .game-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-#hole-io-app .game-action-button{border:1px solid var(--hi-line);background:#fff;color:var(--hi-ink);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer}
-#hole-io-app .game-action-button:hover{background:#f6f7f9}
-#hole-io-app .hi-mini{padding:4px 12px;font-size:12px}
-#hole-io-app .hi-primary{background:var(--hi-acc);border-color:var(--hi-acc);color:#fff}
-#hole-io-app .hi-primary:hover{background:#4f46e5}
+.hi .hi-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;font:600 11px/1 ui-sans-serif,system-ui,sans-serif}
+.hi .hi-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--hi-line);background:#fafafa;border-radius:999px;padding:5px 10px;font-size:11px;font-weight:600;color:var(--hi-mut);white-space:nowrap}
+.hi .hi-chip b{color:var(--hi-ink);font-variant-numeric:tabular-nums;font-size:12px}
+.hi .hi-chip[data-accent]{border-color:#c7d2fe;background:#eef2ff;color:#4f46e5}
+.hi .hi-chip[data-accent] b{color:#4338ca}
+.hi .hi-spacer{flex:1 1 auto}
+.hi .hi-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;padding:6px 10px;border:1px solid var(--hi-line);border-radius:9px;background:#fff;color:var(--hi-ink);font-size:10px;font-weight:700;white-space:nowrap;cursor:pointer}
+.hi .hi-btn:hover{border-color:var(--hi-acc);color:var(--hi-acc)}
+.hi .hi-btn:disabled{opacity:.45;cursor:not-allowed}
+.hi .hi-btn.on{border-color:var(--hi-acc);color:var(--hi-acc);background:#eef2ff}
+.hi .hi-btn.primary{background:var(--hi-acc);border-color:var(--hi-acc);color:#fff}
+.hi .hi-btn.primary:hover{color:#fff;opacity:.92}
+.hi .hi-icon-btn svg{flex:none;display:block}
+.hi .hi-board{position:relative;display:block;width:100%;padding:0;border:1px solid var(--hi-line);border-radius:12px;background:#fbfbfd;overflow:hidden}
+.hi .hi-svg{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;border-radius:12px;background:#fbfbfd;cursor:crosshair}
+.hi .hi-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:7;white-space:nowrap}
+.hi .hi-toast[data-show="1"]{opacity:.92}
+.hi .hi-pad{display:none;justify-content:center;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:6px;margin-top:10px;user-select:none;-webkit-user-select:none}
+@media (pointer:coarse){.hi .hi-pad{display:grid}}
+.hi .hi-pbtn{border:1px solid var(--hi-line);background:rgba(255,255,255,.92);border-radius:12px;display:grid;place-items:center;color:#374151;touch-action:none;padding:0;cursor:pointer}
+.hi .hi-pbtn:active{background:#eef2ff;border-color:#c7d2fe;color:#4f46e5}
+.hi .hi-pbtn svg{width:20px;height:20px}
+.hi .hi-ov{position:absolute;inset:0;z-index:8;display:grid;place-items:center;padding:14px;background:rgba(17,24,39,.18);backdrop-filter:blur(2px)}
+.hi .hi-over,.hi .hi-pause{background:rgba(251,251,253,.86);backdrop-filter:blur(3px);z-index:9}
+.hi .hi-help{background:rgba(251,251,253,.92);backdrop-filter:blur(3px);z-index:10}
+.hi .hi-card{display:flex;flex-direction:column;width:min(360px,100%);max-height:100%;overflow:hidden;padding:16px 18px;border:1px solid var(--hi-line);border-radius:14px;background:#fff;box-shadow:0 12px 32px rgba(16,24,40,.14)}
+.hi .hi-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.hi .hi-head h3{margin:0;font-size:15px;font-weight:800}
+.hi .hi-cheat-list,.hi .hi-stats,.hi .hi-help{flex:1 1 auto;min-height:0;overflow:auto}
+.hi .hi-crow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #f1f2f6;font-size:13px}
+.hi .hi-switch{width:36px;height:21px;border-radius:999px;border:1px solid var(--hi-line);background:#f3f4f6;position:relative;cursor:pointer;padding:0;transition:background .15s;flex:none}
+.hi .hi-switch::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;border:1px solid #d1d5db;transition:left .15s}
+.hi .hi-switch[aria-pressed="true"]{background:var(--hi-acc);border-color:var(--hi-acc)}
+.hi .hi-switch[aria-pressed="true"]::after{left:17px;border-color:#fff}
+.hi .hi-stats p{margin:8px 0;font-size:13px;color:var(--hi-mut);font-variant-numeric:tabular-nums}
+.hi .hi-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid #f1f2f6}
+.hi .hi-note{font-size:11px;color:var(--hi-mut)}
+.hi .hi-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.hi .hi-help b{display:block;margin-bottom:6px;font-size:11px;color:var(--hi-mut);text-transform:uppercase;letter-spacing:.06em}
+.hi .hi-help ul{margin:0 0 12px;padding-left:16px;font-size:12px;line-height:1.65;color:var(--hi-mut)}
+.hi .hi-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--hi-line);border-bottom-width:2px;border-radius:5px;background:#fafafa;color:var(--hi-ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.hi .hi-win{color:#16a34a}
+.hi .hi-lose{color:#dc2626}
+.hi .hi-over-card{text-align:center}
+.hi .hi-over-card .hi-head{justify-content:center}
 @media (max-width:560px){
-  #hole-io-app .game-intro p{font-size:11px}
-  #hole-io-app .hi-chip{padding:3px 8px;font-size:10.5px}
-  #hole-io-app .hi-pad{grid-template-columns:repeat(3,42px);grid-template-rows:repeat(3,42px)}
+.hi .hi-chip{padding:3px 8px;font-size:10.5px}
+.hi .hi-pad{grid-template-columns:repeat(3,42px);grid-template-rows:repeat(3,42px)}
+}
+
+/* --- Batch 02 design polish --- */
+#hole-io-app :focus-visible,#hole-io-app button:focus-visible{outline:2px solid var(--hi-acc);outline-offset:2px}
+.hi .hi-hud{gap:8px;margin:0 0 12px}
+.hi .hi-btn{min-height:44px;padding:10px 16px}
+@media (pointer:coarse){.hi button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){#hole-io-app *{transition:none!important;animation:none!important}}
+
+/* --- fill height + mobile refinements (letak PALING AKHIR) --- */
+.hi.game-fill > .hi-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.hi.game-fill .hi-hud{gap:6px;margin:0 0 10px}
+.hi.game-fill .hi-hud .hi-chip{padding:4px 8px;font-size:10.5px}
+.hi.game-fill .hi-hud .hi-btn{min-height:36px;padding:6px 9px;font-size:10px}
+@media (max-width:640px){
+.hi.game-fill > .hi-board:not(:has(.hi-ov:not([hidden]))){aspect-ratio:800/520;flex:0 0 auto}
+.hi.game-fill > .hi-board:has(.hi-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.hi .hi-hud{gap:5px;margin-bottom:8px}
+.hi .hi-hud .hi-chip{padding:4px 6px;font-size:9px}
+.hi .hi-hud .hi-chip[data-hud="rank"],.hi .hi-hud .hi-chip[data-hud="size"],.hi .hi-hud .hi-chip[data-hud="best"],.hi .hi-hud .hi-chip[data-hud="mode"]{display:none}
+.hi .hi-hud .hi-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.hi .hi-hud .hi-btn-label,.hi .hi-hud .hi-spacer{display:none}
+.hi .hi-ov{padding:8px}
+.hi .hi-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.hi .hi-cheat-list,.hi .hi-stats,.hi .hi-help{scrollbar-width:none}
+.hi .hi-cheat-list::-webkit-scrollbar,.hi .hi-stats::-webkit-scrollbar,.hi .hi-help::-webkit-scrollbar{display:none}
+.hi .hi-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--hi-line)}
+.hi .hi-note{display:none}
 }
 </style>
-<div class="game-app" id="hole-io-app">
-  <div class="game-intro">
-    <div><h2>Hole.io</h2><p data-sub>—</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+<div class="game-app hi game-fill" id="hole-io-app" data-hi>
+  <div class="hi-hud">
+    <span class="hi-chip" data-accent>Kamu <b data-hud="you">0</b></span>
+    <span class="hi-chip">Peringkat <b data-hud="rank">#1</b></span>
+    <span class="hi-chip">Ukuran <b data-hud="size">16</b></span>
+    <span class="hi-chip">Wave <b data-hud="wave">1</b></span>
+    <span class="hi-chip">Waktu <b data-hud="time">90</b>s</span>
+    <span class="hi-chip">Terbaik <b data-hud="best">0</b></span>
+    <span class="hi-chip" data-hud="status">Siap</span>
+    <span class="hi-chip" data-hud="mode">Solo vs 3 bot · Player</span>
+    <span class="hi-spacer"></span>
+    <button class="hi-btn hi-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="hi-btn-label">Help</span></button>
+    <button class="hi-btn hi-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="hi-btn-label">Cheats</span></button>
+    <button class="hi-btn hi-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span class="hi-btn-icon" data-icon-slot>${iconSVG("pause", { size: 14 })}</span><span class="hi-btn-label">Pause</span></button>
+    <button class="hi-btn hi-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="hi-btn-label">Restart</span></button>
+    <button class="hi-btn hi-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="hi-btn-label">Exit</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="hi-hud">
-      <span class="hi-chip" data-accent>Kamu <b data-hud="you">0</b></span>
-      <span class="hi-chip">Peringkat <b data-hud="rank">#1</b></span>
-      <span class="hi-chip">Ukuran <b data-hud="size">16</b></span>
-      <span class="hi-chip">Wave <b data-hud="wave">1</b></span>
-      <span class="hi-chip">Waktu <b data-hud="time">90</b>s</span>
-      <span class="hi-chip">Terbaik <b data-hud="best">0</b></span>
-    </div>
-    <div class="hi-wrap">
-      <svg class="hi-svg" data-svg viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Arena Hole.io">
-        <defs>
-          <pattern id="hi-grid" width="80" height="80" patternUnits="userSpaceOnUse">
-            <path d="M80 0H0V80" fill="none" stroke="#eef0f4" stroke-width="1"/>
-          </pattern>
-        </defs>
-        <g data-g="world">
-          <rect x="0" y="0" width="${WORLD_W}" height="${WORLD_H}" fill="#fbfbfd"/>
-          <rect x="0" y="0" width="${WORLD_W}" height="${WORLD_H}" fill="url(#hi-grid)"/>
-          <rect x="1" y="1" width="${WORLD_W - 2}" height="${WORLD_H - 2}" rx="6" fill="none" stroke="#e6e8ee" stroke-width="2"/>
-          <g data-g="city"></g>
-          <g data-g="holes"></g>
-        </g>
-        <g data-g="ui" pointer-events="none"></g>
-        <rect data-hit x="0" y="0" width="${VIEW_W}" height="${VIEW_H}" fill="transparent"/>
-      </svg>
-      <div class="hi-toast" data-toast></div>
-      <div class="hi-pad" data-pad>
-        <button class="hi-pbtn" type="button" style="grid-area:1/2" data-dir="up" aria-label="Atas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-7 6 7"/></svg></button>
-        <button class="hi-pbtn" type="button" style="grid-area:2/1" data-dir="left" aria-label="Kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-7 6 7 6"/></svg></button>
-        <button class="hi-pbtn" type="button" style="grid-area:2/3" data-dir="right" aria-label="Kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l7 6-7 6"/></svg></button>
-        <button class="hi-pbtn" type="button" style="grid-area:3/2" data-dir="down" aria-label="Bawah"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 7 6-7"/></svg></button>
-      </div>
-      <div class="hi-cheats" data-cheats hidden>
-        <div class="hi-card">
-          <h3>Cheat</h3>
+  <section class="game-panel hi-board" data-board>
+    <svg class="hi-svg" data-svg viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Arena Hole Io">
+      <defs>
+        <pattern id="hi-grid" width="80" height="80" patternUnits="userSpaceOnUse">
+          <path d="M80 0H0V80" fill="none" stroke="#eef0f4" stroke-width="1"/>
+        </pattern>
+      </defs>
+      <g data-g="world">
+        <rect x="0" y="0" width="${WORLD_W}" height="${WORLD_H}" fill="#fbfbfd"/>
+        <rect x="0" y="0" width="${WORLD_W}" height="${WORLD_H}" fill="url(#hi-grid)"/>
+        <rect x="1" y="1" width="${WORLD_W - 2}" height="${WORLD_H - 2}" rx="6" fill="none" stroke="#e6e8ee" stroke-width="2"/>
+        <g data-g="city"></g>
+        <g data-g="holes"></g>
+      </g>
+      <g data-g="ui" pointer-events="none"></g>
+      <rect data-hit x="0" y="0" width="${VIEW_W}" height="${VIEW_H}" fill="transparent"/>
+    </svg>
+    <div class="hi-toast" data-toast></div>
+    <div class="hi-ov hi-cheat" data-ov="cheat" hidden>
+      <div class="hi-card">
+        <div class="hi-head"><h3>Cheat</h3><button class="hi-btn" type="button" data-act="cheat-close">Tutup</button></div>
+        <div class="hi-cheat-list">
           <div class="hi-crow"><span>Kecepatan ×2</span><button class="hi-switch" type="button" data-act="cheat-toggle" data-key="speed" aria-pressed="false" aria-label="Kecepatan kali dua"></button></div>
           <div class="hi-crow"><span>Lubang raksasa</span><button class="hi-switch" type="button" data-act="cheat-toggle" data-key="size" aria-pressed="false" aria-label="Lubang raksasa"></button></div>
           <div class="hi-crow"><span>Telan apa saja</span><button class="hi-switch" type="button" data-act="cheat-toggle" data-key="any" aria-pressed="false" aria-label="Telan apa saja"></button></div>
           <div class="hi-crow"><span>Bekukan bot</span><button class="hi-switch" type="button" data-act="cheat-toggle" data-key="freeze" aria-pressed="false" aria-label="Bekukan bot"></button></div>
           <div class="hi-crow"><span>Waktu ×0.25</span><button class="hi-switch" type="button" data-act="cheat-toggle" data-key="slow" aria-pressed="false" aria-label="Perlambat waktu"></button></div>
-          <div class="hi-crow"><span>Tambah poin</span><button class="game-action-button hi-mini" type="button" data-act="cheat-points">+500</button></div>
-          <div class="hi-cfoot"><button class="game-action-button" type="button" data-act="cheat-close">Tutup</button></div>
+          <div class="hi-crow"><span>Tambah poin</span><button class="hi-btn" type="button" data-act="cheat-points">+500</button></div>
         </div>
+        <div class="hi-foot"><span class="hi-note">Hanya untuk mode solo</span><button class="hi-btn primary" type="button" data-act="cheat-close">Selesai</button></div>
       </div>
-      <div class="hi-over" data-over hidden>
-        <div class="hi-card hi-over-card">
-          <h3 data-over-title class="hi-win">—</h3>
-          <p data-over-line>—</p>
-          <button class="game-action-button hi-primary" type="button" data-act="restart">Main lagi</button>
+    </div>
+    <div class="hi-ov hi-over" data-ov="over" hidden>
+      <div class="hi-card hi-over-card">
+        <div class="hi-head"><h3 data-over-title class="hi-win">—</h3></div>
+        <div class="hi-stats"><p data-over-line>—</p></div>
+        <div class="hi-foot"><span class="hi-note">Tekan R untuk mengulang</span><button class="hi-btn primary" type="button" data-act="restart">Main lagi</button></div>
+      </div>
+    </div>
+    <div class="hi-ov hi-pause" data-ov="pause" hidden>
+      <div class="hi-card">
+        <div class="hi-head"><h3>Dijeda</h3></div>
+        <div class="hi-stats"><p>Waktu, bot, dan timer dibekukan.</p></div>
+        <div class="hi-foot"><span class="hi-note">Tekan P atau Esc untuk lanjut</span><button class="hi-btn primary" type="button" data-act="resume">Lanjut</button></div>
+      </div>
+    </div>
+    <div class="hi-ov hi-help" data-ov="help" hidden>
+      <div class="hi-card">
+        <div class="hi-head"><h3>Cara bermain</h3><button class="hi-btn" type="button" data-help-close>Tutup</button></div>
+        <div class="hi-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="hi-kbd">W A S D</span> / panah — arahkan lubang</li>
+              <li>Klik-tahan &amp; geser mouse — arahkan ke target</li>
+              <li><span class="hi-kbd">H</span> panduan · <span class="hi-kbd">C</span> cheat · <span class="hi-kbd">P</span> jeda · <span class="hi-kbd">R</span> ulang</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Gunakan D-pad di bawah arena untuk bergerak</li>
+              <li>Tekan-tahan pada arena untuk mengarahkan lubang</li>
+            </ul>
+          </div>
+          <div>
+            <b>Aturan</b>
+            <ul>
+              <li>Telan objek yang muat lubang agar makin besar.</li>
+              <li>Objek tidak bisa ditelan sampai lubang cukup besar.</li>
+              <li>Habiskan kota untuk naik wave dan dapat bonus waktu.</li>
+              <li>Kalahkan tiga rival bot sebelum waktu habis.</li>
+              <li>Skor terbaik tersimpan otomatis di perangkat.</li>
+            </ul>
+          </div>
         </div>
+        <div class="hi-foot"><span class="hi-note">Tekan H untuk membuka panduan</span><button class="hi-btn primary" type="button" data-help-close>Mengerti</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="restart">Ulang</button>
-    <button class="game-action-button" type="button" data-act="cheats" data-cheats-btn>Cheat</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="hi-pad" data-pad>
+    <button class="hi-pbtn" type="button" style="grid-area:1/2" data-dir="up" aria-label="Atas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-7 6 7"/></svg></button>
+    <button class="hi-pbtn" type="button" style="grid-area:2/1" data-dir="left" aria-label="Kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-7 6 7 6"/></svg></button>
+    <button class="hi-pbtn" type="button" style="grid-area:2/3" data-dir="right" aria-label="Kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l7 6-7 6"/></svg></button>
+    <button class="hi-pbtn" type="button" style="grid-area:3/2" data-dir="down" aria-label="Bawah"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 7 6-7"/></svg></button>
   </div>
 </div>`;
 
@@ -377,10 +446,16 @@ export function mount(root, context = {}) {
     const hud = {
         you: $('[data-hud="you"]'), rank: $('[data-hud="rank"]'), size: $('[data-hud="size"]'),
         wave: $('[data-hud="wave"]'), time: $('[data-hud="time"]'), best: $('[data-hud="best"]'),
+        status: $('[data-hud="status"]'), mode: $('[data-hud="mode"]'),
     };
-    const subEl = $("[data-sub]"), statusEl = $("[data-status]"), toastEl = $("[data-toast]");
-    const padEl = $("[data-pad]"), cheatsEl = $("[data-cheats]"), cheatsBtn = $("[data-cheats-btn]");
-    const overEl = $("[data-over]"), overTitle = $("[data-over-title]"), overLine = $("[data-over-line]");
+    const toastEl = $("[data-toast]");
+    const padEl = $("[data-pad]");
+    const cheatsEl = $('[data-ov="cheat"]');
+    const overEl = $('[data-ov="over"]');
+    const pauseEl = $('[data-ov="pause"]');
+    const helpEl = $('[data-ov="help"]');
+    const overTitle = $("[data-over-title]"), overLine = $("[data-over-line]");
+    const pbtn = $("[data-pause]"), cbtn = $("[data-cheats]");
 
     /* ---------- state lokal (visual & input, tidak dipublish) ---------- */
     let objs = [], builtKey = "", cityNodes = [], fades = [], prevTaken = [];
@@ -390,6 +465,7 @@ export function mount(root, context = {}) {
     let botCool = [0, 0, 0, 0];              // jeda "mencerna" bot setelah makan
     let cheats = { speed: false, size: false, any: false, freeze: false, slow: false };
     let cheatUsed = false, cheatOpen = false;
+    let helpOpen = false, paused = false;
     let held = { up: false, down: false, left: false, right: false };
     let pointerTarget = null, dragging = false, lastTargetSent = 0;
     let guestActive = false;                 // host: guest sudah pernah mengirim aksi?
@@ -398,18 +474,58 @@ export function mount(root, context = {}) {
     let best = readBest();
     let destroyed = false;
     const offs = [];
-    let timers = [];
-    const later = (fn, ms) => {
-        const tm = setTimeout(() => { timers = timers.filter((x) => x !== tm); fn(); }, ms);
-        timers.push(tm);
-        return tm;
-    };
-    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+    let timers = []; // item: { fn, remaining, start, id } — bisa dibekukan saat jeda
+
+    /* Panduan internal sekali per game; global how-to tidak dipakai untuk id ini. */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("hole-io-help-seen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("hole-io-help-seen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* Timer yang bisa dijeda: simpan sisa waktu, pasang ulang saat lanjut. */
+    function armTimer(item) {
+        item.start = performance.now();
+        item.id = setTimeout(() => {
+            timers = timers.filter((x) => x !== item);
+            item.id = null;
+            item.fn();
+        }, item.remaining);
+    }
+    function later(fn, ms) {
+        const item = { fn, remaining: ms, start: 0, id: null };
+        armTimer(item);
+        timers.push(item);
+        return item;
+    }
+    function clearTimer(item) {
+        if (!item) return;
+        if (item.id != null) clearTimeout(item.id);
+        item.id = null;
+        timers = timers.filter((x) => x !== item);
+    }
+    function clearTimers() {
+        timers.forEach((item) => { if (item.id != null) clearTimeout(item.id); item.id = null; });
+        timers = [];
+    }
+    function pauseTimers() {
+        const now = performance.now();
+        for (const item of timers) {
+            if (item.id == null) continue;
+            clearTimeout(item.id);
+            item.remaining = Math.max(0, item.remaining - (now - item.start));
+            item.id = null;
+        }
+    }
+    function resumeTimers() {
+        for (const item of timers) if (item.id == null) armTimer(item);
+    }
     let toastTimer = null;
     function showToast(msg) {
         toastEl.textContent = msg;
         toastEl.dataset.show = "1";
-        if (toastTimer) { clearTimeout(toastTimer); timers = timers.filter((x) => x !== toastTimer); }
+        clearTimer(toastTimer);
         toastTimer = later(() => { toastEl.dataset.show = "0"; toastTimer = null; }, 1700);
     }
 
@@ -535,7 +651,7 @@ export function mount(root, context = {}) {
     }
 
     function renderOver() {
-        if (!state || state.phase !== "over" || localSeat() == null) { overEl.hidden = true; return; }
+        if (!state || state.phase !== "over" || localSeat() == null) return;
         const ls = localSeat(), me = state.holes[ls];
         const res = state.result || makeResult(state);
         const top = state.holes[res.winner].score;
@@ -546,7 +662,6 @@ export function mount(root, context = {}) {
         overLine.textContent =
             `Skor ${me.score} · Tertinggi ${top} · Wave ${state.wave} · Peringkat #${rank}/4` +
             (cheatUsed && !online ? " · cheat" : "");
-        overEl.hidden = false;
         if (lastOverSeed !== state.seed) {
             lastOverSeed = state.seed;
             if (me.score > best) { best = me.score; saveBest(best); }
@@ -559,8 +674,8 @@ export function mount(root, context = {}) {
         if (!state || ls == null) {
             hud.you.textContent = "–"; hud.rank.textContent = "–"; hud.size.textContent = "–";
             hud.wave.textContent = "–"; hud.time.textContent = "–"; hud.best.textContent = best;
-            subEl.textContent = online ? "Mode room · menunggu host…" : playerName + " · vs 3 bot";
-            statusEl.textContent = online ? "Menghubungkan…" : "Siap";
+            hud.mode.textContent = online ? "Mode room · menunggu host…" : playerName + " · vs 3 bot";
+            hud.status.textContent = online ? "Menghubungkan…" : "Siap";
             return;
         }
         const me = state.holes[ls];
@@ -570,15 +685,42 @@ export function mount(root, context = {}) {
         hud.wave.textContent = state.wave;
         hud.time.textContent = Math.ceil(state.timeLeft / 1000);
         hud.best.textContent = best;
-        subEl.textContent = (online ? "Mode room" : "Solo vs 3 bot") + " · " + playerName + " · lubang " + SEAT_NAMES[ls].toLowerCase();
+        hud.mode.textContent = (online ? "Mode room" : "Solo vs 3 bot") + " · " + playerName + " · lubang " + SEAT_NAMES[ls].toLowerCase();
         let st;
-        if (state.phase === "over") st = "Selesai";
+        if (helpOpen) st = "Panduan";
+        else if (paused) st = "Dijeda";
         else if (cheatOpen) st = "Jeda · cheat";
+        else if (state.phase === "over") st = "Selesai";
         else if (state.headStart.ms > 0) st = (state.headStart.first === ls ? "Kamu" : SEAT_NAMES[state.headStart.first]) + " jalan duluan";
         else st = "Bermain";
-        statusEl.textContent = st;
+        hud.status.textContent = st;
     }
 
+    /* Overlay saling menekan: help > cheats > pause > result. */
+    function syncOverlays() {
+        helpEl.hidden = !helpOpen;
+        cheatsEl.hidden = !cheatOpen || helpOpen || paused;
+        pauseEl.hidden = !paused || cheatOpen || helpOpen;
+        overEl.hidden = state?.phase !== "over" || cheatOpen || helpOpen || paused;
+    }
+    function syncControls() {
+        if (pbtn) {
+            const label = pbtn.querySelector(".hi-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pbtn.title = paused ? "Resume (P)" : "Pause (P)";
+            pbtn.disabled = online && !isHost();
+            const slot = pbtn.querySelector("[data-icon-slot]");
+            if (slot) slot.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+        }
+        if (cbtn) {
+            const active = Object.keys(cheats).filter((k) => cheats[k]).length;
+            cbtn.classList.toggle("on", active > 0);
+            const label = cbtn.querySelector(".hi-btn-label");
+            if (label) label.textContent = active > 0 ? "Cheats " + active : "Cheats";
+            cbtn.disabled = online;
+        }
+    }
     function render() {
         ensureCity();
         noteState();
@@ -586,6 +728,8 @@ export function mount(root, context = {}) {
         renderMinimap();
         renderOver();
         renderHud();
+        syncOverlays();
+        syncControls();
     }
 
     function publish() {
@@ -601,9 +745,10 @@ export function mount(root, context = {}) {
         inputs = [null, null, null, null];
         botCool = [0, 0, 0, 0];
         for (const k in cheats) cheats[k] = false;
-        cheatUsed = false; cheatOpen = false; cheatsEl.hidden = true;
-        syncCheatUI();
+        cheatUsed = false; cheatOpen = false; paused = false;
         camInit = false; pointerTarget = null; lastOverSeed = null;
+        lastT = 0; lastTargetSent = 0; // anchor waktu digeser agar tidak loncat
+        syncCheatUI();
         publish();
     }
 
@@ -741,22 +886,62 @@ export function mount(root, context = {}) {
         });
     }
 
+    /* ---------- overlay & jeda ---------- */
+    function releaseKeys() {
+        let changed = false;
+        for (const k in held) if (held[k]) { held[k] = false; changed = true; }
+        if (changed) {
+            pointerTarget = null;
+            submitAction({ t: "input", dx: 0, dy: 0 });
+            submitAction({ t: "target", x: null });
+        }
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatOpen = false; releaseKeys(); }
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return; // cheat hanya untuk mode solo vs bot
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) { if (helpOpen) helpOpen = false; releaseKeys(); }
+        render();
+    }
+    function setPaused(on) {
+        on = Boolean(on);
+        if (paused === on) return;
+        if (online && !isHost()) return;
+        paused = on;
+        if (paused) {
+            releaseKeys();
+            pauseTimers();
+        } else {
+            // Geser anchor waktu: tidak ada lonjakan dt / throttle setelah lanjut.
+            lastT = 0;
+            lastTargetSent = 0;
+            resumeTimers();
+        }
+        render();
+    }
+
     /* ---------- klik (template) ---------- */
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        if (event.target === cheatsEl) { cheatOpen = false; cheatsEl.hidden = true; return; }
-        const b = event.target.closest("[data-act]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { setPaused(!paused); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-restart]") || t.closest("[data-retry]")) { submitAction({ t: "restart" }); return; }
+        if (t === cheatsEl) { cheatOpen = false; render(); return; }
+        const b = t.closest("[data-act]");
         if (!b) return;
         const a = b.dataset.act;
-        if (a === "restart") submitAction({ t: "restart" });
-        else if (a === "cheats") {
-            if (online) return; // cheat hanya untuk mode solo vs bot
-            cheatOpen = !cheatOpen;
-            cheatsEl.hidden = !cheatOpen;
-        }
-        else if (a === "cheat-toggle") submitAction({ t: "cheat", op: "toggle", key: b.dataset.key });
+        if (a === "cheat-toggle") submitAction({ t: "cheat", op: "toggle", key: b.dataset.key });
         else if (a === "cheat-points") submitAction({ t: "cheat", op: "points" });
-        else if (a === "cheat-close") { cheatOpen = false; cheatsEl.hidden = true; }
+        else if (a === "cheat-close") { cheatOpen = false; render(); }
     }
 
     /* ---------- keyboard (desktop) ---------- */
@@ -768,7 +953,27 @@ export function mount(root, context = {}) {
     }
     function onKeyDown(e) {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
-        const dir = KEYMAP[e.code];
+        const code = e.code;
+        // Prioritas: help → cheats → pause/Escape → aksi game → gerak.
+        if (code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") { toggleCheats(); e.preventDefault(); return; }
+        if (code === "KeyP" || code === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else setPaused(!paused);
+            e.preventDefault();
+            return;
+        }
+        if (code === "KeyR" || code === "Enter") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (paused) setPaused(false);
+            else submitAction({ t: "restart" });
+            e.preventDefault();
+            return;
+        }
+        if (helpOpen || cheatOpen || paused) return;
+        const dir = KEYMAP[code];
         if (!dir) return;
         e.preventDefault();
         if (!held[dir]) { held[dir] = true; pushKeys(); }
@@ -796,6 +1001,7 @@ export function mount(root, context = {}) {
         }
     }
     svg.addEventListener("pointerdown", (e) => {
+        if (helpOpen || cheatOpen || paused) return;
         if (!state || state.phase !== "play" || e.button > 0) return;
         e.preventDefault();
         dragging = true;
@@ -815,10 +1021,11 @@ export function mount(root, context = {}) {
     svg.addEventListener("pointerup", endDrag);
     svg.addEventListener("pointercancel", endDrag);
 
-    /* ---------- d-pad virtual (muncul otomatis di perangkat sentuh) ---------- */
+    /* ---------- d-pad virtual (sibling board, muncul di perangkat sentuh) ---------- */
     padEl.querySelectorAll("[data-dir]").forEach((b) => {
         const dir = b.dataset.dir;
         b.addEventListener("pointerdown", (e) => {
+            if (helpOpen || cheatOpen || paused) return;
             e.preventDefault();
             b.setPointerCapture && b.setPointerCapture(e.pointerId);
             if (!held[dir]) { held[dir] = true; pushKeys(); }
@@ -837,7 +1044,8 @@ export function mount(root, context = {}) {
         lastT = t;
         if (state) {
             ensureCity();
-            if (isHost() && state.phase === "play" && !cheatOpen) {
+            // Jeda/help/cheat membekukan sim (timer, bot, dan animasi).
+            if (!paused && !helpOpen && !cheatOpen && isHost() && state.phase === "play") {
                 stepSim(dt);
                 if (online) {
                     pubAcc += dt;
@@ -850,19 +1058,20 @@ export function mount(root, context = {}) {
                     }
                 }
             }
-            tickVisual(dt);
-            syncTaken(dt * 1000);
+            if (!paused) {
+                tickVisual(dt);
+                syncTaken(dt * 1000);
+            }
         }
         render();
     }
 
-    /* ---------- init & wiring (template) ---------- */
+    /* ---------- init & wiring ---------- */
     root.addEventListener("click", handleClick);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
 
     if (online) {
-        cheatsBtn.hidden = true;
         const offRoom = room.onRoom && room.onRoom((nextRoom) => { roomData = nextRoom; render(); });
         if (typeof offRoom === "function") offs.push(offRoom);
         if (room.isHost) {
@@ -874,7 +1083,7 @@ export function mount(root, context = {}) {
             if (typeof offState === "function") offs.push(offState);
         }
     } else {
-        newGame(); // langsung main — tanpa overlay tutorial
+        newGame(); // langsung main; panduan internal muncul sekali saat first-run
     }
     raf = requestAnimationFrame(frame);
 

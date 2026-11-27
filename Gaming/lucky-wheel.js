@@ -7,7 +7,11 @@
    - Economy: start balance 100, each spin costs 10. Payouts add coins,
      Mystery can subtract. Collect all 6 prize types or hit Jackpot to win.
    - Controls: mouse click / tap on wheel or SPIN hub (no virtual pad),
-     keyboard Space/Enter = spin, R = restart, C = cheats, Esc = close. */
+     keyboard Space/Enter = spin, H = help, C = cheats, P/Esc = pause,
+     R = restart.
+   - Layout: HUD bar + fill-height board, overlays are internal modals. */
+
+import { iconSVG } from "../JS/icons.js";
 
 const SEGMENTS = [
     { icon: "star", label: "Star", short: "Star", weight: 2, collect: "star", pay: 8 },
@@ -73,92 +77,265 @@ export function mount(root, context = {}) {
     let roomData = room?.room || null;
     let state = null;
 
-    /* ---------------- shell (minimalist, no tutorial) ---------------- */
+    /* ---------------- local UI state ---------------- */
+    let cheatOpen = false;
+    let helpOpen = false;
+    let paused = false;
+    let destroyed = false;
+    let spinTimer = null;
+    let botTimer = null;
+    let shownRot = 0;
+    let frozenTransform = null;
+    const timers = new Set();
+    const unsubs = [];
+
+    /* panduan internal sekali per game (global how-to tidak dipakai) */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("luckyWheelHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("luckyWheelHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* timer sadar-pause: semua deadline memakai anchor Date.now() yang
+       digeser saat resume sehingga bot/spin tidak loncat setelah freeze. */
+    let freezeAt = 0;
+    function schedule(ms, fn) {
+        const rec = { fn, due: (freezeAt || Date.now()) + ms, id: 0 };
+        rec.arm = () => {
+            rec.id = setTimeout(() => {
+                rec.id = 0;
+                if (freezeAt) return;
+                timers.delete(rec);
+                if (!destroyed) fn();
+            }, Math.max(0, rec.due - Date.now()));
+        };
+        timers.add(rec);
+        if (!freezeAt) rec.arm();
+        return rec;
+    }
+    function cancelTimer(rec) {
+        if (!rec) return;
+        if (rec.id) clearTimeout(rec.id);
+        rec.id = 0;
+        timers.delete(rec);
+    }
+    function freezeTimers() {
+        if (freezeAt) return;
+        freezeAt = Date.now();
+        for (const rec of timers) { if (rec.id) clearTimeout(rec.id); rec.id = 0; }
+    }
+    function thawTimers() {
+        if (!freezeAt) return;
+        const shift = Date.now() - freezeAt;
+        freezeAt = 0;
+        for (const rec of timers) { rec.due += shift; rec.arm(); }
+    }
+    function freezeWheel() {
+        if (frozenTransform != null) return;
+        const m = getComputedStyle(wheelSvg).transform;
+        frozenTransform = m && m !== "none" ? m : "rotate(" + shownRot + "deg)";
+        wheelSvg.style.transition = "none";
+        wheelSvg.style.transform = frozenTransform;
+        void wheelSvg.getBoundingClientRect();
+    }
+    function thawWheel() {
+        if (frozenTransform == null) return;
+        frozenTransform = null;
+        wheelSvg.style.transition = "";
+        wheelSvg.style.transform = "rotate(" + shownRot + "deg)";
+    }
+    function syncFreeze() {
+        const frozen = paused || helpOpen || cheatOpen;
+        if (frozen) { freezeTimers(); freezeWheel(); }
+        else { thawTimers(); thawWheel(); }
+    }
+
+    /* ---------------- shell: HUD + fill-height board + overlays ---------------- */
     root.innerHTML = `
-<div class="game-app lw-app">
 <style>
+.lw-app{--line:#ffffff14;--muted:#8b93a7;--ink:#e7eaf0;--accent:#e3b341;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0;margin:0 auto;min-width:0;user-select:none;-webkit-user-select:none}
 .lw-app [hidden]{display:none!important}
-.lw-app{color:#e7eaf0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.lw-app .lw-board{position:relative;padding:18px}
-.lw-app .lw-layout{display:flex;flex-wrap:wrap;gap:26px;align-items:center;justify-content:center}
-.lw-app .lw-wheel-wrap{position:relative;width:min(320px,86vw);aspect-ratio:1/1;flex:0 0 auto}
+.lw-app .lw-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.lw-app .lw-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:#ffffff07;color:var(--muted);white-space:nowrap;letter-spacing:.08em;text-transform:uppercase}
+.lw-app .lw-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.lw-app .lw-status i{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+.lw-app .lw-spacer{flex:1 1 auto}
+.lw-app .lw-btn{appearance:none;border:1px solid var(--line);background:#ffffff0a;color:var(--ink);border-radius:9px;padding:7px 11px;min-height:36px;font:inherit;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;touch-action:manipulation;transition:border-color .15s ease,background .15s ease,transform .1s ease}
+.lw-app .lw-btn:hover:not(:disabled){border-color:#e3b34166}
+.lw-app .lw-btn:active{transform:scale(.98)}
+.lw-app .lw-btn:disabled{opacity:.4;cursor:default}
+.lw-app .lw-btn.primary{border-color:#e3b34155;background:#e3b3411a;color:#fde68a}
+.lw-app .lw-btn.ghost{background:transparent}
+.lw-app .lw-btn.sm{min-height:32px;padding:5px 10px;font-size:9px}
+.lw-app .lw-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.lw-app .lw-icon-btn svg{flex:none;display:block}
+.lw-app .lw-spinbtn{border-color:#e3b34155;background:#e3b3411a;color:#fde68a}
+.lw-app .lw-spinbtn small{font-size:9px;letter-spacing:0;color:var(--muted)}
+.lw-app .lw-board{position:relative;display:flex;align-items:center;justify-content:center;flex:1 1 auto;min-height:0;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#0a0f1f80;overflow:hidden}
+.lw-app .lw-layout{display:flex;flex-wrap:wrap;gap:24px;align-items:center;justify-content:center;width:100%;max-width:820px;min-width:0}
+.lw-app .lw-wheel-wrap{position:relative;width:min(320px,100%);aspect-ratio:1/1;flex:0 1 320px;max-width:320px}
 .lw-app .lw-wheel{width:100%;height:100%;display:block;transition:transform 3.6s cubic-bezier(.15,.85,.25,1);cursor:pointer;touch-action:manipulation}
 .lw-app .lw-wheel.off{cursor:default}
 .lw-app .lw-pointer{position:absolute;top:-6px;left:50%;transform:translateX(-50%);z-index:3}
 .lw-app .lw-hub{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:34%;aspect-ratio:1/1;z-index:2}
-.lw-app .lw-spin{width:100%;height:100%;border-radius:50%;border:1px solid #e3b34166;background:#141b2b;color:#e3b341;font-weight:800;font-size:15px;letter-spacing:.08em;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;touch-action:manipulation}
+.lw-app .lw-spin{width:100%;height:100%;border-radius:50%;border:1px solid #e3b34166;background:#141b2b;color:#e3b341;font-weight:800;font-size:15px;letter-spacing:.08em;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;touch-action:manipulation;transition:background .16s ease,opacity .16s ease}
 .lw-app .lw-spin small{font-weight:600;color:#8b93a7;font-size:10px;letter-spacing:0}
 .lw-app .lw-spin:disabled{opacity:.45;cursor:default}
 .lw-app .lw-spin:not(:disabled):hover{background:#1a2336}
-.lw-app .lw-side{display:flex;flex-direction:column;gap:12px;width:300px;max-width:100%}
-.lw-app .lw-player{border:1px solid #ffffff12;background:#121826;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.lw-app .lw-side{display:flex;flex-direction:column;gap:12px;flex:1 1 260px;min-width:0;max-width:320px;width:100%}
+.lw-app .lw-player{border:1px solid #ffffff12;background:#121826;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0;transition:border-color .16s ease}
 .lw-app .lw-player.active{border-color:#e3b34188}
-.lw-app .lw-p-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
+.lw-app .lw-p-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;flex-wrap:wrap;min-width:0}
 .lw-app .lw-pos{font-size:10px;font-weight:600;color:#8b93a7;border:1px solid #ffffff1a;border-radius:6px;padding:1px 5px}
 .lw-app .lw-tag{font-size:10px;color:#f87171}
-.lw-app .lw-dot{width:6px;height:6px;border-radius:50%;background:#e3b341;margin-left:auto;opacity:0}
+.lw-app .lw-dot{width:6px;height:6px;border-radius:50%;background:#e3b341;margin-left:auto;opacity:0;flex:none}
 .lw-app .lw-player.active .lw-dot{opacity:1}
-.lw-app .lw-nums{display:flex;gap:14px;align-items:baseline;font-size:12px;color:#8b93a7}
+.lw-app .lw-nums{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;font-size:12px;color:#8b93a7}
 .lw-app .lw-nums b{color:#e7eaf0;font-size:13px}
 .lw-app .lw-next{font-size:10px;color:#e3b341;margin-left:auto}
-.lw-app .lw-coll{display:flex;gap:6px}
-.lw-app .lw-cell{width:34px;height:34px;border-radius:9px;background:#0e1420;border:1px solid #ffffff0d;display:flex;align-items:center;justify-content:center}
+.lw-app .lw-coll{display:flex;gap:6px;flex-wrap:wrap}
+.lw-app .lw-cell{width:34px;height:34px;border-radius:8px;background:#0e1420;border:1px solid #ffffff0d;display:flex;align-items:center;justify-content:center}
 .lw-app .lw-cell svg{opacity:.22;filter:grayscale(1)}
 .lw-app .lw-cell.got{border-color:#e3b34155}
 .lw-app .lw-cell.got svg{opacity:1;filter:none}
-.lw-app .lw-banner{font-size:12.5px;color:#aeb6c8;text-align:center;border:1px dashed #ffffff14;border-radius:10px;padding:8px 10px;min-height:18px}
-.lw-app .lw-over{position:absolute;inset:0;background:#0b101cd9;display:flex;align-items:center;justify-content:center;z-index:5;border-radius:inherit}
-.lw-app .lw-over-card{background:#121826;border:1px solid #ffffff1a;border-radius:16px;padding:22px 26px;text-align:center;max-width:320px}
-.lw-app .lw-over-card h3{margin:0 0 6px;font-size:22px}
-.lw-app .lw-over-card p{margin:0 0 10px;font-size:13px;color:#9ca3af}
+.lw-app .lw-banner{font-size:12.5px;color:#aeb6c8;text-align:center;border:1px dashed #ffffff14;border-radius:10px;padding:8px 12px;min-height:18px;line-height:1.45}
+.lw-app .lw-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:#0b101cd9;backdrop-filter:blur(3px)}
+.lw-app .lw-card{display:flex;flex-direction:column;gap:10px;width:min(430px,100%);max-height:100%;overflow:hidden;padding:18px;background:#121826;border:1px solid var(--line);border-radius:12px;text-align:center}
+.lw-app .lw-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lw-app .lw-head h3{margin:0;font-size:19px}
+.lw-app .lw-head b{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#fde68a}
+.lw-app .lw-body,.lw-app .lw-cheat-body,.lw-app .lw-help{flex:1 1 auto;min-height:0;overflow:auto}
+.lw-app .lw-body p{margin:0 0 10px;font-size:12px;color:var(--muted);line-height:1.5}
 .lw-app .lw-over-stats{font-weight:700;color:#e7eaf0!important}
-.lw-app .lw-cheats{position:absolute;top:10px;right:10px;z-index:6;background:#121826;border:1px solid #e3b34144;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;width:196px}
-.lw-app .lw-cheat-head{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#e3b341;margin-bottom:2px}
-.lw-app .lw-cheat-head button{background:none;border:none;color:#8b93a7;cursor:pointer;font-size:13px;padding:2px 4px}
-.lw-app .lw-cheats [data-cheat]{background:#0e1420;border:1px solid #ffffff14;color:#e7eaf0;border-radius:8px;padding:7px 9px;font-size:12px;text-align:left;cursor:pointer}
-.lw-app .lw-cheats [data-cheat]:hover{border-color:#e3b34166}
-.lw-app .lw-cheats [data-cheat]:disabled{opacity:.45;cursor:default}
-.lw-app .lw-best{font-size:12px;color:#8b93a7;margin-left:auto;align-self:center}
+.lw-app .lw-foot{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line)}
+.lw-app .lw-note{margin-right:auto;font-size:10px;color:var(--muted);line-height:1.4}
+.lw-app .lw-cheat-body{display:flex;flex-direction:column;gap:6px;text-align:left}
+.lw-app .lw-cheat-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.lw-app .lw-cheat-row b{display:block;font-size:12px}
+.lw-app .lw-cheat-row small{display:block;font-size:10px;color:var(--muted)}
+.lw-app .lw-cheat-btn{flex:none;min-width:64px;min-height:44px;border-radius:9px;border:1px solid var(--line);background:#ffffff0a;color:var(--ink);font-size:11px;font-weight:700;cursor:pointer}
+.lw-app .lw-cheat-btn:hover:not(:disabled){border-color:#e3b34166}
+.lw-app .lw-cheat-btn.on{border-color:#e3b341;background:#e3b3411a;color:#fde68a}
+.lw-app .lw-cheat-btn:disabled{opacity:.4;cursor:default}
+.lw-app .lw-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;text-align:left}
+.lw-app .lw-help b{display:block;margin-bottom:6px;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fde68a}
+.lw-app .lw-help ul{margin:0 0 12px;padding-left:16px;font-size:11px;line-height:1.6;color:var(--muted)}
+.lw-app kbd{font:600 9px/1 inherit;letter-spacing:.05em;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:2px 5px;margin-left:2px}
+.lw-app .lw-wheel:focus-visible,.lw-app .lw-spin:focus-visible,.lw-app .lw-btn:focus-visible,.lw-app .lw-cheat-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (hover:none){.lw-app kbd{display:none}}
+@media (pointer:coarse){.lw-app .lw-cheat-btn{min-height:44px}}
+@media (prefers-reduced-motion:reduce){.lw-app .lw-wheel{transition-duration:.01ms!important}.lw-app .lw-spin,.lw-app .lw-btn{transition:none}}
+/* --- layout overrides (keep last) --- */
+.lw-app.game-fill > .lw-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.lw-app.game-fill > .lw-board:not(:has(.lw-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.lw-app.game-fill > .lw-board:has(.lw-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.lw-app .lw-hud{gap:5px}
+.lw-app .lw-hud .lw-chip{padding:4px 6px;font-size:9px}
+.lw-app .lw-hud .lw-chip[data-hud="first"]{display:none}
+.lw-app .lw-hud .lw-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.lw-app .lw-hud .lw-btn-label,.lw-app .lw-spacer{display:none}
+.lw-app .lw-hud .lw-spinbtn{min-height:32px;padding:5px 8px;font-size:9px}
+.lw-app .lw-board{padding:12px 8px}
+.lw-app .lw-layout{gap:16px}
+.lw-app .lw-wheel-wrap{flex-basis:min(280px,100%);width:min(280px,100%)}
+.lw-app .lw-side{flex-basis:100%;max-width:none}
+.lw-app .lw-spin{font-size:14px}
+.lw-app .lw-ov{padding:8px}
+.lw-app .lw-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.lw-app .lw-body,.lw-app .lw-cheat-body,.lw-app .lw-help{scrollbar-width:none}
+.lw-app .lw-body::-webkit-scrollbar,.lw-app .lw-cheat-body::-webkit-scrollbar,.lw-app .lw-help::-webkit-scrollbar{display:none}
+.lw-app .lw-note{display:none}
+}
 </style>
-  <div class="game-intro">
-    <div><h2>Lucky Wheel</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app lw-app game-fill" data-lw>
+  <div class="lw-hud">
+    <span class="lw-chip lw-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+    <span class="lw-chip">YOU <b data-hud="you">${START_BALANCE}</b></span>
+    <span class="lw-chip">RIVAL <b data-hud="rival">${START_BALANCE}</b></span>
+    <span class="lw-chip">LEFT <b data-hud="left">${TOTAL_SPINS}</b></span>
+    <span class="lw-chip">PRIZES <b data-hud="prizes">0/6</b></span>
+    <span class="lw-chip" data-hud="first">FIRST —</span>
+    <span class="lw-chip" data-best-chip hidden>BEST <b data-hud="best">0</b></span>
+    <span class="lw-spacer"></span>
+    <button class="lw-btn lw-spinbtn" type="button" data-act="spin" data-spin-btn disabled>SPIN <small>−${SPIN_COST}</small></button>
+    <button class="lw-btn lw-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="lw-btn-label">Help</span></button>
+    <button class="lw-btn lw-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="lw-btn-label">Cheats</span></button>
+    <button class="lw-btn lw-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span class="lw-icon">${iconSVG("pause", { size: 14 })}</span><span class="lw-btn-label">Pause</span></button>
+    <button class="lw-btn lw-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="lw-btn-label">Restart</span></button>
+    <button class="lw-btn lw-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="lw-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel lw-board" data-board>
     <div class="lw-layout">
       <div class="lw-wheel-wrap">
         <svg class="lw-wheel off" data-el="wheel" data-act="spin" viewBox="-200 -200 400 400" role="button" aria-label="Spin the wheel"></svg>
         <div class="lw-pointer"><svg viewBox="0 0 30 34" width="24" height="28" aria-hidden="true"><path d="M3 3h24L15 31z" fill="#e3b341" stroke="#0b1020" stroke-width="2.5" stroke-linejoin="round"/></svg></div>
-        <div class="lw-hub"><button class="lw-spin" type="button" data-act="spin" disabled><b>SPIN</b><small>-${SPIN_COST}</small></button></div>
+        <div class="lw-hub"><button class="lw-spin" type="button" data-act="spin" disabled><b>SPIN</b><small>−${SPIN_COST}</small></button></div>
       </div>
       <div class="lw-side">
         <div data-el="players"></div>
         <div class="lw-banner" data-el="banner" aria-live="polite"></div>
       </div>
     </div>
-    <div class="lw-over" data-el="over" hidden>
-      <div class="lw-over-card">
-        <h3 data-el="overTitle"></h3>
-        <p data-el="overSub"></p>
-        <p class="lw-over-stats" data-el="overStats"></p>
-        <button class="game-action-button" type="button" data-act="restart">Play again</button>
+    <div class="lw-ov" data-el="over" hidden>
+      <div class="lw-card">
+        <div class="lw-head"><h3 data-el="overTitle"></h3></div>
+        <div class="lw-body"><p data-el="overSub"></p><p class="lw-over-stats" data-el="overStats"></p></div>
+        <div class="lw-foot"><span class="lw-note">R to restart</span><button class="lw-btn primary" type="button" data-act="restart">Play again</button><button class="lw-btn" type="button" data-exit>Exit game</button></div>
       </div>
     </div>
-    <div class="lw-cheats" data-el="cheats" hidden>
-      <div class="lw-cheat-head"><b>Cheats</b><button type="button" data-act="cheats-close" aria-label="Close cheats">✕</button></div>
-      <button type="button" data-cheat="coins">+100 coins</button>
-      <button type="button" data-cheat="spins">+5 spins</button>
-      <button type="button" data-cheat="grant">Grant missing prize</button>
-      <button type="button" data-cheat="jackpot">Next spin: Jackpot</button>
-      <button type="button" data-cheat="coin5">Next spin: Coin ×5</button>
+    <div class="lw-ov" data-el="pause" hidden>
+      <div class="lw-card">
+        <div class="lw-head"><h3>Paused</h3></div>
+        <div class="lw-body"><p>Spins, bot moves and the wheel animation are frozen.</p></div>
+        <div class="lw-foot"><span class="lw-note">P or Esc to resume</span><button class="lw-btn primary" type="button" data-act="pause">Resume</button></div>
+      </div>
+    </div>
+    <div class="lw-ov" data-el="cheats" hidden>
+      <div class="lw-card">
+        <div class="lw-head"><b>Cheats</b><button class="lw-btn ghost sm" type="button" data-act="cheats-close" aria-label="Close cheats">Close</button></div>
+        <div class="lw-cheat-body">
+          <div class="lw-cheat-row"><div><b>+100 coins</b><small>Add coins to your balance</small></div><button class="lw-cheat-btn" type="button" data-cheat="coins">Use</button></div>
+          <div class="lw-cheat-row"><div><b>+5 spins</b><small>Extend your spin budget</small></div><button class="lw-cheat-btn" type="button" data-cheat="spins">Use</button></div>
+          <div class="lw-cheat-row"><div><b>Grant missing prize</b><small>Complete one prize type for you</small></div><button class="lw-cheat-btn" type="button" data-cheat="grant">Use</button></div>
+          <div class="lw-cheat-row"><div><b>Next spin: Jackpot</b><small>Arm an instant jackpot</small></div><button class="lw-cheat-btn" type="button" data-cheat="jackpot">Arm</button></div>
+          <div class="lw-cheat-row"><div><b>Next spin: Coin x5</b><small>Arm the big coin payout</small></div><button class="lw-cheat-btn" type="button" data-cheat="coin5">Arm</button></div>
+        </div>
+        <div class="lw-foot"><span class="lw-note">C to close</span><button class="lw-btn primary" type="button" data-act="cheats-close">Done</button></div>
+      </div>
+    </div>
+    <div class="lw-ov" data-el="help" hidden>
+      <div class="lw-card">
+        <div class="lw-head"><h3>How to play</h3><button class="lw-btn ghost sm" type="button" data-act="help-close" aria-label="Close help">Close</button></div>
+        <div class="lw-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Click the wheel or the SPIN hub to take your turn.</li>
+              <li><kbd>Space</kbd> / <kbd>Enter</kbd> spin · <kbd>R</kbd> restart.</li>
+              <li><kbd>H</kbd> help · <kbd>C</kbd> cheats · <kbd>P</kbd> / <kbd>Esc</kbd> pause.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap SPIN in the HUD or the wheel hub when it is your turn.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>A coin toss decides who spins first; turns alternate with your rival.</li>
+              <li>Every spin costs ${SPIN_COST} coins. Prizes pay coins; Mystery can take them away.</li>
+              <li>Collect all 6 prize types or land the Jackpot to win.</li>
+              <li>If both run out of spins/coins, prizes decide, then balance.</li>
+              <li>Your best balance is saved on this device.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="lw-foot"><span class="lw-note">Press H to reopen this guide</span><button class="lw-btn primary" type="button" data-act="help-close">Got it</button></div>
+      </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="restart">Restart</button>
-    <button class="game-action-button" type="button" data-act="cheats">Cheats</button>
-    <span class="lw-best" data-el="best"></span>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------------- refs ---------------- */
@@ -168,12 +345,25 @@ export function mount(root, context = {}) {
     const bannerEl = $('[data-el="banner"]');
     const statusEl = $("[data-status]");
     const spinBtn = $(".lw-spin");
+    const hudSpinBtn = $("[data-spin-btn]");
+    const pauseBtn = $("[data-pause]");
     const overEl = $('[data-el="over"]');
     const overTitle = $('[data-el="overTitle"]');
     const overSub = $('[data-el="overSub"]');
     const overStats = $('[data-el="overStats"]');
-    const cheatPanel = $('[data-el="cheats"]');
-    const bestEl = $('[data-el="best"]');
+    const pauseEl = $('[data-el="pause"]');
+    const cheatsEl = $('[data-el="cheats"]');
+    const helpEl = $('[data-el="help"]');
+    const bestChip = $("[data-best-chip]");
+    const cheatBtns = Array.prototype.slice.call(root.querySelectorAll("[data-cheat]"));
+    const hud = {
+        you: $('[data-hud="you"]'),
+        rival: $('[data-hud="rival"]'),
+        left: $('[data-hud="left"]'),
+        prizes: $('[data-hud="prizes"]'),
+        first: $('[data-hud="first"]'),
+        best: $('[data-hud="best"]'),
+    };
 
     /* ---------------- icons ---------------- */
     const ICONS = {
@@ -211,20 +401,6 @@ export function mount(root, context = {}) {
         s += '<circle r="86" fill="#0e1420" stroke="#2a3550" stroke-width="2"/>';
         wheelSvg.innerHTML = s;
     }
-
-    /* ---------------- timers / lifecycle ---------------- */
-    let destroyed = false;
-    let shownRot = 0;
-    let spinTimer = null;
-    let botTimer = null;
-    const timers = new Set();
-    const unsubs = [];
-    function later(fn, ms) {
-        const id = setTimeout(() => { timers.delete(id); if (!destroyed) fn(); }, ms);
-        timers.add(id);
-        return id;
-    }
-    function clearTimer(id) { if (id) { clearTimeout(id); timers.delete(id); } }
 
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (_) { }
@@ -279,8 +455,8 @@ export function mount(root, context = {}) {
         state.phase = "spinning";
         state.last = null;
         publish();
-        clearTimer(spinTimer);
-        spinTimer = later(finalizeSpin, SPIN_MS);
+        cancelTimer(spinTimer);
+        spinTimer = schedule(SPIN_MS, finalizeSpin);
     }
 
     function finalizeSpin() {
@@ -345,8 +521,8 @@ export function mount(root, context = {}) {
             if (state.phase !== "idle" || actor !== state.turn || !canSpin(state.players[actor])) return;
             startSpin(actor);
         } else if (action.type === "restart") {
-            clearTimer(spinTimer);
-            clearTimer(botTimer);
+            cancelTimer(spinTimer);
+            cancelTimer(botTimer);
             state = freshState();
             publish();
         } else if (action.type === "cheat") {
@@ -376,9 +552,9 @@ export function mount(root, context = {}) {
 
     /* ---------------- bot (AI mode only) ---------------- */
     function scheduleBot() {
-        clearTimer(botTimer);
+        cancelTimer(botTimer);
         if (!online && state && state.phase === "idle" && state.turn === 1 && canSpin(state.players[1])) {
-            botTimer = later(() => applyAction({ type: "spin" }, 1), BOT_DELAY);
+            botTimer = schedule(BOT_DELAY, () => applyAction({ type: "spin" }, 1));
         }
     }
 
@@ -388,6 +564,15 @@ export function mount(root, context = {}) {
         wheelSvg.style.transform = "rotate(" + rot + "deg)";
         void wheelSvg.getBoundingClientRect();
         wheelSvg.style.transition = "";
+    }
+
+    function syncPauseButton() {
+        const label = pauseBtn.querySelector(".lw-btn-label");
+        if (label) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        const icon = pauseBtn.querySelector(".lw-icon");
+        if (icon) icon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
     }
 
     function panelHTML(p, i, me) {
@@ -406,11 +591,37 @@ export function mount(root, context = {}) {
 
     function render() {
         if (destroyed) return;
+        const frozen = paused || helpOpen || cheatOpen;
         if (!state) {
             statusEl.textContent = "Waiting for host…";
+            hud.you.textContent = String(START_BALANCE);
+            hud.rival.textContent = String(START_BALANCE);
+            hud.left.textContent = String(TOTAL_SPINS);
+            hud.prizes.textContent = "0/6";
+            hud.first.textContent = "FIRST —";
+            bestChip.hidden = best <= 0;
+            hud.best.textContent = String(best);
+            spinBtn.disabled = true;
+            hudSpinBtn.disabled = true;
+            wheelSvg.classList.add("off");
+            overEl.hidden = true;
+            pauseEl.hidden = !paused || helpOpen || cheatOpen;
+            cheatsEl.hidden = !cheatOpen || helpOpen;
+            helpEl.hidden = !helpOpen;
+            syncPauseButton();
             return;
         }
         const me = mySlot();
+
+        /* HUD chips */
+        const mine = state.players[me];
+        hud.you.textContent = String(mine.coins);
+        hud.rival.textContent = String(state.players[1 - me].coins);
+        hud.left.textContent = String(mine.spins);
+        hud.prizes.textContent = mine.collected.length + "/6";
+        hud.first.textContent = "FIRST " + nameOf(state.first, me).toUpperCase();
+        bestChip.hidden = best <= 0;
+        hud.best.textContent = String(best);
 
         /* status chip */
         if (state.phase === "over") {
@@ -437,79 +648,144 @@ export function mount(root, context = {}) {
                 (online ? " · you are P" + (me + 1) : "");
         }
 
-        /* wheel rotation (snap on restart, animate forward otherwise) */
+        /* wheel rotation (snap on restart, animate forward otherwise;
+           while frozen the captured matrix is held until resume) */
         if (state.wheelRot !== shownRot) {
-            if (state.wheelRot < shownRot) snapWheel(state.wheelRot);
-            else wheelSvg.style.transform = "rotate(" + state.wheelRot + "deg)";
+            if (!frozen) {
+                if (state.wheelRot < shownRot) snapWheel(state.wheelRot);
+                else wheelSvg.style.transform = "rotate(" + state.wheelRot + "deg)";
+            }
             shownRot = state.wheelRot;
         }
 
         /* controls */
-        const mine = state.phase === "idle" && state.turn === me && canSpin(state.players[me]);
-        spinBtn.disabled = !mine;
-        wheelSvg.classList.toggle("off", !mine);
-        cheatPanel.querySelectorAll("[data-cheat]").forEach((b) => { b.disabled = state.phase !== "idle"; });
+        const canSpinNow = state.phase === "idle" && state.turn === me && canSpin(mine) && !frozen;
+        spinBtn.disabled = !canSpinNow;
+        hudSpinBtn.disabled = !canSpinNow;
+        wheelSvg.classList.toggle("off", !canSpinNow);
+        cheatBtns.forEach((b) => {
+            const k = b.dataset.cheat;
+            b.disabled = state.phase !== "idle";
+            if (k === "jackpot") {
+                const on = mine.forced === 6;
+                b.classList.toggle("on", on);
+                b.textContent = on ? "Armed" : "Arm";
+            } else if (k === "coin5") {
+                const on = mine.forced === 5;
+                b.classList.toggle("on", on);
+                b.textContent = on ? "Armed" : "Arm";
+            }
+        });
+        syncPauseButton();
 
         /* game over overlay + best score */
         if (state.phase === "over") {
-            const p = state.players[me];
             overTitle.textContent = state.winner === -1 ? "Draw" : state.winner === me ? "You win" : nameOf(state.winner, me) + " wins";
             overSub.textContent = state.reason;
-            overStats.textContent = "Balance " + p.coins + " · Prizes " + p.collected.length + "/6 · Spins used " + Math.max(0, TOTAL_SPINS - p.spins);
-            overEl.removeAttribute("hidden");
+            overStats.textContent = "Balance " + mine.coins + " · Prizes " + mine.collected.length + "/6 · Spins used " + Math.max(0, TOTAL_SPINS - mine.spins);
             if (savedGame !== state.gameId) {
                 savedGame = state.gameId;
-                if (p.coins > best) {
-                    best = p.coins;
+                if (mine.coins > best) {
+                    best = mine.coins;
                     try { localStorage.setItem(META.bestKey, String(best)); } catch (_) { }
                 }
             }
-        } else {
-            overEl.setAttribute("hidden", "");
         }
-        bestEl.textContent = best > 0 ? "Best " + best : "";
+
+        /* overlays: help > cheats > pause; all freeze the game */
+        overEl.hidden = state.phase !== "over" || helpOpen || cheatOpen || paused;
+        pauseEl.hidden = !paused || helpOpen || cheatOpen;
+        cheatsEl.hidden = !cheatOpen || helpOpen;
+        helpEl.hidden = !helpOpen;
     }
 
     /* ---------------- input: mouse / touch / keyboard ---------------- */
     function trySpin() {
-        if (!state || state.phase !== "idle") return;
+        if (!state || paused || helpOpen || cheatOpen || state.phase !== "idle") return;
         const me = mySlot();
         if (state.turn !== me || !canSpin(state.players[me])) return;
         submitAction({ type: "spin" });
     }
-    function toggleCheats() {
-        if (cheatPanel.hasAttribute("hidden")) cheatPanel.removeAttribute("hidden");
-        else cheatPanel.setAttribute("hidden", "");
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        syncFreeze();
+        render();
+    }
+    function toggleCheats(on) {
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) helpOpen = false;
+        syncFreeze();
+        render();
+    }
+    function togglePause(on) {
+        paused = typeof on === "boolean" ? on : !paused;
+        syncFreeze();
+        render();
+    }
+    function restartGame() {
+        paused = false;
+        helpOpen = false;
+        cheatOpen = false;
+        syncFreeze();
+        submitAction({ type: "restart" });
     }
 
     function handleClick(event) {
-        const el = event.target.closest("[data-exit],[data-act],[data-cheat]");
-        if (!el) return;
-        if (el.hasAttribute("data-exit")) return onExit();
-        if (el.dataset.cheat) return submitAction({ type: "cheat", cheat: el.dataset.cheat });
-        const act = el.dataset.act;
-        if (act === "spin") trySpin();
-        else if (act === "restart") submitAction({ type: "restart" });
-        else if (act === "cheats") toggleCheats();
-        else if (act === "cheats-close") cheatPanel.setAttribute("hidden", "");
+        if (destroyed) return;
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        const btn = t.closest("[data-act]");
+        if (btn) {
+            const a = btn.dataset.act;
+            if (a === "spin") trySpin();
+            else if (a === "restart") restartGame();
+            else if (a === "pause") togglePause(false);
+            else if (a === "cheats") toggleCheats();
+            else if (a === "cheats-close") toggleCheats(false);
+            else if (a === "help-close") toggleHelp(false);
+            return;
+        }
+        const ch = t.closest("[data-cheat]");
+        if (ch) submitAction({ type: "cheat", cheat: ch.dataset.cheat });
     }
 
     function handleKey(event) {
         if (destroyed || !root.isConnected) return;
-        if (event.code === "Space" || event.code === "Enter") {
-            event.preventDefault();
-            if (!event.repeat) trySpin();
-        } else if (event.code === "KeyR") {
-            if (!event.repeat) submitAction({ type: "restart" });
-        } else if (event.code === "KeyC") {
-            if (!event.repeat) toggleCheats();
-        } else if (event.code === "Escape") {
-            cheatPanel.setAttribute("hidden", "");
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        const t = event.target;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if (event.repeat) return;
+        const code = event.code || "";
+        const k = (event.key || "").toLowerCase();
+
+        /* prioritas UI: help → cheats → pause/Escape → restart → aksi game */
+        if (code === "KeyH" || k === "h") { toggleHelp(); event.preventDefault(); return; }
+        if (code === "KeyC" || k === "c") { if (!helpOpen) toggleCheats(); event.preventDefault(); return; }
+        if (code === "KeyP" || code === "Escape" || k === "p" || k === "escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else togglePause();
+            event.preventDefault(); return;
         }
+        if (code === "KeyR" || k === "r") { if (state) restartGame(); event.preventDefault(); return; }
+        if (helpOpen || cheatOpen || !state) return;
+        if (paused) {
+            if (code === "Space" || code === "Enter") { togglePause(false); event.preventDefault(); }
+            return;
+        }
+        if (t && t.closest && t.closest("button")) return;
+        if (code === "Space" || code === "Enter") { event.preventDefault(); trySpin(); }
     }
 
     root.addEventListener("click", handleClick);
     document.addEventListener("keydown", handleKey);
+    syncFreeze();
 
     /* ---------------- boot ---------------- */
     if (online) {
@@ -534,7 +810,7 @@ export function mount(root, context = {}) {
     return {
         destroy() {
             destroyed = true;
-            timers.forEach(clearTimeout);
+            timers.forEach((rec) => { if (rec.id) clearTimeout(rec.id); });
             timers.clear();
             root.removeEventListener("click", handleClick);
             document.removeEventListener("keydown", handleKey);

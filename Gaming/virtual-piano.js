@@ -5,6 +5,9 @@
 /* Luminote Edition: a three-octave piano with falling lights.      */
 /* Free play / Listen / Learn (new) + the original melody challenge,*/
 /* sustain and octave shifting preserved as a classic mode.         */
+/* Layout: HUD bar + fill-height board + internal help/cheat/pause  */
+/* overlays. Classic MGP script kept (inline icon helper below) so  */
+/* the manifest "kind" stays "mgp".                                 */
 /* =============================================================== */
 (() => {
     "use strict";
@@ -152,6 +155,23 @@
         MELODIES,
         KEYMAP,
     };
+
+    /* ---------- inline icons (no ESM import; keeps classic MGP) ---------- */
+    const ICON_PATHS = {
+        helpCircle: ["M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", "M12 17h.01"],
+        wrench: ["M14.7 6.3a4 4 0 0 0 5 5l-9 9a2.8 2.8 0 0 1-4-4z", "M6 16l-3 3", "M14.5 4.5 19 9"],
+        pause: ["M7 4h3v16H7z", "M14 4h3v16h-3z"],
+        play: ["M8 5v14l11-7z"],
+        refresh: ["M21 2v6h-6", "M3 12a9 9 0 0 1 15-6.7L21 8", "M3 22v-6h6", "M21 12a9 9 0 0 1-15 6.7L3 16"],
+        logOut: ["m16 17 5-5-5-5", "M21 12H9", "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"],
+        x: ["M18 6 6 18", "M6 6l12 12"],
+        volume: ["M11 5 6 9H2v6h4l5 4V5z", "M15.54 8.46a5 5 0 0 1 0 7.07", "M19.07 4.93a10 10 0 0 1 0 14.14"],
+        volumeX: ["M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298z", "m16.5 14.5 5-5", "m16.5 9.5 5 5"],
+    };
+    function iconSVG(name, size) {
+        const paths = ICON_PATHS[name] || ICON_PATHS.helpCircle;
+        return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + paths.map(function (d) { return '<path d="' + d + '"/>'; }).join("") + "</svg>";
+    }
 
     /* =============================================================== */
     /* Luminote layer: midi notes, pitch colours, timed melodies        */
@@ -318,9 +338,15 @@
         bg: ["#fef9c3", "#eab308"],
         _test: TEST,
 
-        build(app) {
+        build(app, context) {
+            const buildCtx = context || {};
+            const onExit = typeof buildCtx.onExit === "function" ? buildCtx.onExit : function () {
+                const b = typeof document !== "undefined" && document.getElementById
+                    ? document.getElementById("closeGameButton") : null;
+                if (b && typeof b.click === "function") b.click();
+            };
             const $ = (s) => app.querySelector(s);
-            app.classList.add("ln-root");
+            app.className = "mgp-app game-app ln ln-root game-fill";
 
             /* ========================================================= */
             /* audio — original playNote() preserved, upgraded synth      */
@@ -496,83 +522,70 @@
   -webkit-tap-highlight-color:transparent;
 }
 #virtual-piano-app [hidden]{display:none!important}
-#virtual-piano-app .ln-app{position:relative;display:flex;flex-direction:column;width:100%;height:100%;min-height:0;overflow:hidden;background:var(--stage)}
+#virtual-piano-app *{box-sizing:border-box}
+#virtual-piano-app.mgp-app{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;overflow:hidden;background:var(--stage)}
 #virtual-piano-app button,#virtual-piano-app select,#virtual-piano-app input{font:inherit;color:inherit}
 #virtual-piano-app :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #virtual-piano-app .sc{font-variant-caps:all-small-caps;letter-spacing:.09em}
 
-/* control bar */
-#virtual-piano-app .ln-bar{position:relative;z-index:20;flex:0 0 auto;margin:10px 10px 0;display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;
-  padding:8px 10px 8px 13px;border-radius:15px;background:var(--glass);border:1px solid var(--line);
+/* HUD bar: info + game-specific controls + shell actions */
+#virtual-piano-app .ln-hud{position:relative;z-index:20;flex:0 0 auto;margin:10px 10px 0;display:flex;align-items:center;gap:7px 9px;flex-wrap:wrap;
+  padding:7px 10px;border-radius:12px;background:var(--glass);border:1px solid var(--line);
   -webkit-backdrop-filter:blur(14px) saturate(1.3);backdrop-filter:blur(14px) saturate(1.3);
   box-shadow:0 20px 50px -30px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.06)}
-#virtual-piano-app .ln-brand{display:flex;align-items:center;gap:9px;margin-right:auto;order:0}
-#virtual-piano-app .ln-brand h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.3em;font-variant-caps:all-small-caps;
-  background:linear-gradient(90deg,#ff8fb1,#ffc07a,#c7f27a,#7ef0d9,#8fb8ff,#c9a2ff);-webkit-background-clip:text;background-clip:text;color:transparent}
-#virtual-piano-app .ln-brand p{margin:0;font-size:11px;color:var(--ink-3);letter-spacing:.06em}
+#virtual-piano-app .ln-info{display:flex;align-items:center;gap:7px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
+#virtual-piano-app .ln-chip{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:4px 9px;border:1px solid var(--line);border-radius:999px;background:rgba(0,0,0,.28);color:var(--ink-3);font-size:11px;white-space:nowrap;max-width:100%;overflow:hidden}
+#virtual-piano-app .ln-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+#virtual-piano-app .ln-chip.title{font-size:12px;letter-spacing:.02em;color:#ffd9e8;max-width:min(280px,34vw);text-overflow:ellipsis}
+#virtual-piano-app .ln-chip.status{max-width:min(330px,40vw);text-overflow:ellipsis}
+#virtual-piano-app .ln-chip.status.good b{color:#6ee7b7}
+#virtual-piano-app .ln-chip.status.bad b{color:#fca5a5}
+#virtual-piano-app .ln-chip.coach{gap:8px}
+#virtual-piano-app .ln-chip.coach .cbig{font-size:13px;font-weight:600}
+#virtual-piano-app .ln-chip.coach .csmall,#virtual-piano-app .ln-chip.coach .cacc{font-size:10px;color:var(--ink-3)}
+#virtual-piano-app .ln-prog{width:80px;height:4px;padding:0;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden;flex:none}
+#virtual-piano-app .ln-prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ff8fb1,#ffc07a,#7ef0d9,#8fb8ff,#c9a2ff)}
+#virtual-piano-app .ln-controls{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-left:auto}
 #virtual-piano-app .ln-grp{display:flex;align-items:center;gap:7px}
-#virtual-piano-app .ln-lbl{font-size:11px;color:var(--ink-3);font-variant-caps:all-small-caps;letter-spacing:.12em}
-#virtual-piano-app .ln-mode{order:1}#virtual-piano-app .ln-song{order:2}#virtual-piano-app .ln-play{order:3}
-#virtual-piano-app .ln-tempo{order:4}#virtual-piano-app .ln-lab{order:5}#virtual-piano-app .ln-mute{order:6}
-#virtual-piano-app .ln-seg{display:inline-flex;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px}
-#virtual-piano-app .ln-seg button{appearance:none;border:0;background:transparent;border-radius:8px;padding:5px 10px;cursor:pointer;color:var(--ink-2);font-size:12.5px;letter-spacing:.02em;transition:background .25s,color .25s}
+#virtual-piano-app .ln-lbl{font-size:10px;color:var(--ink-3);font-variant-caps:all-small-caps;letter-spacing:.12em}
+#virtual-piano-app .ln-seg{display:inline-flex;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
+#virtual-piano-app .ln-seg button{appearance:none;min-height:30px;border:0;background:transparent;border-radius:7px;padding:0 9px;cursor:pointer;color:var(--ink-2);font-size:11px;letter-spacing:.02em;transition:background .18s,color .18s}
 #virtual-piano-app .ln-seg button:hover{color:var(--ink)}
 #virtual-piano-app .ln-seg button[aria-pressed="true"]{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.07));color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
-#virtual-piano-app .ln-icon{appearance:none;width:34px;height:34px;border-radius:10px;border:1px solid var(--line-2);background:rgba(255,255,255,.05);display:grid;place-items:center;cursor:pointer;color:var(--ink);transition:background .2s,transform .15s,border-color .2s}
-#virtual-piano-app .ln-icon:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.28)}
-#virtual-piano-app .ln-icon:active{transform:scale(.94)}
-#virtual-piano-app .ln-icon:disabled{opacity:.35;cursor:not-allowed}
-#virtual-piano-app .ln-icon.play{width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0,#d9d2ff 35%,#9f8cff 100%);color:#15122a;border:0;box-shadow:0 0 22px rgba(185,168,255,.45)}
+#virtual-piano-app .ln-btn,#virtual-piano-app .ln-icon{appearance:none;border:1px solid var(--line-2);background:rgba(255,255,255,.05);color:var(--ink);border-radius:9px;cursor:pointer;transition:background .18s,transform .15s,border-color .18s}
+#virtual-piano-app .ln-btn{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 9px;font-size:11px;font-weight:600}
+#virtual-piano-app .ln-icon{width:32px;height:32px;min-height:32px;display:grid;place-items:center;padding:0}
+#virtual-piano-app .ln-btn:hover:not(:disabled),#virtual-piano-app .ln-icon:hover:not(:disabled){background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.28)}
+#virtual-piano-app .ln-btn:active,#virtual-piano-app .ln-icon:active{transform:scale(.96)}
+#virtual-piano-app .ln-btn:disabled,#virtual-piano-app .ln-icon:disabled{opacity:.35;cursor:not-allowed}
+#virtual-piano-app .ln-btn.acc{border-color:var(--accent);color:var(--accent);background:rgba(185,168,255,.14)}
+#virtual-piano-app .ln-btn.on{border-color:var(--accent);color:var(--accent);background:rgba(185,168,255,.16)}
+#virtual-piano-app .ln-btn svg,#virtual-piano-app .ln-icon svg{flex:none;display:block}
+#virtual-piano-app .ln-icon.play{width:32px;height:32px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0,#d9d2ff 35%,#9f8cff 100%);color:#15122a;border:0;box-shadow:0 0 18px rgba(185,168,255,.4)}
 #virtual-piano-app .ln-icon .i-pause{display:none}
 #virtual-piano-app .ln-icon.playing .i-play{display:none}
 #virtual-piano-app .ln-icon.playing .i-pause{display:block}
 #virtual-piano-app .ln-icon.mute .i-off{display:none}
 #virtual-piano-app .ln-icon.mute.muted .i-on{display:none}
 #virtual-piano-app .ln-icon.mute.muted .i-off{display:block}
-#virtual-piano-app select{appearance:none;-webkit-appearance:none;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:10px;padding:7px 28px 7px 10px;font-size:12.5px;cursor:pointer;
+#virtual-piano-app select{appearance:none;-webkit-appearance:none;min-height:32px;max-width:150px;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:8px;padding:0 24px 0 9px;font-size:11px;cursor:pointer;
   background-image:linear-gradient(45deg,transparent 50%,#a5a3bd 50%),linear-gradient(135deg,#a5a3bd 50%,transparent 50%);
-  background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+  background-position:calc(100% - 12px) 55%,calc(100% - 8px) 55%;background-size:5px 5px;background-repeat:no-repeat}
 #virtual-piano-app select option{background:#15142a;color:#ecebf5}
-#virtual-piano-app input[type=range]{appearance:none;-webkit-appearance:none;width:96px;height:4px;border-radius:4px;background:linear-gradient(90deg,#ff8fb1,#8fb8ff);outline:none;cursor:pointer}
-#virtual-piano-app input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(185,168,255,.35),0 2px 6px rgba(0,0,0,.5)}
-#virtual-piano-app input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#fff;border:0;box-shadow:0 0 0 3px rgba(185,168,255,.35)}
-#virtual-piano-app .ln-tempo output{min-width:38px;font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:12px}
-#virtual-piano-app .ln-more{display:none}
-
-/* legacy challenge strip */
-#virtual-piano-app .ln-legacy,#virtual-piano-app .ln-picker{position:relative;z-index:19;flex:0 0 auto;margin:8px 10px 0;display:flex;align-items:center;gap:7px;flex-wrap:wrap;
-  padding:7px 10px;border-radius:12px;background:rgba(14,13,28,.78);border:1px solid var(--line);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);font-size:11.5px}
-#virtual-piano-app .ln-mini{padding:5px 10px;border:1px solid var(--line-2);border-radius:8px;background:rgba(255,255,255,.05);cursor:pointer;color:var(--ink-2);font-size:11.5px}
+#virtual-piano-app input[type=range]{appearance:none;-webkit-appearance:none;width:76px;height:4px;border-radius:4px;background:linear-gradient(90deg,#ff8fb1,#8fb8ff);outline:none;cursor:pointer}
+#virtual-piano-app input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(185,168,255,.35),0 2px 6px rgba(0,0,0,.5)}
+#virtual-piano-app input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:0;box-shadow:0 0 0 3px rgba(185,168,255,.35)}
+#virtual-piano-app .ln-tempo output{min-width:32px;font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:10px}
+#virtual-piano-app .ln-melodies{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#virtual-piano-app .ln-mini{min-height:30px;padding:0 9px;border:1px solid var(--line-2);border-radius:8px;background:rgba(255,255,255,.05);cursor:pointer;color:var(--ink-2);font-size:10.5px}
 #virtual-piano-app .ln-mini:hover{background:rgba(255,255,255,.12);color:#fff}
 #virtual-piano-app .ln-mini.on{background:rgba(185,168,255,.22);border-color:rgba(185,168,255,.5);color:#fff}
+#virtual-piano-app .ln-more{display:none}
+#virtual-piano-app .ln-modesel{display:none}
 
-/* hud + coach */
-#virtual-piano-app .ln-info{position:relative;z-index:10;flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-  padding:9px 16px 0;pointer-events:none}
-#virtual-piano-app .ln-hud{position:relative;pointer-events:none;max-width:min(440px,66%)}
-#virtual-piano-app .ln-hud .kicker{font-size:11px;color:var(--ink-3);font-variant-caps:all-small-caps;letter-spacing:.2em}
-#virtual-piano-app .ln-hud h2{margin:2px 0;font-size:clamp(20px,2.4vw,30px);font-weight:300;letter-spacing:.02em;line-height:1.1}
-#virtual-piano-app .ln-hud .by{margin:0;color:var(--ink-2);font-size:12px}
-#virtual-piano-app .prog{margin-top:10px;height:3px;width:200px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
-#virtual-piano-app .prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ff8fb1,#ffc07a,#7ef0d9,#8fb8ff,#c9a2ff)}
-#virtual-piano-app .ln-coach{position:relative;pointer-events:none;text-align:right;max-width:min(330px,54%);transition:opacity .4s}
-#virtual-piano-app .ln-coach .big{font-size:clamp(30px,4vw,52px);font-weight:200;line-height:1;letter-spacing:.02em}
-#virtual-piano-app .ln-coach .small{font-size:12px;color:var(--ink-2);margin-top:5px}
-#virtual-piano-app .ln-coach .acc{font-size:11px;color:var(--ink-3);margin-top:2px;font-variant-numeric:tabular-nums}
-#virtual-piano-app .ln-toast{position:absolute;left:50%;top:42%;z-index:55;transform:translate(-50%,-50%) scale(.96);opacity:0;pointer-events:none;
-  text-align:center;padding:16px 22px;border-radius:17px;background:rgba(14,13,28,.82);border:1px solid var(--line-2);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:opacity .4s,transform .4s}
-#virtual-piano-app .ln-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
-#virtual-piano-app .ln-toast b{display:block;font-size:23px;font-weight:300;letter-spacing:.04em}
-#virtual-piano-app .ln-toast span{color:var(--ink-2);font-size:12.5px}
-#virtual-piano-app .ln-gate{position:absolute;left:50%;bottom:calc(var(--kb) + 26px);z-index:14;transform:translateX(-50%);display:flex;align-items:center;gap:9px;
-  padding:8px 15px;border-radius:999px;cursor:pointer;background:rgba(14,13,28,.75);border:1px solid var(--line-2);color:var(--ink);font-size:12.5px;
-  box-shadow:0 0 30px rgba(185,168,255,.18);animation:lnBreathe 2.8s ease-in-out infinite}
-@keyframes lnBreathe{50%{box-shadow:0 0 44px rgba(185,168,255,.34)}}
-
-/* stage + keys */
-#virtual-piano-app .ln-scroller{position:relative;flex:1;min-height:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain}
+/* board: canvas + overlays are direct children; no stage wrapper */
+#virtual-piano-app.ln.game-fill > .ln-board{position:relative;width:100%;flex:1 1 auto;min-height:0;aspect-ratio:auto;margin:10px;border-radius:12px;background:var(--stage);overflow:hidden;border:1px solid var(--line)}
+#virtual-piano-app .ln-scroller{position:absolute;inset:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain}
 #virtual-piano-app .ln-scroller::-webkit-scrollbar{display:none}
 #virtual-piano-app .ln-world{position:relative;height:100%;display:flex;flex-direction:column;min-width:100%}
 #virtual-piano-app .ln-stage{display:block;flex:1;min-height:0;width:100%;touch-action:pan-x}
@@ -623,167 +636,254 @@
 #virtual-piano-app .vp-b.on{background:#4f46e5}
 #virtual-piano-app .vp-w.target,#virtual-piano-app .vp-b.target{background:#fef08a;animation:lnHint 1s infinite}
 
-/* overlays / foot */
-#virtual-piano-app .mgp-overlay{position:absolute;inset:0;z-index:60;background:rgba(10,10,18,.84);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
-#virtual-piano-app .mgp-card{width:min(420px,100%);padding:20px;border-radius:18px;background:linear-gradient(180deg,rgba(24,22,44,.96),rgba(14,13,28,.96));
-  border:1px solid var(--line-2);box-shadow:0 30px 70px -30px #000,inset 0 1px 0 rgba(255,255,255,.07)}
-#virtual-piano-app .mgp-ov-title{background:linear-gradient(90deg,#ff8fb1,#7ef0d9,#c9a2ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+/* toast + wake gate (inside the board) */
+#virtual-piano-app .ln-toast{position:absolute;left:50%;top:42%;z-index:55;transform:translate(-50%,-50%) scale(.96);opacity:0;pointer-events:none;
+  text-align:center;padding:14px 20px;border-radius:16px;background:rgba(14,13,28,.86);border:1px solid var(--line-2);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:opacity .4s,transform .4s}
+#virtual-piano-app .ln-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#virtual-piano-app .ln-toast b{display:block;font-size:21px;font-weight:300;letter-spacing:.04em}
+#virtual-piano-app .ln-toast span{color:var(--ink-2);font-size:12px}
+#virtual-piano-app .ln-gate{position:absolute;left:50%;bottom:calc(var(--kb) + 14px);z-index:14;transform:translateX(-50%);display:flex;align-items:center;gap:9px;
+  padding:8px 15px;border-radius:999px;cursor:pointer;background:rgba(14,13,28,.75);border:1px solid var(--line-2);color:var(--ink);font-size:12px;
+  box-shadow:0 0 30px rgba(185,168,255,.18);animation:lnBreathe 2.8s ease-in-out infinite}
+@keyframes lnBreathe{50%{box-shadow:0 0 44px rgba(185,168,255,.34)}}
+
+/* overlays */
+#virtual-piano-app .ln-ov{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(10,10,18,.84);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
+#virtual-piano-app .ln-card{width:min(560px,100%);max-height:100%;display:flex;flex-direction:column;gap:12px;padding:18px;border-radius:16px;
+  background:linear-gradient(180deg,rgba(24,22,44,.97),rgba(14,13,28,.97));border:1px solid var(--line-2);overflow:hidden;text-align:center;
+  box-shadow:0 30px 70px -30px #000,inset 0 1px 0 rgba(255,255,255,.07)}
+#virtual-piano-app .ln-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+#virtual-piano-app .ln-head h3{margin:0;font-size:17px;font-weight:600}
+#virtual-piano-app .ln-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+#virtual-piano-app .ln-sub{font-size:12px;line-height:1.6;color:var(--ink-2);margin:0;text-align:left;min-height:0;overflow:auto}
+#virtual-piano-app .ln-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+#virtual-piano-app .ln-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+#virtual-piano-app .ln-help b{display:block;margin-bottom:5px;color:var(--ink-3);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+#virtual-piano-app .ln-help ul{margin:0 0 10px;padding-left:16px;color:var(--ink-2);font-size:11.5px;line-height:1.6}
+#virtual-piano-app .ln-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;background:rgba(0,0,0,.35);color:var(--ink);font:inherit;font-size:10px}
+#virtual-piano-app .ln-cheats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px;flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+#virtual-piano-app .ln-crow{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:rgba(0,0,0,.3);font-size:11.5px}
+#virtual-piano-app .ln-sw{position:relative;width:38px;height:21px;border-radius:999px;border:1px solid var(--line-2);background:rgba(0,0,0,.4);cursor:pointer;flex:none;padding:0}
+#virtual-piano-app .ln-sw:after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--ink-3)}
+#virtual-piano-app .ln-sw[aria-pressed="true"]{border-color:var(--accent);background:rgba(185,168,255,.18)}
+#virtual-piano-app .ln-sw[aria-pressed="true"]:after{left:19px;background:var(--accent)}
+#virtual-piano-app .mgp-ov-title{margin:0;font-size:23px;font-weight:300;background:linear-gradient(90deg,#ff8fb1,#7ef0d9,#c9a2ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 #virtual-piano-app .mgp-ov-title.mgp-win{background:none;color:#6ee7b7;-webkit-text-fill-color:#6ee7b7}
 #virtual-piano-app .mgp-ov-title.mgp-lose{background:none;color:#fca5a5;-webkit-text-fill-color:#fca5a5}
-#virtual-piano-app .mgp-ov-sub{color:var(--ink-2)}
-#virtual-piano-app .mgp-foot{background:#0d0c16;border:0;border-top:1px solid var(--line);border-radius:0;padding:6px 12px}
-#virtual-piano-app .mgp-hint{color:var(--ink-3)}
-#virtual-piano-app .vp-status{position:relative;flex:0 0 auto;height:18px;text-align:center;font-size:11.5px;font-weight:600;color:var(--ink-2)}
-#virtual-piano-app .vp-status.good{color:#6ee7b7}
-#virtual-piano-app .vp-status.bad{color:#fca5a5}
+#virtual-piano-app .mgp-ov-sub{color:var(--ink-2);font-size:12px;line-height:1.6;margin:0}
+#virtual-piano-app .ln-note{color:var(--ink-3);font-size:11px;line-height:1.5}
 
 @media (max-width:760px){
-  #virtual-piano-app .ln-bar{left:7px;right:7px;top:7px;padding:7px 8px 7px 10px;gap:6px 9px}
-  #virtual-piano-app .ln-brand p{display:none}
-  #virtual-piano-app .ln-brand h1{font-size:15px;letter-spacing:.24em}
-  #virtual-piano-app .ln-info{padding:8px 12px 0}
-  #virtual-piano-app .ln-opt{display:none}
-  #virtual-piano-app .ln-bar.open .ln-opt{display:flex}
-  #virtual-piano-app .ln-more{display:grid}
-  #virtual-piano-app .ln-bar.open .ln-more{background:rgba(185,168,255,.2);border-color:rgba(185,168,255,.5)}
-  #virtual-piano-app input[type=range]{width:76px}
-}
-@media (max-width:520px){
-  #virtual-piano-app .ln-brand{flex:1;margin-right:0}
-  #virtual-piano-app .ln-seg button{padding:5px 7px;font-size:11.5px}
-  #virtual-piano-app .ln-hud h2{font-size:18px}
-  #virtual-piano-app .ln-coach .big{font-size:28px}
-  #virtual-piano-app .ln-gate{bottom:auto;top:44%}
-  #virtual-piano-app .prog{width:140px}
+  #virtual-piano-app .ln-hud{margin:8px 8px 0;padding:8px;gap:8px}
+  #virtual-piano-app .ln-chip.title{max-width:170px}
+  #virtual-piano-app .ln-chip.status{max-width:190px}
+  #virtual-piano-app input[type=range]{width:60px}
 }
 @media (prefers-reduced-motion:reduce){
   #virtual-piano-app .ln-gate,#virtual-piano-app .key.hint,#virtual-piano-app .vp-w.target,#virtual-piano-app .vp-b.target{animation:none}
+  #virtual-piano-app .ln-toast,#virtual-piano-app .ln-seg button,#virtual-piano-app .ln-btn,#virtual-piano-app .ln-icon,#virtual-piano-app .ln-mini{transition:none}
+}
+/* --- layout redesign overrides (keep last) --- */
+#virtual-piano-app.ln.game-fill > .ln-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+  #virtual-piano-app.ln.game-fill > .ln-board{flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  #virtual-piano-app .ln-hud{gap:5px;margin:8px 8px 0;padding:6px 8px}
+  #virtual-piano-app .ln-info{gap:5px}
+  #virtual-piano-app .ln-chip{padding:3px 6px;min-height:0;font-size:9px}
+  #virtual-piano-app .ln-chip.title{max-width:130px}
+  #virtual-piano-app .ln-chip.status{max-width:130px}
+  #virtual-piano-app .ln-chip.coach .csmall,#virtual-piano-app .ln-chip.coach .cacc{display:none}
+  #virtual-piano-app .ln-prog,#virtual-piano-app .ln-chip[data-chip="mode"]{display:none}
+  #virtual-piano-app .ln-hud .ln-lbl{display:none}
+  #virtual-piano-app .ln-controls{gap:4px;margin-left:0;flex-wrap:nowrap;justify-content:space-between;width:100%}
+  #virtual-piano-app .ln-hud .ln-grp{gap:4px}
+  #virtual-piano-app .ln-seg[aria-labelledby="vpModeLbl"]{display:none}
+  #virtual-piano-app .ln-modesel{display:block;max-width:92px;min-height:30px;font-size:10px}
+  #virtual-piano-app .ln-seg button{min-height:30px;padding:0 7px;font-size:10px}
+  #virtual-piano-app .ln-btn,#virtual-piano-app .ln-icon{min-height:30px;padding:0 5px;font-size:10px}
+  #virtual-piano-app .ln-icon{width:30px;height:30px}
+  #virtual-piano-app .ln-btn-label,#virtual-piano-app .ln-spacer{display:none}
+  #virtual-piano-app .ln-opt{display:none}
+  #virtual-piano-app .ln-hud.open .ln-opt{display:flex}
+  #virtual-piano-app .ln-hud.open .ln-more{background:rgba(185,168,255,.2);border-color:rgba(185,168,255,.5)}
+  #virtual-piano-app .ln-more{display:grid}
+  #virtual-piano-app .ln-mini{min-height:30px;padding:0 7px;font-size:10px}
+  #virtual-piano-app select{max-width:110px;min-height:30px}
+  #virtual-piano-app .ln-ov{padding:8px}
+  #virtual-piano-app .ln-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  #virtual-piano-app .ln-help,#virtual-piano-app .ln-cheats,#virtual-piano-app .ln-sub{scrollbar-width:none}
+  #virtual-piano-app .ln-help::-webkit-scrollbar,#virtual-piano-app .ln-cheats::-webkit-scrollbar,#virtual-piano-app .ln-sub::-webkit-scrollbar{display:none}
+  #virtual-piano-app .ln-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+  #virtual-piano-app .ln-note{display:none}
+}
+@media (pointer:coarse){
+  #virtual-piano-app .ln-hud .ln-btn,
+  #virtual-piano-app .ln-hud .ln-icon,
+  #virtual-piano-app .ln-hud .ln-seg button,
+  #virtual-piano-app .ln-hud .ln-mini,
+  #virtual-piano-app .ln-hud select{min-height:30px}
 }
 </style>
-<div class="ln-app">
-  <header class="ln-bar" data-el="bar" aria-label="Luminote controls">
-    <div class="ln-brand">
-      <svg width="26" height="26" viewBox="0 0 30 30" aria-hidden="true">
-        <defs><linearGradient id="vpLgm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8fb1"/><stop offset=".5" stop-color="#7ef0d9"/><stop offset="1" stop-color="#c9a2ff"/></linearGradient></defs>
-        <rect x="5" y="3" width="6" height="16" rx="3" fill="url(#vpLgm)" opacity=".9"/>
-        <rect x="13" y="7" width="6" height="12" rx="3" fill="url(#vpLgm)" opacity=".7"/>
-        <rect x="21" y="1" width="6" height="18" rx="3" fill="url(#vpLgm)" opacity=".55"/>
-        <rect x="3" y="22" width="25" height="5" rx="1.5" fill="#ecebf5"/>
-      </svg>
-      <div><h1>Luminote</h1><p>Piano with falling lights</p></div>
+<div class="ln-hud" data-el="hud" aria-label="Piano controls">
+    <div class="ln-info">
+      <span class="ln-chip" data-chip="mode">MODE <b data-hud="mode">Listen</b></span>
+      <span class="ln-chip title" data-hud="song">F&uuml;r Elise</span>
+      <span class="ln-chip status" data-el="statuschip"><b data-hud="status">Press Start to play</b></span>
+      <span class="ln-chip" data-el="challengechip" hidden>NOTE <b data-hud="note">-</b><span data-el="melchip" hidden> &middot; PRG <b data-hud="prog">0</b>/<b data-hud="total">0</b></span><span data-el="mischip" hidden> &middot; MISS <b data-hud="miss">0</b>/${MISTAKES}</span> &middot; ACC <b data-hud="score">0</b></span>
+      <span class="ln-chip coach" data-el="coachchip" hidden><b class="cbig" data-el="coachBig"></b><span class="csmall" data-el="coachSmall"></span><span class="cacc" data-el="coachAcc"></span></span>
+      <span class="ln-prog" data-el="progchip" aria-hidden="true"><i data-el="progBar"></i></span>
     </div>
-    <div class="ln-grp ln-mode">
-      <span class="ln-lbl" id="vpModeLbl">Mode</span>
-      <div class="ln-seg" role="group" aria-labelledby="vpModeLbl">
-        <button type="button" data-mode="free" aria-pressed="false">Free play</button>
-        <button type="button" data-mode="listen" aria-pressed="true">Listen</button>
-        <button type="button" data-mode="learn" aria-pressed="false">Learn</button>
-        <button type="button" data-mode="challenge" aria-pressed="false">Challenge</button>
+    <div class="ln-controls">
+      <div class="ln-grp">
+        <span class="ln-lbl" id="vpModeLbl">Mode</span>
+        <div class="ln-seg" role="group" aria-labelledby="vpModeLbl">
+          <button type="button" data-mode="free" aria-pressed="false">Free</button>
+          <button type="button" data-mode="listen" aria-pressed="true">Listen</button>
+          <button type="button" data-mode="learn" aria-pressed="false">Learn</button>
+          <button type="button" data-mode="challenge" aria-pressed="false">Challenge</button>
+        </div>
+        <select class="ln-modesel" aria-label="Mode" data-el="modesel">
+          <option value="free">Free</option>
+          <option value="listen" selected>Listen</option>
+          <option value="learn">Learn</option>
+          <option value="challenge">Challenge</option>
+        </select>
       </div>
-    </div>
-    <div class="ln-grp ln-song ln-opt">
-      <label class="sc" for="vpSong" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Melody</label>
-      <select id="vpSong" data-el="song" aria-label="Melody"></select>
-      <button type="button" class="ln-icon" data-act="restart" aria-label="Restart melody" title="Restart melody">
-        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8 A5 5 0 1 0 5 4 M5 1.5 V4.5 H2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-    </div>
-    <div class="ln-grp ln-play">
-      <button type="button" class="ln-icon play playing" data-act="play" data-el="play" aria-label="Pause" title="Play / pause">
-        <svg class="i-play" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5 L13 8 L4 13.5Z" fill="currentColor"/></svg>
-        <svg class="i-pause" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1" fill="currentColor"/><rect x="9.5" y="2.5" width="3" height="11" rx="1" fill="currentColor"/></svg>
-      </button>
-    </div>
-    <div class="ln-grp ln-tempo ln-opt">
-      <label class="ln-lbl" for="vpTempo">Tempo</label>
-      <input type="range" id="vpTempo" data-el="tempo" min="40" max="160" step="5" value="100">
-      <output data-el="tempoOut" for="vpTempo">100%</output>
-    </div>
-    <div class="ln-grp ln-lab ln-opt">
-      <span class="ln-lbl" id="vpLabLbl">Labels</span>
-      <div class="ln-seg" role="group" aria-labelledby="vpLabLbl">
-        <button type="button" data-lab="off" aria-pressed="false">Off</button>
-        <button type="button" data-lab="notes" aria-pressed="true">Notes</button>
-        <button type="button" data-lab="keys" aria-pressed="false">Keys</button>
+      <div class="ln-grp ln-melodies ln-opt" data-el="picker" hidden>
+        <button class="ln-mini" type="button" data-act="mel0">Twinkle</button>
+        <button class="ln-mini" type="button" data-act="mel1">Ode to Joy</button>
+        <button class="ln-mini" type="button" data-act="mel2">Jingle Bells</button>
+        <button class="ln-mini" type="button" data-act="octdown">Oct &minus;</button>
+        <button class="ln-mini" type="button" data-act="octup">Oct +</button>
+        <button class="ln-mini" type="button" data-act="sustain" data-el="sustainbtn">Sustain</button>
       </div>
-    </div>
-    <div class="ln-grp ln-mute">
-      <button type="button" class="ln-icon mute" data-act="mutenew" data-el="mutenew" aria-pressed="false" aria-label="Mute sound" title="Mute">
-        <svg class="i-on" width="17" height="17" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 7 H6 L10 3.5 V14.5 L6 11 H3Z" fill="currentColor"/><path d="M12.5 6 C13.8 7.3,13.8 10.7,12.5 12 M14.6 4 C17 6.5,17 11.5,14.6 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        <svg class="i-off" width="17" height="17" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 7 H6 L10 3.5 V14.5 L6 11 H3Z" fill="currentColor"/><path d="M12.5 7 L16.5 11 M16.5 7 L12.5 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-      <button type="button" class="ln-icon ln-more" data-act="more" aria-expanded="false" aria-label="More settings" title="More settings">
-        <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5 H15 M3 9 H15 M3 13 H15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="6" cy="5" r="1.8" fill="#15142a" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="9" r="1.8" fill="#15142a" stroke="currentColor" stroke-width="1.4"/><circle cx="7" cy="13" r="1.8" fill="#15142a" stroke="currentColor" stroke-width="1.4"/></svg>
-      </button>
-    </div>
-  </header>
-
-  <div class="ln-legacy" data-el="legacy" hidden>
-    <span class="mgp-chip" data-el="modechip">Free play</span>
-    <span class="mgp-chip">Note <b data-hud="note">-</b></span>
-    <span class="mgp-chip" data-el="melchip" hidden>Progress <b data-hud="prog">0</b>/<b data-hud="total">0</b></span>
-    <span class="mgp-chip" data-el="mischip" hidden>Mistakes <b data-hud="miss">0</b>/${MISTAKES}</span>
-    <span class="mgp-chip">Accuracy <b data-hud="score">0</b></span>
-    <span class="mgp-spacer"></span>
-    <button class="ln-mini" type="button" data-act="octdown">Oct −</button>
-    <button class="ln-mini" type="button" data-act="octup">Oct +</button>
-    <button class="ln-mini" type="button" data-act="sustain" data-el="sustainbtn">Sustain</button>
-    <button class="ln-mini" type="button" data-act="mute" data-el="mute">Mute</button>
-  </div>
-  <div class="ln-picker" data-el="picker" hidden>
-    <span class="ln-lbl">Classic challenge:</span>
-    <button class="ln-mini" type="button" data-act="mel0">Twinkle</button>
-    <button class="ln-mini" type="button" data-act="mel1">Ode to Joy</button>
-    <button class="ln-mini" type="button" data-act="mel2">Jingle Bells</button>
-  </div>
-
-  <div class="ln-info">
-    <div class="ln-hud" aria-live="polite">
-      <div class="kicker" data-el="hudKicker">Listen · now playing</div>
-      <h2 data-el="hudTitle">Für Elise</h2>
-      <p class="by" data-el="hudBy">Ludwig van Beethoven · 1810 · the opening</p>
-      <div class="prog" aria-hidden="true"><i data-el="progBar"></i></div>
-    </div>
-    <div class="ln-coach" aria-live="polite">
-      <div class="big" data-el="coachBig"></div>
-      <div class="small" data-el="coachSmall"></div>
-      <div class="acc" data-el="coachAcc"></div>
-    </div>
-  </div>
-  <div class="ln-toast" data-el="toast" role="status"><b data-el="toastB"></b><span data-el="toastS"></span></div>
-  <button type="button" class="ln-gate" data-act="wake" data-el="gate">
-    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6 H5 L9 2.5 V13.5 L5 10 H2Z" fill="currentColor"/><path d="M11.5 5 C13 6.5,13 9.5,11.5 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-    <span>Tap anywhere to wake the piano</span>
-  </button>
-
-  <div class="ln-scroller" data-el="scroller">
-    <div class="ln-world" data-el="world">
-      <canvas class="ln-stage" data-el="stage" aria-hidden="true"></canvas>
-      <div class="ln-fallboard" aria-hidden="true"></div>
-      <div class="ln-keys labels-on" data-el="keys" role="group" aria-label="Piano keyboard, three octaves from C3 to C6. Play with mouse or touch, or with the computer keyboard."></div>
-    </div>
-  </div>
-
-  <div class="mgp-overlay" data-ov="start">
-    <div class="mgp-card">
-      <h2 class="mgp-ov-title">Luminote</h2>
-      <p class="mgp-ov-sub">A glowing three-octave piano you can play with mouse, touch or computer keyboard. Notes fall like light in Listen mode, wait for you in Learn mode, and rise as ribbons when you play freely. The classic melody challenge, sustain and octave shift are still here under <strong>Challenge</strong>.</p>
-      <button class="mgp-btn" type="button" data-act="start">Start game</button>
-    </div>
-  </div>
-  <div class="mgp-overlay" data-ov="over" hidden>
-    <div class="mgp-card">
-      <h2 class="mgp-ov-title" data-ov="title">Melody done</h2>
-      <p class="mgp-ov-sub" data-ov="reason"></p>
-      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        <button class="mgp-btn" type="button" data-act="free">Free play</button>
-        <button class="mgp-btn ghost" type="button" data-act="retry">Retry melody</button>
-        <button class="mgp-btn ghost" type="button" data-act="relearn">Try again</button>
+      <div class="ln-grp ln-song ln-opt">
+        <label class="sc" for="vpSong" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Melody</label>
+        <select id="vpSong" data-el="song" aria-label="Melody"></select>
+      </div>
+      <div class="ln-grp ln-play">
+        <button type="button" class="ln-icon play playing" data-act="play" data-el="play" aria-label="Pause song" title="Play / pause song (Space)">
+          <svg class="i-play" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5 L13 8 L4 13.5Z" fill="currentColor"/></svg>
+          <svg class="i-pause" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1" fill="currentColor"/><rect x="9.5" y="2.5" width="3" height="11" rx="1" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="ln-grp ln-tempo ln-opt">
+        <label class="ln-lbl" for="vpTempo">Tempo</label>
+        <input type="range" id="vpTempo" data-el="tempo" min="40" max="160" step="5" value="100">
+        <output data-el="tempoOut" for="vpTempo">100%</output>
+      </div>
+      <div class="ln-grp ln-lab ln-opt">
+        <span class="ln-lbl" id="vpLabLbl">Keys</span>
+        <div class="ln-seg" role="group" aria-labelledby="vpLabLbl">
+          <button type="button" data-lab="off" aria-pressed="false">Off</button>
+          <button type="button" data-lab="notes" aria-pressed="true">Notes</button>
+          <button type="button" data-lab="keys" aria-pressed="false">Key</button>
+        </div>
+      </div>
+      <div class="ln-grp">
+        <button type="button" class="ln-icon mute" data-act="mutenew" data-el="mutenew" aria-pressed="false" aria-label="Mute sound" title="Mute">
+          <svg class="i-on" width="15" height="15" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 7 H6 L10 3.5 V14.5 L6 11 H3Z" fill="currentColor"/><path d="M12.5 6 C13.8 7.3,13.8 10.7,12.5 12 M14.6 4 C17 6.5,17 11.5,14.6 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <svg class="i-off" width="15" height="15" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 7 H6 L10 3.5 V14.5 L6 11 H3Z" fill="currentColor"/><path d="M12.5 7 L16.5 11 M16.5 7 L12.5 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" class="ln-icon ln-more" data-act="more" aria-expanded="false" aria-label="More settings" title="More settings">
+          <svg width="15" height="15" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5 H15 M3 9 H15 M3 13 H15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="6" cy="5" r="1.8" fill="#15142a" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="9" r="1.8" fill="#15142a" stroke="currentColor" stroke-width="1.4"/><circle cx="7" cy="13" r="1.8" fill="#15142a" stroke="currentColor" stroke-width="1.4"/></svg>
+        </button>
+      </div>
+      <div class="ln-grp">
+        <button class="ln-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", 14)}<span class="ln-btn-label">Help</span></button>
+        <button class="ln-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", 14)}<span class="ln-btn-label">Cheats</span></button>
+        <button class="ln-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-ico="pause">${iconSVG("pause", 14)}</span><span class="ln-btn-label" data-label="pause">Pause</span></button>
+        <button class="ln-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", 14)}<span class="ln-btn-label">Restart</span></button>
+        <button class="ln-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", 14)}<span class="ln-btn-label">Exit</span></button>
       </div>
     </div>
   </div>
-  <div class="mgp-foot"><span class="mgp-hint">Whites: Z X C V B N M , . / · Q W E R T Y U I O P — or the classic A S D F G H J K L row. Sustain lengthens notes.</span></div>
-</div>`;
+
+  <section class="game-panel ln-board" data-board>
+    <div class="ln-scroller" data-el="scroller">
+      <div class="ln-world" data-el="world">
+        <canvas class="ln-stage" data-el="stage" aria-hidden="true"></canvas>
+        <div class="ln-fallboard" aria-hidden="true"></div>
+        <div class="ln-keys labels-on" data-el="keys" role="group" aria-label="Piano keyboard, three octaves from C3 to C6. Play with mouse or touch, or with the computer keyboard."></div>
+      </div>
+    </div>
+    <div class="ln-toast" data-el="toast" role="status"><b data-el="toastB"></b><span data-el="toastS"></span></div>
+    <button type="button" class="ln-gate" data-act="wake" data-el="gate" hidden>
+      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6 H5 L9 2.5 V13.5 L5 10 H2Z" fill="currentColor"/><path d="M11.5 5 C13 6.5,13 9.5,11.5 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <span>Tap to wake the piano</span>
+    </button>
+
+    <div class="ln-ov" data-ov="start">
+      <div class="ln-card">
+        <div class="ln-head"><h3 class="mgp-ov-title">Luminote</h3></div>
+        <p class="ln-sub">A glowing three-octave piano you can play with mouse, touch or computer keyboard. Notes fall like light in Listen mode, wait for you in Learn mode, and rise as ribbons when you play freely. The classic melody challenge, sustain and octave shift live under <strong>Challenge</strong>.</p>
+        <div class="ln-foot"><button class="ln-btn" type="button" data-help>How to play</button><button class="ln-btn acc" type="button" data-act="start">Start playing</button></div>
+      </div>
+    </div>
+    <div class="ln-ov" data-ov="over" hidden>
+      <div class="ln-card">
+        <div class="ln-head"><h3 class="mgp-ov-title" data-ov="title">Melody done</h3></div>
+        <p class="ln-sub" data-ov="reason"></p>
+        <div class="ln-foot"><div class="ln-actions">
+          <button class="ln-btn" type="button" data-act="free">Free play</button>
+          <button class="ln-btn" type="button" data-act="retry">Retry melody</button>
+          <button class="ln-btn" type="button" data-act="relearn">Try again</button>
+          <button class="ln-btn acc" type="button" data-restart>Play again</button>
+        </div></div>
+      </div>
+    </div>
+    <div class="ln-ov" data-ov="pause" hidden>
+      <div class="ln-card">
+        <div class="ln-head"><h3>Paused</h3></div>
+        <p class="ln-sub">The falling notes, song timers and all animations are frozen. Your place in the melody is kept &mdash; nothing jumps when you resume.</p>
+        <div class="ln-foot"><span class="ln-note">Press P or Esc to resume</span><button class="ln-btn acc" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="ln-ov" data-ov="cheat" hidden>
+      <div class="ln-card">
+        <div class="ln-head"><h3>Cheats</h3><button class="ln-btn" type="button" data-cheats-close aria-label="Close cheats">${iconSVG("x", 14)}</button></div>
+        <div class="ln-cheats" data-cheatgrid></div>
+        <div class="ln-cheats" data-cheatacts></div>
+        <div class="ln-foot"><span class="ln-note">Toggles apply immediately</span><button class="ln-btn" type="button" data-cheats-close>Done</button></div>
+      </div>
+    </div>
+    <div class="ln-ov" data-ov="help" hidden>
+      <div class="ln-card">
+        <div class="ln-head"><h3>How to play</h3><button class="ln-btn" type="button" data-help-close aria-label="Close help">${iconSVG("x", 14)}</button></div>
+        <div class="ln-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Play the piano by clicking/tapping the keys, or with the two computer-keyboard rows shown on the keys (Labels &rarr; Key).</li>
+              <li><span class="ln-kbd">Space</span> starts / resumes the song. <span class="ln-kbd">H</span> help &middot; <span class="ln-kbd">C</span> cheats &middot; <span class="ln-kbd">P</span>/<span class="ln-kbd">Esc</span> pause &middot; <span class="ln-kbd">R</span> restart.</li>
+              <li>Those four letter keys are reserved for the shell, so play those notes by clicking their piano keys.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap the piano keys &mdash; several fingers at once work. The HUD icons handle help, cheats, pause, restart and exit.</li>
+              <li>Use the sliders icon to reveal melody, tempo and label settings.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Modes</b>
+            <ul>
+              <li><strong>Free play</strong>: nothing to hit &mdash; every note you play rises as a ribbon of light.</li>
+              <li><strong>Listen</strong>: a timed, public-domain melody plays itself with falling lights.</li>
+              <li><strong>Learn</strong>: the melody waits at each note until you find the glowing key.</li>
+              <li><strong>Challenge</strong>: the classic game &mdash; repeat the lit notes with at most ${MISTAKES} wrong notes.</li>
+            </ul>
+            <b>Rules</b>
+            <ul>
+              <li>Sustain lengthens notes; octave shift and sustain are available in Challenge.</li>
+              <li>Your best accuracy and challenge progress are shown in the HUD.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="ln-foot"><span class="ln-note">Press H to reopen this guide</span><button class="ln-btn acc" type="button" data-help-close>Got it</button></div>
+      </div>
+    </div>
+  </section>`;
 
             /* ========================================================= */
             /* refs                                                        */
@@ -793,40 +893,54 @@
                 world = $('[data-el="world"]'),
                 canvas = $('[data-el="stage"]'),
                 ctx = canvas.getContext("2d");
-            let statusEl = $('[data-el="status"]') || document.createElement("div");
-            const modeChip = $('[data-el="modechip"]'),
+            const statusEl = $('[data-hud="status"]'),
+                statusChip = $('[data-el="statuschip"]'),
+                challengeChip = $('[data-el="challengechip"]'),
                 melChip = $('[data-el="melchip"]'),
                 misChip = $('[data-el="mischip"]'),
                 hudNote = $('[data-hud="note"]'),
                 hudProg = $('[data-hud="prog"]'),
                 hudTotal = $('[data-hud="total"]'),
                 hudMiss = $('[data-hud="miss"]'),
-                hudScore = $('[data-hud="score"]');
-            const ovStart = $('[data-ov="start"]'),
-                ovOver = $('[data-ov="over"]'),
+                hudScore = $('[data-hud="score"]'),
+                hudMode = $('[data-hud="mode"]'),
+                hudSong = $('[data-hud="song"]');
+            const ov = {
+                start: $('[data-ov="start"]'),
+                over: $('[data-ov="over"]'),
+                pause: $('[data-ov="pause"]'),
+                cheat: $('[data-ov="cheat"]'),
+                help: $('[data-ov="help"]'),
+            };
+            const ovStart = ov.start,
+                ovOver = ov.over,
                 ovTitle = $('[data-ov="title"]'),
                 ovReason = $('[data-ov="reason"]');
-            const bar = $('[data-el="bar"]'),
+            const hudEl = $('[data-el="hud"]'),
                 songSel = $('[data-el="song"]'),
                 playBtn = $('[data-el="play"]'),
                 tempoEl = $('[data-el="tempo"]'),
                 tempoOut = $('[data-el="tempoOut"]'),
-                legacyEl = $('[data-el="legacy"]'),
                 pickerEl = $('[data-el="picker"]'),
+                modesel = $('[data-el="modesel"]'),
                 sustainBtn = $('[data-el="sustainbtn"]'),
-                muteBtnOld = $('[data-el="mute"]'),
                 muteBtnNew = $('[data-el="mutenew"]'),
                 gate = $('[data-el="gate"]'),
-                hudK = $('[data-el="hudKicker"]'),
-                hudT = $('[data-el="hudTitle"]'),
-                hudB = $('[data-el="hudBy"]'),
                 progBar = $('[data-el="progBar"]'),
+                progChip = $('[data-el="progchip"]'),
+                coachChip = $('[data-el="coachchip"]'),
                 cBig = $('[data-el="coachBig"]'),
                 cSmall = $('[data-el="coachSmall"]'),
                 cAcc = $('[data-el="coachAcc"]'),
                 toastEl = $('[data-el="toast"]'),
                 toastB = $('[data-el="toastB"]'),
-                toastS = $('[data-el="toastS"]');
+                toastS = $('[data-el="toastS"]'),
+                pbtn = $('[data-pause]'),
+                cbtn = $('[data-cheats]'),
+                pauseLabel = $('[data-label="pause"]'),
+                pauseIcon = $('[data-ico="pause"]'),
+                cheatGrid = $('[data-cheatgrid]'),
+                cheatActs = $('[data-cheatacts]');
 
             /* ========================================================= */
             /* state — original challenge state + Luminote state          */
@@ -834,6 +948,10 @@
             let active = false,
                 started = false,
                 over = false;
+            let paused = false,
+                cheatsOpen = false,
+                helpOpen = false,
+                hiddenPause = false;
             let base = 4,
                 keys = [];
             let melody = -1,
@@ -865,7 +983,9 @@
                 bgx = bg.getContext("2d");
             const sparks = [];
             for (let i = 0; i < 420; i++) sparks.push({ on: false });
-            const bursts = [], trails = [], dust = [], timers = [];
+            const bursts = [], trails = [], dust = [];
+            /* pausable timers: Date.now() due-anchors shift on resume */
+            const timers = new Map();
             for (let i = 0; i < 70; i++) {
                 dust.push({
                     x: Math.random(), y: Math.random(), r: 0.4 + Math.random() * 1.3,
@@ -873,8 +993,9 @@
                     ph: Math.random() * 6.28,
                 });
             }
-            let rafId = 0, lastT = 0, hintPulse = 0, toastT = 0, userScrollAt = 0,
+            let rafId = 0, lastT = 0, hintPulse = 0, userScrollAt = 0,
                 autoScrolling = false, rzT = 0, reduce = false;
+            let timerSeq = 0, pauseAt = 0, wallPauseAt = 0, isFrozen = false, toastTimer = 0;
             try {
                 reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
             } catch (e) { }
@@ -893,19 +1014,92 @@
                     localStorage.setItem("virtual-piano-luminote-prefs", JSON.stringify({ labels: st.labels, tempo: st.tempo, muted: muted }));
                 } catch (e) { }
             }
+            const cheats = { auto: false, noWrong: false, slow: false, labels: false };
+            const CHEAT_LABELS = {
+                auto: "Auto-play the Learn melody",
+                noWrong: "Ignore wrong notes (Learn / Challenge)",
+                slow: "Half tempo",
+                labels: "Always show key labels",
+            };
+            const CHEAT_ACTS = [
+                ["skip", "Skip to the end"],
+                ["restart", "Restart the song"],
+            ];
+
+            function silence(on) {
+                if (!AC) return;
+                try {
+                    if (on && AC.state === "running") AC.suspend();
+                    else if (!on && AC.state === "suspended") AC.resume();
+                } catch (e) { }
+            }
+            function armTimer(id) {
+                const t = timers.get(id);
+                if (!t || t.handle !== null) return;
+                t.due = Date.now() + t.ms;
+                t.handle = setTimeout(function () {
+                    timers.delete(id);
+                    t.handle = null;
+                    if (active && !frozen()) t.fn();
+                }, t.ms);
+            }
             function later(fn, ms) {
-                const id = setTimeout(function () {
-                    const i = timers.indexOf(id);
-                    if (i >= 0) timers.splice(i, 1);
-                    fn();
-                }, ms);
-                timers.push(id);
+                const id = ++timerSeq;
+                timers.set(id, { due: 0, ms: Math.max(0, ms), fn: fn, handle: null });
+                if (!isFrozen) armTimer(id);
+                else timers.get(id).due = wallPauseAt + Math.max(0, ms);
                 return id;
             }
-            function clearTimers() {
-                timers.forEach(clearTimeout);
-                timers.length = 0;
+            function cancelTimer(id) {
+                const t = timers.get(id);
+                if (!t) return;
+                if (t.handle !== null) clearTimeout(t.handle);
+                timers.delete(id);
             }
+            function clearTimers() {
+                for (const t of timers.values()) if (t.handle !== null) clearTimeout(t.handle);
+                timers.clear();
+                isFrozen = false;
+                pauseAt = 0;
+                wallPauseAt = 0;
+            }
+            function frozen() { return helpOpen || cheatsOpen || paused || hiddenPause; }
+            function freeze() {
+                if (isFrozen) return;
+                isFrozen = true;
+                pauseAt = performance.now();
+                wallPauseAt = Date.now();
+                stopFrame();
+                releaseSongNotes();
+                if (toastTimer) { cancelTimer(toastTimer); toastTimer = 0; }
+                toastEl.classList.remove("show");
+                for (const t of timers.values()) {
+                    if (t.handle !== null) {
+                        clearTimeout(t.handle);
+                        t.handle = null;
+                        t.ms = Math.max(0, t.due - wallPauseAt);
+                    }
+                }
+                silence(true);
+            }
+            function unfreeze() {
+                if (!isFrozen) return;
+                const shift = Date.now() - wallPauseAt;
+                const perfShift = performance.now() - pauseAt;
+                isFrozen = false;
+                pauseAt = 0;
+                wallPauseAt = 0;
+                if (st.loopAt) st.loopAt += perfShift;
+                if (userScrollAt) userScrollAt += perfShift;
+                for (const [id, t] of timers) {
+                    t.due += shift;
+                    t.ms = Math.max(0, t.due - Date.now());
+                    armTimer(id);
+                }
+                silence(false);
+                startFrame();
+            }
+            function syncFreeze() { if (frozen()) freeze(); else unfreeze(); }
 
             /* ========================================================= */
             /* keyboard rendering — original renderer kept and reused     */
@@ -960,19 +1154,8 @@
                         el.style.setProperty("--c", CSSC[m] || "#b9a8ff");
                     }
                 });
-                let stEl = keysEl.parentNode.querySelector(".vp-status");
-                if (!stEl) {
-                    stEl = document.createElement("div");
-                    stEl.className = "vp-status";
-                    stEl.setAttribute("data-el", "status");
-                    keysEl.parentNode.insertBefore(stEl, keysEl);
-                }
-                stEl.textContent = statusEl.textContent || "";
-                statusEl = stEl;
             }
             function buildLuminoteKeys() {
-                const oldStatus = keysEl.parentNode.querySelector('.vp-status');
-                if (oldStatus) oldStatus.parentNode.removeChild(oldStatus);
                 keysEl.innerHTML = "";
                 for (let m = LOW; m <= HIGH; m++) {
                     const d = document.createElement("div");
@@ -1047,7 +1230,8 @@
                 keysEl.style.fontSize = whiteW < 30 ? "10px" : "";
             }
             function paintLabels() {
-                keysEl.classList.toggle("labels-on", st.labels !== "off");
+                const on = st.labels !== "off" || cheats.labels;
+                keysEl.classList.toggle("labels-on", on);
                 if (st.mode === "challenge") return;
                 for (let m = LOW; m <= HIGH; m++) {
                     const el = keyEls[m];
@@ -1106,7 +1290,8 @@
             }
             function setStatus(txt, cls) {
                 statusEl.textContent = txt;
-                statusEl.className = "vp-status" + (cls ? " " + cls : "");
+                statusEl.title = txt;
+                statusChip.className = "ln-chip status" + (cls ? " " + cls : "");
             }
             function updateHud() {
                 hudProg.textContent = String(prog);
@@ -1114,7 +1299,7 @@
                 hudMiss.textContent = String(mistakes);
                 melChip.hidden = melody < 0;
                 misChip.hidden = melody < 0;
-                modeChip.textContent = melody >= 0 ? "Challenge: " + MELODIES[melody].name : "Free play";
+                challengeChip.hidden = st.mode !== "challenge";
                 hudScore.textContent = String(st.mode === "learn" ? st.hits : Math.round(prog / Math.max(1, MELODIES[melody >= 0 ? melody : 0].notes.length) * 100));
             }
             function clearTargets() {
@@ -1131,7 +1316,7 @@
             /* original challenge logic — preserved                       */
             /* ========================================================= */
             function press(note) {
-                if (!active || !started) return;
+                if (!active || !started || frozen()) return;
                 playNote(note);
                 hudNote.textContent = note;
                 const el = keyEl(note);
@@ -1149,6 +1334,11 @@
                     }
                     setStatus("Nice - " + (MELODIES[melody].notes.length - prog) + " notes to go", "good");
                 } else {
+                    if (cheats.noWrong) {
+                        setStatus("No-wrong cheat - aim for " + target, "good");
+                        updateHud();
+                        return;
+                    }
                     mistakes++;
                     playNote("C2");
                     if (mistakes >= MISTAKES) {
@@ -1167,7 +1357,7 @@
                 ovTitle.className = "mgp-ov-title mgp-win";
                 ovReason.textContent = MELODIES[melody].name + " played clean with " + mistakes + " wrong note" + (mistakes === 1 ? "" : "s") + ".";
                 setStatus("Melody complete!", "good");
-                ovOver.removeAttribute("hidden");
+                syncUI();
             }
             function lose() {
                 over = true;
@@ -1176,7 +1366,7 @@
                 ovTitle.className = "mgp-ov-title mgp-lose";
                 ovReason.textContent = "Three wrong notes in " + MELODIES[melody].name + ". You got " + prog + "/" + MELODIES[melody].notes.length + " - one more run?";
                 setStatus("Challenge failed", "bad");
-                ovOver.removeAttribute("hidden");
+                syncUI();
             }
             function freePlay() {
                 melody = -1;
@@ -1215,8 +1405,13 @@
                 actx();
                 started = true;
                 gate.hidden = true;
+                helpOpen = false;
+                cheatsOpen = false;
+                paused = false;
                 ovStart.setAttribute("hidden", "");
                 freePlay();
+                syncFreeze();
+                syncUI();
             }
 
             /* ========================================================= */
@@ -1224,7 +1419,7 @@
             /* ========================================================= */
             function song() { return SONGS[st.song] || SONGS[0]; }
             function events() { return st.mode === "learn" ? song().ev.filter(function (e) { return e.mel; }) : song().ev; }
-            function bps() { return song().bpm * st.tempo / 60; }
+            function bps() { return song().bpm * st.tempo * (cheats.slow ? 0.5 : 1) / 60; }
             function learnTarget() {
                 while (st.li < EV.length && EV[st.li].hit) st.li++;
                 return EV[st.li] || null;
@@ -1254,8 +1449,11 @@
                 toastB.textContent = b;
                 toastS.textContent = s;
                 toastEl.classList.add("show");
-                clearTimeout(toastT);
-                toastT = setTimeout(function () { toastEl.classList.remove("show"); }, 4200);
+                if (toastTimer) cancelTimer(toastTimer);
+                toastTimer = later(function () {
+                    toastTimer = 0;
+                    toastEl.classList.remove("show");
+                }, 4200);
             }
             function finishLearn() {
                 st.done = true;
@@ -1271,7 +1469,7 @@
                     ovTitle.textContent = acc >= 70 ? "Bravissimo!" : "Keep practicing";
                     ovTitle.className = "mgp-ov-title " + (acc >= 70 ? "mgp-win" : "mgp-lose");
                     ovReason.textContent = st.hits + " of " + total + " notes found on the first try · " + acc + "% accuracy.";
-                    ovOver.removeAttribute("hidden");
+                    syncUI();
                 }, 1500);
             }
             function onUserNote(m) {
@@ -1291,6 +1489,8 @@
                     st.li++;
                     if (!learnTarget()) finishLearn();
                     paintCoach();
+                } else if (cheats.noWrong) {
+                    setStatus("No-wrong cheat - aim for " + nameOf(tg.n), "good");
                 } else if (st.waiting || ahead <= 0.6) {
                     st.first = false;
                     st.misses++;
@@ -1304,7 +1504,7 @@
                 }
             }
             function advance(dt) {
-                if (st.mode === "free" || st.mode === "challenge" || !st.playing) return;
+                if (st.mode === "free" || st.mode === "challenge" || !st.playing || frozen()) return;
                 let nt = st.t + dt * bps();
                 if (st.mode === "learn" && !st.done) {
                     const tg = learnTarget();
@@ -1314,6 +1514,16 @@
                             st.waiting = tg;
                             if (keyEls[tg.n]) keyEls[tg.n].classList.add("hint");
                             paintCoach();
+                            if (cheats.auto && tg.n !== null && keyEls[tg.n]) {
+                                tg.hit = true;
+                                tg.on = true;
+                                st.hits++;
+                                st.waiting = null;
+                                keyEls[tg.n].classList.remove("hint");
+                                st.li++;
+                                if (!learnTarget()) finishLearn();
+                                paintCoach();
+                            }
                         }
                     }
                 }
@@ -1350,34 +1560,35 @@
             function paintHud() {
                 const sg = song();
                 if (st.mode === "free") {
-                    hudK.textContent = "Free play";
-                    hudT.textContent = "Play anything";
-                    hudB.textContent = "Mouse, touch (several fingers at once) or your keyboard: Z…/ from C3, Q…] from C4.";
+                    hudMode.textContent = "FREE";
+                    hudSong.textContent = "Play anything";
+                    hudSong.title = "";
+                    setStatus("Mouse, touch or keyboard: Z…/ from C3, Q…] from C4.");
                 } else if (st.mode === "challenge") {
-                    hudK.textContent = "Classic · melody challenge";
-                    hudT.textContent = melody >= 0 ? MELODIES[melody].name : "Challenge";
-                    hudB.textContent = "Repeat the lit notes with at most " + MISTAKES + " wrong notes.";
+                    hudMode.textContent = "CHALLENGE";
+                    hudSong.textContent = melody >= 0 ? MELODIES[melody].name : "Pick a melody";
+                    hudSong.title = "";
+                    if (melody < 0) setStatus("Repeat the lit notes with at most " + MISTAKES + " wrong notes.");
                 } else {
-                    hudK.textContent = st.mode === "listen" ? "Listen · now playing" : "Learn · the melody waits for you";
-                    hudT.textContent = sg.title;
-                    hudB.textContent = sg.by;
+                    hudMode.textContent = st.mode === "listen" ? "LISTEN" : "LEARN";
+                    hudSong.textContent = sg.title;
+                    hudSong.title = sg.by;
+                    if (st.mode === "listen") setStatus(sg.by);
                 }
-                progBar.parentNode.style.visibility = st.mode === "free" || st.mode === "challenge" ? "hidden" : "visible";
+                progChip.hidden = st.mode === "free" || st.mode === "challenge";
                 paintCoach();
+                syncUI();
             }
             function paintCoach() {
+                coachChip.hidden = st.mode !== "learn";
                 if (st.mode === "learn") {
                     const tg = learnTarget();
                     cBig.textContent = tg ? nameOf(tg.n) : "✓";
                     cBig.style.color = tg ? CSSC[tg.n] : "#ecebf5";
                     cSmall.textContent = tg
-                        ? (st.waiting ? "Play the glowing key" : "Get ready…") + (LABEL[tg.n] ? " · computer key " + LABEL[tg.n] : "")
+                        ? (st.waiting ? "Play the glowing key" : "Get ready…") + (LABEL[tg.n] ? " · key " + LABEL[tg.n] : "")
                         : "Finished";
                     cAcc.textContent = "Note " + Math.min(st.li + 1, EV.length) + " of " + EV.length + " · " + st.hits + " first-try";
-                } else if (st.mode === "free") {
-                    cBig.textContent = "";
-                    cSmall.textContent = "Played notes rise as ribbons of light.";
-                    cAcc.textContent = "";
                 } else {
                     cBig.textContent = "";
                     cSmall.textContent = "";
@@ -1489,7 +1700,7 @@
                 ctx.fill();
             }
             function frame(now) {
-                if (!active) { rafId = 0; return; }
+                if (!active || frozen()) { rafId = 0; return; }
                 const dt = Math.min(0.05, (now - lastT) / 1000);
                 lastT = now;
                 advance(dt);
@@ -1611,7 +1822,7 @@
                 rafId = requestAnimationFrame(frame);
             }
             function startFrame() {
-                if (!active || rafId) return;
+                if (!active || rafId || frozen()) return;
                 lastT = performance.now();
                 rafId = requestAnimationFrame(frame);
             }
@@ -1650,13 +1861,15 @@
                 Array.prototype.forEach.call(app.querySelectorAll("[data-mode]"), function (b) {
                     b.setAttribute("aria-pressed", String(b.getAttribute("data-mode") === st.mode));
                 });
+                if (modesel) modesel.value = st.mode;
                 playBtn.classList.toggle("playing", st.playing);
-                playBtn.setAttribute("aria-label", st.playing ? "Pause" : "Play");
+                playBtn.setAttribute("aria-label", st.playing ? "Pause song" : "Play song");
                 const disabled = st.mode === "free" || st.mode === "challenge";
                 playBtn.disabled = disabled;
                 songSel.disabled = disabled;
-                legacyEl.hidden = st.mode !== "challenge";
+                challengeChip.hidden = st.mode !== "challenge";
                 pickerEl.hidden = st.mode !== "challenge";
+                syncUI();
             }
             function paintMute() {
                 if (muteBtnNew) {
@@ -1664,7 +1877,6 @@
                     muteBtnNew.setAttribute("aria-pressed", String(muted));
                     muteBtnNew.setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
                 }
-                if (muteBtnOld) muteBtnOld.textContent = muted ? "Unmute" : "Mute";
             }
             function paintLabelsButtons() {
                 Array.prototype.forEach.call(app.querySelectorAll("[data-lab]"), function (b) {
@@ -1672,11 +1884,14 @@
                 });
             }
             function setMode(mode) {
+                if (!active || frozen()) return;
                 st.mode = mode;
                 releaseAllNotes();
                 trails.length = 0;
                 clearTimers();
+                toastTimer = 0;
                 toastEl.classList.remove("show");
+                syncFreeze();
                 ovOver.setAttribute("hidden", "");
                 keysEl.classList.toggle("legacy", mode === "challenge");
                 if (mode === "challenge") {
@@ -1697,6 +1912,96 @@
             }
 
             /* ========================================================= */
+            /* shell overlays: help / cheats / pause / restart              */
+            /* ========================================================= */
+            let seenHelp = true;
+            try { seenHelp = localStorage.getItem("virtualPianoHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+            if (!seenHelp) {
+                helpOpen = true;
+                try { localStorage.setItem("virtualPianoHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+            }
+            function svgPaths(name) {
+                return ICON_PATHS[name].map(function (d) { return '<path d="' + d + '"/>'; }).join("");
+            }
+            function renderCheats() {
+                let h = "";
+                for (const k of Object.keys(cheats)) {
+                    const label = CHEAT_LABELS[k];
+                    h += '<div class="ln-crow"><span>' + label + '</span><button class="ln-sw" type="button" data-cheat="' + k + '" aria-pressed="' + (cheats[k] ? "true" : "false") + '" aria-label="' + label + '"></button></div>';
+                }
+                cheatGrid.innerHTML = h;
+                let a = "";
+                for (const act of CHEAT_ACTS) a += '<button class="ln-btn" type="button" data-cheatact="' + act[0] + '">' + act[1] + "</button>";
+                cheatActs.innerHTML = a;
+            }
+            function syncUI() {
+                ov.start.hidden = started || helpOpen || cheatsOpen || paused || hiddenPause;
+                ov.over.hidden = !over || helpOpen || cheatsOpen || paused || hiddenPause;
+                ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+                ov.cheat.hidden = !cheatsOpen || helpOpen;
+                ov.help.hidden = !helpOpen;
+                gate.hidden = true;
+                pauseLabel.textContent = paused ? "Resume" : "Pause";
+                pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+                pbtn.title = paused ? "Resume (P)" : "Pause (P)";
+                pauseIcon.innerHTML = svgPaths(paused ? "play" : "pause");
+                cbtn.classList.toggle("on", cheats.auto || cheats.noWrong || cheats.slow || cheats.labels);
+                renderCheats();
+            }
+            function toggleHelp(on) {
+                helpOpen = typeof on === "boolean" ? on : !helpOpen;
+                if (helpOpen) cheatsOpen = false;
+                syncFreeze();
+                syncUI();
+            }
+            function toggleCheats(on) {
+                cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+                if (cheatsOpen) { helpOpen = false; paused = false; }
+                syncFreeze();
+                syncUI();
+            }
+            function togglePause(on) {
+                paused = typeof on === "boolean" ? on : !paused;
+                if (paused) { helpOpen = false; cheatsOpen = false; }
+                syncFreeze();
+                syncUI();
+            }
+            function cheatAction(key) {
+                if (key === "restart") { toggleCheats(false); restart(); return; }
+                if (key === "skip") {
+                    if (st.mode === "learn") {
+                        for (const e of EV) e.hit = true;
+                        st.li = EV.length;
+                        st.waiting = null;
+                        clearHints();
+                        finishLearn();
+                    } else {
+                        st.t = song().len + 0.2;
+                        setStatus("Cheat: skipped to the end");
+                    }
+                    paintCoach();
+                    syncUI();
+                }
+            }
+            function restart() {
+                if (!active) return;
+                helpOpen = false;
+                cheatsOpen = false;
+                paused = false;
+                over = false;
+                if (toastTimer) { cancelTimer(toastTimer); toastTimer = 0; }
+                toastEl.classList.remove("show");
+                if (st.mode === "challenge") startMelody(melody >= 0 ? melody : 0);
+                else {
+                    resetSong(-2.4);
+                    st.playing = true;
+                    paintMode();
+                }
+                syncFreeze();
+                syncUI();
+            }
+
+            /* ========================================================= */
             /* input                                                        */
             /* ========================================================= */
             function keyAt(x, y) {
@@ -1710,7 +2015,7 @@
                 return -1;
             }
             keysEl.addEventListener("pointerdown", function (e) {
-                if (!active) return;
+                if (!active || frozen()) return;
                 e.preventDefault();
                 actx();
                 gate.hidden = true;
@@ -1749,10 +2054,32 @@
 
             const held = new Set();
             const onKey = (e) => {
-                if (!active) return;
+                if (!active || e.ctrlKey || e.metaKey || e.altKey) return;
+                const tag = e.target ? e.target.tagName : "";
+                if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+                const c = e.code;
                 if (e.type === "keydown") {
                     const k = (e.key || "").toLowerCase();
                     if (e.repeat) return;
+                    /* shell priority: help -> cheats -> pause/escape -> restart -> game actions */
+                    if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+                    if (c === "KeyC") { if (!helpOpen && !paused) toggleCheats(); e.preventDefault(); return; }
+                    if (c === "KeyP" || c === "Escape") {
+                        if (helpOpen) toggleHelp(false);
+                        else if (cheatsOpen) toggleCheats(false);
+                        else togglePause();
+                        e.preventDefault();
+                        return;
+                    }
+                    if (c === "KeyR") { restart(); e.preventDefault(); return; }
+                    if (c === "Enter") {
+                        if (helpOpen) toggleHelp(false);
+                        else if (cheatsOpen) toggleCheats(false);
+                        else if (!started) startGame();
+                        e.preventDefault();
+                        return;
+                    }
+                    if (frozen()) return;
                     if (st.mode !== "challenge") {
                         const m = CODE[e.code];
                         if (m !== undefined) {
@@ -1790,9 +2117,32 @@
 
             app.addEventListener("click", (e) => {
                 if (!active) return;
-                const btn = e.target.closest ? e.target.closest("[data-act]") : null;
+                const t = e.target;
+                if (!t || !t.closest) return;
+                if (t.closest("[data-help]")) { toggleHelp(); return; }
+                if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+                if (t.closest("[data-exit]")) { onExit(); return; }
+                if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+                if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+                if (t.closest("[data-pause]")) { togglePause(); return; }
+                if (t.closest("[data-resume]")) { togglePause(false); return; }
+                if (t.closest("[data-restart]")) { restart(); return; }
+                const sw = t.closest("[data-cheat]");
+                if (sw) {
+                    const k = sw.getAttribute("data-cheat");
+                    if (Object.prototype.hasOwnProperty.call(cheats, k)) {
+                        cheats[k] = !cheats[k];
+                        if (k === "labels") paintLabels();
+                        syncUI();
+                    }
+                    return;
+                }
+                const ca = t.closest("[data-cheatact]");
+                if (ca) { cheatAction(ca.getAttribute("data-cheatact")); return; }
+                const btn = t.closest("[data-act]");
                 if (!btn) return;
                 const a = btn.getAttribute("data-act");
+                if (frozen() && a !== "wake" && a !== "more" && a !== "start") return;
                 if (a === "start") startGame();
                 else if (a === "free") { setMode("free"); freePlay(); }
                 else if (a === "retry") { setMode("challenge"); startMelody(melody >= 0 ? melody : 0); }
@@ -1805,8 +2155,6 @@
                 else if (a === "sustain") {
                     sustain = !sustain;
                     btn.textContent = sustain ? "Sustain on" : "Sustain";
-                } else if (a === "mute") {
-                    setMuted(!muted);
                 } else if (a === "mutenew") {
                     setMuted(!muted);
                     savePrefs();
@@ -1815,15 +2163,9 @@
                     st.playing = !st.playing;
                     if (!st.playing) releaseSongNotes();
                     paintMode();
-                } else if (a === "restart") {
-                    resetSong(-2.4);
-                    st.playing = true;
-                    paintMode();
-                    toastEl.classList.remove("show");
-                    ovOver.setAttribute("hidden", "");
                 } else if (a === "more") {
-                    const o = !bar.classList.contains("open");
-                    bar.classList.toggle("open", o);
+                    const o = !hudEl.classList.contains("open");
+                    hudEl.classList.toggle("open", o);
                     btn.setAttribute("aria-expanded", String(o));
                 } else if (a === "wake") {
                     actx();
@@ -1848,6 +2190,7 @@
                 }).join("") +
                 "</optgroup>";
             songSel.value = String(st.song);
+            if (modesel) modesel.addEventListener("change", function () { setMode(this.value); });
             songSel.addEventListener("change", function () {
                 st.song = +this.value;
                 resetSong(-2.4);
@@ -1878,13 +2221,9 @@
                 held.clear();
             });
             function onVisibility() {
-                if (document.hidden) {
-                    releaseSongNotes();
-                    stopFrame();
-                } else {
-                    lastT = performance.now();
-                    startFrame();
-                }
+                hiddenPause = !!document.hidden;
+                syncFreeze();
+                syncUI();
             }
             document.addEventListener("visibilitychange", onVisibility);
             window.addEventListener("resize", function () {
@@ -1906,6 +2245,8 @@
             paintMute();
             paintLabelsButtons();
             updateHud();
+            syncFreeze();
+            syncUI();
             if (W > scroller.clientWidth) {
                 autoScrolling = true;
                 scroller.scrollLeft = Math.max(0, keyX[64] - scroller.clientWidth * 0.5);
@@ -1913,6 +2254,9 @@
             function open() {
                 active = true;
                 H = canvas.clientHeight || H;
+                hiddenPause = !!document.hidden;
+                syncFreeze();
+                syncUI();
                 startFrame();
             }
             function close() {
@@ -1921,8 +2265,9 @@
                 held.clear();
                 releaseAllNotes();
                 clearTimers();
-                clearTimeout(toastT);
+                if (toastTimer) { cancelTimer(toastTimer); toastTimer = 0; }
                 clearTimeout(rzT);
+                silence(true);
             }
             open();
             return { open, close };

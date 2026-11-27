@@ -1,6 +1,7 @@
 /* ==== games/snakes-io.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
-  Snakes.io — arena survival (template META + mount).
+  Snakes Io — arena survival (template META + mount).
   - Mode AI  : 1 pemain + 3 bot.
   - Mode room: 2 pemain (host authoritative) + 2 bot.
   - Level generator acak tervalidasi (flood-fill connectivity + spawn aman).
@@ -9,7 +10,7 @@
 
 export const META = {
     id: "snakes-io", // harus sama dengan nama file (tanpa .js)
-    name: "Snakes.io",
+    name: "Snakes Io",
     category: "arcade",
     catLabel: "Arcade",
     desc: "Kendalikan ular, makan orb, potong jalur lawan, dan bertahan sampai akhir.",
@@ -43,79 +44,116 @@ export function mount(root, context = {}) {
     const uid = Math.random().toString(36).slice(2, 8);
     const finePointer = typeof matchMedia === "function" && matchMedia("(pointer:fine)").matches;
 
-    /* ---------------- shell (UI minimalis) ---------------- */
+    /* ---------------- shell: HUD + board + overlays ---------------- */
     root.innerHTML = `
 <style>
 .snk{--ink:#18181b;--mut:#71717a;--line:#e4e4e7;--acc:#10b981;--card:#fff;
-  color:var(--ink);display:flex;flex-direction:column;gap:12px;max-width:620px;margin:0 auto;padding:4px 0}
+  color:var(--ink);display:flex;flex-direction:column;gap:10px;width:100%;max-width:none;margin:0;padding:2px 0}
 .snk [hidden]{display:none!important}
-.snk-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.snk-brand h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.2px}
-.snk-brand small{display:block;font-size:10.5px;color:var(--mut);letter-spacing:.4px;text-transform:uppercase}
-.snk-chips{display:flex;gap:6px;flex-wrap:wrap}
-.snk-chip{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:11px;color:var(--mut);background:var(--card)}
-.snk-chip b{color:var(--ink);font-weight:700;margin-left:4px}
+
+/* HUD bar: semua info + kontrol */
+.snk-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.snk-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--mut);white-space:nowrap}
+.snk-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
 .snk-chip.cheat{border-color:#f59e0b;color:#b45309}
-.snk-status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mut)}
 .snk-status i{width:8px;height:8px;border-radius:50%;background:#a1a1aa;display:inline-block}
 .snk-status.run i{background:var(--acc)} .snk-status.end i{background:#e11d48}
-.snk-stage{position:relative;border:1px solid var(--line);border-radius:16px;background:var(--card);padding:10px}
-.snk-stage svg.arena{display:block;width:100%;height:auto;border-radius:10px;touch-action:none;cursor:crosshair}
-.snk-ov{position:absolute;inset:10px;border-radius:10px;display:grid;place-items:center;background:rgba(250,250,250,.87);backdrop-filter:blur(3px);z-index:5}
-.snk-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;width:min(92%,370px);text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.06)}
-.snk-ov-title{margin:0;font-size:18px;font-weight:800}
+.snk-legend{gap:2px}
+.snk-leg{display:inline-flex;align-items:center;gap:3px}
+.snk-leg span{display:none}
+.snk-leg i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.snk-leg.dead{opacity:.4;text-decoration:line-through}
+.snk-spacer{flex:1 1 auto}
+.snk-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:7px 12px;background:var(--card);color:var(--ink);font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer}
+.snk-btn:hover{border-color:var(--ink)}
+.snk-btn.acc{background:var(--acc);border-color:var(--acc);color:#fff}
+.snk-btn.on{border-color:var(--acc);color:var(--acc);background:#ecfdf5}
+.snk-icon-btn svg{flex:none;display:block}
+
+/* board = arena + overlay, langsung di bawah HUD */
+.snk-stage{position:relative;width:100%;aspect-ratio:1/1;padding:0;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.snk-stage svg.arena{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+
+/* overlay sebagai flex column: head/foot tetap, isi bisa scroll */
+.snk-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:12px;background:rgba(250,250,250,.9);backdrop-filter:blur(3px)}
+.snk-card{display:flex;flex-direction:column;overflow:hidden;width:min(420px,100%);max-height:100%;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--card);text-align:center}
+.snk-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:8px;text-align:left}
+.snk-head h3,.snk-ov-title{margin:0;font-size:16px;font-weight:800}
 .snk-ov-title.win{color:var(--acc)} .snk-ov-title.lose{color:#e11d48}
-.snk-ov-sub{font-size:12.5px;color:var(--mut);line-height:1.6;margin:8px 0 14px}
-.snk-list{text-align:left;font-size:12.5px;line-height:1.7;margin:0 0 14px;padding-left:18px;color:#3f3f46}
-.snk-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:999px;padding:9px 18px;background:var(--ink);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;margin:2px}
-.snk-btn:hover{opacity:.88}
-.snk-btn.acc{background:var(--acc)}
-.snk-btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.snk-sub{font-size:12.5px;color:var(--mut);line-height:1.6;margin:4px 0 12px}
+.snk-list,.snk-help,.snk-cheats{flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.snk-list{margin:0 0 10px;padding-left:18px;font-size:12.5px;line-height:1.7;color:#3f3f46}
+.snk-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.snk-help b{display:block;margin-bottom:5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+.snk-help ul{margin:0 0 10px;padding-left:16px;font-size:11.5px;line-height:1.7;color:#3f3f46}
+.snk-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.snk-note{font-size:10.5px;color:var(--mut);text-align:left}
 .snk kbd{border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11px;background:#f4f4f5;font-family:inherit}
-.snk-cheats{position:absolute;top:14px;right:14px;z-index:6;width:212px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:left;box-shadow:0 8px 24px rgba(0,0,0,.08)}
-.snk-cheats h3{margin:0 0 6px;font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
-.snk-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;padding:4px 0;color:#3f3f46}
+.snk-cheats{display:grid;grid-template-columns:1fr;gap:4px;padding-right:2px}
+.snk-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;padding:6px 4px;color:#3f3f46;border-bottom:1px solid var(--line)}
 .snk-cheat-row input{accent-color:var(--acc)}
 .snk-cheat-acts{display:flex;gap:6px;margin-top:8px}
-.snk-cheat-acts button{flex:1;font-size:10.5px;padding:6px 4px;border-radius:8px;border:1px solid var(--line);background:#fafafa;cursor:pointer;font-weight:700}
-.snk-cheat-note{font-size:10px;color:var(--mut);margin-top:8px;line-height:1.5}
-.snk-toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:7;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
+.snk-cheat-acts button{flex:1;min-height:36px;font-size:10.5px;padding:6px 4px;border-radius:8px;border:1px solid var(--line);background:#fafafa;cursor:pointer;font-weight:700}
+.snk-cheat-note{font-size:10px;color:var(--mut);line-height:1.5;text-align:left}
+.snk-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:7;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
 .snk-toast.show{opacity:1}
-.snk-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);padding:0 2px}
-.snk-leg{display:inline-flex;align-items:center;gap:5px}
-.snk-leg i{width:9px;height:9px;border-radius:50%;display:inline-block}
-.snk-leg.dead{opacity:.4;text-decoration:line-through}
-.snk-controls{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.snk-pad{display:none;gap:8px}
-.snk-pad button{width:56px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);cursor:pointer;display:grid;place-items:center;touch-action:none;color:var(--ink)}
+
+/* touch pad = sibling setelah board, bukan di dalam board */
+.snk-pad{display:none;gap:8px;justify-content:center}
+.snk-pad button{min-width:56px;min-height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);cursor:pointer;display:grid;place-items:center;touch-action:none;color:var(--ink)}
 .snk-pad button:active{background:#f4f4f5}
 .snk-pad button svg{width:20px;height:20px}
-.snk-pad .boost{width:78px;font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--acc);border-color:var(--acc)}
-.snk-tools{display:flex;gap:6px;flex-wrap:wrap}
-.snk-tools button{font-size:11.5px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);cursor:pointer;color:var(--ink)}
-.snk-tools button:hover{border-color:var(--ink)}
-.snk-hint{font-size:11px;color:var(--mut)}
-.snk [data-exit]{font-size:12px;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--card);cursor:pointer;color:var(--mut)}
-@media (pointer:coarse),(max-width:640px){.snk-pad{display:flex}.snk-hint{display:none}}
+.snk-pad .boost{min-width:92px;font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--acc);border-color:var(--acc)}
+@media (pointer:coarse),(max-width:640px){.snk .snk-pad{display:flex}}
 @keyframes snk-pulse${uid}{0%,100%{opacity:.14}50%{opacity:.4}}
 .snk .pulse{animation:snk-pulse${uid} 1.7s ease-in-out infinite}
-</style>
-<div class="snk game-app">
-  <header class="snk-top">
-    <div class="snk-brand"><h2>Snakes.io</h2><small>arena survival</small></div>
-    <div class="snk-chips">
-      <span class="snk-chip">Skor<b data-hud="score">0</b></span>
-      <span class="snk-chip">Panjang<b><span data-hud="len">17</span>/${TARGET}</b></span>
-      <span class="snk-chip">Level<b data-hud="level">1</b></span>
-      <span class="snk-chip">Lawan<b data-hud="rivals">3</b></span>
-      <span class="snk-chip">Terbaik<b data-hud="best">0</b></span>
-      <span class="snk-chip cheat" data-hud="cheatchip" hidden>CHEAT AKTIF</span>
-    </div>
-    <span class="snk-status game-status" data-statuswrap><i></i><span data-status>Siap</span></span>
-  </header>
 
-  <section class="snk-stage game-panel" data-board>
-    <svg class="arena" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Arena Snakes.io">
+/* --- Batch 02 design polish --- */
+.snk :focus-visible,.snk button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.snk-chip{padding:5px 9px}
+.snk-btn{min-height:38px;padding:7px 10px}
+@media (pointer:coarse){.snk button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.snk *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (PALING AKHIR) --- */
+@media (max-width:640px){
+.snk.game-fill > .snk-stage:not(:has(.snk-ov:not([hidden]))){aspect-ratio:1/1;flex:0 0 auto}
+.snk.game-fill > .snk-stage:has(.snk-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.snk .snk-hud{gap:5px}
+.snk .snk-hud .snk-chip{padding:4px 6px;font-size:9px}
+.snk .snk-hud .snk-chip[data-chip="best"],.snk .snk-hud .snk-chip[data-chip="rivals"]{display:none}
+.snk .snk-hud .snk-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.snk .snk-hud .snk-btn-label,.snk .snk-hud .snk-spacer{display:none}
+.snk .snk-ov{padding:8px}
+.snk .snk-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.snk .snk-help{grid-template-columns:1fr;scrollbar-width:none}
+.snk .snk-cheats,.snk .snk-list{scrollbar-width:none}
+.snk .snk-help::-webkit-scrollbar,.snk .snk-cheats::-webkit-scrollbar,.snk .snk-list::-webkit-scrollbar{display:none}
+.snk .snk-foot{position:static;margin:0;padding:10px 0 0}
+.snk .snk-note{display:none}
+}
+</style>
+<div class="game-app snk game-fill" data-snk>
+  <div class="snk-hud">
+    <span class="snk-chip">SKOR <b data-hud="score">0</b></span>
+    <span class="snk-chip">PANJANG <b><span data-hud="len">17</span>/${TARGET}</b></span>
+    <span class="snk-chip">LV <b data-hud="level">1</b></span>
+    <span class="snk-chip" data-chip="rivals">LAWAN <b data-hud="rivals">3</b></span>
+    <span class="snk-chip" data-chip="best">TERBAIK <b data-hud="best">0</b></span>
+    <span class="snk-chip snk-status game-status" data-statuswrap><i></i><span data-status>Siap</span></span>
+    <span class="snk-chip cheat" data-hud="cheatchip" hidden>CHET AKTIF</span>
+    <span class="snk-chip snk-legend" data-el="legend"></span>
+    <span class="snk-spacer"></span>
+    <button class="snk-btn snk-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="snk-btn-label">Help</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="snk-btn-label">Cheats</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="snk-btn-label">Pause</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-mouse aria-label="Mouse steering on" title="Mouse steering (M)">${iconSVG("mouse", { size: 14 })}<span class="snk-btn-label" data-el="mouseLabel">Mouse: aktif</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="snk-btn-label">Restart</span></button>
+    <button class="snk-btn snk-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="snk-btn-label">Exit</span></button>
+  </div>
+
+  <section class="game-panel snk-stage" data-board>
+    <svg class="arena" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Arena Snakes Io">
       <defs>
         <pattern id="snkGrid${uid}" width="${C}" height="${C}" patternUnits="userSpaceOnUse">
           <rect width="${C}" height="${C}" fill="#fbfcfe"></rect>
@@ -131,82 +169,89 @@ export function mount(root, context = {}) {
 
     <div class="snk-toast" data-el="toast"></div>
 
-    <div class="snk-cheats" data-el="cheats" hidden>
-      <h3>Cheat</h3>
-      <label class="snk-cheat-row">Kebal (tembok &amp; tubuh) <input type="checkbox" data-cheat="god"></label>
-      <label class="snk-cheat-row">Magnet makanan <input type="checkbox" data-cheat="magnet"></label>
-      <label class="snk-cheat-row">Perlambat bot <input type="checkbox" data-cheat="slow"></label>
-      <label class="snk-cheat-row">Boost gratis <input type="checkbox" data-cheat="freeBoost"></label>
-      <div class="snk-cheat-acts">
-        <button type="button" data-act="grow">+10 panjang</button>
-        <button type="button" data-act="wipe">Habisi bot</button>
-      </div>
-      <div class="snk-cheat-note">Saat cheat dipakai, skor terbaik tidak disimpan. Nonaktif di multiplayer.</div>
-    </div>
-
     <div class="snk-ov" data-ov="start">
       <div class="snk-card">
-        <h2 class="snk-ov-title">Snakes.io</h2>
-        <p class="snk-ov-sub" data-el="startSub">Makan orb untuk tumbuh, hindari dinding &amp; tubuh lawan. Menang: capai panjang ${TARGET} atau jadi ular terakhir.</p>
-        <button class="snk-btn acc" type="button" data-act="start">Mulai</button>
-        <button class="snk-btn ghost" type="button" data-act="help">Cara main</button>
+        <div class="snk-head"><h3 class="snk-ov-title">Snakes Io</h3><span class="snk-chip">ARENA</span></div>
+        <p class="snk-sub" data-el="startSub">Makan orb untuk tumbuh, hindari dinding &amp; tubuh lawan. Menang: capai panjang ${TARGET} atau jadi ular terakhir.</p>
+        <div class="snk-foot"><span class="snk-note">H bantuan · C cheat · P jeda</span><button class="snk-btn acc" type="button" data-act="start">Mulai</button></div>
       </div>
     </div>
 
     <div class="snk-ov" data-ov="over" hidden>
       <div class="snk-card">
-        <h2 class="snk-ov-title" data-el="ovTitle">Selesai</h2>
-        <p class="snk-ov-sub" data-el="ovSub"></p>
-        <button class="snk-btn acc" type="button" data-act="restart" data-el="btnAgain">Main lagi</button>
-        <button class="snk-btn" type="button" data-act="next" data-el="btnNext" hidden>Level berikutnya</button>
-        <p class="snk-ov-sub" data-el="guestNote" hidden style="margin:6px 0 0">Menunggu host memulai ulang…</p>
+        <div class="snk-head"><h3 class="snk-ov-title" data-el="ovTitle">Selesai</h3></div>
+        <p class="snk-sub" data-el="ovSub"></p>
+        <p class="snk-sub" data-el="guestNote" hidden>Menunggu host memulai ulang…</p>
+        <div class="snk-foot">
+          <span class="snk-note" data-el="overBest"></span>
+          <span><button class="snk-btn acc" type="button" data-act="restart" data-el="btnAgain">Main lagi</button><button class="snk-btn" type="button" data-act="next" data-el="btnNext" hidden>Level berikutnya</button></span>
+        </div>
       </div>
     </div>
 
     <div class="snk-ov" data-ov="pause" hidden>
       <div class="snk-card">
-        <h2 class="snk-ov-title">Jeda</h2>
-        <p class="snk-ov-sub">Klik lanjut atau tekan tombol kontrol.</p>
-        <button class="snk-btn acc" type="button" data-act="resume">Lanjut</button>
+        <div class="snk-head"><h3 class="snk-ov-title">Jeda</h3></div>
+        <p class="snk-sub">Lanjutkan lewat tombol di bawah, P, atau kontrol membelok.</p>
+        <div class="snk-foot"><span class="snk-note">P / Esc</span><button class="snk-btn acc" type="button" data-act="resume">Lanjut</button></div>
+      </div>
+    </div>
+
+    <div class="snk-ov" data-ov="cheat" hidden>
+      <div class="snk-card">
+        <div class="snk-head"><h3>Cheats</h3><button class="snk-btn" type="button" data-act="cheat-close">Close</button></div>
+        <div class="snk-cheats">
+          <label class="snk-cheat-row">Kebal (tembok &amp; tubuh) <input type="checkbox" data-cheat="god"></label>
+          <label class="snk-cheat-row">Magnet makanan <input type="checkbox" data-cheat="magnet"></label>
+          <label class="snk-cheat-row">Perlambat bot <input type="checkbox" data-cheat="slow"></label>
+          <label class="snk-cheat-row">Boost gratis <input type="checkbox" data-cheat="freeBoost"></label>
+          <div class="snk-cheat-acts">
+            <button type="button" data-act="grow">+10 panjang</button>
+            <button type="button" data-act="wipe">Habisi bot</button>
+          </div>
+        </div>
+        <div class="snk-foot"><span class="snk-cheat-note">Saat cheat dipakai, skor terbaik tidak disimpan. Nonaktif di multiplayer.</span></div>
       </div>
     </div>
 
     <div class="snk-ov" data-ov="help" hidden>
       <div class="snk-card">
-        <h2 class="snk-ov-title">Cara main</h2>
-        <ul class="snk-list">
-          <li>Ular <b>selalu melaju</b> — kamu hanya membelokkan, tidak bisa berhenti.</li>
-          <li>Desktop: <kbd>←</kbd>/<kbd>→</kbd> atau <kbd>A</kbd>/<kbd>D</kbd> belok; <kbd>W</kbd>/<kbd>↑</kbd>/<kbd>Shift</kbd>/<kbd>Spasi</kbd> boost. Mouse mengarahkan (toggle <kbd>M</kbd>), klik-tahan arena = boost.</li>
-          <li>Mobile: tahan tombol ◀ / ▶ / BOOST di bawah arena.</li>
-          <li>Makan orb kuning (+2) dan oranye (+3, jatuh dari ular yang mati).</li>
-          <li>Boost membakar panjang (min. ${MIN_SEG}). Tubuh sendiri aman disentuh.</li>
-          <li><b>Kalah</b>: kepala menabrak dinding, balok, atau tubuh ular lain. <b>Menang</b>: panjang ${TARGET} atau ular terakhir.</li>
-          <li>Lawan yang mati menjatuhkan makanan — potong jalurnya!</li>
-          <li><kbd>P</kbd> jeda · <kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>R</kbd> ulang.</li>
-        </ul>
-        <button class="snk-btn" type="button" data-act="help-close">Tutup</button>
+        <div class="snk-head"><h3>How to play</h3><button class="snk-btn" type="button" data-act="help-close">Close</button></div>
+        <div class="snk-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><kbd>←</kbd>/<kbd>→</kbd> atau <kbd>A</kbd>/<kbd>D</kbd> belok; <kbd>W</kbd>/<kbd>↑</kbd>/<kbd>Shift</kbd>/<kbd>Spasi</kbd> boost.</li>
+              <li>Mouse mengarahkan (toggle <kbd>M</kbd>); klik-tahan arena = boost.</li>
+              <li><kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> jeda · <kbd>R</kbd> ulang.</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tahan tombol ◀ / ▶ / BOOST di bawah arena.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Ular <b>selalu melaju</b> — kamu hanya membelokkan, tidak bisa berhenti.</li>
+              <li>Makan orb kuning (+2) dan oranye (+3, jatuh dari ular yang mati).</li>
+              <li>Boost membakar panjang (min. ${MIN_SEG}). Tubuh sendiri aman disentuh.</li>
+              <li><b>Kalah</b>: kepala menabrak dinding, balok, atau tubuh ular lain.</li>
+              <li><b>Menang</b>: panjang ${TARGET} atau jadi ular terakhir.</li>
+              <li>Lawan yang mati menjatuhkan makanan — potong jalurnya!</li>
+            </ul>
+          </div>
+        </div>
+        <div class="snk-foot"><span class="snk-note">Press H to reopen this guide</span><button class="snk-btn acc" type="button" data-act="help-close">Got it</button></div>
       </div>
     </div>
   </section>
 
-  <div class="snk-legend" data-el="legend"></div>
-
-  <div class="snk-controls">
-    <div class="snk-pad">
-      <button type="button" data-hold="left" aria-label="Belok kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg></button>
-      <button type="button" class="boost" data-hold="boost" aria-label="Boost">BOOST</button>
-      <button type="button" data-hold="right" aria-label="Belok kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></button>
-    </div>
-    <span class="snk-hint">Belok: ←/→ atau A/D · Boost: W/↑/Shift · Mouse mengarahkan</span>
-    <div class="snk-tools">
-      <button type="button" data-act="help">Cara main</button>
-      <button type="button" data-act="cheat" data-el="btnCheat">Cheat</button>
-      <button type="button" data-act="mouse" data-el="btnMouse">Mouse: aktif</button>
-      <button type="button" data-act="restart" data-el="btnRestart">Ulang</button>
-    </div>
+  <div class="snk-pad">
+    <button type="button" data-hold="left" aria-label="Belok kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg></button>
+    <button type="button" class="boost" data-hold="boost" aria-label="Boost">BOOST</button>
+    <button type="button" data-hold="right" aria-label="Belok kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></button>
   </div>
-
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Keluar game</button></div>
 </div>`;
 
     /* ---------------- refs ---------------- */
@@ -214,15 +259,16 @@ export function mount(root, context = {}) {
     const svg = $("svg.arena");
     const wallsG = $('[data-el="walls"]'), foodsG = $('[data-el="foods"]'), snakesG = $('[data-el="snakes"]');
     const legendEl = $('[data-el="legend"]'), toastEl = $('[data-el="toast"]');
-    const ovStart = $('[data-ov="start"]'), ovOver = $('[data-ov="over"]'), ovPause = $('[data-ov="pause"]'), ovHelp = $('[data-ov="help"]');
-    const cheatPanel = $('[data-el="cheats"]');
+    const ovStart = $('[data-ov="start"]'), ovOver = $('[data-ov="over"]'), ovPause = $('[data-ov="pause"]'), ovCheat = $('[data-ov="cheat"]'), ovHelp = $('[data-ov="help"]');
     const hudEls = { score: $('[data-hud="score"]'), len: $('[data-hud="len"]'), level: $('[data-hud="level"]'), rivals: $('[data-hud="rivals"]'), best: $('[data-hud="best"]') };
     const statusEl = $("[data-status]"), statusWrap = $("[data-statuswrap]");
+    const cheatsBtn = $("[data-cheats]"), pauseBtn = $("[data-pause]"), mouseBtn = $("[data-mouse]"), restartBtn = $("[data-restart]");
+    const mouseLabelEl = $('[data-el="mouseLabel"]'), overBestEl = $('[data-el="overBest"]');
     const setHidden = (el, h) => { if (h) { if (!el.hasAttribute("hidden")) el.setAttribute("hidden", ""); } else if (el.hasAttribute("hidden")) el.removeAttribute("hidden"); };
 
     /* ---------------- state lokal (non-network) ---------------- */
     let raf = 0, lastT = 0, pubAcc = 0, destroyed = false;
-    let paused = false, helpOpen = false, cheatOpen = false, cheatsUsed = false;
+    let paused = false, pauseBegan = 0, helpOpen = false, cheatOpen = false, cheatsUsed = false;
     const keys = { left: false, right: false, boost: false };
     const mouse = { on: finePointer, has: false, x: 0, y: 0, down: false };
     const cheats = { god: false, magnet: false, slow: false, freeBoost: false };
@@ -232,8 +278,37 @@ export function mount(root, context = {}) {
     let hudCache = {}, overKey = "", toastT = 0;
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey), 10) || 0; } catch (e) { /* abaikan */ }
+    /* panduan internal: tampil sekali per perangkat */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("snakesIoHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("snakesIoHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
     const subs = [];
     const sub = (ret) => { if (typeof ret === "function") subs.push(ret); };
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function setPaused(on) {
+        const next = Boolean(on);
+        if (online && !isHost) return;
+        if (next && (!state || state.status !== "running")) return;
+        if (paused === next) return;
+        paused = next;
+        if (paused) pauseBegan = performance.now();
+        else if (pauseBegan) {
+            /* geser penanda waktu agar masa jeda tidak terhitung saat lanjut */
+            const shift = performance.now() - pauseBegan;
+            if (remote.ts) remote.ts += shift;
+            if (lastSend) lastSend += shift;
+            pauseBegan = 0;
+        }
+        render();
+    }
 
     const myIdx = () => (online ? (state && state.seats ? state.seats[playerIndex] : playerIndex) : 0);
     const mySnake = () => (state && state.snakes ? state.snakes[myIdx()] || null : null);
@@ -597,7 +672,7 @@ export function mount(root, context = {}) {
             walls: lv.walls, foods: lv.foods, snakes,
         };
         remote = { steer: 0, boost: false, aim: null, ts: 0 };
-        paused = false; helpOpen = false;
+        paused = false; pauseBegan = 0; helpOpen = false; cheatOpen = false;
         sceneKey = "";
         toast("Urutan jalan: " + order.map((i) => displayName(snakes[i])).join(" → "));
         publish();
@@ -755,7 +830,7 @@ export function mount(root, context = {}) {
                 if (!leg) continue;
                 const label = displayName(s) + (isMine(s) && online ? " (" + s.name + ")" : "");
                 const span = leg.querySelector("span");
-                if (span.textContent !== label) span.textContent = label;
+                if (span.textContent !== label) { span.textContent = label; leg.title = label + (s.alive ? "" : " (gugur)"); }
                 leg.classList.toggle("dead", !s.alive);
             }
         }
@@ -769,7 +844,8 @@ export function mount(root, context = {}) {
         const me = mySnake();
         const iWon = over && me && st.winner === me.id;
 
-        setHidden(ovStart, !lobby);
+        /* overlay saling menekan: help > cheat > pause > start/over */
+        setHidden(ovStart, !lobby || cheatOpen || helpOpen);
         if (lobby) {
             const guestWaiting = online && !isHost;
             $('[data-el="startSub"]').textContent = guestWaiting
@@ -777,7 +853,7 @@ export function mount(root, context = {}) {
                 : "Makan orb untuk tumbuh, hindari dinding & tubuh lawan. Menang: capai panjang " + TARGET + " atau jadi ular terakhir. Urutan jalan & posisi spawn diacak!";
             setHidden($('[data-act="start"]'), guestWaiting);
         }
-        setHidden(ovOver, !over);
+        setHidden(ovOver, !over || cheatOpen || helpOpen);
         if (over) {
             const key = st.seed + "|" + st.winner + "|" + st.reason + "|" + (me ? me.score : 0);
             if (key !== overKey) {
@@ -791,16 +867,24 @@ export function mount(root, context = {}) {
             setHidden($('[data-el="btnAgain"]'), online && !isHost);
             setHidden($('[data-el="btnNext"]'), !((!online && iWon) || (isHost && st.winner != null)));
             setHidden($('[data-el="guestNote"]'), !(online && !isHost));
+            overBestEl.textContent = "Terbaik " + best;
         }
-        setHidden(ovPause, !(paused && running && !online));
+        setHidden(ovPause, !(paused && running && !online) || cheatOpen || helpOpen);
         setHidden(ovHelp, !helpOpen);
-        setHidden(cheatPanel, !(cheatOpen && !online));
-        setHidden($('[data-el="btnCheat"]'), online);
-        setHidden($('[data-el="btnRestart"]'), online && !isHost);
+        setHidden(ovCheat, !cheatOpen || helpOpen);
+        setHidden(cheatsBtn, online);
+        setHidden(restartBtn, online && !isHost);
+        pauseBtn.disabled = online && !isHost;
+        cheatsBtn.classList.toggle("on", cheatsUsed && !online);
+        const pLabel = pauseBtn.querySelector(".snk-btn-label");
+        const pText = paused ? "Resume" : "Pause";
+        if (pLabel && pLabel.textContent !== pText) pLabel.textContent = pText;
+        pauseBtn.setAttribute("aria-label", pText);
         const mouseLabel = "Mouse: " + (mouse.on ? "aktif" : "nonaktif");
-        if ($('[data-el="btnMouse"]').textContent !== mouseLabel) $('[data-el="btnMouse"]').textContent = mouseLabel;
+        if (mouseLabelEl.textContent !== mouseLabel) mouseLabelEl.textContent = mouseLabel;
+        mouseBtn.setAttribute("aria-label", "Mouse steering " + (mouse.on ? "on" : "off"));
 
-        let label = "Siap", cls = "snk-status game-status";
+        let label = "Siap", cls = "snk-chip snk-status game-status";
         if (running) { label = me && !me.alive ? "Menonton" : "Bermain"; cls += " run"; }
         else if (paused) label = "Jeda";
         else if (over) { label = iWon ? "Menang" : "Selesai"; cls += " end"; }
@@ -854,7 +938,7 @@ export function mount(root, context = {}) {
         if (!(dt > 0)) dt = 0;
         if (dt > 0.05) dt = 0.05;
         const running = state && state.status === "running";
-        const frozen = paused || (!online && helpOpen);
+        const frozen = paused || (!online && (helpOpen || cheatOpen));
         if (running && !frozen) {
             if (!online || isHost) update(dt);
             else extrapolate(dt);
@@ -875,21 +959,37 @@ export function mount(root, context = {}) {
     function onKeyDown(e) {
         const c = e.code;
         if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].indexOf(c) >= 0) e.preventDefault();
+        if (e.repeat) return;
+        /* prioritas: help → cheat → pause/Escape → aksi game → kontrol */
+        if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (c === "KeyC") {
+            if (!helpOpen && !online) { cheatOpen = !cheatOpen; render(); }
+            e.preventDefault(); return;
+        }
+        if (c === "KeyP" || c === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) { cheatOpen = false; render(); }
+            else setPaused(!paused);
+            e.preventDefault(); return;
+        }
+        if (c === "KeyR") {
+            if (!helpOpen && !cheatOpen && (!online || isHost)) startGame(state ? state.level : 1, false);
+            e.preventDefault(); return;
+        }
+        if (c === "Enter") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) { cheatOpen = false; render(); }
+            else if (!ovStart.hasAttribute("hidden") && (!online || isHost)) startGame(1, false);
+            else if (!ovOver.hasAttribute("hidden") && (!online || isHost)) startGame(state.level, false);
+            e.preventDefault(); return;
+        }
+        if (c === "KeyM") { mouse.on = !mouse.on; toast("Mouse steer " + (mouse.on ? "aktif" : "nonaktif")); render(); e.preventDefault(); return; }
         if (c === "ArrowLeft" || c === "KeyA") keys.left = true;
         else if (c === "ArrowRight" || c === "KeyD") keys.right = true;
-        else if (isCtl(c)) keys.boost = true;
-        if (!e.repeat) {
-            if (c === "KeyP" && !online && state && state.status === "running") { paused = !paused; }
-            else if (c === "KeyH") helpOpen = !helpOpen;
-            else if (c === "KeyC" && !online) cheatOpen = !cheatOpen;
-            else if (c === "KeyM") { mouse.on = !mouse.on; toast("Mouse steer " + (mouse.on ? "aktif" : "nonaktif")); }
-            else if (c === "KeyR" && (!online || isHost)) startGame(state ? state.level : 1, false);
-            else if (c === "Enter") {
-                if (!ovStart.hasAttribute("hidden") && (!online || isHost)) startGame(1, false);
-                else if (!ovOver.hasAttribute("hidden") && (!online || isHost)) startGame(state.level, false);
-            } else if (c === "Escape") { helpOpen = false; cheatOpen = false; }
+        else if (isCtl(c)) {
+            keys.boost = true;
+            if (paused && state && state.status === "running") setPaused(false);
         }
-        if (paused && state && state.status === "running" && isCtl(c)) paused = false;
     }
     function onKeyUp(e) {
         const c = e.code;
@@ -898,7 +998,7 @@ export function mount(root, context = {}) {
         else if (isCtl(c)) keys.boost = false;
     }
     function onVis() {
-        if (document.hidden && !online && state && state.status === "running") paused = true;
+        if (document.hidden && !online && state && state.status === "running") setPaused(true);
     }
     function onWinPointerUp() { mouse.down = false; }
     document.addEventListener("keydown", onKeyDown);
@@ -923,7 +1023,7 @@ export function mount(root, context = {}) {
         const p = svgPoint(e);
         if (p) { mouse.x = p.x; mouse.y = p.y; mouse.has = true; }
         mouse.down = true;
-        if (paused) paused = false;
+        if (paused) setPaused(false);
     });
     svg.addEventListener("pointerup", () => { mouse.down = false; });
     svg.addEventListener("pointercancel", () => { mouse.down = false; });
@@ -934,7 +1034,7 @@ export function mount(root, context = {}) {
         b.addEventListener("pointerdown", (e) => {
             e.preventDefault();
             try { b.setPointerCapture(e.pointerId); } catch (err) { /* abaikan */ }
-            if (paused) paused = false;
+            if (paused) setPaused(false);
             keys[k] = true;
         });
         const up = () => { keys[k] = false; };
@@ -946,18 +1046,24 @@ export function mount(root, context = {}) {
     /* ---------------- input: klik & cheat ---------------- */
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { if (!online) { cheatOpen = !cheatOpen; render(); } return; }
+        if (t.closest("[data-pause]")) { setPaused(!paused); return; }
+        if (t.closest("[data-mouse]")) { mouse.on = !mouse.on; toast("Mouse steer " + (mouse.on ? "aktif" : "nonaktif")); render(); return; }
+        if (t.closest("[data-restart]")) { if (!online || isHost) startGame(state ? state.level : 1, false); return; }
         const act = t.closest("[data-act]");
         if (!act) return;
         const a = act.dataset.act;
         if (a === "start") startGame(1, false);
         else if (a === "restart") startGame(state ? state.level : 1, false);
         else if (a === "next") startGame((state ? state.level : 1) + 1, true);
-        else if (a === "resume") paused = false;
-        else if (a === "help") helpOpen = !helpOpen;
-        else if (a === "help-close") helpOpen = false;
-        else if (a === "cheat" && !online) cheatOpen = !cheatOpen;
-        else if (a === "mouse") { mouse.on = !mouse.on; toast("Mouse steer " + (mouse.on ? "aktif" : "nonaktif")); }
+        else if (a === "resume") setPaused(false);
+        else if (a === "help") toggleHelp();
+        else if (a === "help-close") toggleHelp(false);
+        else if (a === "cheat-close" || (a === "cheat" && !online)) { cheatOpen = !cheatOpen; render(); }
+        else if (a === "mouse") { mouse.on = !mouse.on; toast("Mouse steer " + (mouse.on ? "aktif" : "nonaktif")); render(); }
         else if (a === "grow" && !online) {
             const me = mySnake();
             if (me && me.alive && state.status === "running") { me.len += 10 * SEG; cheatsUsed = true; toast("+10 panjang"); }
@@ -978,7 +1084,6 @@ export function mount(root, context = {}) {
     }
     root.addEventListener("click", handleClick);
     root.addEventListener("change", handleChange);
-    ovPause.addEventListener("click", () => { paused = false; });
 
     /* ---------------- init sesuai template ---------------- */
     if (online) {

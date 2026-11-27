@@ -299,10 +299,23 @@ hold the biggest share when the clock ends.
         return { deaths, over: g.over };
     }
 
+    /* ---------- inline icons (classic MGP script, no ESM import) ---------- */
+    const ICON_PATHS = {
+        helpCircle: ["M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", "M12 17h.01"],
+        wrench: ["M14.7 6.3a4 4 0 0 0 5 5l-9 9a2.8 2.8 0 0 1-4-4z", "M6 16l-3 3", "M14.5 4.5 19 9"],
+        pause: ["M7 4h3v16H7z", "M14 4h3v16h-3z"],
+        refresh: ["M21 2v6h-6", "M3 12a9 9 0 0 1 15-6.7L21 8", "M3 22v-6h6", "M21 12a9 9 0 0 1-15 6.7L3 16"],
+        logOut: ["m16 17 5-5-5-5", "M21 12H9", "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"],
+    };
+    function iconSVG(name, size) {
+        const paths = ICON_PATHS[name] || ICON_PATHS.helpCircle;
+        return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + paths.map(function (d) { return '<path d="' + d + '"/>'; }).join("") + "</svg>";
+    }
+
     /* ---------- registration ---------- */
     MGP_REGISTER({
         id: "paper-io",
-        name: "Paper.io",
+        name: "Paper Io",
         category: "arcade",
         catLabel: "Arcade",
         desc: "Loop out and back to claim land and cut every rival trail.",
@@ -325,66 +338,206 @@ hold the biggest share when the clock ends.
             stepGame,
             inBounds,
         },
-        build(app) {
+        build(app, context) {
             /* ---------- shell ---------- */
+            const ctx = context || {};
+            const onExit = typeof ctx.onExit === "function" ? ctx.onExit : function () {
+                const b = typeof document !== "undefined" && document.getElementById
+                    ? document.getElementById("closeGameButton") : null;
+                if (b && typeof b.click === "function") b.click();
+            };
+            app.className = "mgp-app game-app pi game-fill";
             app.innerHTML = `
 <style>
-#paper-io-app .pi-wrap{width:min(94%,520px)}
-#paper-io-app .pi-board{display:block;width:100%;background:#0b1220;border-radius:12px;border:2px solid #334155;touch-action:none}
-#paper-io-app .pi-ranks{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:6px 0}
-#paper-io-app .pi-rank{display:flex;align-items:center;gap:5px;font-size:12px;color:#cbd5e1;background:#1e293b;padding:3px 9px;border-radius:99px}
-#paper-io-app .pi-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+#paper-io-app [hidden]{display:none!important}
+#paper-io-app.pi{--panel:#111c33;--court:#0b1220;--line:#334155;--ink:#e2e8f0;--mut:#94a3b8;--acc:#38bdf8;--danger:#f87171;
+  display:flex;flex-direction:column;gap:8px;width:100%;height:100%;min-height:0;color:var(--ink);font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+#paper-io-app.pi *{box-sizing:border-box}
+#paper-io-app .pi-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#paper-io-app .pi-info{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1 1 auto;min-width:0}
+#paper-io-app .pi-chip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--mut);white-space:nowrap}
+#paper-io-app .pi-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+#paper-io-app .pi-ranks{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0}
+#paper-io-app .pi-rank{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--mut);background:var(--panel);padding:3px 8px;border-radius:99px;border:1px solid var(--line)}
 #paper-io-app .pi-rank.dead{opacity:.4;text-decoration:line-through}
-#paper-io-app .pi-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(2,40px);gap:5px;justify-content:center;margin-top:8px}
-#paper-io-app .pi-dpad button{border:1px solid #475569;background:#1e293b;color:#e2e8f0;border-radius:9px;font-size:16px;cursor:pointer;font-weight:700}
-#paper-io-app .pi-dpad button:active{background:#334155}
+#paper-io-app .pi-dot{width:9px;height:9px;border-radius:3px;display:inline-block;flex:none}
+#paper-io-app .pi-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+#paper-io-app .pi-spacer{flex:1 1 auto}
+#paper-io-app .pi-btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;min-height:36px;padding:0 11px;font:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#paper-io-app .pi-btn:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+#paper-io-app .pi-btn:disabled{opacity:.4;cursor:default}
+#paper-io-app .pi-btn.primary{background:var(--acc);border-color:var(--acc);color:#082f49}
+#paper-io-app .pi-btn.on{border-color:var(--acc);color:var(--acc)}
+#paper-io-app .pi-icon-btn{display:inline-flex;align-items:center;gap:6px}
+#paper-io-app .pi-icon-btn svg{flex:none;display:block}
+#paper-io-app .pi-board{position:relative;width:100%;flex:1 1 auto;min-height:0;aspect-ratio:1/1;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--court);overflow:hidden}
+#paper-io-app .pi-svg{display:block;width:100%;height:100%;touch-action:none;user-select:none}
+#paper-io-app .pi-pad{display:none;justify-content:center;gap:8px;user-select:none}
+#paper-io-app.touch .pi-pad{display:flex}
+#paper-io-app .pi-dpad{display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(2,46px);gap:6px}
+#paper-io-app .pi-dpad [data-dir="3"]{grid-area:1/2}
+#paper-io-app .pi-dpad [data-dir="2"]{grid-area:2/1}
+#paper-io-app .pi-dpad [data-dir="1"]{grid-area:2/2}
+#paper-io-app .pi-dpad [data-dir="0"]{grid-area:2/3}
+#paper-io-app .pi-dpad .pi-btn{font-size:16px;padding:0}
+#paper-io-app .pi-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(11,18,32,.78)}
+#paper-io-app .pi-card{width:min(520px,100%);max-height:100%;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden;text-align:center}
+#paper-io-app .pi-card h2,#paper-io-app .pi-card h3{margin:0;font-size:17px}
+#paper-io-app .pi-win{color:#34d399}
+#paper-io-app .pi-lose{color:var(--danger)}
+#paper-io-app .pi-sub{font-size:12px;line-height:1.55;color:var(--mut);margin:0}
+#paper-io-app .pi-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+#paper-io-app .pi-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;text-align:left}
+#paper-io-app .pi-cheats,#paper-io-app .pi-help{display:grid;gap:8px;flex:1 1 auto;min-height:0;overflow:auto}
+#paper-io-app .pi-cheats{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+#paper-io-app .pi-help{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;text-align:left}
+#paper-io-app .pi-help b{display:block;margin-bottom:5px;color:var(--mut);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+#paper-io-app .pi-help ul{margin:0 0 10px;padding-left:16px;color:var(--mut);font-size:12px;line-height:1.6}
+#paper-io-app .pi-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--court);color:var(--ink);font:inherit}
+#paper-io-app .pi-note{color:var(--mut);font-size:11px;line-height:1.5}
+#paper-io-app .pi-sep{margin:2px 0;font:700 9px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--mut);text-transform:uppercase}
+#paper-io-app .pi-cheatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--court);font-size:11px;text-align:left}
+#paper-io-app .pi-switch{position:relative;width:40px;height:22px;border-radius:999px;border:1px solid var(--line);background:var(--court);cursor:pointer;flex:none;padding:0}
+#paper-io-app .pi-switch:after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--mut)}
+#paper-io-app .pi-switch[aria-pressed="true"]{border-color:var(--acc);background:rgba(56,189,248,.15)}
+#paper-io-app .pi-switch[aria-pressed="true"]:after{left:20px;background:var(--acc)}
+#paper-io-app :focus-visible,#paper-io-app button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){#paper-io-app *{animation:none!important;transition:none!important}}
+
+/* --- Batch 02 design polish --- */
+#paper-io-app .pi-dpad .pi-btn{min-height:44px;border-radius:10px}
+@media (pointer:coarse){#paper-io-app button:not(:disabled){min-height:44px}}
+
+/* --- layout redesign overrides (keep last) --- */
+#paper-io-app.pi.game-fill > .pi-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+#paper-io-app.pi.game-fill > .pi-board:not(:has(.pi-ov:not([hidden]))){aspect-ratio:1/1;flex:0 0 auto}
+#paper-io-app.pi.game-fill > .pi-board:has(.pi-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+#paper-io-app .pi-hud{gap:5px;flex-direction:column;align-items:stretch}
+#paper-io-app .pi-info{gap:5px}
+#paper-io-app .pi-ranks{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+#paper-io-app .pi-rank-name{display:none}
+#paper-io-app .pi-chip[data-hud="kills"]{display:none}
+#paper-io-app .pi-tools{gap:5px;flex-wrap:nowrap;justify-content:space-between}
+#paper-io-app .pi-chip{padding:4px 6px;min-height:0;font-size:9px}
+#paper-io-app .pi-btn{padding:5px 8px;font-size:9px}
+#paper-io-app .pi-icon-btn .pi-btn-label{display:none}
+#paper-io-app .pi-ov{padding:8px}
+#paper-io-app .pi-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+#paper-io-app .pi-cheats,#paper-io-app .pi-help{scrollbar-width:none}
+#paper-io-app .pi-cheats::-webkit-scrollbar,#paper-io-app .pi-help::-webkit-scrollbar{display:none}
+#paper-io-app .pi-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+#paper-io-app .pi-note{display:none}
+}
+@media (pointer:coarse){#paper-io-app .pi-hud .pi-btn{min-height:32px}}
 </style>
-<div class="mgp-bar">
-  <span class="mgp-title">Paper.io</span>
-  <span class="mgp-chip">Time <b data-hud="time">2:00</b></span>
-  <span class="mgp-chip">Land <b data-hud="area">2%</b></span>
-  <span class="mgp-chip">Kills <b data-hud="kills">0</b></span>
-  <span class="mgp-spacer"></span>
-  <button class="mgp-btn ghost" data-act="restart">Restart</button>
-</div>
-<div class="mgp-stage">
-  <div class="pi-wrap">
-    <div class="pi-ranks" data-g="ranks"></div>
-    <svg class="pi-board" viewBox="-2 -2 38 38" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Paper io arena">
+<div class="game-app pi game-fill" data-pi>
+  <div class="pi-hud">
+    <div class="pi-info">
+      <span class="pi-chip">TIME <b data-hud="time">2:00</b></span>
+      <span class="pi-chip">LAND <b data-hud="area">2%</b></span>
+      <span class="pi-chip">KILLS <b data-hud="kills">0</b></span>
+      <div class="pi-ranks" data-g="ranks"></div>
+      <span class="pi-spacer"></span>
+    </div>
+    <div class="pi-tools">
+      <button class="pi-btn pi-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", 14)}<span class="pi-btn-label">Help</span></button>
+      <button class="pi-btn pi-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", 14)}<span class="pi-btn-label">Cheats</span></button>
+      <button class="pi-btn pi-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", 14)}<span class="pi-btn-label">Pause</span></button>
+      <button class="pi-btn pi-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", 14)}<span class="pi-btn-label">Restart</span></button>
+      <button class="pi-btn pi-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", 14)}<span class="pi-btn-label">Exit</span></button>
+    </div>
+  </div>
+  <section class="game-panel pi-board" data-board>
+    <svg class="pi-svg" viewBox="-2 -2 38 38" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Paper io arena">
       <g data-g="cells"></g>
       <g data-g="heads"></g>
     </svg>
+    <div class="pi-ov" data-ov="select">
+      <div class="pi-card">
+        <div class="pi-head"><h3>Paper Io</h3><button class="pi-btn" type="button" data-help>How to play</button></div>
+        <p class="pi-sub">Steer your dot out of your zone, trace a loop and return home to claim everything inside. Rivals die when you cross their trail - and you die if anyone crosses yours. Walls are deadly. Biggest land share in 2 minutes wins.</p>
+        <div class="pi-foot"><span class="pi-note">Arrow keys / WASD or the pad</span><button class="pi-btn primary" type="button" data-act="start">Start game</button></div>
+      </div>
+    </div>
+    <div class="pi-ov" data-ov="over" hidden>
+      <div class="pi-card">
+        <div class="pi-head"><h3 data-ov="title">Game over</h3><span class="pi-chip" data-ov="score">Land 0%</span></div>
+        <p class="pi-sub" data-ov="reason"></p>
+        <div class="pi-foot"><span class="pi-note">Press R to restart</span><button class="pi-btn primary" type="button" data-act="again">Play again</button></div>
+      </div>
+    </div>
+    <div class="pi-ov" data-ov="pause" hidden>
+      <div class="pi-card">
+        <div class="pi-head"><h3>Paused</h3></div>
+        <p class="pi-sub">The clock, the rivals and the trails are frozen.</p>
+        <div class="pi-foot"><span class="pi-note">Press P or Esc to resume</span><button class="pi-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="pi-ov" data-ov="cheat" hidden>
+      <div class="pi-card">
+        <div class="pi-head"><h3>Cheats</h3><button class="pi-btn" type="button" data-close>Close</button></div>
+        <div class="pi-cheats" data-cheatgrid></div>
+        <div class="pi-sep">Quick actions</div>
+        <div class="pi-cheats" data-cheatacts></div>
+      </div>
+    </div>
+    <div class="pi-ov" data-ov="help" hidden>
+      <div class="pi-card">
+        <div class="pi-head"><h3>How to play</h3><button class="pi-btn" type="button" data-help-close>Close</button></div>
+        <div class="pi-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="pi-kbd">&larr; &uarr; &darr; &rarr;</span> / <span class="pi-kbd">W A S D</span> &mdash; steer</li>
+              <li><span class="pi-kbd">H</span> help &middot; <span class="pi-kbd">C</span> cheats &middot; <span class="pi-kbd">P</span> pause &middot; <span class="pi-kbd">R</span> restart</li>
+            </ul>
+            <b>Mobile</b>
+            <ul><li>Use the D-pad below the arena to steer.</li></ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Leave your zone to draw a trail, then return home to claim the loop.</li>
+              <li>Cross a rival's trail to eliminate them; never touch your own trail or a wall.</li>
+              <li>Biggest land share when the 2-minute clock ends wins.</li>
+            </ul>
+            <div class="pi-foot"><span class="pi-note">Press H to reopen this guide</span><button class="pi-btn primary" type="button" data-help-close>Got it</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div class="pi-pad">
     <div class="pi-dpad">
-      <span></span><button data-dir="3" aria-label="up">^</button><span></span>
-      <button data-dir="2" aria-label="left">&lt;</button><button data-dir="1" aria-label="down">v</button><button data-dir="0" aria-label="right">&gt;</button>
+      <button class="pi-btn" type="button" data-dir="3" aria-label="up">^</button>
+      <button class="pi-btn" type="button" data-dir="2" aria-label="left">&lt;</button>
+      <button class="pi-btn" type="button" data-dir="1" aria-label="down">v</button>
+      <button class="pi-btn" type="button" data-dir="0" aria-label="right">&gt;</button>
     </div>
   </div>
-  <div class="mgp-overlay" data-ov="start">
-    <div class="mgp-card">
-      <h2 class="mgp-ov-title">Paper.io</h2>
-      <p class="mgp-ov-sub">Steer your dot out of your zone, trace a loop and return home to claim everything inside. Rivals die when you cross their trail - and you die if anyone crosses yours. Walls are deadly. Biggest land share in 2 minutes wins.</p>
-      <button class="mgp-btn" data-act="start">Start game</button>
-    </div>
-  </div>
-  <div class="mgp-overlay" data-ov="over" hidden>
-    <div class="mgp-card">
-      <h2 class="mgp-ov-title" data-ov="title">Game over</h2>
-      <p class="mgp-ov-sub" data-ov="reason"></p>
-      <button class="mgp-btn" data-act="again">Play again</button>
-    </div>
-  </div>
-</div>
-<div class="mgp-foot"><span class="mgp-hint">Arrow keys / WASD to steer, or use the pad below. Never touch a wall or your own trail.</span></div>`;
+</div>`;
 
             const $ = (s, r) => (r || app).querySelector(s);
-            const svgEl = $(".pi-board");
+            const appEl = $("[data-pi]");
             const cellsG = $('[data-g="cells"]');
             const headsG = $('[data-g="heads"]');
             const ranksG = $('[data-g="ranks"]');
-            const ovStart = $('[data-ov="start"]');
-            const ovOver = $('[data-ov="over"]');
+            const ov = {
+                select: $('[data-ov="select"]'),
+                over: $('[data-ov="over"]'),
+                pause: $('[data-ov="pause"]'),
+                cheat: $('[data-ov="cheat"]'),
+                help: $('[data-ov="help"]'),
+            };
             const ovTitle = $('[data-ov="title"]');
+            const ovScore = $('[data-ov="score"]');
             const ovReason = $('[data-ov="reason"]');
+            const cheatGrid = $('[data-cheatgrid]');
+            const cheatActs = $('[data-cheatacts]');
+            const pbtn = $('[data-pause]');
+            const cbtn = $('[data-cheats]');
+            const hbtn = $('[data-help]');
             const hud = {
                 time: $('[data-hud="time"]'),
                 area: $('[data-hud="area"]'),
@@ -396,13 +549,35 @@ hold the biggest share when the clock ends.
             const TRAILS = ["#7dd3fc", "#fca5a5", "#fde68a", "#c4b5fd"];
             const NAMES = ["You", "Rex", "Ivy", "Zed"];
             let active = false,
-                running = false;
+                running = false,
+                over = false;
             let g = null,
                 wantDir = -1;
+            let helpOpen = false,
+                cheatsOpen = false,
+                paused = false;
+            let overDelay = 0;
             let cellEls = [],
                 visCache = [];
             let raf = null,
                 lastT = 0;
+            const cheats = { slow: false, dodge: false };
+            const CHEAT_LABELS = { slow: "Slow motion", dodge: "Auto-dodge walls" };
+            const CHEAT_ACTS = [
+                ["time", "+30 seconds"],
+                ["land", "Claim 10% land"],
+                ["clear", "Eliminate rivals"],
+            ];
+
+            let seenHelp = true;
+            try { seenHelp = localStorage.getItem("paperIoHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+            if (!seenHelp) {
+                helpOpen = true;
+                try { localStorage.setItem("paperIoHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+            }
+            let touch = false;
+            try { touch = !!(window.matchMedia && window.matchMedia("(pointer:coarse)").matches); } catch (_) { touch = false; }
+            if (touch) appEl.classList.add("touch");
 
             /* ---------- rendering ---------- */
             function buildCells() {
@@ -467,6 +642,10 @@ hold the biggest share when the clock ends.
             }
 
             function renderRanks() {
+                if (!g) {
+                    ranksG.innerHTML = '<span class="pi-rank">Ranks &mdash;</span>';
+                    return;
+                }
                 const total = W * H;
                 let s = "";
                 for (const p of g.players) {
@@ -476,23 +655,61 @@ hold the biggest share when the clock ends.
                         (p.alive ? "" : " dead") +
                         '"><i class="pi-dot" style="background:' +
                         COLORS[p.id] +
-                        '"></i>' +
+                        '"></i><span class="pi-rank-name">' +
                         NAMES[p.id] +
-                        " " +
+                        " </span>" +
                         pct +
                         "%</span>";
                 }
                 ranksG.innerHTML = s;
             }
 
-            function updateHud() {
-                const left = Math.max(0, TIME_LIMIT - g.t);
-                const m = Math.floor(left / 60),
-                    s = Math.floor(left % 60);
-                hud.time.textContent = m + ":" + (s < 10 ? "0" : "") + s;
-                hud.area.textContent =
-                    ((areaOf(g, 0) / (W * H)) * 100).toFixed(1) + "%";
-                hud.kills.textContent = g.kills[0];
+            function renderCheats() {
+                let h = "";
+                for (const k of Object.keys(cheats)) {
+                    h += '<div class="pi-cheatrow"><span>' + CHEAT_LABELS[k] + '</span><button class="pi-switch" type="button" data-cheat="' + k + '" aria-pressed="' + (cheats[k] ? "true" : "false") + '" aria-label="' + CHEAT_LABELS[k] + '"></button></div>';
+                }
+                cheatGrid.innerHTML = h;
+                let a = "";
+                for (const act of CHEAT_ACTS) {
+                    a += '<button class="pi-btn" type="button" data-cheatact="' + act[0] + '">' + act[1] + "</button>";
+                }
+                cheatActs.innerHTML = a;
+            }
+
+            function syncUI() {
+                if (g) {
+                    const left = Math.max(0, TIME_LIMIT - g.t);
+                    const m = Math.floor(left / 60),
+                        s = Math.floor(left % 60);
+                    hud.time.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+                    hud.area.textContent =
+                        ((areaOf(g, 0) / (W * H)) * 100).toFixed(1) + "%";
+                    hud.kills.textContent = g.kills[0];
+                    renderRanks();
+                } else {
+                    hud.time.textContent = "2:00";
+                    hud.area.textContent = "0%";
+                    hud.kills.textContent = "0";
+                    renderRanks();
+                }
+                ov.select.hidden = !!g || helpOpen || cheatsOpen || paused;
+                ov.over.hidden = !over || overDelay > 0 || helpOpen || cheatsOpen || paused;
+                ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+                ov.cheat.hidden = !cheatsOpen || helpOpen;
+                ov.help.hidden = !helpOpen;
+                const label = pbtn.querySelector(".pi-btn-label");
+                if (label) label.textContent = paused ? "Resume" : "Pause";
+                pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+                pbtn.disabled = !g || over;
+                hbtn.classList.toggle("on", helpOpen);
+                cbtn.classList.toggle("on", cheatsOpen || Object.keys(cheats).some((k) => cheats[k]));
+                cheatGrid.querySelectorAll("[data-cheat]").forEach((sw) => {
+                    sw.setAttribute("aria-pressed", String(cheats[sw.dataset.cheat]));
+                });
+                cheatActs.querySelectorAll("[data-cheatact]").forEach((b) => {
+                    b.disabled = !g || over;
+                });
             }
 
             /* ---------- flow ---------- */
@@ -500,24 +717,28 @@ hold the biggest share when the clock ends.
                 g = newGame((Math.random() * 1e9) | 0);
                 wantDir = -1;
                 running = true;
-                ovStart.hidden = true;
-                ovOver.hidden = true;
+                over = false;
+                overDelay = 0;
+                helpOpen = false;
+                cheatsOpen = false;
+                paused = false;
+                lastT = 0;
                 buildCells();
                 renderCells();
                 renderHeads();
-                renderRanks();
-                updateHud();
+                syncUI();
             }
 
             function finish(title, win, reason) {
                 running = false;
+                over = true;
+                overDelay = 0.6;
                 ovTitle.textContent = title;
-                ovTitle.className =
-                    "mgp-ov-title " + (win ? "mgp-win" : "mgp-lose");
+                ovTitle.className = win ? "pi-win" : "pi-lose";
                 ovReason.textContent = reason;
-                setTimeout(() => {
-                    if (!running) ovOver.hidden = false;
-                }, 600);
+                ovScore.textContent = "Land " +
+                    ((areaOf(g, 0) / (W * H)) * 100).toFixed(1) + "%";
+                syncUI();
             }
 
             function checkEnd(deaths) {
@@ -566,24 +787,112 @@ hold the biggest share when the clock ends.
                 }
             }
 
+            /* ---------- overlay toggles ---------- */
+            function frozen() { return helpOpen || cheatsOpen || paused; }
+            function toggleHelp(on) {
+                helpOpen = typeof on === "boolean" ? on : !helpOpen;
+                if (helpOpen) cheatsOpen = false;
+                if (!frozen()) lastT = 0;
+                syncUI();
+            }
+            function toggleCheats(on) {
+                cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+                if (cheatsOpen) helpOpen = false;
+                if (!frozen()) lastT = 0;
+                syncUI();
+            }
+            function togglePause(on) {
+                if (!g || over) return;
+                paused = typeof on === "boolean" ? on : !paused;
+                if (paused) cheatsOpen = false;
+                if (!frozen()) lastT = 0;
+                syncUI();
+            }
+            function cheatAction(key) {
+                if (!g || over) return;
+                if (key === "time") {
+                    g.t = Math.max(0, g.t - 30);
+                } else if (key === "land") {
+                    let have = areaOf(g, 0);
+                    const goal = Math.min(W * H, have + Math.floor((W * H) / 10));
+                    for (let c = 0; c < W * H && have < goal; c++) {
+                        if (g.grid[c] !== 0) { g.grid[c] = 0; have++; }
+                    }
+                } else if (key === "clear") {
+                    const deaths = [];
+                    for (const p of g.players) {
+                        if (p.id !== 0 && p.alive) kill(g, p, deaths);
+                    }
+                    renderHeads();
+                    checkEnd(deaths);
+                }
+                syncUI();
+            }
+
+            /* keep the player's next cell safe when the auto-dodge cheat is on */
+            function effectiveWant() {
+                if (!g || !cheats.dodge) return wantDir;
+                const p = g.players[0];
+                if (!p || !p.alive) return wantDir;
+                const d = wantDir >= 0 ? wantDir : p.dir;
+                const deadly = (dir) => {
+                    const nx = p.cx + DX[dir],
+                        ny = p.cy + DY[dir];
+                    return !inBounds(nx, ny) || p.trailSet.has(idx(nx, ny));
+                };
+                if (!deadly(d)) return d;
+                const cand = [(p.dir + 1) % 4, (p.dir + 3) % 4, p.dir];
+                for (const dir of cand) {
+                    if ((dir + 2) % 4 !== p.dir && !deadly(dir)) return dir;
+                }
+                return p.dir;
+            }
+
             /* ---------- frame ---------- */
             function frame(t) {
                 raf = requestAnimationFrame(frame);
                 if (!lastT) lastT = t;
                 const dt = Math.min(0.05, (t - lastT) / 1000);
                 lastT = t;
-                if (!active || !running || !g) return;
-                const res = stepGame(g, dt, [wantDir, -1, -1, -1]);
+                if (!active || !g) return;
+                if (frozen()) return; /* clock, bots and trails are frozen */
+                if (over) {
+                    if (overDelay > 0) {
+                        overDelay -= dt;
+                        if (overDelay <= 0) { overDelay = 0; syncUI(); }
+                    }
+                    return;
+                }
+                if (!running) return;
+                const res = stepGame(g, dt * (cheats.slow ? 0.55 : 1), [effectiveWant(), -1, -1, -1]);
                 renderCells();
                 renderHeads();
-                renderRanks();
-                updateHud();
+                syncUI();
                 checkEnd(res.deaths);
             }
 
             /* ---------- input ---------- */
-            document.addEventListener("keydown", (e) => {
-                if (!active) return;
+            const onKey = (e) => {
+                if (!active || e.ctrlKey || e.metaKey || e.altKey) return;
+                const tag = e.target ? e.target.tagName : "";
+                if (tag === "INPUT" || tag === "TEXTAREA") return;
+                const c = e.code;
+                if (c === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+                if (c === "KeyC") { if (!helpOpen && !paused) toggleCheats(); e.preventDefault(); return; }
+                if (c === "KeyP" || c === "Escape") {
+                    if (helpOpen) toggleHelp(false);
+                    else if (cheatsOpen) toggleCheats(false);
+                    else togglePause();
+                    e.preventDefault();
+                    return;
+                }
+                if (frozen()) { e.preventDefault(); return; }
+                if (c === "KeyR") { start(); e.preventDefault(); return; }
+                if (c === "Enter") {
+                    if (!g || over) start();
+                    e.preventDefault();
+                    return;
+                }
                 const map = {
                     ArrowRight: 0,
                     KeyD: 0,
@@ -594,42 +903,76 @@ hold the biggest share when the clock ends.
                     ArrowUp: 3,
                     KeyW: 3,
                 };
-                if (map[e.code] != null) {
+                if (map[c] != null) {
                     e.preventDefault();
-                    wantDir = map[e.code];
+                    wantDir = map[c];
                 }
-            });
+            };
             app.addEventListener("pointerdown", (e) => {
-                const b = e.target.closest("[data-dir]");
-                if (b && active) {
+                const b = e.target.closest && e.target.closest("[data-dir]");
+                if (b && active && !frozen()) {
                     e.preventDefault();
                     wantDir = +b.dataset.dir;
                 }
             });
             app.addEventListener("click", (e) => {
-                const b = e.target.closest("[data-act]");
-                if (!b) return;
-                const a = b.dataset.act;
-                if (a === "start" || a === "restart" || a === "again") start();
+                if (!active) return;
+                const t = e.target;
+                if (!t || !t.closest) return;
+                if (t.closest("[data-help]")) { toggleHelp(); return; }
+                if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+                if (t.closest("[data-exit]")) { onExit(); return; }
+                if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+                if (t.closest("[data-close]")) { toggleCheats(false); return; }
+                if (t.closest("[data-pause]")) { togglePause(); return; }
+                if (t.closest("[data-resume]")) { togglePause(false); return; }
+                if (t.closest("[data-restart]")) { start(); return; }
+                const sw = t.closest("[data-cheat]");
+                if (sw) {
+                    const k = sw.dataset.cheat;
+                    if (Object.prototype.hasOwnProperty.call(cheats, k)) {
+                        cheats[k] = !cheats[k];
+                        syncUI();
+                    }
+                    return;
+                }
+                const ca = t.closest("[data-cheatact]");
+                if (ca) { cheatAction(ca.dataset.cheatact); return; }
+                const b = t.closest("[data-act]");
+                if (b && (b.dataset.act === "start" || b.dataset.act === "restart" || b.dataset.act === "again")) start();
             });
 
             /* ---------- init ---------- */
             buildCells();
+            renderCheats();
+            syncUI();
 
             /* ---------- open / close ---------- */
             return {
                 open() {
                     active = true;
                     lastT = 0;
+                    document.addEventListener("keydown", onKey);
                     if (!raf) raf = requestAnimationFrame(frame);
+                    syncUI();
                 },
                 close() {
                     active = false;
-                    running = false;
                     if (raf) {
                         cancelAnimationFrame(raf);
                         raf = null;
                     }
+                    document.removeEventListener("keydown", onKey);
+                    g = null;
+                    running = false;
+                    over = false;
+                    wantDir = -1;
+                    helpOpen = false;
+                    cheatsOpen = false;
+                    paused = false;
+                    overDelay = 0;
+                    lastT = 0;
+                    syncUI();
                 },
             };
         },

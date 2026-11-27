@@ -1,4 +1,5 @@
 /* ==== GAME: lane-rush.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /* Lane Rush — sprint 4 jalur 2000 m.
    Mode: Solo, Duel vs Bot, Duel vs Pemain (room), traffic searah / 2 arah.
    Generator dijamin solvable (jalur aman random-walk maks 1 lajur/baris).
@@ -158,7 +159,8 @@ export function mount(root, context = {}) {
     let gens = [null, null];        /* generator baris per track (host/lokal saja) */
     let botCd = [0, 0];
     let raf = 0, last = 0, lastPub = 0, goT = 0;
-    let paused = false, cheatOpen = false;
+    let paused = false, cheatOpen = false, helpOpen = false;
+    let pausedAt = 0, clockShift = 0; /* penanda waktu digeser saat resume dari jeda */
     const cheats = { god: false, ghost: false, slow: false, auto: false };
     const fx = [
         { shake: 0, flash: 0, prevHp: null },
@@ -170,91 +172,145 @@ export function mount(root, context = {}) {
     let refs = [], carEls = [], builtKey = "";
     let best = null;
     try { best = Number(localStorage.getItem(META.bestKey)) || null; } catch (e) { }
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("laneRushHelpSeen") === "1"; } catch (e) { }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("laneRushHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+    const clockNow = () => performance.now() - clockShift;
 
     /* ---------------- UI (minimalis, tanpa teks tutorial) ---------------- */
     root.innerHTML = `
-<div class="game-app lr-app">
+<div class="game-app lr-app game-fill" data-lr>
 <style>
-.lr-app{--ink:#e5e7eb;--mut:#94a3b8;--line:#243044;--panel:#0f1522;--acc:#6366f1;display:flex;flex-direction:column;gap:10px;height:100%;min-height:0;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.lr-app{--ink:#e5e7eb;--mut:#a9b6c8;--line:#243044;--panel:#0f1522;--acc:#6366f1;display:flex;flex-direction:column;gap:10px;height:100%;min-height:0;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
 .lr-app *{box-sizing:border-box}.lr-app button{font:inherit}
 .lr-app [hidden]{display:none!important}
-.lr-app .game-intro h2{margin:0;font-size:16px;letter-spacing:.02em}
 .lr-app .game-panel{padding:0}
+.lr-app.game-fill>.lr-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
 .lr-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.lr-chip{font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:var(--panel)}
+.lr-chip{font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel);white-space:nowrap}
 .lr-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
-.lr-spacer{flex:1}
-.lr-stage{position:relative;flex:1;min-height:300px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0b0f1a}
-.lr-stage svg{width:100%;height:100%;display:block;touch-action:none}
+.lr-bar{display:inline-block;width:52px;height:5px;border-radius:3px;background:#1e293b;overflow:hidden;vertical-align:middle}
+.lr-bar i{display:block;height:100%;background:#34d399}
+.lr-spacer{flex:1 1 auto}
+.lr-board{position:relative;width:100%;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0b0f1a}
+.lr-board .lr-svg{width:100%;height:100%;display:block;touch-action:none}
 .lr-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,8,15,.72);backdrop-filter:blur(3px);padding:16px;z-index:5}
-.lr-card{background:#0f1522;border:1px solid var(--line);border-radius:14px;padding:18px;max-width:440px;width:100%;display:flex;flex-direction:column;gap:12px}
-.lr-card h3{margin:0;font-size:20px}
+.lr-card{background:#0f1522;border:1px solid var(--line);border-radius:12px;padding:20px;max-width:min(520px,100%);max-height:100%;width:100%;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.lr-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.lr-card h3{margin:0;font-size:18px}
 .lr-card h3.win{color:#34d399}.lr-card h3.lose{color:#f87171}
-.lr-sub{font-size:12.5px;color:var(--mut);margin:0}
-.lr-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+.lr-body{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.lr-foot{flex:none;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.lr-sub{font-size:13px;color:var(--mut);margin:0;line-height:1.55}
+.lr-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
 .lr-seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
-.lr-seg button{flex:1;padding:8px 10px;font-size:12.5px;background:transparent;color:var(--mut);border:0;cursor:pointer}
+.lr-seg button{flex:1;min-height:44px;padding:0 12px;font-size:13px;background:transparent;color:var(--mut);border:0;cursor:pointer}
 .lr-seg button.on{background:var(--acc);color:#fff}
 .lr-seg button:disabled{opacity:.45;cursor:default}
 .lr-rides{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px}
-.lr-ride{border:1px solid var(--line);border-radius:10px;padding:8px 6px;background:#0b101c;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--ink)}
+.lr-ride{border:1px solid var(--line);border-radius:10px;padding:12px 8px;min-height:96px;background:#0b101c;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink)}
 .lr-ride.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
-.lr-ride svg{width:32px;height:54px}
-.lr-ride-name{font-size:11px}
-.lr-stat{width:100%;height:3px;background:#1e293b;border-radius:2px;overflow:hidden}
+.lr-ride svg{width:36px;height:56px}
+.lr-ride-name{font-size:12px}
+.lr-stat{width:100%;height:4px;background:#1e293b;border-radius:2px;overflow:hidden}
 .lr-stat i{display:block;height:100%}
-.lr-btn{background:var(--acc);border:0;color:#fff;padding:10px 14px;border-radius:9px;font-weight:600;cursor:pointer;font-size:13.5px}
-.lr-btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:500}
+.lr-btn{background:var(--acc);border:1px solid var(--acc);color:#fff;min-height:38px;padding:0 14px;border-radius:9px;font-weight:600;cursor:pointer;font-size:12px}
+.lr-btn.ghost{background:transparent;border-color:var(--line);color:var(--ink);font-weight:500}
+.lr-btn.on{background:var(--acc);color:#fff}
 .lr-btn:disabled{opacity:.45;cursor:default}
+.lr-icon-btn{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 9px;font-size:10px}
+.lr-icon-btn svg{flex:none;display:block}
 .lr-row{display:flex;gap:8px;flex-wrap:wrap}
 .lr-count{font-size:72px;font-weight:800;color:#e5e7eb;text-align:center;line-height:1}
 .lr-first{margin-top:10px;text-align:center}
 .lr-go{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:64px;font-weight:800;color:#34d399;pointer-events:none;z-index:4}
-.lr-cheat{position:absolute;top:10px;right:10px;z-index:6;background:#0f1522;border:1px solid var(--line);border-radius:12px;padding:12px;width:212px;display:flex;flex-direction:column;gap:8px}
-.lr-cheat label{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;gap:8px}
-.lr-cheat input{accent-color:var(--acc)}
-.lr-actions{display:flex;gap:10px;align-items:center}
-.lr-pad{display:none;gap:10px;justify-content:space-between;flex:1}
-.lr-pad .grp{display:flex;gap:10px}
-.lr-key{width:56px;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:17px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.lr-help{font-size:12px;color:var(--mut);line-height:1.6}
+.lr-help b{display:block;color:var(--ink);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.lr-help ul{margin:0 0 10px;padding-left:18px}
+.lr-help kbd{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.lr-cheat-list{display:flex;flex-direction:column;gap:4px}
+.lr-cheat-list label{display:flex;justify-content:space-between;align-items:center;min-height:36px;font-size:13px;gap:8px}
+.lr-cheat-list input{accent-color:var(--acc);width:18px;height:18px}
+.lr-pad{display:none;gap:8px;justify-content:space-between;flex:none}
+.lr-pad .grp{display:flex;gap:8px}
+.lr-key{width:56px;min-width:56px;min-height:48px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:16px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .lr-key:active,.lr-key.held{background:var(--acc);border-color:var(--acc)}
 @media (pointer:coarse),(max-width:720px){.lr-pad{display:flex}}
+@media (max-width:640px){
+.lr-app{gap:8px}
+.lr-chip{padding:4px 6px;font-size:9px}
+.lr-card{padding:14px;gap:10px;width:100%;height:100%;max-height:100%}
+.lr-rides{grid-template-columns:repeat(2,minmax(0,1fr))}
+.lr-key{width:48px;min-width:48px}
+.lr-ov{padding:8px}
+}
+@media (prefers-reduced-motion:reduce){
+.lr-btn,.lr-seg button,.lr-key,.lr-ride{transition:none}
+.lr-go{animation:none}
+}
+
+/* --- fill height + HUD refinements (must stay last) --- */
+.lr-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.lr-icon-btn svg{flex:none;display:block}
+@media (pointer:coarse){.lr-app button:not(:disabled){min-height:44px}}
+@media (max-width:640px){
+.lr-app.game-fill>.lr-board:not(:has(.lr-ov:not([hidden]))){aspect-ratio:3/4;flex:0 0 auto}
+.lr-app.game-fill>.lr-board:has(.lr-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.lr-app .lr-hud{gap:5px}
+.lr-app .lr-hud .lr-chip{padding:4px 6px;font-size:9px}
+.lr-app .lr-hud .lr-chip[data-hud="first"]{display:none}
+.lr-app .lr-hud .lr-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.lr-app .lr-hud .lr-btn-label,.lr-app .lr-hud .lr-spacer{display:none}
+.lr-app .lr-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.lr-app .lr-body{scrollbar-width:none}
+.lr-app .lr-body::-webkit-scrollbar{display:none}
+.lr-app .lr-foot{position:static;margin:0;padding-top:8px;border-top:1px solid var(--line)}
+}
 </style>
-<div class="game-intro">
-  <div><h2>Lane Rush</h2></div>
-  <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
-</div>
 <div class="lr-hud">
-  <span class="lr-chip">Waktu <b data-time>0.0</b>s</span>
-  <span class="lr-chip" data-bestchip hidden>Terbaik <b data-best>–</b>s</span>
+  <span class="lr-chip">STATUS <b data-status>Siap</b></span>
+  <span class="lr-chip">WAKTU <b data-time>0.0</b>s</span>
+  <span class="lr-chip" data-bestchip hidden>TB <b data-best>–</b>s</span>
   <span class="lr-chip" data-mode>Solo</span>
+  <span class="lr-chip">JARAK <b data-hud-dist>0</b>m</span>
+  <span class="lr-chip">HP <span class="lr-bar"><i data-hud-hp></i></span></span>
+  <span class="lr-chip" data-hud="first">FIRST —</span>
   <span class="lr-spacer"></span>
-  <button class="lr-btn ghost" type="button" data-act="cheat" data-cheatbtn hidden>Cheat</button>
-  <button class="lr-btn ghost" type="button" data-act="pause" data-pausebtn hidden>Jeda</button>
-  <button class="lr-btn ghost" type="button" data-act="restart" data-restartbtn>Ulang</button>
+  <button class="lr-btn lr-icon-btn" type="button" data-steer="-1" aria-label="Lajur kiri" title="Lajur kiri (A / ←)">${iconSVG("arrowLeft", { size: 14 })}</button>
+  <button class="lr-btn lr-icon-btn" type="button" data-steer="1" aria-label="Lajur kanan" title="Lajur kanan (D / →)">${iconSVG("arrowRight", { size: 14 })}</button>
+  <button class="lr-btn lr-icon-btn" type="button" data-help aria-label="Cara bermain" title="Cara bermain (H)">${iconSVG("helpCircle", { size: 14 })}<span class="lr-btn-label">Bantuan</span></button>
+  <button class="lr-btn lr-icon-btn" type="button" data-cheats data-cheatbtn aria-label="Cheat" title="Cheat (C)" hidden>${iconSVG("wrench", { size: 14 })}<span class="lr-btn-label">Cheat</span></button>
+  <button class="lr-btn lr-icon-btn" type="button" data-pause data-pausebtn aria-label="Jeda" title="Jeda (P)" hidden>${iconSVG("pause", { size: 14 })}<span class="lr-btn-label">Jeda</span></button>
+  <button class="lr-btn lr-icon-btn" type="button" data-restart data-restartbtn aria-label="Ulangi" title="Ulangi (R)">${iconSVG("refresh", { size: 14 })}<span class="lr-btn-label">Ulang</span></button>
+  <button class="lr-btn lr-icon-btn" type="button" data-exit aria-label="Keluar game" title="Keluar game">${iconSVG("logOut", { size: 14 })}<span class="lr-btn-label">Keluar</span></button>
 </div>
-<section class="game-panel lr-stage" data-board>
-  <svg data-svg viewBox="0 0 480 640" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+<section class="game-panel lr-board" data-board>
+  <svg class="lr-svg" data-svg viewBox="0 0 480 640" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
   <div class="lr-ov" data-ov="setup">
     <div class="lr-card">
-      <div data-moderow>
-        <div class="lr-label">Mode</div>
-        <div class="lr-seg" style="margin-top:6px">
-          <button type="button" data-seg data-set="mode" data-val="solo">Solo</button>
-          <button type="button" data-seg data-set="mode" data-val="bot">vs Bot</button>
+      <div class="lr-head"><h3>Pilih kendaraan</h3></div>
+      <div class="lr-body">
+        <div data-moderow>
+          <div class="lr-label">Mode</div>
+          <div class="lr-seg" style="margin-top:6px">
+            <button type="button" data-seg data-set="mode" data-val="solo">Solo</button>
+            <button type="button" data-seg data-set="mode" data-val="bot">vs Bot</button>
+          </div>
         </div>
-      </div>
-      <div>
-        <div class="lr-label">Lalu lintas</div>
-        <div class="lr-seg" style="margin-top:6px">
-          <button type="button" data-seg data-set="traffic" data-val="1">Searah</button>
-          <button type="button" data-seg data-set="traffic" data-val="2">2 Arah</button>
+        <div>
+          <div class="lr-label">Lalu lintas</div>
+          <div class="lr-seg" style="margin-top:6px">
+            <button type="button" data-seg data-set="traffic" data-val="1">Searah</button>
+            <button type="button" data-seg data-set="traffic" data-val="2">2 Arah</button>
+          </div>
         </div>
-      </div>
-      <div>
-        <div class="lr-label">Kendaraan</div>
-        <div class="lr-rides" style="margin-top:6px">
-          ${RIDES.map((r) => {
+        <div>
+          <div class="lr-label">Kendaraan</div>
+          <div class="lr-rides" style="margin-top:6px">
+            ${RIDES.map((r) => {
         const spd = Math.round(((r.top - 0.85) / 0.3) * 100);
         const arm = Math.round((r.hp / 150) * 100);
         const agl = Math.round(((200 - r.handle) / 100) * 100);
@@ -266,10 +322,11 @@ export function mount(root, context = {}) {
               <span class="lr-stat"><i style="width:${agl}%;background:#f59e0b"></i></span>
             </button>`;
     }).join("")}
+          </div>
         </div>
+        <div class="lr-sub" data-opp hidden></div>
       </div>
-      <div class="lr-sub" data-opp hidden></div>
-      <button class="lr-btn" type="button" data-act="start" data-startbtn>Mulai</button>
+      <div class="lr-foot"><button class="lr-btn" type="button" data-act="start" data-startbtn>Mulai</button></div>
     </div>
   </div>
   <div class="lr-ov" data-ov="count" hidden>
@@ -278,43 +335,80 @@ export function mount(root, context = {}) {
   <div class="lr-go" data-go hidden>GO!</div>
   <div class="lr-ov" data-ov="done" hidden>
     <div class="lr-card">
-      <h3 data-title>Selesai</h3>
-      <p class="lr-sub" data-reason></p>
-      <div class="lr-row">
+      <div class="lr-head"><h3 data-title>Selesai</h3></div>
+      <div class="lr-body">
+        <p class="lr-sub" data-reason></p>
+        <p class="lr-sub" data-waitnote hidden>Menunggu host untuk rematch…</p>
+      </div>
+      <div class="lr-foot">
         <button class="lr-btn" type="button" data-act="again" data-againbtn>Main lagi</button>
         <button class="lr-btn ghost" type="button" data-act="tosetup" data-setupbtn>Kendaraan</button>
       </div>
-      <p class="lr-sub" data-waitnote hidden>Menunggu host untuk rematch…</p>
     </div>
   </div>
   <div class="lr-ov" data-ov="pause" hidden>
-    <div class="lr-card"><h3>Jeda</h3><button class="lr-btn" type="button" data-act="resume">Lanjut</button></div>
+    <div class="lr-card">
+      <div class="lr-head"><h3>Jeda</h3></div>
+      <div class="lr-foot"><button class="lr-btn" type="button" data-act="resume">Lanjut</button></div>
+    </div>
   </div>
-  <div class="lr-cheat" data-cheatpanel hidden>
-    <div class="lr-label">Cheat</div>
-    <label>Kebal <input type="checkbox" data-cheat="god"></label>
-    <label>Tembus mobil <input type="checkbox" data-cheat="ghost"></label>
-    <label>Traffic lambat <input type="checkbox" data-cheat="slow"></label>
-    <label>Auto-pilot <input type="checkbox" data-cheat="auto"></label>
-    <div class="lr-row">
-      <button class="lr-btn ghost" type="button" data-cheat-act="repair">Repair</button>
-      <button class="lr-btn ghost" type="button" data-cheat-act="jump">+250 m</button>
-      <button class="lr-btn ghost" type="button" data-cheat-act="win">Finis</button>
+  <div class="lr-ov" data-ov="cheat" hidden>
+    <div class="lr-card">
+      <div class="lr-head"><h3>Cheat</h3><button class="lr-btn ghost" type="button" data-cheat-close>Tutup</button></div>
+      <div class="lr-body lr-cheat-list">
+        <label>Kebal <input type="checkbox" data-cheat="god"></label>
+        <label>Tembus mobil <input type="checkbox" data-cheat="ghost"></label>
+        <label>Traffic lambat <input type="checkbox" data-cheat="slow"></label>
+        <label>Auto-pilot <input type="checkbox" data-cheat="auto"></label>
+      </div>
+      <div class="lr-foot">
+        <button class="lr-btn ghost" type="button" data-cheat-act="repair">Repair</button>
+        <button class="lr-btn ghost" type="button" data-cheat-act="jump">+250 m</button>
+        <button class="lr-btn ghost" type="button" data-cheat-act="win">Finis</button>
+      </div>
+    </div>
+  </div>
+  <div class="lr-ov" data-ov="help" hidden>
+    <div class="lr-card">
+      <div class="lr-head"><h3>Cara bermain</h3><button class="lr-btn ghost" type="button" data-help-close>Tutup</button></div>
+      <div class="lr-body lr-help">
+        <div>
+          <b>Desktop</b>
+          <ul>
+            <li><kbd>A</kbd>/<kbd>←</kbd> dan <kbd>D</kbd>/<kbd>→</kbd> — pindah lajur</li>
+            <li><kbd>W</kbd>/<kbd>↑</kbd> gas, <kbd>S</kbd>/<kbd>↓</kbd> rem; klik papan juga mengarahkan setir</li>
+            <li><kbd>Spasi</kbd> mulai / main lagi · <kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> jeda · <kbd>R</kbd> ulang</li>
+          </ul>
+          <b>Mobile</b>
+          <ul>
+            <li>Tombol ◀ ▶ di bawah papan untuk pindah lajur, ▲ ▼ untuk gas/rem</li>
+            <li>Ketuk papan untuk mengarahkan mobil ke lajur yang disentuh</li>
+          </ul>
+        </div>
+        <div>
+          <b>Aturan</b>
+          <ul>
+            <li>Sprint 4 lajur sejauh 2000 m; salip traffic tanpa kehabisan durabilitas.</li>
+            <li>Setiap baris dijamin punya minimal satu lajur aman, tetapi lajur aman bisa bergeser.</li>
+            <li>Tabrakan memantulkan mobil dan mengurangi HP — bukan langsung kalah.</li>
+            <li>Mode vs Bot atau vs Pemain: yang lebih dulu finis menang; leak coin toss menentukan start.</li>
+            <li>Terbaik (TB) hanya dicatat di mode Solo dan tampil di layar hasil.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="lr-foot"><button class="lr-btn" type="button" data-help-close>Mengerti</button></div>
     </div>
   </div>
 </section>
-<div class="game-actions lr-actions">
-  <div class="lr-pad">
-    <div class="grp">
-      <button class="lr-key" type="button" data-pad="left" aria-label="Kiri">◀</button>
-      <button class="lr-key" type="button" data-pad="right" aria-label="Kanan">▶</button>
-    </div>
-    <div class="grp">
-      <button class="lr-key" type="button" data-pad="down" aria-label="Rem / mundur">▼</button>
-      <button class="lr-key" type="button" data-pad="up" aria-label="Gas / maju">▲</button>
-    </div>
+<div class="lr-pad">
+  <div class="grp">
+    <button class="lr-key" type="button" data-pad="left" aria-label="Kiri">◀</button>
+    <button class="lr-key" type="button" data-pad="right" aria-label="Kanan">▶</button>
   </div>
-  <button class="game-action-button" type="button" data-exit>Keluar</button>
+  <div class="grp">
+    <button class="lr-key" type="button" data-pad="down" aria-label="Rem / mundur">▼</button>
+    <button class="lr-key" type="button" data-pad="up" aria-label="Gas / maju">▲</button>
+  </div>
 </div>
 </div>`;
 
@@ -325,6 +419,9 @@ export function mount(root, context = {}) {
     const bestChip = $("[data-bestchip]");
     const bestEl = $("[data-best]");
     const modeEl = $("[data-mode]");
+    const hudDistEl = $("[data-hud-dist]");
+    const hudHpEl = $("[data-hud-hp]");
+    const hudFirstEl = $('[data-hud="first"]');
     const cheatBtn = $("[data-cheatbtn]");
     const pauseBtn = $("[data-pausebtn]");
     const restartBtn = $("[data-restartbtn]");
@@ -332,6 +429,8 @@ export function mount(root, context = {}) {
     const ovCount = $('[data-ov="count"]');
     const ovDone = $('[data-ov="done"]');
     const ovPause = $('[data-ov="pause"]');
+    const ovCheat = $('[data-ov="cheat"]');
+    const ovHelp = $('[data-ov="help"]');
     const countEl = $("[data-count]");
     const firstEl = $("[data-first]");
     const goEl = $("[data-go]");
@@ -343,7 +442,6 @@ export function mount(root, context = {}) {
     const startBtn = $("[data-startbtn]");
     const modeRow = $("[data-moderow]");
     const oppEl = $("[data-opp]");
-    const cheatPanel = $("[data-cheatpanel]");
     const padEls = {
         left: $('[data-pad="left"]'), right: $('[data-pad="right"]'),
         up: $('[data-pad="up"]'), down: $('[data-pad="down"]'),
@@ -710,9 +808,38 @@ ${scenerySvg(state.twoWay)}
         return n || (i === playerIndex ? (playerName || "Kamu") : i === 0 ? "Host" : "Guest");
     }
 
+    /* ---------------- kontrol UI: jeda & bantuan ---------------- */
+    function setPaused(on) {
+        if (!state || online || state.phase === "setup" || state.phase === "done") return;
+        const next = Boolean(on);
+        if (next === paused) return;
+        if (next) pausedAt = performance.now();
+        else if (pausedAt) {
+            /* geser penanda berbasis performance.now() agar tidak loncat saat lanjut */
+            clockShift += performance.now() - pausedAt;
+            pausedAt = 0;
+        }
+        paused = next;
+        render();
+    }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+
     /* ---------------- render ---------------- */
     function render() {
-        if (!state) { statusEl.textContent = "Menghubungkan…"; return; }
+        if (!state) {
+            statusEl.textContent = "Menghubungkan…";
+            ovSetup.hidden = true;
+            ovCount.hidden = true;
+            ovDone.hidden = true;
+            ovPause.hidden = true;
+            ovCheat.hidden = true;
+            ovHelp.hidden = !helpOpen;
+            return;
+        }
         const s = state;
         ensureBoard();
         statusEl.textContent = paused ? "Jeda"
@@ -723,15 +850,35 @@ ${scenerySvg(state.twoWay)}
         modeEl.textContent = (online ? "vs Pemain" : s.duel ? "vs Bot" : "Solo") + (s.twoWay ? " • 2 arah" : "");
         bestChip.hidden = !(best != null && !s.duel);
         if (best != null) bestEl.textContent = best.toFixed(1);
+        const me = s.players[playerIndex] || s.players[0];
+        hudDistEl.textContent = Math.floor(Math.min(WIN_DIST, me.d));
+        const frac = clamp(me.hp / me.maxHp, 0, 1);
+        hudHpEl.style.width = Math.round(frac * 100) + "%";
+        hudHpEl.style.background = frac > 0.5 ? "#34d399" : frac > 0.25 ? "#fbbf24" : "#ef4444";
+        hudFirstEl.textContent = s.duel
+            ? "FIRST " + (s.first === playerIndex ? "Kamu" : nameOf(1 - playerIndex).slice(0, 10))
+            : "FIRST —";
+        const activeCheats = Object.values(cheats).filter(Boolean).length;
         cheatBtn.hidden = !canCheat;
+        cheatBtn.classList.toggle("on", activeCheats > 0);
+        const cheatLabel = cheatBtn.querySelector(".lr-btn-label");
+        if (cheatLabel) cheatLabel.textContent = activeCheats ? `Cheat ${activeCheats}` : "Cheat";
         pauseBtn.hidden = online;
+        pauseBtn.disabled = s.phase === "setup" || s.phase === "done";
         restartBtn.hidden = online && !room.isHost;
-        ovSetup.hidden = s.phase !== "setup";
-        ovCount.hidden = s.phase !== "countdown";
-        ovDone.hidden = s.phase !== "done";
-        ovPause.hidden = !paused;
-        cheatPanel.hidden = !(cheatOpen && canCheat);
-        goEl.hidden = goT <= 0;
+        restartBtn.disabled = s.phase === "setup";
+        const pauseLabel = pauseBtn.querySelector(".lr-btn-label");
+        if (pauseLabel) pauseLabel.textContent = paused ? "Lanjut" : "Jeda";
+        pauseBtn.setAttribute("aria-label", paused ? "Lanjut" : "Jeda");
+        pauseBtn.title = (paused ? "Lanjut" : "Jeda") + " (P)";
+        const uiLock = helpOpen || cheatOpen;
+        ovSetup.hidden = uiLock || s.phase !== "setup";
+        ovCount.hidden = uiLock || s.phase !== "countdown";
+        ovDone.hidden = uiLock || s.phase !== "done";
+        ovPause.hidden = uiLock || !paused;
+        ovCheat.hidden = helpOpen || !(cheatOpen && canCheat);
+        ovHelp.hidden = !helpOpen;
+        goEl.hidden = goT <= 0 || uiLock;
         if (goT > 0) goEl.style.opacity = String(Math.min(1, goT / 0.4));
         if (s.phase === "countdown") {
             countEl.textContent = String(Math.max(1, Math.ceil(s.cd)));
@@ -814,7 +961,7 @@ ${scenerySvg(state.twoWay)}
         syncCars(i);
         let op = 1;
         if (p.wreck) op = 0.92;
-        else if (p.inv > 0) op = Math.floor(performance.now() / 90) % 2 ? 0.45 : 0.9;
+        else if (p.inv > 0) op = Math.floor(clockNow() / 90) % 2 ? 0.45 : 0.9;
         if (canCheat && cheats.ghost && i === playerIndex) op = Math.min(op, 0.55);
         R.player.setAttribute("transform", `translate(${p.x.toFixed(1)},${p.py.toFixed(1)}) rotate(${p.ang.toFixed(1)})`);
         R.player.setAttribute("opacity", String(op));
@@ -933,9 +1080,38 @@ ${scenerySvg(state.twoWay)}
         if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
         const k = e.key, lk = k.toLowerCase();
         if (k === " " || k.startsWith("Arrow")) e.preventDefault();
+        /* prioritas: bantuan → cheat → jeda → Escape → aksi game */
+        if (lk === "h") { e.preventDefault(); if (!e.repeat) toggleHelp(); return; }
+        if (lk === "c") {
+            e.preventDefault();
+            if (!e.repeat && !helpOpen && canCheat) { cheatOpen = !cheatOpen; render(); }
+            return;
+        }
+        if (lk === "p") {
+            e.preventDefault();
+            if (!e.repeat) {
+                if (helpOpen) toggleHelp(false);
+                else if (cheatOpen) { cheatOpen = false; render(); }
+                else setPaused(!paused);
+            }
+            return;
+        }
+        if (k === "Escape") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) { cheatOpen = false; render(); }
+            else setPaused(false);
+            return;
+        }
+        if (lk === "r") {
+            e.preventDefault();
+            if (!e.repeat && !helpOpen && !cheatOpen && state && state.phase !== "setup")
+                submitAction({ type: "restart" });
+            return;
+        }
+        if (helpOpen || cheatOpen || paused) return;
         if (lk === "w" || k === "ArrowUp") { held.up = true; pushThr(); return; }
         if (lk === "s" || k === "ArrowDown") { held.down = true; pushThr(); return; }
-        if (e.repeat) return;
         if (lk === "a" || k === "ArrowLeft") steer(-1);
         else if (lk === "d" || k === "ArrowRight") steer(1);
         else if (k === " ") {
@@ -943,10 +1119,6 @@ ${scenerySvg(state.twoWay)}
             if (state.phase === "setup") submitAction({ type: "start" });
             else if (state.phase === "done") submitAction({ type: online ? "rematch" : "restart" });
         }
-        else if (lk === "p") { if (!online && state?.phase === "race") { paused = !paused; render(); } }
-        else if (lk === "c") { if (canCheat) { cheatOpen = !cheatOpen; render(); } }
-        else if (lk === "r") { if (state && state.phase !== "setup") submitAction({ type: "restart" }); }
-        else if (k === "Escape") { cheatOpen = false; paused = false; render(); }
     }
     function onKeyUp(e) {
         const k = e.key, lk = k.toLowerCase();
@@ -995,7 +1167,7 @@ ${scenerySvg(state.twoWay)}
         el.addEventListener("pointercancel", end);
     });
 
-    cheatPanel.addEventListener("change", (e) => {
+    ovCheat.addEventListener("change", (e) => {
         const k = e.target?.dataset?.cheat;
         if (k && k in cheats) cheats[k] = Boolean(e.target.checked);
     });
@@ -1013,7 +1185,22 @@ ${scenerySvg(state.twoWay)}
 
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheat-close]")) { cheatOpen = false; render(); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) {
+            if (!helpOpen && canCheat) { cheatOpen = !cheatOpen; render(); }
+            return;
+        }
+        if (t.closest("[data-pause]")) { setPaused(!paused); return; }
+        if (t.closest("[data-restart]")) {
+            if (!helpOpen && !cheatOpen && state && state.phase !== "setup") submitAction({ type: "restart" });
+            return;
+        }
+        const st = t.closest("[data-steer]");
+        if (st) { if (!helpOpen && !cheatOpen && !paused) steer(Number(st.dataset.steer)); return; }
         const ride = t.closest("[data-ride]");
         if (ride) { submitAction({ type: "pick", vehicle: ride.dataset.ride }); return; }
         const seg = t.closest("[data-seg]");
@@ -1032,9 +1219,9 @@ ${scenerySvg(state.twoWay)}
         else if (act === "again") submitAction({ type: online ? "rematch" : "restart" });
         else if (act === "tosetup") submitAction({ type: "rematch" });
         else if (act === "restart") { if (state && state.phase !== "setup") submitAction({ type: "restart" }); }
-        else if (act === "resume") { paused = false; render(); }
-        else if (act === "pause") { if (!online && state?.phase === "race") { paused = !paused; render(); } }
-        else if (act === "cheat") { cheatOpen = !cheatOpen; render(); }
+        else if (act === "resume") setPaused(false);
+        else if (act === "pause") setPaused(!paused);
+        else if (act === "cheat") { if (!helpOpen && canCheat) { cheatOpen = !cheatOpen; render(); } }
     }
     root.addEventListener("click", handleClick);
 

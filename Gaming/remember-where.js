@@ -12,6 +12,8 @@
   - Setelah menyimpan file ini, jalankan: node tools/build-games-manifest.mjs
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "remember-where", // harus sama dengan nama file tanpa .js
     name: "Remember Where",
@@ -154,7 +156,7 @@ export function mount(root, context = {}) {
     /* ---------- UI: gaya minimalis ter-scope .rw-app ---------- */
     root.innerHTML = `
 <style>
-.rw-app{--rw-bg:#fafaf9;--rw-card:#fff;--rw-line:#e7e5e4;--rw-ink:#1c1917;--rw-mut:#78716c;--rw-acc:#e11d48;--rw-ok:#059669;--rw-bad:#dc2626;--rw-p1:#4f46e5;--rw-p2:#e11d48;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--rw-ink);max-width:600px;margin:0 auto;-webkit-tap-highlight-color:transparent;user-select:none}
+.rw-app{--rw-bg:#fafaf9;--rw-card:#fff;--rw-line:#e7e5e4;--rw-ink:#1c1917;--rw-mut:#78716c;--rw-acc:#e11d48;--rw-ok:#059669;--rw-bad:#dc2626;--rw-p1:#4f46e5;--rw-p2:#e11d48;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--rw-ink);min-width:0;max-width:100%;margin:0 auto;-webkit-tap-highlight-color:transparent;user-select:none}
 .rw-app *{box-sizing:border-box}
 .rw-app [hidden]{display:none!important}
 .rw-app .game-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
@@ -203,7 +205,7 @@ export function mount(root, context = {}) {
 .rw-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:var(--rw-ink);color:#fafaf9;font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:999px;opacity:0;pointer-events:none;z-index:7;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
 .rw-toast.rw-show{animation:rw-toast 2.2s ease forwards}
 .rw-overlay{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:#fafaf9eb;backdrop-filter:blur(3px);border-radius:16px;padding:16px;overflow:auto}
-.rw-card{background:var(--rw-card);border:1px solid var(--rw-line);border-radius:16px;padding:22px;max-width:440px;width:100%;box-shadow:0 8px 30px #0000000f}
+.rw-card{background:var(--rw-card);border:1px solid var(--rw-line);border-radius:16px;padding:22px;max-width:440px;width:100%;box-shadow:0 4px 12px #0000000f}
 .rw-ov-title{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
 .rw-ov-title.rw-win{color:var(--rw-ok)}
 .rw-ov-title.rw-lose{color:var(--rw-bad)}
@@ -253,120 +255,194 @@ export function mount(root, context = {}) {
 @keyframes rw-toast{0%{opacity:0;transform:translate(-50%,-6px)}12%,80%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-4px)}}
 @keyframes rw-pulse{30%{transform:scale(1.04)}}
 @media (prefers-reduced-motion:reduce){.rw-app *{animation:none!important;transition:none!important}}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.rw-app{min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.rw-app *,.rw-app *::before,.rw-app *::after{box-sizing:border-box}
+.rw-app :where(svg,canvas,img){max-width:100%;height:auto}
+.rw-app :where(button,[role="button"],select,input){touch-action:manipulation}
+.rw-app :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--rw-acc);outline-offset:2px}
+/* 4px spacing grid: HUD/control rows wrap instead of overflowing on narrow screens. */
+.rw-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){flex-wrap:wrap;min-width:0;gap:8px}
+/* Thin borders and calm surfaces instead of heavy elevation. */
+.rw-app :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="boardwrap"],[class*="board-wrap"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+/* Clear type hierarchy: 12px metadata, compact headings. */
+.rw-app :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.rw-app :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:768px){
+  .rw-app :where([class*="stage"],[class*="boardwrap"],[class*="board-wrap"],[class*="sheet"]){padding:12px}
+  .rw-app :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="actions"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="intro"]){gap:8px}
+}
+@media (max-width:480px){
+  .rw-app :where(kbd,[class*="kbd"]){display:none}
+}
+@media (pointer:coarse){
+  .rw-app :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .rw-app *,.rw-app *::before,.rw-app *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+/* ==== layout redesign: HUD bar + fill board + overlay modal ==== */
+.rw-app{display:flex;flex-direction:column;gap:10px;min-height:100%}
+.rw-app .rw-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 2px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.rw-app .rw-hud .rw-stat{padding:4px 8px;font-size:10px}
+.rw-app .rw-hud .rw-btn{padding:7px 10px;font-size:11px}
+.rw-app .rw-spacer{flex:1 1 auto}
+.rw-app.game-fill > .rw-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.rw-app .rw-btn-icon{display:inline-flex;align-items:center;gap:6px}
+.rw-app .rw-btn-icon svg{flex:none;display:block}
+.rw-app .rw-btn.rw-on{border-color:var(--rw-acc);color:var(--rw-acc);background:#fff1f2}
+.rw-app .rw-timer{transition:opacity .25s}
+.rw-app .rw-card{display:flex;flex-direction:column;overflow:hidden;max-height:100%;width:min(440px,100%)}
+.rw-app .rw-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.rw-app .rw-foot{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.rw-app .rw-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+.rw-app .rw-help,.rw-app .rw-cheats{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+  .rw-app.game-fill > .rw-panel:not(:has(.rw-overlay:not([hidden]))){aspect-ratio:auto;flex:1 1 auto;min-height:0}
+  .rw-app.game-fill > .rw-panel:has(.rw-overlay:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .rw-app .rw-hud{gap:5px;margin-bottom:2px}
+  .rw-app .rw-hud .rw-stat{padding:4px 6px;font-size:9px}
+  .rw-app .rw-hud .rw-stat[data-hud="bestwrap"]{display:none}
+  .rw-app .rw-hud .rw-badge{padding:3px 6px;font-size:9px}
+  .rw-app .rw-hud .rw-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .rw-app .rw-hud .rw-btn-label,.rw-app .rw-hud .rw-spacer{display:none}
+  .rw-app .rw-btn-icon{gap:0}
+  .rw-app .rw-overlay{padding:8px}
+  .rw-app .rw-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .rw-app .rw-scroll,.rw-app .rw-help,.rw-app .rw-cheats{scrollbar-width:none}
+  .rw-app .rw-scroll::-webkit-scrollbar,.rw-app .rw-help::-webkit-scrollbar,.rw-app .rw-cheats::-webkit-scrollbar{display:none}
+  .rw-app .rw-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--rw-line)}
+  .rw-app .rw-note{display:none}
+}
 </style>
-<div class="game-app rw-app">
-  <div class="game-intro">
-    <div><h2>Remember Where</h2><p>Hafalkan posisi bentuk, lalu letakkan kembali tiap bentuk ke sel asalnya.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
+<div class="game-app rw-app game-fill" data-rw>
+  <div class="rw-hud">
+    <span class="rw-stat">Status <b data-hud="status">Bersiap</b></span>
+    <span class="rw-stat">Ronde <b data-hud="round">1/6</b></span>
+    <span class="rw-stat">Bentuk <b data-hud="found">0/0</b></span>
+    <span class="rw-stat">Nyawa <span class="rw-lives" data-hud="lives"></span></span>
+    <span data-hud="scores"></span>
+    <span class="rw-stat" data-hud="bestwrap">Terbaik <b data-hud="best">0</b></span>
+    <span class="rw-badge" data-hud="cheatbadge" hidden>CHEAT</span>
+    <span class="rw-spacer"></span>
+    <button class="rw-btn rw-btn-icon" type="button" data-help aria-label="Bantuan" title="Bantuan (H)">${iconSVG("helpCircle", { size: 14 })}<span class="rw-btn-label">Bantuan</span></button>
+    <button class="rw-btn rw-btn-icon" type="button" data-cheats aria-label="Cheat" title="Cheat (C)">${iconSVG("wrench", { size: 14 })}<span class="rw-btn-label">Cheat</span></button>
+    <button class="rw-btn rw-btn-icon" type="button" data-pause aria-label="Jeda" title="Jeda (P)"><span class="rw-btn-icon-svg">${iconSVG("pause", { size: 14 })}</span><span class="rw-btn-label">Jeda</span></button>
+    <button class="rw-btn rw-btn-icon" type="button" data-restart aria-label="Ulang" title="Ulang (R)">${iconSVG("refresh", { size: 14 })}<span class="rw-btn-label">Ulang</span></button>
+    <button class="rw-btn rw-btn-icon" type="button" data-vpad-toggle aria-label="Pad virtual" title="Pad virtual (V)">${iconSVG("grid", { size: 14 })}<span class="rw-btn-label">Pad</span></button>
+    <button class="rw-btn rw-btn-icon" type="button" data-exit aria-label="Keluar game" title="Keluar game">${iconSVG("logOut", { size: 14 })}<span class="rw-btn-label">Keluar</span></button>
   </div>
 
   <section class="game-panel rw-panel" data-board>
-    <div class="rw-hud">
-      <span class="rw-stat">Ronde <b data-hud="round">1/6</b></span>
-      <span class="rw-stat">Bentuk <b data-hud="found">0/0</b></span>
-      <span class="rw-stat">Nyawa <span class="rw-lives" data-hud="lives"></span></span>
-      <span data-hud="scores"></span>
-      <span class="rw-stat" data-hud="bestwrap">Terbaik <b data-hud="best">0</b></span>
-      <span class="rw-badge" data-hud="cheatbadge" hidden>CHEAT</span>
-    </div>
-
-    <div class="rw-stage">
-      <div class="rw-phase" data-elt="phase" aria-live="polite">Bersiap</div>
-      <div class="rw-timer rw-off" data-elt="timer"><div class="rw-timer-fill" data-elt="fill"></div></div>
-      <div class="rw-grid" data-elt="grid" aria-label="Grid memori"></div>
-      <div class="rw-tray-wrap">
-        <div class="rw-tray" data-elt="tray" hidden></div>
-        <div class="rw-tray-hint" data-elt="trayhint">Baki bentuk muncul saat fase meletakkan</div>
-      </div>
+    <div class="rw-timer rw-off" data-elt="timer"><div class="rw-timer-fill" data-elt="fill"></div></div>
+    <div class="rw-grid" data-elt="grid" aria-label="Grid memori"></div>
+    <div class="rw-tray-wrap">
+      <div class="rw-tray" data-elt="tray" hidden></div>
+      <div class="rw-tray-hint" data-elt="trayhint">Baki bentuk muncul saat fase meletakkan</div>
     </div>
 
     <div class="rw-toast" data-elt="toast" aria-live="polite"></div>
 
     <div class="rw-overlay" data-ov="start">
       <div class="rw-card">
-        <h2 class="rw-ov-title">Remember Where</h2>
-        <p class="rw-ov-sub">Bentuk muncul sebentar di grid, lalu tersembunyi dan pindah ke baki. Tugasmu: mengembalikan setiap bentuk ke sel tempat ia muncul tadi.</p>
-        <ol class="rw-howto">
-          <li><b>1</b><span>Hafalkan posisi &amp; jenis tiap bentuk sebelum bar waktu habis.</span></li>
-          <li><b>2</b><span>Seret bentuk dari baki ke selnya — atau klik bentuk lalu klik sel.</span></li>
-          <li><b>3</b><span>Benar +10 poin. Salah −1 nyawa (3 nyawa untuk seluruh game). Tuntaskan 6 ronde!</span></li>
-        </ol>
-        <div data-start-local>
-          <div class="rw-btnrow">
-            <button class="rw-btn rw-primary" type="button" data-start="solo">Main solo</button>
-            <button class="rw-btn" type="button" data-start="bot">Lawan bot</button>
-            <button class="rw-btn" type="button" data-help>Cara main</button>
+        <div class="rw-head"><h2 class="rw-ov-title">Remember Where</h2></div>
+        <div class="rw-scroll">
+          <p class="rw-ov-sub">Bentuk muncul sebentar di grid, lalu tersembunyi dan pindah ke baki. Tugasmu: mengembalikan setiap bentuk ke sel tempat ia muncul tadi.</p>
+          <ol class="rw-howto">
+            <li><b>1</b><span>Hafalkan posisi &amp; jenis tiap bentuk sebelum bar waktu habis.</span></li>
+            <li><b>2</b><span>Seret bentuk dari baki ke selnya — atau klik bentuk lalu klik sel.</span></li>
+            <li><b>3</b><span>Benar +10 poin. Salah −1 nyawa (3 nyawa untuk seluruh game). Tuntaskan 6 ronde!</span></li>
+          </ol>
+          <div data-start-local>
+            <div class="rw-btnrow">
+              <button class="rw-btn rw-primary" type="button" data-start="solo">Main solo</button>
+              <button class="rw-btn" type="button" data-start="bot">Lawan bot</button>
+              <button class="rw-btn" type="button" data-help>Cara main</button>
+            </div>
+            <p class="rw-hintline" style="text-align:left">Lawan bot: giliran bergantian, yang jalan duluan tiap ronde diacak.</p>
           </div>
-          <p class="rw-hintline" style="text-align:left">Lawan bot: giliran bergantian, yang jalan duluan tiap ronde diacak.</p>
-        </div>
-        <div data-start-host hidden>
-          <div class="rw-btnrow">
-            <button class="rw-btn rw-primary" type="button" data-start="versus">Mulai 2 pemain</button>
-            <button class="rw-btn" type="button" data-help>Cara main</button>
+          <div data-start-host hidden>
+            <div class="rw-btnrow">
+              <button class="rw-btn rw-primary" type="button" data-start="versus">Mulai 2 pemain</button>
+              <button class="rw-btn" type="button" data-help>Cara main</button>
+            </div>
+            <p class="rw-hintline" style="text-align:left">Posisi pemain (P1/P2) diacak saat mulai. Giliran pertama tiap ronde juga acak.</p>
           </div>
-          <p class="rw-hintline" style="text-align:left">Posisi pemain (P1/P2) diacak saat mulai. Giliran pertama tiap ronde juga acak.</p>
-        </div>
-        <div data-start-guest hidden>
-          <p class="rw-ov-sub" style="margin:0">Menunggu host memulai permainan…</p>
+          <div data-start-guest hidden>
+            <p class="rw-ov-sub" style="margin:0">Menunggu host memulai permainan…</p>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="rw-overlay" data-ov="help" hidden>
-      <div class="rw-card rw-help">
-        <h2 class="rw-ov-title">Cara main</h2>
-        <ol class="rw-howto">
-          <li><b>1</b><span><strong>Hafalkan.</strong> Sejumlah bentuk unik muncul di sel acak selama 2000 + 400×jumlah bentuk milidetik (bar waktu menyusut).</span></li>
-          <li><b>2</b><span><strong>Bentuk tersembunyi.</strong> Semua bentuk pindah ke baki di bawah grid dalam urutan acak.</span></li>
-          <li><b>3</b><span><strong>Letakkan.</strong> Seret (drag &amp; drop) bentuk ke sel asalnya, atau klik/tap bentuk lalu klik/tap sel. Bisa juga lewat keyboard atau pad virtual.</span></li>
-          <li><b>4</b><span><strong>Skor.</strong> Benar: sel hijau, +10 poin. Salah: sel bergetar merah, −1 nyawa; bentuk kembali ke baki dan boleh dicoba di sel lain. 3 nyawa untuk seluruh game.</span></li>
-          <li><b>5</b><span><strong>Giliran.</strong> Mode bot / 2 pemain: giliran bergantian tiap percobaan. Pembuka tiap ronde diacak. Bonus cepat diberikan kepada yang menuntaskan ronde.</span></li>
-          <li><b>6</b><span><strong>Progresi.</strong> Ronde 1–3 grid 4×4, ronde 4–6 grid 5×5; jumlah bentuk = min(2 + ronde, 6).</span></li>
-        </ol>
-        <h3>Kontrol desktop</h3>
-        <table class="rw-keys-table">
-          <tr><td><kbd>←↑→↓</kbd> / <kbd>WASD</kbd></td><td>Gerakkan kursor sel</td></tr>
-          <tr><td><kbd>1</kbd>–<kbd>6</kbd></td><td>Pilih bentuk di baki</td></tr>
-          <tr><td><kbd>Enter</kbd> / <kbd>Spasi</kbd></td><td>Letakkan bentuk terpilih di kursor</td></tr>
-          <tr><td><kbd>Esc</kbd></td><td>Batal pilih / tutup overlay</td></tr>
-          <tr><td><kbd>R</kbd> · <kbd>H</kbd> · <kbd>C</kbd> · <kbd>V</kbd></td><td>Ulang · bantuan · cheat · pad virtual</td></tr>
-          <tr><td>Mouse</td><td>Drag &amp; drop, atau klik bentuk lalu klik sel</td></tr>
-        </table>
-        <h3>Kontrol mobile</h3>
-        <p class="rw-ov-sub">Tap bentuk di baki, lalu tap sel tujuan. Untuk presisi, gunakan pad virtual: tombol arah menggerakkan kursor, "Ganti bentuk" mengganti pilihan, "Letakkan" men-drop di kursor.</p>
-        <h3>Catatan</h3>
-        <p class="rw-ov-sub">Level dibangkitkan acak dengan seed dan selalu bisa diselesaikan: tiap bentuk unik dan menempati sel berbeda. Membuka bantuan/cheat menjeda game lokal (tidak di mode online). Cheat menandai game sehingga skor terbaik tidak disimpan. Di mode room, hanya host yang bisa memulai/mengulang.</p>
-        <div class="rw-btnrow"><button class="rw-btn rw-primary" type="button" data-help-close>Mengerti</button></div>
+      <div class="rw-card">
+        <div class="rw-head"><h2 class="rw-ov-title">Cara main</h2><button class="rw-btn" type="button" data-help-close aria-label="Tutup bantuan">Tutup</button></div>
+        <div class="rw-scroll rw-help">
+          <ol class="rw-howto">
+            <li><b>1</b><span><strong>Hafalkan.</strong> Sejumlah bentuk unik muncul di sel acak selama 2000 + 400×jumlah bentuk milidetik (bar waktu menyusut).</span></li>
+            <li><b>2</b><span><strong>Bentuk tersembunyi.</strong> Semua bentuk pindah ke baki di bawah grid dalam urutan acak.</span></li>
+            <li><b>3</b><span><strong>Letakkan.</strong> Seret (drag &amp; drop) bentuk ke sel asalnya, atau klik/tap bentuk lalu klik/tap sel. Bisa juga lewat keyboard atau pad virtual.</span></li>
+            <li><b>4</b><span><strong>Skor.</strong> Benar: sel hijau, +10 poin. Salah: sel bergetar merah, −1 nyawa; bentuk kembali ke baki dan boleh dicoba di sel lain. 3 nyawa untuk seluruh game.</span></li>
+            <li><b>5</b><span><strong>Giliran.</strong> Mode bot / 2 pemain: giliran bergantian tiap percobaan. Pembuka tiap ronde diacak. Bonus cepat diberikan kepada yang menuntaskan ronde.</span></li>
+            <li><b>6</b><span><strong>Progresi.</strong> Ronde 1–3 grid 4×4, ronde 4–6 grid 5×5; jumlah bentuk = min(2 + ronde, 6).</span></li>
+          </ol>
+          <h3>Kontrol desktop</h3>
+          <table class="rw-keys-table">
+            <tr><td><kbd>←↑→↓</kbd> / <kbd>WASD</kbd></td><td>Gerakkan kursor sel</td></tr>
+            <tr><td><kbd>1</kbd>–<kbd>6</kbd></td><td>Pilih bentuk di baki</td></tr>
+            <tr><td><kbd>Enter</kbd> / <kbd>Spasi</kbd></td><td>Letakkan bentuk terpilih di kursor</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Keluar overlay / batal pilih</td></tr>
+            <tr><td><kbd>R</kbd> · <kbd>H</kbd> · <kbd>C</kbd> · <kbd>P</kbd> · <kbd>V</kbd></td><td>Ulang · bantuan · cheat · jeda · pad virtual</td></tr>
+            <tr><td>Mouse</td><td>Drag &amp; drop, atau klik bentuk lalu klik sel</td></tr>
+          </table>
+          <h3>Kontrol mobile</h3>
+          <p class="rw-ov-sub">Tap bentuk di baki, lalu tap sel tujuan. Untuk presisi, gunakan pad virtual: tombol arah menggerakkan kursor, "Ganti bentuk" mengganti pilihan, "Letakkan" men-drop di kursor.</p>
+          <h3>Catatan</h3>
+          <p class="rw-ov-sub">Level dibangkitkan acak dengan seed dan selalu bisa diselesaikan: tiap bentuk unik dan menempati sel berbeda. Membuka bantuan/cheat atau menekan jeda menjeda game lokal (tidak di mode online). Cheat menandai game sehingga skor terbaik tidak disimpan. Di mode room, hanya host yang bisa memulai/mengulang.</p>
+        </div>
+        <div class="rw-foot"><span class="rw-note">Tekan H untuk membuka lagi</span><button class="rw-btn rw-primary" type="button" data-help-close>Mengerti</button></div>
       </div>
     </div>
 
     <div class="rw-overlay" data-ov="cheat" hidden>
       <div class="rw-card">
-        <h2 class="rw-ov-title">Cheat</h2>
-        <p class="rw-ov-sub">Hanya untuk mode lokal (solo / bot). Skor terbaik tidak disimpan saat cheat dipakai.</p>
-        <div class="rw-cheat-row"><span><b>X-Ray</b><small>Lihat bayangan bentuk di sel target saat menebak.</small></span><button class="rw-switch" type="button" role="switch" aria-checked="false" data-cheat-toggle="xray" aria-label="X-Ray"><i></i></button></div>
-        <div class="rw-cheat-row"><span><b>Slow motion</b><small>Waktu menghafal ×3 (berlaku langsung &amp; ronde berikutnya).</small></span><button class="rw-switch" type="button" role="switch" aria-checked="false" data-cheat-toggle="slow" aria-label="Slow motion"><i></i></button></div>
-        <div class="rw-cheat-row"><span><b>Nyawa abadi</b><small>Jawaban salah tidak mengurangi nyawa.</small></span><button class="rw-switch" type="button" role="switch" aria-checked="false" data-cheat-toggle="god" aria-label="Nyawa abadi"><i></i></button></div>
-        <div class="rw-btnrow" style="margin-top:12px">
-          <button class="rw-btn" type="button" data-cheat-act="cheat-life">+1 nyawa</button>
-          <button class="rw-btn" type="button" data-cheat-act="cheat-auto">Selesaikan ronde</button>
-          <button class="rw-btn" type="button" data-cheat-act="cheat-skip">Lewati ronde</button>
+        <div class="rw-head"><h2 class="rw-ov-title">Cheat</h2><button class="rw-btn" type="button" data-cheat-close aria-label="Tutup cheat">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="rw-scroll rw-cheats">
+          <p class="rw-ov-sub">Hanya untuk mode lokal (solo / bot). Skor terbaik tidak disimpan saat cheat dipakai.</p>
+          <div class="rw-cheat-row"><span><b>X-Ray</b><small>Lihat bayangan bentuk di sel target saat menebak.</small></span><button class="rw-switch" type="button" role="switch" aria-checked="false" data-cheat-toggle="xray" aria-label="X-Ray"><i></i></button></div>
+          <div class="rw-cheat-row"><span><b>Slow motion</b><small>Waktu menghafal ×3 (berlaku langsung &amp; ronde berikutnya).</small></span><button class="rw-switch" type="button" role="switch" aria-checked="false" data-cheat-toggle="slow" aria-label="Slow motion"><i></i></button></div>
+          <div class="rw-cheat-row"><span><b>Nyawa abadi</b><small>Jawaban salah tidak mengurangi nyawa.</small></span><button class="rw-switch" type="button" role="switch" aria-checked="false" data-cheat-toggle="god" aria-label="Nyawa abadi"><i></i></button></div>
+          <div class="rw-btnrow" style="margin-top:12px">
+            <button class="rw-btn" type="button" data-cheat-act="cheat-life">+1 nyawa</button>
+            <button class="rw-btn" type="button" data-cheat-act="cheat-auto">Selesaikan ronde</button>
+            <button class="rw-btn" type="button" data-cheat-act="cheat-skip">Lewati ronde</button>
+          </div>
+          <p class="rw-note">Game ditandai "cheated" begitu cheat dipakai — skor terbaik tidak akan disimpan.</p>
         </div>
-        <p class="rw-note">Game ditandai "cheated" begitu cheat dipakai — skor terbaik tidak akan disimpan.</p>
-        <div class="rw-btnrow" style="margin-top:12px"><button class="rw-btn rw-primary" type="button" data-cheat-close>Tutup</button></div>
+        <div class="rw-foot"><button class="rw-btn rw-primary" type="button" data-cheat-close>Tutup</button></div>
+      </div>
+    </div>
+
+    <div class="rw-overlay" data-ov="pause" hidden>
+      <div class="rw-card">
+        <div class="rw-head"><h2 class="rw-ov-title">Jeda</h2></div>
+        <div class="rw-scroll"><p class="rw-ov-sub">Permainan dijeda. Waktu menghafal, timer, dan bot berhenti sampai kamu melanjutkan.</p></div>
+        <div class="rw-foot"><button class="rw-btn rw-primary" type="button" data-resume>Lanjutkan</button></div>
       </div>
     </div>
 
     <div class="rw-overlay" data-ov="over" hidden>
       <div class="rw-card">
-        <h2 class="rw-ov-title" data-ov-title>Selesai</h2>
-        <p class="rw-ov-sub" data-ov-sub></p>
-        <span class="rw-badge" data-ov-badge hidden>CHEAT DIPAKAI</span>
-        <div class="rw-btnrow" data-over-btns style="margin-top:12px">
+        <div class="rw-head"><h2 class="rw-ov-title" data-ov-title>Selesai</h2><span class="rw-badge" data-ov-badge hidden>CHEAT DIPAKAI</span></div>
+        <div class="rw-scroll">
+          <p class="rw-ov-sub" data-ov-sub></p>
+          <p class="rw-ov-sub" data-over-wait hidden style="margin:0">Menunggu host memulai ulang…</p>
+        </div>
+        <div class="rw-foot" data-over-btns>
           <button class="rw-btn rw-primary" type="button" data-again>Main lagi</button>
           <button class="rw-btn" type="button" data-menu>Menu</button>
         </div>
-        <p class="rw-ov-sub" data-over-wait hidden style="margin:0">Menunggu host memulai ulang…</p>
       </div>
     </div>
   </section>
@@ -385,26 +461,16 @@ export function mount(root, context = {}) {
     </div>
   </div>
 
-  <div class="game-actions rw-actions">
-    <button class="game-action-button rw-btn" type="button" data-help>Cara main</button>
-    <button class="game-action-button rw-btn" type="button" data-cheat>Cheat</button>
-    <button class="game-action-button rw-btn" type="button" data-restart>Ulang</button>
-    <button class="game-action-button rw-btn" type="button" data-vpad-toggle>Pad virtual</button>
-    <button class="game-action-button rw-btn" type="button" data-exit>Exit game</button>
-  </div>
-  <div class="rw-hintline rw-hint-desktop"><kbd>←↑→↓</kbd>/<kbd>WASD</kbd> gerak · <kbd>1–6</kbd> pilih bentuk · <kbd>Enter</kbd> letakkan · <kbd>Esc</kbd> batal · <kbd>R</kbd> ulang · <kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · drag &amp; drop dengan mouse</div>
-  <div class="rw-hintline rw-hint-touch">Tap bentuk di baki lalu tap sel tujuan — atau gunakan pad virtual di atas.</div>
 </div>`;
 
     /* ---------- refs ---------- */
     const $ = (s, r) => (r || root).querySelector(s);
-    const statusEl = $("[data-status]");
+    const statusEl = $('[data-hud="status"]');
     const gridEl = $('[data-elt="grid"]');
     const trayEl = $('[data-elt="tray"]');
     const trayHint = $('[data-elt="trayhint"]');
     const timerEl = $('[data-elt="timer"]');
     const fillEl = $('[data-elt="fill"]');
-    const phaseEl = $('[data-elt="phase"]');
     const toastEl = $('[data-elt="toast"]');
     const vpadEl = $('[data-elt="vpad"]');
     const hud = {
@@ -419,6 +485,7 @@ export function mount(root, context = {}) {
     const ovStart = $('[data-ov="start"]');
     const ovHelp = $('[data-ov="help"]');
     const ovCheat = $('[data-ov="cheat"]');
+    const ovPause = $('[data-ov="pause"]');
     const ovOver = $('[data-ov="over"]');
     const startLocal = $("[data-start-local]");
     const startHost = $("[data-start-host]");
@@ -431,7 +498,8 @@ export function mount(root, context = {}) {
     const swXray = $('[data-cheat-toggle="xray"]');
     const swSlow = $('[data-cheat-toggle="slow"]');
     const swGod = $('[data-cheat-toggle="god"]');
-    const btnCheat = $("[data-cheat]");
+    const btnCheat = $("[data-cheats]");
+    const btnPause = $("[data-pause]");
     const btnRestart = $("[data-restart]");
 
     /* ---------- variabel UI lokal (tidak dipublish) ---------- */
@@ -440,10 +508,18 @@ export function mount(root, context = {}) {
     let dragId = null;         // bentuk yang sedang di-drag
     let helpOpen = false;
     let cheatOpen = false;
+    let manualPause = false;
     let vpadOn = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     const cheats = { xray: false, slow: false, god: false };
     let best = 0;
     try { best = Number(localStorage.getItem(META.bestKey)) || 0; } catch (e) { /* abaikan */ }
+    /* Bantuan internal hanya otomatis muncul sekali per perangkat. */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("rw-help-seen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("rw-help-seen", "1"); } catch (e) { /* storage diblokir */ }
+    }
 
     let destroyed = false;
     let timers = [];
@@ -472,7 +548,7 @@ export function mount(root, context = {}) {
     }
     function shouldPause() {
         return !online && !destroyed && !!state &&
-            (helpOpen || cheatOpen || docHidden) &&
+            (manualPause || helpOpen || cheatOpen || docHidden) &&
             (state.phase === "memorize" || state.phase === "pick" || state.phase === "clear");
     }
     function syncPause() {
@@ -516,7 +592,7 @@ export function mount(root, context = {}) {
     const isMyTurn = () =>
         !!state && state.phase === "pick" &&
         (state.gameMode === "solo" || state.turn === mySeat());
-    const canAct = () => isMyTurn() && !paused && !helpOpen && !cheatOpen;
+    const canAct = () => isMyTurn() && !paused && !helpOpen && !cheatOpen && !manualPause;
     const objById = (id) => (state ? state.objects.find((o) => o.id === id) : null);
     const seatLabel = (i) => {
         if (!state) return "P" + (i + 1);
@@ -559,7 +635,7 @@ export function mount(root, context = {}) {
     function startGame(gameMode) {
         if (online && !room.isHost) { showToast("Hanya host yang bisa memulai"); return; }
         clearTimers();
-        paused = false; helpOpen = false; cheatOpen = false;
+        paused = false; helpOpen = false; cheatOpen = false; manualPause = false;
         state = freshState(online ? "versus" : gameMode);
         state.seatSwap = online ? Math.random() < 0.5 : false; // acak posisi pemain
         beginRound();
@@ -778,10 +854,12 @@ export function mount(root, context = {}) {
         const w = s ? s.grid : 4;
 
         statusEl.textContent =
-            phase === "memorize" ? "Hafalkan" :
-                phase === "pick" ? (s.gameMode === "solo" ? "Letakkan bentuk" : (my ? "Giliranmu" : "Giliran lawan")) :
+            phase === "memorize" ? "Hafalkan posisi & bentuk" :
+                phase === "pick" ? (s.gameMode === "solo"
+                    ? "Letakkan tiap bentuk"
+                    : (my ? "Giliranmu — letakkan" : "Menunggu lawan meletakkan…")) :
                     phase === "clear" ? "Ronde selesai" :
-                        phase === "over" ? "Selesai" : "Siap";
+                        phase === "over" ? "Permainan selesai" : "Bersiap";
 
         hud.round.textContent = (s ? s.round : 1) + "/" + TOTAL_ROUNDS;
         hud.found.textContent = (s ? Object.keys(s.placed).length : 0) + "/" + (s ? s.k : 0);
@@ -797,11 +875,6 @@ export function mount(root, context = {}) {
         hud.best.textContent = String(best);
         hud.cheatbadge.hidden = online || !(s && s.cheated);
 
-        phaseEl.textContent =
-            phase === "memorize" ? "Hafalkan posisi & bentuk" :
-                phase === "pick" ? (my ? "Letakkan tiap bentuk ke sel asalnya" : "Menunggu lawan meletakkan…") :
-                    phase === "clear" ? "Ronde selesai" :
-                        phase === "over" ? "Permainan selesai" : "Bersiap";
         timerEl.classList.toggle("rw-off", phase !== "memorize");
 
         /* grid */
@@ -888,11 +961,12 @@ export function mount(root, context = {}) {
             if (s.note) showToast(s.note.text);
         }
 
-        /* overlay */
-        ovStart.hidden = phase !== "lobby";
-        ovOver.hidden = phase !== "over";
+        /* overlay: bantuan > cheat > jeda > fase, saling menekan */
+        ovStart.hidden = phase !== "lobby" || helpOpen || cheatOpen || manualPause;
+        ovOver.hidden = phase !== "over" || helpOpen || cheatOpen || manualPause;
         ovHelp.hidden = !helpOpen;
-        ovCheat.hidden = !cheatOpen || online;
+        ovCheat.hidden = !cheatOpen || online || helpOpen;
+        ovPause.hidden = !manualPause || helpOpen || cheatOpen || online;
         startLocal.hidden = online;
         startHost.hidden = !online || !room.isHost;
         startGuest.hidden = !online || room.isHost;
@@ -926,8 +1000,16 @@ export function mount(root, context = {}) {
         swSlow.setAttribute("aria-checked", String(cheats.slow));
         swGod.setAttribute("aria-checked", String(cheats.god));
         btnCheat.hidden = online;
+        btnCheat.classList.toggle("rw-on", Object.keys(cheats).some((k) => cheats[k]));
         btnRestart.disabled = online && !room.isHost;
         btnRestart.title = btnRestart.disabled ? "Hanya host yang bisa mengulang" : "";
+        btnPause.disabled = online;
+        btnPause.title = online ? "Jeda hanya untuk game lokal" : "Jeda (P)";
+        const pauseLabel = btnPause.querySelector(".rw-btn-label");
+        if (pauseLabel) pauseLabel.textContent = manualPause ? "Lanjut" : "Jeda";
+        btnPause.setAttribute("aria-label", manualPause ? "Lanjutkan" : "Jeda");
+        const pauseIcon = btnPause.querySelector(".rw-btn-icon-svg");
+        if (pauseIcon) pauseIcon.innerHTML = iconSVG(manualPause ? "play" : "pause", { size: 14 });
 
         /* pad virtual */
         vpadEl.hidden = !vpadOn;
@@ -991,17 +1073,35 @@ export function mount(root, context = {}) {
         moveCursor(c);
     }
 
+    /* Bantuan, cheat, dan jeda saling menutup. Jeda lokal membekukan timer & bot. */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatOpen = false; manualPause = false; }
+        syncPause();
+        render();
+    }
+    function togglePause(on) {
+        if (online) return;
+        manualPause = typeof on === "boolean" ? on : !manualPause;
+        if (manualPause) { helpOpen = false; cheatOpen = false; }
+        syncPause();
+        render();
+    }
+
     function handleClick(event) {
         const t = event.target;
         const hit = (sel) => t.closest(sel);
         if (hit("[data-exit]")) { onExit(); return; }
-        if (hit("[data-help]")) { helpOpen = !helpOpen; cheatOpen = false; syncPause(); render(); return; }
-        if (hit("[data-help-close]")) { helpOpen = false; syncPause(); render(); return; }
-        if (hit("[data-cheat]")) {
+        if (hit("[data-help]")) { toggleHelp(); return; }
+        if (hit("[data-help-close]")) { toggleHelp(false); return; }
+        if (hit("[data-cheats]")) {
             if (online) return;
-            cheatOpen = !cheatOpen; helpOpen = false; syncPause(); render(); return;
+            cheatOpen = !cheatOpen; helpOpen = false; manualPause = false;
+            syncPause(); render(); return;
         }
         if (hit("[data-cheat-close]")) { cheatOpen = false; syncPause(); render(); return; }
+        if (hit("[data-pause]")) { togglePause(); return; }
+        if (hit("[data-resume]")) { togglePause(false); return; }
         const sw = hit("[data-cheat-toggle]");
         if (sw) {
             if (online) return;
@@ -1029,6 +1129,7 @@ export function mount(root, context = {}) {
             if (online && !room.isHost) return;
             clearTimers();
             paused = false;
+            manualPause = false;
             state = freshState(online ? "versus" : "solo");
             publish();
             return;
@@ -1104,25 +1205,37 @@ export function mount(root, context = {}) {
         render();
     }
 
-    /* keyboard (desktop) */
+    /* keyboard (desktop): bantuan → cheat → jeda → Escape → aksi game */
     function onKey(e) {
         if (destroyed || !root.isConnected) return;
         const t = e.target;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         const k = e.key;
-        if (k === "Escape") {
-            if (helpOpen || cheatOpen) { helpOpen = false; cheatOpen = false; syncPause(); render(); e.preventDefault(); }
-            else if (selId) { selId = null; render(); e.preventDefault(); }
-            return;
-        }
-        if (k === "h" || k === "H") { helpOpen = !helpOpen; cheatOpen = false; syncPause(); render(); e.preventDefault(); return; }
+        if (k === "h" || k === "H") { toggleHelp(); e.preventDefault(); return; }
         if (k === "c" || k === "C") {
-            if (!online) { cheatOpen = !cheatOpen; helpOpen = false; syncPause(); render(); e.preventDefault(); }
+            if (!online && !helpOpen) {
+                cheatOpen = !cheatOpen; helpOpen = false; manualPause = false;
+                syncPause(); render();
+            }
+            e.preventDefault(); return;
+        }
+        if (k === "p" || k === "P") { if (!online) togglePause(); e.preventDefault(); return; }
+        if (k === "Escape") {
+            if (helpOpen) { toggleHelp(false); cheatOpen = false; syncPause(); render(); }
+            else if (cheatOpen) { cheatOpen = false; syncPause(); render(); }
+            else if (manualPause) { togglePause(false); }
+            else if (selId) { selId = null; render(); }
+            e.preventDefault(); return;
+        }
+        if (k === "r" || k === "R") {
+            e.preventDefault();
+            if (!online || room.isHost) startGame(state ? state.gameMode : "solo");
+            else showToast("Hanya host yang bisa mengulang");
             return;
         }
         if (k === "v" || k === "V") { vpadOn = !vpadOn; render(); e.preventDefault(); return; }
-        if (helpOpen || cheatOpen) return;
+        if (helpOpen || cheatOpen || manualPause) return;
         const phase = state ? state.phase : "lobby";
         if (phase === "lobby") {
             if (k === "Enter" || k === " ") { e.preventDefault(); startGame(online ? "versus" : "solo"); }
@@ -1133,12 +1246,6 @@ export function mount(root, context = {}) {
                 e.preventDefault();
                 if (!online || room.isHost) startGame(state.gameMode);
             }
-            return;
-        }
-        if (k === "r" || k === "R") {
-            e.preventDefault();
-            if (!online || room.isHost) startGame(state.gameMode);
-            else showToast("Hanya host yang bisa mengulang");
             return;
         }
         if (phase !== "pick") return;

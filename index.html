@@ -28,7 +28,27 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap"
       rel="stylesheet"
     />
+    <link href="CSS/tokens.css" rel="stylesheet" />
     <link href="CSS/style.css" rel="stylesheet" />
+    <style>
+      /* Kartu game: tag dan tombol Play selalu rata di bawah kartu (desktop). */
+      @media (min-width: 640px) {
+        .game-grid .game-card {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .game-grid .game-body {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .game-grid .game-card-footer {
+          margin-top: auto;
+        }
+      }
+    </style>
   </head>
   <body>
     <div class="app-shell">
@@ -278,6 +298,10 @@
                 <span class="game-total" id="shownCount"> Loading games&hellip; </span>
               </div>
               <div class="library-toolbar">
+                <label class="mode-filter">
+                  <span class="icon" data-icon="users"></span>
+                  <select aria-label="Filter by play mode" id="modeFilter"></select>
+                </label>
                 <div aria-label="Filter games" class="filter-list" id="filterList" role="group"></div>
                 <label class="search-box">
                   <span class="icon"><span class="icon" data-icon="search"></span></span>
@@ -705,6 +729,248 @@
                 </p>
               </article>
             </div>
+            <div class="page-card table-card help-table-card">
+              <div class="table-card-heading">
+                <div>
+                  <h2>Game mode categories</h2>
+                  <p>
+                    Comparison of modes by players, teams, opponents, and
+                    multiplayer support.
+                  </p>
+                </div>
+              </div>
+              <div class="responsive-table">
+                <table class="history-table mode-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Aspek</th>
+                      <th scope="col">Solo</th>
+                      <th scope="col">Solo VS Bot</th>
+                      <th scope="col">Coop VS Bot</th>
+                      <th scope="col">2–4 Player Versus</th>
+                      <th scope="col">2vs2 Team</th>
+                      <th scope="col">Party Games</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">Konsep</th>
+                      <td>Bermain sendiri</td>
+                      <td>Pemain melawan AI</td>
+                      <td>Pemain bekerja sama melawan AI</td>
+                      <td>Pemain saling melawan</td>
+                      <td>Dua tim saling melawan</td>
+                      <td>Permainan sosial / mini-games</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Jumlah pemain manusia</th>
+                      <td>1</td>
+                      <td>1</td>
+                      <td>2–4+</td>
+                      <td>2–4</td>
+                      <td>4 (2+2)</td>
+                      <td>2–8+</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Jumlah tim manusia</th>
+                      <td>1</td>
+                      <td>1</td>
+                      <td>1</td>
+                      <td>2–4</td>
+                      <td>2</td>
+                      <td>2 atau lebih / individu</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Lawan utama</th>
+                      <td>Environment / sistem</td>
+                      <td>AI / Bot</td>
+                      <td>AI / Bot / Environment</td>
+                      <td>Pemain lain</td>
+                      <td>Tim lawan</td>
+                      <td>Pemain lain / tantangan</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">AI / Bot</th>
+                      <td>Optional</td>
+                      <td>Wajib</td>
+                      <td>Wajib</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Kerja sama pemain</th>
+                      <td>Tidak</td>
+                      <td>Tidak</td>
+                      <td>Ya</td>
+                      <td>Tidak wajib</td>
+                      <td>Ya</td>
+                      <td>Tergantung game</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Kompetisi PvP</th>
+                      <td>Tidak</td>
+                      <td>Tidak</td>
+                      <td>Tidak</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Biasanya ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Multiplayer</th>
+                      <td>Tidak wajib</td>
+                      <td>Tidak wajib</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Local Multiplayer</th>
+                      <td>Tidak</td>
+                      <td>Tidak</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Online Multiplayer</th>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">LAN Multiplayer</th>
+                      <td>Tidak wajib</td>
+                      <td>Tidak wajib</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Split Screen</th>
+                      <td>Tidak</td>
+                      <td>Tidak</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Own Screen</th>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Shared Screen</th>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Sering</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Hot Seat</th>
+                      <td>Tidak wajib</td>
+                      <td>Tidak wajib</td>
+                      <td>Tidak umum</td>
+                      <td>Bisa</td>
+                      <td>Bisa</td>
+                      <td>Sering</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Matchmaking</th>
+                      <td>Tidak</td>
+                      <td>Tidak wajib</td>
+                      <td>Optional</td>
+                      <td>Optional / Ya</td>
+                      <td>Optional / Ya</td>
+                      <td>Optional / Ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Ranking</th>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Ya / Optional</td>
+                      <td>Ya / Optional</td>
+                      <td>Optional</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Leaderboard</th>
+                      <td>Optional</td>
+                      <td>Ya</td>
+                      <td>Optional</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Campaign</th>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Tidak umum</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Match / Round</th>
+                      <td>Optional</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Progression</th>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Ya</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                      <td>Optional</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="mode-notes">
+                <h3>Glossary</h3>
+                <dl>
+                  <div class="mode-note">
+                    <dt>Own Screen</dt>
+                    <dd>Each player has their own display, usually on their own device.</dd>
+                  </div>
+                  <div class="mode-note">
+                    <dt>Split Screen</dt>
+                    <dd>Several players share one physical screen divided into separate viewing areas.</dd>
+                  </div>
+                  <div class="mode-note">
+                    <dt>Shared Screen</dt>
+                    <dd>All players see the same camera or the same game area.</dd>
+                  </div>
+                  <div class="mode-note">
+                    <dt>Hot Seat</dt>
+                    <dd>Players take turns using one device instead of playing at the same time.</dd>
+                  </div>
+                  <div class="mode-note">
+                    <dt>LAN</dt>
+                    <dd>Multiplayer over a local network without a public internet server.</dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
           </section>
           <footer class="page-footer">
             <span>
@@ -747,31 +1013,9 @@
             <span class="icon" data-icon="x"></span>
           </button>
         </div>
-        <div class="field-group">
-          <label for="launchGameSelect"> Game </label>
-          <select id="launchGameSelect"></select>
-        </div>
-        <div class="mode-options">
-          <button class="mode-option" data-launch-mode="ai" type="button">
-            <span class="mode-icon mode-icon-ai icon"><span class="icon" data-icon="user"></span></span>
-            <span>
-              <strong> Play Solo </strong>
-              <small> Start immediately against a computer opponent. </small>
-            </span>
-            <span class="mode-arrow icon"><span class="icon" data-icon="arrowRight"></span></span>
-          </button>
-          <button class="mode-option" data-launch-mode="room" type="button">
-            <span class="mode-icon mode-icon-room icon"><span class="icon" data-icon="users"></span></span>
-            <span>
-              <strong> Create a room </strong>
-              <small> Open a private room and invite one friend. </small>
-            </span>
-            <span class="mode-arrow icon"><span class="icon" data-icon="arrowRight"></span></span>
-          </button>
-        </div>
-        <p class="dialog-footnote">
-          Online rooms use a lightweight realtime database for matchmaking and
-          turn sync.
+        <div class="mode-options" id="launchModes"></div>
+        <p class="dialog-footnote" id="launchFootnote">
+          Mode Coop VS Bot dan 2–4 Player Versus Online memakai room privat dengan sinkronisasi realtime.
         </p>
       </div>
     </section>
@@ -966,7 +1210,6 @@
             </div>
           </div>
           <div class="game-window-actions">
-            <span class="game-best-badge" hidden="" id="gameBestBadge"></span>
             <button
               class="button button-subtle room-share"
               hidden=""
@@ -990,6 +1233,43 @@
             <span class="loading-spinner"> </span>
             <p>Loading game&hellip;</p>
           </div>
+        </div>
+      </div>
+    </section>
+    <!-- Panduan global untuk game yang tidak punya bantuan di dalam game-nya. -->
+    <section
+      aria-labelledby="howToTitle"
+      aria-modal="true"
+      class="dialog-backdrop"
+      hidden=""
+      id="howToDialog"
+      role="dialog"
+    >
+      <div class="dialog dialog-wide">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">HOW TO PLAY</p>
+            <h2 id="howToTitle">How to play</h2>
+            <p class="dialog-subtitle" id="howToSubtitle"></p>
+          </div>
+          <button
+            aria-label="Close"
+            class="dialog-close"
+            data-close="howToDialog"
+            type="button"
+          >
+            <span class="icon" data-icon="x"></span>
+          </button>
+        </div>
+        <div class="info-copy" id="howToCopy"></div>
+        <div class="dialog-actions">
+          <button
+            class="button button-primary button-full"
+            data-close="howToDialog"
+            type="button"
+          >
+            Got it
+          </button>
         </div>
       </div>
     </section>

@@ -1,4 +1,5 @@
 /* ==== GAME: star-catcher.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
   Star Catcher — template baru (META + mount).
   - Solo: level acak yang dijamin bisa diselesaikan, kejar target bintang.
@@ -269,26 +270,34 @@ export function mount(root, context = {}) {
 <style>
 .sc-app{--line:#e6e8ef;--ink:#111827;--mut:#6b7280;--acc:#4f46e5;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
 .sc-app [hidden]{display:none!important}
-.sc-app .sc-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
-.sc-app .sc-chip{display:inline-flex;align-items:baseline;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.sc-app .sc-hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;font-size:11px}
+.sc-app .sc-chip{display:inline-flex;align-items:baseline;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:9px;background:#fff;white-space:nowrap}
 .sc-app .sc-chip small{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
 .sc-app .sc-chip b{font-size:14px;font-variant-numeric:tabular-nums}
-.sc-app .sc-flex{flex:1}
+.sc-app .sc-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--acc);align-self:center}
+.sc-app .sc-spacer{flex:1 1 auto}
 .sc-app .sc-pips i{display:inline-block;width:9px;height:9px;border-radius:3px;background:#e5e7eb;margin-left:3px}
 .sc-app .sc-pips i.on{background:var(--acc)}
-.sc-app .sc-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer}
+.sc-app .sc-btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:7px 11px;font-size:12.5px;font-weight:600;cursor:pointer}
 .sc-app .sc-btn:hover{background:#f5f6fa}
 .sc-app .sc-btn.primary{background:var(--acc);border-color:transparent;color:#fff}
 .sc-app .sc-btn.primary:hover{background:#4338ca}
-.sc-app .sc-stage{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0d1126;aspect-ratio:800/520;max-height:70vh}
-.sc-app .sc-stage svg{display:block;width:100%;height:100%;touch-action:none}
+.sc-app .sc-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sc-app .sc-icon-btn svg{flex:none;display:block}
+.sc-app .sc-board{position:relative;width:100%;aspect-ratio:800/520;max-height:70vh;padding:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0d1126}
+.sc-app.game-fill > .sc-board{flex:1 1 auto;min-height:0;max-height:none;aspect-ratio:auto}
+.sc-app .sc-board > svg[data-svg]{display:block;width:100%;height:100%;touch-action:none}
 .sc-app .sc-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(13,17,38,.55);backdrop-filter:blur(3px);padding:16px;overflow:auto}
-.sc-app .sc-card{background:#fff;border:1px solid var(--line);border-radius:14px;max-width:520px;width:100%;padding:20px 22px;box-shadow:0 12px 40px rgba(15,23,42,.18)}
-.sc-app .sc-card h3{margin:0 0 6px;font-size:18px}
-.sc-app .sc-card h4{margin:14px 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
-.sc-app .sc-card p{margin:0 0 12px;color:var(--mut);font-size:13px;line-height:1.55}
+.sc-app .sc-card{display:flex;flex-direction:column;overflow:hidden;max-height:100%;background:#fff;border:1px solid var(--line);border-radius:14px;max-width:520px;width:100%;box-shadow:0 12px 40px rgba(15,23,42,.18)}
+.sc-app .sc-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 20px 10px}
+.sc-app .sc-head h3{margin:0;font-size:18px}
+.sc-app .sc-body{flex:1 1 auto;min-height:0;overflow:auto;padding:2px 20px 8px}
+.sc-app .sc-foot{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 20px 16px}
+.sc-app .sc-foot .sc-note{margin-right:auto}
+.sc-app .sc-body h4{margin:12px 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.sc-app .sc-body p{margin:0 0 10px;color:var(--mut);font-size:13px;line-height:1.55}
 .sc-app .sc-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
-.sc-app .sc-note{font-size:11.5px;color:#9ca3af;margin:10px 0 0}
+.sc-app .sc-note{font-size:11.5px;color:#9ca3af;line-height:1.4}
 .sc-app .sc-list{display:grid;gap:8px;margin:0 0 12px}
 .sc-app .sc-switch{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font-size:13px;color:var(--ink)}
 .sc-app .sc-switch .pill{font-size:10px;letter-spacing:.06em;padding:3px 8px;border-radius:999px;background:#eef0f4;color:var(--mut)}
@@ -305,49 +314,71 @@ export function mount(root, context = {}) {
 .sc-app .sc-pad button{border:1px solid var(--line);background:#fff;border-radius:12px;color:var(--ink);touch-action:none;cursor:pointer;padding:14px}
 .sc-app .sc-pad button:active{background:#eef2ff;border-color:var(--acc);color:var(--acc)}
 .sc-app .sc-pad svg{width:100%;height:100%}
-.sc-app .sc-hint{margin:10px 2px 0;font-size:11.5px;color:#9ca3af}
 @media (pointer:coarse){.sc-app .sc-pad{display:grid}}
 @media (max-width:720px){.sc-app .sc-pad{display:grid}}
 @keyframes sc-tw{0%,100%{transform:scale(1)}50%{transform:scale(.72)}}
 .sc-app .sc-star{transform-box:fill-box;transform-origin:center;animation:sc-tw 1.15s ease-in-out infinite}
+
+/* --- Batch 02 design polish --- */
+.sc-app :focus-visible,.sc-app button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sc-hud{gap:12px;margin-bottom:12px}
+.sc-chip{padding:8px 12px}
+.sc-btn,.sc-pad button{min-height:44px}
+.sc-card{box-shadow:none}
+@media (pointer:coarse){.sc-app button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.sc-app *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (last, high specificity) --- */
+@media (max-width:640px){
+.sc-app.game-fill > .sc-board:not(:has(.sc-ov:not([hidden]))){aspect-ratio:800/520;flex:0 0 auto}
+.sc-app.game-fill > .sc-board:has(.sc-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sc-app .sc-hud{gap:5px;margin-bottom:8px;font-size:9px}
+.sc-app .sc-hud .sc-chip{padding:4px 6px;font-size:9px}
+.sc-app .sc-hud .sc-chip b{font-size:11px}
+.sc-app .sc-hud .sc-chip[data-chip="mode"],.sc-app .sc-hud .sc-chip[data-chip="best"]{display:none}
+.sc-app .sc-hud .sc-btn{min-height:32px;padding:5px 8px;font-size:9px}
+.sc-app .sc-hud .sc-btn-label,.sc-app .sc-hud .sc-spacer{display:none}
+.sc-app .sc-ov{padding:8px}
+.sc-app .sc-card{width:100%;height:100%;max-height:100%;padding:0;border-radius:12px}
+.sc-app .sc-head,.sc-app .sc-foot{padding:10px 12px}
+.sc-app .sc-body{padding:0 12px 8px}
+.sc-app .sc-body,.sc-app .sc-list{scrollbar-width:none}
+.sc-app .sc-body::-webkit-scrollbar,.sc-app .sc-list::-webkit-scrollbar{display:none}
+.sc-app .sc-note{display:none}
+}
 </style>
-<div class="game-app sc-app">
-  <div class="game-intro">
-    <div><h2>Star Catcher</h2><p>Fly the rocket, catch stars, dodge asteroids. Random solvable levels — solo, vs bot, or race a friend.</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app sc-app game-fill" data-sc>
+  <div class="sc-hud">
+    <span class="sc-chip"><small>LV</small><b data-hud="level">1</b></span>
+    <span class="sc-chip" data-chip="mode"><small>Mode</small><b data-hud="mode">—</b></span>
+    <span class="sc-chip" data-chip="solo"><small>Stars</small><b><span data-hud="stars">0</span>/<span data-hud="target">10</span></b></span>
+    <span class="sc-chip" data-chip="race" hidden><small>You</small><b data-hud="you">0</b><small>Rival</small><b data-hud="rival">0</b><small>to</small><b data-hud="rtarget">10</b></span>
+    <span class="sc-chip"><small>Hull</small><span class="sc-pips" data-hud="pips"><i></i><i></i><i></i></span></span>
+    <span class="sc-chip"><small>Left</small><b data-hud="time">0</b><small>s</small></span>
+    <span class="sc-chip" data-chip="solo2"><small>Score</small><b data-hud="score">0</b></span>
+    <span class="sc-chip" data-chip="best"><small>Best</small><b data-hud="best">0</b></span>
+    <span class="sc-chip"><i class="sc-dot"></i><span data-status>Ready</span></span>
+    <span class="sc-spacer"></span>
+    <button class="sc-btn sc-icon-btn" type="button" data-help data-act="help" aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sc-btn-label">Help</span></button>
+    <button class="sc-btn sc-icon-btn" type="button" data-cheats data-act="cheats" data-only="offline" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sc-btn-label">Cheats</span></button>
+    <button class="sc-btn sc-icon-btn" type="button" data-pause data-act="pause" data-only="offline" aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sc-btn-label">Pause</span></button>
+    <button class="sc-btn sc-icon-btn" type="button" data-restart data-act="restart" data-only="host" aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="sc-btn-label">Restart</span></button>
+    <button class="sc-btn sc-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sc-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="sc-hud">
-      <span class="sc-chip"><small>Level</small><b data-hud="level">1</b></span>
-      <span class="sc-chip" data-chip="solo"><small>Stars</small><b><span data-hud="stars">0</span>/<span data-hud="target">10</span></b></span>
-      <span class="sc-chip" data-chip="race" hidden><small>You</small><b data-hud="you">0</b><small>Rival</small><b data-hud="rival">0</b><small>to</small><b data-hud="rtarget">10</b></span>
-      <span class="sc-chip"><small>Hull</small><span class="sc-pips" data-hud="pips"><i></i><i></i><i></i></span></span>
-      <span class="sc-chip"><small>Time</small><b data-hud="time">0</b><small>s</small></span>
-      <span class="sc-chip" data-chip="solo2"><small>Score</small><b data-hud="score">0</b></span>
-      <span class="sc-chip" data-chip="best"><small>Best</small><b data-hud="best">0</b></span>
-      <span class="sc-flex"></span>
-      <button class="sc-btn" type="button" data-act="howto">How to play</button>
-      <button class="sc-btn" type="button" data-act="cheats" data-only="offline">Cheats</button>
-      <button class="sc-btn" type="button" data-act="pause" data-only="offline">Pause</button>
-      <button class="sc-btn" type="button" data-act="restart" data-only="host">Restart</button>
-    </div>
-    <div class="sc-stage">
-      <svg data-svg viewBox="0 0 800 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Star Catcher field">
-        <g data-g="bg"></g><g data-g="stars"></g><g data-g="asts"></g><g data-g="ship"></g>
-      </svg>
-      <div class="sc-count" data-count hidden><b data-count-n>3</b><span data-count-t></span></div>
-      <div class="sc-toast" data-toast></div>
-      <div class="sc-ov" data-ov hidden></div>
-    </div>
-    <div class="sc-pad" data-pad aria-label="Touch controls">
-      <span></span><button type="button" data-dir="up" aria-label="Up">${chev("M6 15l6-7 6 7")}</button><span></span>
-      <button type="button" data-dir="left" aria-label="Left">${chev("M15 6l-7 6 7 6")}</button>
-      <button type="button" data-dir="down" aria-label="Down">${chev("M6 9l6 7 6-7")}</button>
-      <button type="button" data-dir="right" aria-label="Right">${chev("M9 6l7 6-7 6")}</button>
-    </div>
-    <p class="sc-hint">Desktop: <b>WASD / arrows</b>, or press &amp; drag on the field. Mobile: drag on the field or use the pad. <b>P</b> = pause, <b>Esc</b> = close panel.</p>
+  <section class="game-panel sc-board" data-board>
+    <svg data-svg viewBox="0 0 800 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Star Catcher field">
+      <g data-g="bg"></g><g data-g="stars"></g><g data-g="asts"></g><g data-g="ship"></g>
+    </svg>
+    <div class="sc-count" data-count hidden><b data-count-n>3</b><span data-count-t></span></div>
+    <div class="sc-toast" data-toast></div>
+    <div class="sc-ov" data-ov hidden></div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="sc-pad" data-pad aria-label="Touch controls">
+    <span></span><button type="button" data-dir="up" aria-label="Up">${chev("M6 15l6-7 6 7")}</button><span></span>
+    <button type="button" data-dir="left" aria-label="Left">${chev("M15 6l-7 6 7 6")}</button>
+    <button type="button" data-dir="down" aria-label="Down">${chev("M6 9l6 7 6-7")}</button>
+    <button type="button" data-dir="right" aria-label="Right">${chev("M9 6l7 6-7 6")}</button>
+  </div>
 </div>`;
 
     /* ================= refs ================= */
@@ -355,30 +386,64 @@ export function mount(root, context = {}) {
     const svg = $("[data-svg]");
     const bgG = $('[data-g="bg"]'), starsG = $('[data-g="stars"]'), astsG = $('[data-g="asts"]'), shipG = $('[data-g="ship"]');
     const hud = {
-        level: $('[data-hud="level"]'), stars: $('[data-hud="stars"]'), target: $('[data-hud="target"]'),
+        level: $('[data-hud="level"]'), mode: $('[data-hud="mode"]'), stars: $('[data-hud="stars"]'), target: $('[data-hud="target"]'),
         you: $('[data-hud="you"]'), rival: $('[data-hud="rival"]'), rtarget: $('[data-hud="rtarget"]'),
         pips: $('[data-hud="pips"]'), time: $('[data-hud="time"]'), score: $('[data-hud="score"]'), best: $('[data-hud="best"]'),
         status: $("[data-status]"),
     };
     const chipSolo = $('[data-chip="solo"]'), chipSolo2 = $('[data-chip="solo2"]'), chipRace = $('[data-chip="race"]'), chipBest = $('[data-chip="best"]');
     const ov = $("[data-ov]"), countBox = $("[data-count]"), countN = $("[data-count-n]"), countT = $("[data-count-t]"), toastEl = $("[data-toast]");
-    const restartBtn = $('[data-act="restart"]');
+    const pauseBtn = $("[data-pause]"), pauseLabel = pauseBtn.querySelector(".sc-btn-label");
+    const restartBtn = $('[data-restart]');
+    let pauseLabelText = "Pause";
     if (online) {
         root.querySelectorAll('[data-only="offline"]').forEach((b) => { b.hidden = true; });
         if (!room.isHost) restartBtn.hidden = true;
-        else restartBtn.textContent = "New race";
+        else {
+            const label = restartBtn.querySelector(".sc-btn-label");
+            if (label) label.textContent = "New race";
+            restartBtn.setAttribute("aria-label", "New race");
+            restartBtn.title = "New race (R)";
+        }
     }
 
-    /* ================= timers & toast ================= */
+    /* ================= timers & toast =================
+       Semua penanda waktu (setTimeout Date.now + throttle performance.now)
+       dibekukan saat pause/help/cheats dan digeser saat dilanjutkan. */
     let timers = [];
-    const later = (fn, ms) => { const tm = setTimeout(() => { timers = timers.filter((x) => x !== tm); fn(); }, ms); timers.push(tm); return tm; };
-    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
-    let toastTm = null;
+    let pauseStarted = 0, lastAimSend = 0, lastPub = 0;
+    function armTimer(entry) {
+        const now = pauseStarted || Date.now();
+        entry.id = setTimeout(() => {
+            timers = timers.filter((x) => x !== entry);
+            entry.fn();
+        }, Math.max(0, entry.due - now));
+    }
+    const later = (fn, ms) => {
+        const entry = { fn, due: (pauseStarted || Date.now()) + ms, id: 0 };
+        if (!pauseStarted) armTimer(entry);
+        timers.push(entry);
+        return entry;
+    };
+    const clearTimers = () => { timers.forEach((t) => clearTimeout(t.id)); timers = []; };
+    function setClockFrozen(frozen) {
+        if (frozen && !pauseStarted) {
+            pauseStarted = Date.now();
+            timers.forEach((t) => clearTimeout(t.id));
+        } else if (!frozen && pauseStarted) {
+            const delta = Date.now() - pauseStarted;
+            pauseStarted = 0;
+            timers.forEach((t) => { t.due += delta; armTimer(t); });
+            lastAimSend += delta;
+            lastPub += delta;
+        }
+    }
+    let toastTimer = null;
     function toast(msg) {
         toastEl.textContent = msg;
         toastEl.classList.add("show");
-        if (toastTm) clearTimeout(toastTm);
-        toastTm = later(() => toastEl.classList.remove("show"), 2200);
+        if (toastTimer) { clearTimeout(toastTimer.id); timers = timers.filter((x) => x !== toastTimer); }
+        toastTimer = later(() => { toastEl.classList.remove("show"); toastTimer = null; }, 2200);
     }
 
     /* ================= drawing ================= */
@@ -450,21 +515,31 @@ export function mount(root, context = {}) {
         return out;
     }
 
-    /* ================= overlay ================= */
-    const ui = { overlay: null, ovKey: "" };
+    /* ================= overlay =================
+       Modal help/cheats menimpa overlay fase; keduanya membekukan clock. */
+    const ui = { modal: null, ovKey: "" };
     const miniAst = (kind) => {
         if (kind === "comet") return '<svg viewBox="-24 -10 34 20" width="30" height="20"><polygon points="0,5 -20,0 0,-5" fill="#fb923c" opacity=".5"/><circle r="5" fill="#fdba74" stroke="#f97316" stroke-width="1.5"/></svg>';
         const f = { rock: ["#57534e", "#a8a29e"], ice: ["#bae6fd", "#7dd3fc"], iron: ["#475569", "#94a3b8"] }[kind];
         const pts = kind === "ice" ? "0,-9 3,-3 9,0 3,3 0,9 -3,3 -9,0 -3,-3" : "-8,-5 -2,-9 6,-7 9,0 5,8 -4,8 -9,2";
         return '<svg viewBox="-12 -12 24 24" width="26" height="26"><polygon points="' + pts + '" fill="' + f[0] + '" stroke="' + f[1] + '" stroke-width="1.5"/></svg>';
     };
+    const cardHead = (title, closable = false) =>
+        '<div class="sc-head"><h3>' + title + "</h3>" +
+        (closable ? '<button class="sc-btn sc-icon-btn" type="button" data-act="closeov" aria-label="Close" title="Close (Esc)">' + iconSVG("x", { size: 14 }) + "</button>" : "") +
+        "</div>";
+    const cardFoot = (inner) => '<div class="sc-foot">' + inner + "</div>";
+    const helpBtn = '<button class="sc-btn" type="button" data-act="help">How to play</button>';
 
-    function howtoHtml() {
+    function helpHtml() {
         return (
-            "<h3>How to play</h3>" +
+            cardHead("How to play", true) +
+            '<div class="sc-body">' +
             "<p>Catch the twinkling stars before the timer runs out. Every asteroid hit costs one of your 3 hull points. Levels are randomly generated within safety limits — asteroids are always slower than your rocket and density is capped, so every level is beatable.</p>" +
             "<h4>Controls</h4>" +
-            '<p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to fly · press &amp; drag on the field to steer with mouse/touch · virtual pad on mobile · <kbd>P</kbd> pause · <kbd>Esc</kbd> close panels. The rocket nose always turns toward the direction you steer.</p>' +
+            '<p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to fly · press &amp; drag on the field to steer with mouse/touch · virtual pad on mobile. The rocket nose always turns toward the direction you steer.</p>' +
+            "<h4>Shortcuts</h4>" +
+            "<p><kbd>H</kbd> help · <kbd>C</kbd> cheats · <kbd>P</kbd> pause · <kbd>R</kbd> restart · <kbd>Esc</kbd> close the open panel.</p>" +
             "<h4>Hazards</h4>" +
             '<div class="sc-legend">' +
             miniAst("rock") + "<span><b>Rock</b> — standard drifter, medium speed.</span>" +
@@ -474,7 +549,8 @@ export function mount(root, context = {}) {
             "</div>" +
             "<h4>Modes</h4>" +
             "<p><b>Solo</b>: clear the star target to advance to a harder random level. <b>VS bot / multiplayer</b>: first to the target wins. A coin toss decides who moves first (1.2s head start), and in multiplayer your ship seat is randomized every race.</p>" +
-            '<div class="sc-row"><button class="sc-btn primary" type="button" data-act="closeov">Got it</button></div>'
+            "</div>" +
+            cardFoot('<span class="sc-note">Press H to reopen this guide</span><button class="sc-btn primary" type="button" data-act="closeov">Got it</button>')
         );
     }
 
@@ -482,7 +558,9 @@ export function mount(root, context = {}) {
         const t = (key, label) =>
             '<button class="sc-switch" type="button" data-cheat="' + key + '" aria-pressed="' + st.cheats[key] + '"><span>' + label + '</span><span class="pill">' + (st.cheats[key] ? "ON" : "OFF") + "</span></button>";
         return (
-            "<h3>Cheats</h3><p>Training wheels. Best score is not saved while cheats are used.</p>" +
+            cardHead("Cheats", true) +
+            '<div class="sc-body">' +
+            "<p>Training wheels. Best score is not saved while cheats are used.</p>" +
             '<div class="sc-list">' +
             t("god", "Invincible hull") + t("slow", "Slow asteroids (45%)") + t("magnet", "Star magnet") + t("freeze", "Freeze asteroids") +
             "</div>" +
@@ -490,36 +568,35 @@ export function mount(root, context = {}) {
             '<button class="sc-btn" type="button" data-cheatact="time">+10 seconds</button>' +
             '<button class="sc-btn" type="button" data-cheatact="hull">Repair hull</button>' +
             (st.mode === "solo" ? '<button class="sc-btn" type="button" data-cheatact="skip">Skip level</button>' : "") +
-            '<button class="sc-btn primary" type="button" data-act="closeov">Close</button>' +
             "</div>" +
-            (st.cheated ? '<p class="sc-note">Cheats active — this run will not be saved to Best.</p>' : "")
+            (st.cheated ? '<p class="sc-note">Cheats active — this run will not be saved to Best.</p>' : "") +
+            "</div>" +
+            cardFoot('<span class="sc-note">Press C or Esc to close</span><button class="sc-btn primary" type="button" data-act="closeov">Close</button>')
         );
     }
 
     function idleHtml() {
         if (online) {
             if (room.isHost)
-                return "<h3>Ready to race?</h3><p>First to the star target wins. Ship seats and the first mover are randomized every race.</p>" +
-                    '<div class="sc-row"><button class="sc-btn primary" type="button" data-act="start" data-mode="online">Start race</button><button class="sc-btn" type="button" data-act="howto">How to play</button></div>';
-            return "<h3>Waiting for host</h3><p>The host starts the race. Your ship seat will be assigned randomly.</p>" +
-                '<div class="sc-row"><button class="sc-btn" type="button" data-act="howto">How to play</button></div>';
+                return cardHead("Ready to race?") +
+                    '<div class="sc-body"><p>First to the star target wins. Ship seats and the first mover are randomized every race.</p></div>' +
+                    cardFoot('<div class="sc-row"><button class="sc-btn primary" type="button" data-act="start" data-mode="online">Start race</button>' + helpBtn + "</div>");
+            return cardHead("Waiting for host") +
+                '<div class="sc-body"><p>The host starts the race. Your ship seat will be assigned randomly.</p></div>' +
+                cardFoot('<div class="sc-row">' + helpBtn + "</div>");
         }
-        return (
-            "<h3>Star Catcher</h3><p>Steer the rocket, catch stars, dodge asteroids. Each level is randomly generated — and guaranteed solvable.</p>" +
-            '<div class="sc-row"><button class="sc-btn primary" type="button" data-act="start" data-mode="solo">Solo run</button>' +
-            '<button class="sc-btn" type="button" data-act="start" data-mode="bot">Race vs bot</button>' +
-            '<button class="sc-btn" type="button" data-act="howto">How to play</button></div>' +
-            '<p class="sc-note">VS bot: a coin toss decides who moves first (1.2s head start).</p>'
-        );
+        return cardHead("Star Catcher") +
+            '<div class="sc-body"><p>Steer the rocket, catch stars, dodge asteroids. Each level is randomly generated — and guaranteed solvable.</p>' +
+            '<p class="sc-note">VS bot: a coin toss decides who moves first (1.2s head start).</p></div>' +
+            cardFoot('<div class="sc-row"><button class="sc-btn primary" type="button" data-act="start" data-mode="solo">Solo run</button>' +
+            '<button class="sc-btn" type="button" data-act="start" data-mode="bot">Race vs bot</button>' + helpBtn + "</div>");
     }
 
     function clearHtml(st) {
-        return (
-            "<h3>Level " + st.level + " clear</h3>" +
-            "<p>+" + st.result.gained + " points · " + st.result.left + "s to spare · hull " + myShip().hp + "/3. Score " + st.score + " · Best " + best + ".</p>" +
-            '<div class="sc-row"><button class="sc-btn primary" type="button" data-act="next">Next level</button><button class="sc-btn" type="button" data-act="howto">How to play</button></div>' +
-            (st.cheated ? '<p class="sc-note">Cheats used — score not saved to Best.</p>' : "")
-        );
+        return cardHead("Level " + st.level + " clear") +
+            '<div class="sc-body"><p>+' + st.result.gained + " points · " + st.result.left + "s to spare · hull " + myShip().hp + "/3. Score " + st.score + " · Best " + best + ".</p>" +
+            (st.cheated ? '<p class="sc-note">Cheats used — score not saved to Best.</p>' : "") + "</div>" +
+            cardFoot('<div class="sc-row"><button class="sc-btn primary" type="button" data-act="next">Next level</button>' + helpBtn + "</div>");
     }
 
     function overHtml(st) {
@@ -530,32 +607,54 @@ export function mount(root, context = {}) {
             const btn = !online || room.isHost
                 ? '<button class="sc-btn primary" type="button" data-act="start" data-mode="online">Rematch</button>'
                 : "";
-            return "<h3>" + title + "</h3><p>" + (r.reason || "") + " Stars " + you + " – " + rival + ".</p>" +
-                '<div class="sc-row">' + btn + '<button class="sc-btn" type="button" data-act="howto">How to play</button></div>' +
-                (!online || room.isHost ? '<p class="sc-note">Rematch reshuffles seats and the coin toss.</p>' : '<p class="sc-note">Waiting for host to rematch…</p>');
+            return cardHead(title) +
+                '<div class="sc-body"><p>' + (r.reason || "") + " Stars " + you + " – " + rival + ".</p>" +
+                '<p class="sc-note">' + (!online || room.isHost ? "Rematch reshuffles seats and the coin toss." : "Waiting for host to rematch…") + "</p></div>" +
+                cardFoot('<div class="sc-row">' + btn + helpBtn + "</div>");
         }
-        return (
-            "<h3>Game over</h3><p>" + (r.reason || "") + "</p>" +
-            "<p>Score " + st.score + " · Best " + best + (st.cheated ? " (cheats used — not saved)" : "") + ".</p>" +
-            '<div class="sc-row"><button class="sc-btn primary" type="button" data-act="start" data-mode="' + st.mode + '">Try again</button><button class="sc-btn" type="button" data-act="howto">How to play</button></div>'
-        );
+        return cardHead("Game over") +
+            '<div class="sc-body"><p>' + (r.reason || "") + "</p>" +
+            "<p>Score " + st.score + " · Best " + best + (st.cheated ? " (cheats used — not saved)" : "") + ".</p></div>" +
+            cardFoot('<div class="sc-row"><button class="sc-btn primary" type="button" data-act="start" data-mode="' + st.mode + '">Try again</button>' + helpBtn + "</div>");
+    }
+
+    function pauseHtml() {
+        return cardHead("Paused") +
+            '<div class="sc-body"><p>Press P or Resume to continue. Timers and the bot are frozen.</p></div>' +
+            cardFoot('<div class="sc-row"><button class="sc-btn primary" type="button" data-act="pause">Resume</button>' + helpBtn + "</div>");
     }
 
     function syncOverlay() {
         const st = state;
-        let key = "", html = "";
-        if (ui.overlay === "howto") { key = "howto"; html = howtoHtml(); }
-        else if (ui.overlay === "cheats" && st) { key = "cheats" + JSON.stringify(st.cheats) + st.cheated + st.mode; html = cheatsHtml(st); }
-        else if (!st) { key = "conn"; html = "<h3>Connecting to room…</h3><p>Waiting for the host's game state.</p>"; }
-        else if (st.phase === "idle") { key = "idle" + (online ? room.isHost : ""); html = idleHtml(); }
-        else if (st.phase === "clear") { key = "clear" + st.level + st.score; html = clearHtml(st); }
-        else if (st.phase === "over") { key = "over" + JSON.stringify(st.result) + st.score; html = overHtml(st); }
-        else if (st.paused && !online) { key = "pause"; html = "<h3>Paused</h3><p>Press P or Resume to continue.</p><div class=\"sc-row\"><button class=\"sc-btn primary\" type=\"button\" data-act=\"pause\">Resume</button><button class=\"sc-btn\" type=\"button\" data-act=\"howto\">How to play</button></div>"; }
+        let baseKey = "", baseHtml = "";
+        if (!st) { baseKey = "conn"; baseHtml = cardHead("Connecting to room…") + '<div class="sc-body"><p>Waiting for the host\'s game state.</p></div>'; }
+        else if (st.phase === "idle") { baseKey = "idle" + (online ? room.isHost : ""); baseHtml = idleHtml(); }
+        else if (st.phase === "clear") { baseKey = "clear" + st.level + st.score; baseHtml = clearHtml(st); }
+        else if (st.phase === "over") { baseKey = "over" + JSON.stringify(st.result) + st.score; baseHtml = overHtml(st); }
+        else if (st.paused && !online) { baseKey = "pause"; baseHtml = pauseHtml(); }
+        const modalKey = ui.modal === "cheats" && st
+            ? "cheats" + JSON.stringify(st.cheats) + st.cheated + st.mode
+            : ui.modal || "";
+        const key = modalKey + "|" + baseKey;
+        const html = ui.modal === "help" ? helpHtml() : ui.modal === "cheats" && st ? cheatsHtml(st) : baseHtml;
         if (key !== ui.ovKey) {
             ui.ovKey = key;
             ov.hidden = !html;
             ov.innerHTML = html ? '<div class="sc-card">' + html + "</div>" : "";
         }
+        setClockFrozen(Boolean(ui.modal) || Boolean(st && st.paused && !online));
+    }
+
+    function toggleHelp(on) {
+        const next = typeof on === "boolean" ? on : ui.modal !== "help";
+        ui.modal = next ? "help" : null; // help menimpa panel cheats
+        render();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : ui.modal !== "cheats";
+        ui.modal = next ? "cheats" : null;
+        render();
     }
 
     /* ================= render ================= */
@@ -568,6 +667,7 @@ export function mount(root, context = {}) {
 
         const me = myShip(), rival = st.race ? st.ships[1 - myIdx()] : null;
         hud.level.textContent = st.level;
+        hud.mode.textContent = st.mode === "solo" ? "Solo" : st.mode === "bot" ? "Bot" : "Race";
         chipSolo.hidden = chipSolo2.hidden = st.race;
         chipRace.hidden = !st.race;
         chipBest.hidden = st.race;
@@ -592,6 +692,15 @@ export function mount(root, context = {}) {
                         st.phase === "over" ? "Finished" :
                             st.paused ? "Paused" :
                                 st.race && st.gt < me.unlockAt ? "Wait…" : st.race ? "Racing" : "Flying";
+        const wantPauseLabel = st.paused && !online ? "Resume" : "Pause";
+        if (wantPauseLabel !== pauseLabelText) {
+            pauseLabelText = wantPauseLabel;
+            pauseLabel.textContent = wantPauseLabel;
+            pauseBtn.setAttribute("aria-label", wantPauseLabel);
+            pauseBtn.title = wantPauseLabel + " (P)";
+            const icon = pauseBtn.querySelector("svg");
+            if (icon) icon.outerHTML = iconSVG(wantPauseLabel === "Resume" ? "play" : "pause", { size: 14 });
+        }
         syncOverlay();
     }
 
@@ -819,13 +928,13 @@ export function mount(root, context = {}) {
         if (b.dataset.cheat) { submitAction({ type: "cheat", key: b.dataset.cheat }); return; }
         if (b.dataset.cheatact) { submitAction({ type: "cheatact", key: b.dataset.cheatact }); return; }
         const act = b.dataset.act;
-        if (act === "start") { if (online && !room.isHost) return; ui.overlay = null; submitAction({ type: "start", mode: b.dataset.mode }); }
-        else if (act === "next") { ui.overlay = null; submitAction({ type: "next" }); }
-        else if (act === "restart") { ui.overlay = null; submitAction({ type: "restart" }); }
+        if (act === "start") { if (online && !room.isHost) return; ui.modal = null; submitAction({ type: "start", mode: b.dataset.mode }); }
+        else if (act === "next") { ui.modal = null; submitAction({ type: "next" }); }
+        else if (act === "restart") { ui.modal = null; submitAction({ type: "restart" }); }
         else if (act === "pause") submitAction({ type: "pause" });
-        else if (act === "howto") { ui.overlay = "howto"; render(); }
-        else if (act === "cheats") { ui.overlay = "cheats"; render(); }
-        else if (act === "closeov") { ui.overlay = null; render(); }
+        else if (act === "help") toggleHelp(true);
+        else if (act === "cheats") toggleCheats(true);
+        else if (act === "closeov") { ui.modal = null; render(); }
     }
 
     /* ================= input: keyboard, mouse, pad ================= */
@@ -833,17 +942,35 @@ export function mount(root, context = {}) {
     const sig = { signal: ac.signal };
 
     function onKeyDown(e) {
-        const dir = KEYMAP[e.code];
-        if (dir) {
-            if (state && (state.phase === "play" || state.phase === "count") && !ui.overlay) {
-                e.preventDefault();
-                if (!e.repeat) submitAction({ type: "input", dir, down: true });
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        // prioritas: help → cheats → pause → Escape → aksi game
+        if (e.code === "KeyH") { e.preventDefault(); toggleHelp(); return; }
+        if (e.code === "KeyC") {
+            if (!online && ui.modal !== "help") { e.preventDefault(); toggleCheats(); }
+            return;
+        }
+        if (e.code === "KeyP") {
+            if (!ui.modal && !online && state && (state.phase === "play" || state.phase === "count")) {
+                e.preventDefault(); submitAction({ type: "pause" });
             }
             return;
         }
-        if (e.code === "KeyP" && !online && state && (state.phase === "play" || state.phase === "count")) {
-            e.preventDefault(); submitAction({ type: "pause" });
-        } else if (e.code === "Escape" && ui.overlay) { ui.overlay = null; render(); }
+        if (e.code === "Escape") {
+            if (ui.modal) { e.preventDefault(); ui.modal = null; render(); }
+            else if (!online && state && state.paused) { e.preventDefault(); submitAction({ type: "pause" }); }
+            return;
+        }
+        if (e.code === "KeyR") {
+            if (!ui.modal && state && (!online || room.isHost)) {
+                e.preventDefault(); ui.modal = null; submitAction({ type: "restart" });
+            }
+            return;
+        }
+        const dir = KEYMAP[e.code];
+        if (dir && !ui.modal && state && !state.paused && (state.phase === "play" || state.phase === "count")) {
+            e.preventDefault();
+            if (!e.repeat) submitAction({ type: "input", dir, down: true });
+        }
     }
     function onKeyUp(e) {
         const dir = KEYMAP[e.code];
@@ -852,13 +979,14 @@ export function mount(root, context = {}) {
     document.addEventListener("keydown", onKeyDown, sig);
     document.addEventListener("keyup", onKeyUp, sig);
     document.addEventListener("visibilitychange", () => {
-        if (document.hidden && !online && state && (state.phase === "play" || state.phase === "count") && !state.paused)
+        if (document.hidden && !ui.modal && !online && state && (state.phase === "play" || state.phase === "count") && !state.paused)
             submitAction({ type: "pause" });
     }, sig);
 
     root.querySelectorAll("[data-pad] button[data-dir]").forEach((b) => {
         const dir = b.dataset.dir;
         b.addEventListener("pointerdown", (e) => {
+            if (ui.modal || !state || state.paused) return;
             e.preventDefault();
             b.setPointerCapture?.(e.pointerId);
             submitAction({ type: "input", dir, down: true });
@@ -870,7 +998,6 @@ export function mount(root, context = {}) {
     });
     root.querySelector("[data-pad]").addEventListener("contextmenu", (e) => e.preventDefault(), sig);
 
-    let lastAimSend = 0;
     function sendAim(p, force) {
         const now = performance.now();
         if (!force && now - lastAimSend < AIM_MS) return;
@@ -882,13 +1009,13 @@ export function mount(root, context = {}) {
         return { x: clamp((e.clientX - r.left) * (W / r.width), 0, W), y: clamp((e.clientY - r.top) * (H / r.height), 0, H) };
     }
     svg.addEventListener("pointerdown", (e) => {
-        if (!state || state.phase !== "play" || ui.overlay) return;
+        if (!state || state.phase !== "play" || ui.modal || state.paused) return;
         e.preventDefault();
         svg.setPointerCapture?.(e.pointerId);
         sendAim(aimFromEvent(e), true);
     }, sig);
     svg.addEventListener("pointermove", (e) => {
-        if (!state || state.phase !== "play" || ui.overlay) return;
+        if (!state || state.phase !== "play" || ui.modal || state.paused) return;
         if (e.buttons) sendAim(aimFromEvent(e), false);
     }, sig);
     const stopAim = () => sendAim(null, true);
@@ -898,14 +1025,14 @@ export function mount(root, context = {}) {
     root.addEventListener("click", handleClick, sig);
 
     /* ================= main loop ================= */
-    let raf = null, lastT = 0, lastPub = 0, destroyed = false;
+    let raf = null, lastT = 0, destroyed = false;
     function frame(t) {
         if (destroyed) return;
         raf = requestAnimationFrame(frame);
         if (!lastT) { lastT = t; return; }
         const dt = Math.min(0.05, (t - lastT) / 1000);
         lastT = t; lastDt = dt;
-        const blocked = !online && (ui.overlay === "howto" || ui.overlay === "cheats");
+        const blocked = ui.modal === "help" || ui.modal === "cheats";
         if (authority() && state && !state.paused && !blocked) step(dt);
         render();
         if (online && room.isHost && state && (state.phase === "count" || state.phase === "play") && t - lastPub > PUB_MS) {
@@ -937,6 +1064,13 @@ export function mount(root, context = {}) {
         }
     } else {
         state = idleState();
+    }
+    // Panduan internal sekali per instalasi; flag milik game ini.
+    let helpSeen = true;
+    try { helpSeen = localStorage.getItem("starCatcherHelpSeen") === "1"; } catch (e) { helpSeen = true; }
+    if (!helpSeen) {
+        ui.modal = "help";
+        try { localStorage.setItem("starCatcherHelpSeen", "1"); } catch (e) { /* storage diblokir */ }
     }
     render();
     raf = requestAnimationFrame(frame);

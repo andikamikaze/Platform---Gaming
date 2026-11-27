@@ -1,12 +1,15 @@
 /* ==== GAME: dots-and-boxes.js ==== */
 /* Dots and Boxes — 4x4 boxes. You vs bot (mode "ai") or online (mode "room").
-   Minimalist UI, no tutorial text, no level generator (always a fresh,
-   completable empty board). A point counts ONLY when the 4th side of a box
-   is drawn; the closer keeps the turn. Random starter every round; random
-   seat/color mapping in multiplayer (stored in state.swap so both clients
-   agree). Cheats are AI-mode only. Controls: mouse hover+click, arrows/WASD
-   + Enter/Space, R restart, C cheats, H hint, U undo, Esc close; virtual
-   D-pad appears automatically on touch devices. */
+   Minimalist UI, no tutorial text in the board area, no level generator
+   (always a fresh, completable empty board). A point counts ONLY when the 4th
+   side of a box is drawn; the closer keeps the turn. Random starter every
+   round; random seat/color mapping in multiplayer (stored in state.swap so
+   both clients agree). Cheats are AI-mode only. Controls: hover/tap edges,
+   arrows/WASD + Enter/Space, H help, C cheats, P pause, R restart, U undo,
+   Esc close; virtual D-pad appears automatically on touch devices. Layout:
+   single HUD bar + fill-height board + internal How-to-play modal. */
+
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "dots-and-boxes", // harus sama dengan nama file (tanpa .js)
@@ -47,13 +50,61 @@ export function mount(root, context = {}) {
     /* ---------- local state ---------- */
     let state = null;          // canonical, serializable (host-owned when online)
     let history = [];          // undo snapshots (AI mode only)
-    let timers = [], aiTimer = null;
     let destroyed = false;
     let cursor = KEYS[0], hoverKey = null, hintKey = null;
     let cheatOpen = false, dumbBot = false, showCounts = false, flashMsg = "";
+    let helpOpen = false, paused = false;
+    let pauseStart = 0, pauseOffset = 0;
+    const nowMs = () => Date.now() - pauseOffset;
 
-    const later = (fn, ms) => { const t = setTimeout(() => { timers = timers.filter((x) => x !== t); fn(); }, ms); timers.push(t); return t; };
-    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; aiTimer = null; };
+    /* First-run internal guide, shown once per install. */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("dotsAndBoxesHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("dotsAndBoxesHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
+
+    /* Pause-aware timers: due anchors use the shifted clock, and only the
+       remaining delay is replayed on resume so flashes / bot moves never
+       jump ahead after a pause. */
+    const timers = new Map();
+    let deferredTimers = [];
+    function later(key, fn, ms) {
+        clearTimer(key);
+        if (paused || destroyed) {
+            if (paused && !destroyed) deferredTimers.push({ key, fn, wait: Math.max(0, ms) });
+            return;
+        }
+        const id = setTimeout(() => {
+            timers.delete(key);
+            if (!destroyed && !paused) fn();
+        }, ms);
+        timers.set(key, { id, due: nowMs() + ms, fn });
+    }
+    function clearTimer(key) {
+        const rec = timers.get(key);
+        if (rec) { clearTimeout(rec.id); timers.delete(key); }
+        deferredTimers = deferredTimers.filter((t) => t.key !== key);
+    }
+    function clearTimers() {
+        for (const rec of timers.values()) clearTimeout(rec.id);
+        timers.clear();
+        deferredTimers = [];
+    }
+    function pauseTimers() {
+        const now = nowMs();
+        for (const [key, rec] of timers) {
+            clearTimeout(rec.id);
+            deferredTimers.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        timers.clear();
+    }
+    function resumeTimers() {
+        const queue = deferredTimers;
+        deferredTimers = [];
+        for (const t of queue) later(t.key, t.fn, t.wait);
+    }
 
     const sideCount = (r, c) => boxEdges(r, c).reduce((n, k) => n + (state.edges[k] ? 1 : 0), 0);
     const gainOf = (k) => adjBoxes(k).reduce((n, [r, c]) => n + (!state.boxes[r * NB + c] && sideCount(r, c) === 3 ? 1 : 0), 0);
@@ -85,6 +136,7 @@ export function mount(root, context = {}) {
     const mySeat = () => (online ? (state ? (room.isHost ? hostSeat() : 3 - hostSeat()) : 1) : 1);
     const oppSeat = () => 3 - mySeat();
     const myTurn = () => Boolean(state) && !state.over && state.turn === mySeat();
+    const canPlay = () => myTurn() && !paused && !helpOpen && !cheatOpen;
 
     /* ---------- markup (built once, updated by render) ---------- */
     const parts = { boxes: "", counts: "", guides: "", lines: "", dots: "", hits: "" };
@@ -105,93 +157,171 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.dab{--ink:#0f172a;--mut:#64748b;--hair:#e2e8f0;color:var(--ink)}
-.dab .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.dab .game-intro h2{margin:0;font-size:1.05rem;font-weight:650;letter-spacing:-.01em}
-.dab .game-status{display:inline-flex;align-items:center;gap:7px;font-size:.8rem;color:var(--mut)}
-.dab .game-status-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block;flex:none}
-.dab-card{background:#fff;border:1px solid var(--hair);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px}
-.dab-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem;color:var(--mut)}
-.dab-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--hair);border-radius:999px;padding:3px 10px;background:#fff}
-.dab-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
-.dab-cdot{width:8px;height:8px;border-radius:50%;flex:none}
-.dab-stage{position:relative}
-.dab-svg{display:block;width:100%;height:auto;max-width:430px;margin:0 auto;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+/* Dots & Boxes — light paper UI, single HUD bar, fill-height square board. */
+.dab{--ink:#0f172a;--mut:#64748b;--hair:#e2e8f0;--acc:#4338ca;color:var(--ink);width:100%;height:100%;min-height:0;margin:0 auto;padding:2px;display:flex;flex-direction:column;gap:10px;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.dab *{box-sizing:border-box}
+.dab [hidden]{display:none!important}
+.dab :is(button,select,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.dab-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.01em}
+.dab-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;min-height:28px;border:1px solid var(--hair);border-radius:999px;background:#fff;white-space:nowrap;color:var(--mut)}
+.dab-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.dab-cdot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block;flex:none}
+.dab-spacer{flex:1 1 auto;min-width:6px}
+.dab-btn{appearance:none;border:1px solid var(--hair);background:#fff;color:var(--ink);border-radius:9px;padding:7px 10px;min-height:32px;font:inherit;font-size:11px;font-weight:550;cursor:pointer;transition:background .12s,border-color .12s}
+.dab-btn:hover:not(:disabled){background:#f8fafc;border-color:#cbd5e1}
+.dab-btn:disabled{opacity:.45;cursor:default}
+.dab-btn.on{border-color:var(--acc);color:var(--acc)}
+.dab-btn.primary,.dab-primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.dab-btn.primary:hover:not(:disabled),.dab-primary:hover:not(:disabled){background:#1e293b}
+.dab-btn[aria-pressed="true"]{background:#eef2ff;border-color:#c7d2fe;color:var(--acc)}
+.dab-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.dab-icon-btn svg{flex:none;display:block}
+.dab-btn-label{white-space:nowrap}
+.dab.game-fill>.dab-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:1px solid var(--hair);border-radius:12px;overflow:hidden;background:#fff}
+.dab-svg{display:block;width:100%;height:100%;max-width:none;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 .dab-hit{cursor:pointer}
 .dab-pulse{animation:dab-pulse 1s ease-in-out infinite}
 @keyframes dab-pulse{50%{opacity:.25}}
-.dab-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.85);backdrop-filter:blur(3px);border-radius:14px;z-index:5}
-.dab-ov[hidden]{display:none}
-.dab-modal{width:min(320px,92%);background:#fff;border:1px solid var(--hair);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 12px 32px rgba(15,23,42,.08)}
-.dab-modal h3{margin:0;font-size:1rem;font-weight:650}
-.dab-modal p{margin:0;font-size:.85rem;color:var(--mut)}
-.dab-btn{appearance:none;border:1px solid var(--hair);background:#fff;color:var(--ink);border-radius:10px;padding:8px 12px;font:inherit;font-size:.82rem;font-weight:550;cursor:pointer;transition:background .12s,border-color .12s}
-.dab-btn:hover:not(:disabled){background:#f8fafc;border-color:#cbd5e1}
-.dab-btn:disabled{opacity:.45;cursor:default}
-.dab-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
-.dab-btn.primary:hover:not(:disabled){background:#1e293b}
-.dab-btn[aria-pressed="true"]{background:#eef2ff;border-color:#c7d2fe;color:#4338ca}
-.dab-cheats{display:flex;flex-direction:column;gap:6px}
+.dab-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.86);backdrop-filter:blur(3px);border-radius:12px;z-index:5;padding:12px}
+.dab-ov[hidden]{display:none!important}
+.dab-card{width:min(380px,100%);max-height:100%;overflow:hidden;background:#fff;border:1px solid var(--hair);border-radius:14px;padding:16px 18px;color:var(--ink);display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(15,23,42,.08)}
+.dab-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none}
+.dab-head h3{margin:0;font-size:16px;font-weight:650}
+.dab-x{min-width:36px;min-height:36px;background:none;border:0;color:inherit;font-size:18px;line-height:1;cursor:pointer;opacity:.6;padding:2px 6px}
+.dab-x:hover{opacity:1}
+.dab-stats,.dab-cheats,.dab-help{flex:1 1 auto;min-height:0;overflow:auto}
+.dab-stats p{margin:0;font-size:13px;color:var(--mut)}
+.dab-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.dab-help b{display:block;margin:0 0 5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+.dab-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6}
+.dab-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--hair);border-bottom-width:2px;border-radius:5px;font:600 10px/1.4 ui-monospace,monospace}
+.dab-cheats{display:flex;flex-direction:column;gap:2px}
 .dab-cheats .dab-btn{text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .dab-cheats .dab-btn span{color:var(--mut);font-size:.72rem}
-.dab-pad{display:none;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,44px);gap:6px;justify-content:center}
-.dab-pad .dab-btn{padding:0;font-size:1rem;border-radius:12px}
+.dab-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap}
+.dab-note{font-size:11px;color:var(--mut)}
+.dab-primary{padding:9px 14px;min-height:40px;font:inherit;font-size:13px;cursor:pointer}
+.dab-result-card{align-items:center;text-align:center}
+.dab-pad{flex:none;display:none;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,44px);gap:6px;justify-content:center;padding-bottom:2px}
+.dab-pad .dab-btn{padding:0;font-size:1rem;border-radius:12px;min-height:44px}
 @media (hover:none) and (pointer:coarse){.dab-pad{display:grid}}
-.dab .game-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media (pointer:coarse){
+  .dab-btn{min-height:44px}
+  .dab-chip{min-height:44px;padding:8px 12px}
+}
+@media (prefers-reduced-motion:reduce){.dab *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* --- layout overrides last (beat pointer:coarse 44px defaults) --- */
+@media (max-width:640px){
+  .dab.game-fill>.dab-panel:not(:has(.dab-ov:not([hidden]))){aspect-ratio:1;flex:0 0 auto}
+  .dab.game-fill>.dab-panel:has(.dab-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .dab{gap:6px}
+  .dab .dab-hud{gap:5px}
+  .dab .dab-hud .dab-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .dab .dab-hud .dab-chip[data-mode]{display:none}
+  .dab .dab-hud [data-status]{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block}
+  .dab .dab-hud .dab-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .dab .dab-hud .dab-btn-label,.dab .dab-hud .dab-spacer{display:none}
+  .dab-ov{padding:8px}
+  .dab-card{width:100%;height:100%;max-height:100%;padding:12px}
+  .dab-help{grid-template-columns:1fr;gap:8px}
+  .dab-stats,.dab-cheats,.dab-help{scrollbar-width:none}
+  .dab-stats::-webkit-scrollbar,.dab-cheats::-webkit-scrollbar,.dab-help::-webkit-scrollbar{display:none}
+  .dab-foot{padding-top:8px;border-top:1px solid var(--hair)}
+  .dab-note{display:none}
+}
+@media (pointer:coarse){
+  .dab .dab-hud .dab-btn{min-height:32px;padding:5px 9px;font-size:9px}
+  .dab .dab-card .dab-primary,.dab .dab-card .dab-x{min-height:44px}
+}
 </style>
-<div class="game-app dab">
-  <div class="game-intro">
-    <div><h2>Dots and Boxes</h2></div>
-    <span class="game-status"><i class="game-status-dot" data-status-dot></i><span data-status aria-live="polite">Ready</span></span>
+<div class="game-app dab game-fill" data-dab>
+  <div class="dab-hud">
+    <span class="dab-chip"><i class="dab-cdot" data-turn-dot></i><b data-turn>—</b></span>
+    <span class="dab-chip"><span data-status>Ready</span></span>
+    <span class="dab-chip"><i class="dab-cdot" data-you-dot></i>You <b data-you>0</b></span>
+    <span class="dab-chip"><i class="dab-cdot" data-opp-dot></i><span data-opp-name>Bot</span> <b data-opp>0</b></span>
+    <span class="dab-chip">Left <b data-left>16</b></span>
+    <span class="dab-chip" data-mode>Solo</span>
+    <span class="dab-spacer"></span>
+    <button class="dab-btn dab-icon-btn" type="button" data-hint aria-label="Best move hint" title="Best move hint" ${online ? "hidden" : ""}>${iconSVG("lightbulb", { size: 14 })}<span class="dab-btn-label">Hint</span></button>
+    <button class="dab-btn dab-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="dab-btn-label">Help</span></button>
+    <button class="dab-btn dab-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)" ${online ? "hidden" : ""}>${iconSVG("wrench", { size: 14 })}<span class="dab-btn-label">Cheats</span></button>
+    <button class="dab-btn dab-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" ${online ? "disabled" : ""}>${iconSVG("pause", { size: 14 })}<span class="dab-btn-label">Pause</span></button>
+    <button class="dab-btn dab-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="dab-btn-label">Restart</span></button>
+    <button class="dab-btn dab-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="dab-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel">
-    <div class="dab-card">
-      <div class="dab-hud">
-        <span class="dab-chip"><i class="dab-cdot" data-you-dot></i>You <b data-you>0</b></span>
-        <span class="dab-chip"><i class="dab-cdot" data-opp-dot></i><span data-opp-name>Bot</span> <b data-opp>0</b></span>
-        <span class="dab-chip">Left <b data-left>16</b></span>
+  <section class="game-panel dab-panel" data-board>
+    <svg class="dab-svg" viewBox="0 0 360 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Dots and Boxes board">
+      <g>${parts.boxes}</g><g>${parts.counts}</g><g>${parts.guides}</g><g>${parts.lines}</g>
+      <line data-cursor stroke="#6366f1" stroke-width="6" stroke-linecap="round" stroke-dasharray="1 11" opacity="0"/>
+      <g>${parts.dots}</g><g>${parts.hits}</g>
+    </svg>
+    <div class="dab-ov" data-ov="result" hidden>
+      <div class="dab-card dab-result-card">
+        <div class="dab-head"><h3 data-result-title>Draw</h3></div>
+        <div class="dab-stats"><p data-result-score>0 – 0</p></div>
+        <div class="dab-foot"><span class="dab-note">Press R for a new round</span><button class="dab-btn dab-primary" type="button" data-restart>Play again</button></div>
       </div>
-      <div class="dab-stage">
-        <svg class="dab-svg" viewBox="0 0 360 360" role="img" aria-label="Dots and Boxes board">
-          <g>${parts.boxes}</g><g>${parts.counts}</g><g>${parts.guides}</g><g>${parts.lines}</g>
-          <line data-cursor stroke="#6366f1" stroke-width="6" stroke-linecap="round" stroke-dasharray="1 11" opacity="0"/>
-          <g>${parts.dots}</g><g>${parts.hits}</g>
-        </svg>
-        <div class="dab-ov" data-result hidden>
-          <div class="dab-modal">
-            <h3 data-result-title>Draw</h3>
-            <p data-result-score>0 – 0</p>
-            <button class="dab-btn primary" type="button" data-restart>Play again</button>
+    </div>
+    <div class="dab-ov" data-ov="cheat" hidden>
+      <div class="dab-card">
+        <div class="dab-head"><h3>Cheats</h3><button class="dab-x" type="button" data-cheats-close aria-label="Close">&times;</button></div>
+        <div class="dab-cheats">
+          <button class="dab-btn" type="button" data-cheat="hint">Best move <span>HUD Hint</span></button>
+          <button class="dab-btn" type="button" data-cheat="claim">Auto-claim boxes</button>
+          <button class="dab-btn" type="button" data-cheat="undo">Undo move <span>U</span></button>
+          <button class="dab-btn" type="button" data-cheat="skip">Skip bot turn</button>
+          <button class="dab-btn" type="button" data-cheat="dumb" aria-pressed="false">Random bot</button>
+          <button class="dab-btn" type="button" data-cheat="counts" aria-pressed="false">Show side counts</button>
+        </div>
+        <div class="dab-foot"><span class="dab-note">AI mode only</span></div>
+      </div>
+    </div>
+    <div class="dab-ov" data-ov="pause" hidden>
+      <div class="dab-card">
+        <div class="dab-head"><h3>Paused</h3></div>
+        <div class="dab-stats"><p>The board, bot and timers are frozen.</p></div>
+        <div class="dab-foot"><span class="dab-note">Press P or Esc to resume</span><button class="dab-btn dab-primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="dab-ov" data-ov="help" hidden>
+      <div class="dab-card">
+        <div class="dab-head"><h3>How to play</h3><button class="dab-x" type="button" data-help-close aria-label="Close">&times;</button></div>
+        <div class="dab-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Click an edge between two dots to draw a line.</li>
+              <li><span class="dab-kbd">← ↑ → ↓</span> / <span class="dab-kbd">WASD</span> aim, <span class="dab-kbd">Enter</span> / <span class="dab-kbd">Space</span> draw.</li>
+              <li><span class="dab-kbd">H</span> help · <span class="dab-kbd">C</span> cheats · <span class="dab-kbd">P</span> pause · <span class="dab-kbd">R</span> restart · <span class="dab-kbd">U</span> undo · <span class="dab-kbd">Esc</span> close</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap an edge to draw; the D-pad below the board aims and OK draws.</li>
+              <li>Use the HUD buttons for Hint, Help, Cheats, Pause, Restart and Exit.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>The 4×4 grid has 16 boxes. Draw a box's 4th side to claim it.</li>
+              <li>Claiming a box scores a point and grants another turn; otherwise the turn passes.</li>
+              <li>Most boxes wins. Who starts is random; in Room mode your colour is random too.</li>
+              <li>Turn, status, scores, boxes left and mode live in the HUD bar.</li>
+              <li>Cheats (hint, auto-claim, undo, skip, random bot, side counts) are AI-mode only.</li>
+            </ul>
+            <div class="dab-foot"><span class="dab-note">Press H to reopen this guide</span><button class="dab-btn dab-primary" type="button" data-help-close>Got it</button></div>
           </div>
         </div>
-        <div class="dab-ov" data-cheat-ov hidden>
-          <div class="dab-modal">
-            <h3>Cheats</h3>
-            <div class="dab-cheats">
-              <button class="dab-btn" type="button" data-cheat="hint">Best move <span>H</span></button>
-              <button class="dab-btn" type="button" data-cheat="claim">Auto-claim boxes</button>
-              <button class="dab-btn" type="button" data-cheat="undo">Undo move <span>U</span></button>
-              <button class="dab-btn" type="button" data-cheat="skip">Skip bot turn</button>
-              <button class="dab-btn" type="button" data-cheat="dumb" aria-pressed="false">Random bot</button>
-              <button class="dab-btn" type="button" data-cheat="counts" aria-pressed="false">Show side counts</button>
-            </div>
-            <button class="dab-btn" type="button" data-cheat-close>Close</button>
-          </div>
-        </div>
-      </div>
-      <div class="dab-pad" aria-label="Touch controls">
-        <button class="dab-btn" type="button" data-pad="up" style="grid-column:2;grid-row:1" aria-label="Up">↑</button>
-        <button class="dab-btn" type="button" data-pad="left" style="grid-column:1;grid-row:2" aria-label="Left">←</button>
-        <button class="dab-btn" type="button" data-pad="ok" style="grid-column:2;grid-row:2" aria-label="Draw line">OK</button>
-        <button class="dab-btn" type="button" data-pad="right" style="grid-column:3;grid-row:2" aria-label="Right">→</button>
-        <button class="dab-btn" type="button" data-pad="down" style="grid-column:2;grid-row:3" aria-label="Down">↓</button>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-restart>Restart</button>
-    <button class="game-action-button" type="button" data-cheats>Cheats</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
+  <div class="dab-pad" aria-label="Touch controls">
+    <button class="dab-btn" type="button" data-pad="up" style="grid-column:2;grid-row:1" aria-label="Up">↑</button>
+    <button class="dab-btn" type="button" data-pad="left" style="grid-column:1;grid-row:2" aria-label="Left">←</button>
+    <button class="dab-btn" type="button" data-pad="ok" style="grid-column:2;grid-row:2" aria-label="Draw line">OK</button>
+    <button class="dab-btn" type="button" data-pad="right" style="grid-column:3;grid-row:2" aria-label="Right">→</button>
+    <button class="dab-btn" type="button" data-pad="down" style="grid-column:2;grid-row:3" aria-label="Down">↓</button>
   </div>
 </div>`;
 
@@ -203,14 +333,20 @@ export function mount(root, context = {}) {
     const boxEls = [...root.querySelectorAll("[data-box]")];
     const countEls = [...root.querySelectorAll("[data-count]")];
     const cursorEl = $("[data-cursor]");
-    const statusEl = $("[data-status]"), statusDot = $("[data-status-dot]");
+    const statusEl = $("[data-status]");
+    const turnEl = $("[data-turn]"), turnDot = $("[data-turn-dot]");
     const hudYou = $("[data-you]"), hudOpp = $("[data-opp]"), hudLeft = $("[data-left]");
     const youDot = $("[data-you-dot]"), oppDot = $("[data-opp-dot]"), oppName = $("[data-opp-name]");
-    const resultOv = $("[data-result]"), resultTitle = $("[data-result-title]"), resultScore = $("[data-result-score]");
-    const cheatOv = $("[data-cheat-ov]"), padOk = $('[data-pad="ok"]');
+    const modeEl = $("[data-mode]");
+    const resultTitle = $("[data-result-title]"), resultScore = $("[data-result-score]");
+    const ov = {
+        result: $('[data-ov="result"]'), cheat: $('[data-ov="cheat"]'),
+        pause: $('[data-ov="pause"]'), help: $('[data-ov="help"]'),
+    };
+    const padOk = $('[data-pad="ok"]');
+    const cheatsBtn = $("[data-cheats]"), pauseBtn = $("[data-pause]");
     const cheatBtns = {};
     ["hint", "claim", "undo", "skip", "dumb", "counts"].forEach((id) => (cheatBtns[id] = $(`[data-cheat="${id}"]`)));
-    $("[data-cheats]").style.display = online ? "none" : ""; // cheats: AI mode only
 
     /* ---------- core rules ---------- */
     function playEdge(k, seat) {
@@ -257,14 +393,15 @@ export function mount(root, context = {}) {
     }
 
     function render() {
-        const st = state, me = mySeat(), opp = oppSeat(), mt = myTurn();
+        if (destroyed) return;
+        const st = state, me = mySeat(), opp = oppSeat(), canAct = canPlay();
         KEYS.forEach((k) => {
             const el = lineEls[k], o = st ? st.edges[k] : 0;
             if (o) { el.setAttribute("stroke", COL[o]); el.setAttribute("opacity", "1"); }
-            else if (mt && k === hoverKey) { el.setAttribute("stroke", COL[me]); el.setAttribute("opacity", ".4"); }
+            else if (canAct && k === hoverKey) { el.setAttribute("stroke", COL[me]); el.setAttribute("opacity", ".4"); }
             else el.setAttribute("opacity", "0");
             hitEls[k].style.pointerEvents = o ? "none" : "stroke";
-            hitEls[k].style.cursor = mt && !o ? "pointer" : "default";
+            hitEls[k].style.cursor = canAct && !o ? "pointer" : "default";
         });
         for (let i = 0; i < NB * NB; i++) {
             const o = st ? st.boxes[i] : 0;
@@ -275,7 +412,7 @@ export function mount(root, context = {}) {
             countEls[i].textContent = String(n);
             countEls[i].setAttribute("opacity", showCounts && st && !o && !st.over ? "1" : "0");
         }
-        if (mt && !st.edges[cursor]) {
+        if (canAct && !st.edges[cursor]) {
             const { x1, y1, x2, y2 } = ends(cursor);
             cursorEl.setAttribute("x1", x1); cursorEl.setAttribute("y1", y1);
             cursorEl.setAttribute("x2", x2); cursorEl.setAttribute("y2", y2);
@@ -285,36 +422,98 @@ export function mount(root, context = {}) {
         } else cursorEl.setAttribute("opacity", "0");
 
         const you = st ? st.scores[me - 1] : 0, them = st ? st.scores[opp - 1] : 0;
+        const outcome = you > them ? "You win" : you < them ? (online ? "Rival wins" : "Bot wins") : "Draw";
         hudYou.textContent = you; hudOpp.textContent = them;
         hudLeft.textContent = st ? NB * NB - st.claimed : NB * NB;
         youDot.style.background = COL[me]; oppDot.style.background = COL[opp];
         oppName.textContent = online ? "Rival" : "Bot";
+        modeEl.textContent = online ? "Room" : "Solo";
+        turnEl.textContent = st ? (st.turn === me ? "You" : online ? "Rival" : "Bot") : "—";
 
         let msg, pulse = false;
         if (!st) msg = online ? "Waiting for host…" : "Ready";
-        else if (st.over) msg = you > them ? "You win" : you < them ? (online ? "Rival wins" : "Bot wins") : "Draw";
-        else if (mt) msg = "Your turn";
+        else if (paused) msg = "Paused";
+        else if (helpOpen) msg = "How to play";
+        else if (cheatOpen) msg = "Cheats";
+        else if (st.over) msg = outcome;
+        else if (canAct) msg = "Your turn";
         else { msg = online ? "Rival's turn" : "Bot thinking…"; pulse = true; }
-        if (flashMsg) msg = flashMsg;
+        if (flashMsg && !paused && !helpOpen && !cheatOpen) msg = flashMsg;
         statusEl.textContent = msg;
-        statusDot.style.background = st && !st.over ? COL[st.turn] : "#94a3b8";
-        statusDot.classList.toggle("dab-pulse", pulse);
+        turnDot.style.background = st && !st.over ? COL[st.turn] : "#94a3b8";
+        turnDot.classList.toggle("dab-pulse", pulse);
 
-        resultOv.hidden = !(st && st.over);
-        if (st && st.over) { resultTitle.textContent = msg; resultScore.textContent = `${you} – ${them}`; }
-        cheatOv.hidden = !cheatOpen || online;
-        cheatBtns.hint.disabled = !mt;
-        cheatBtns.claim.disabled = !mt;
+        if (st && st.over) { resultTitle.textContent = outcome; resultScore.textContent = `${you} – ${them}`; }
+        syncUI();
+        cheatBtns.hint.disabled = !myTurn();
+        cheatBtns.claim.disabled = !myTurn();
         cheatBtns.undo.disabled = !history.length;
         cheatBtns.skip.disabled = !(st && !st.over && st.turn === 2);
         cheatBtns.dumb.setAttribute("aria-pressed", String(dumbBot));
         cheatBtns.counts.setAttribute("aria-pressed", String(showCounts));
-        padOk.disabled = !mt;
+        padOk.disabled = !canAct;
 
         scheduleAI();
     }
 
-    function flash(msg) { flashMsg = msg; later(() => { flashMsg = ""; render(); }, 1600); }
+    function flash(msg) { flashMsg = msg; later("flash", () => { flashMsg = ""; render(); }, 1600); }
+
+    /* ---------- overlays + pause ---------- */
+    /* Help > cheats > pause > result; HUD label spans keep the icons intact. */
+    function syncUI() {
+        ov.result.hidden = !(state && state.over) || cheatOpen || helpOpen || paused;
+        ov.cheat.hidden = !cheatOpen || helpOpen;
+        ov.pause.hidden = !paused || helpOpen;
+        ov.help.hidden = !helpOpen;
+        if (cheatsBtn) cheatsBtn.classList.toggle("on", cheatOpen);
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".dab-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+        root.focus?.({ preventScroll: true });
+    }
+
+    function toggleCheats(on) {
+        if (online) return;
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) helpOpen = false;
+        render();
+        root.focus?.({ preventScroll: true });
+    }
+
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        if (paused) {
+            cheatsBtn.classList.remove("on");
+            cheatOpen = false;
+            pauseStart = Date.now();
+            pauseTimers();
+        } else {
+            if (pauseStart) pauseOffset += Date.now() - pauseStart;
+            pauseStart = 0;
+            resumeTimers();
+        }
+        render();
+        root.focus?.({ preventScroll: true });
+    }
+
+    function restartRound() {
+        helpOpen = false;
+        cheatOpen = false;
+        if (paused) togglePause(false);
+        submitAction({ type: "restart" });
+    }
 
     /* ---------- sync (host-authoritative when online) ---------- */
     function publish() {
@@ -350,11 +549,12 @@ export function mount(root, context = {}) {
 
     /* ---------- bot (AI mode only) ---------- */
     function scheduleAI() {
-        if (online || destroyed || aiTimer || !state || state.over || state.turn !== 2) return;
-        aiTimer = later(() => { aiTimer = null; aiMove(); }, dumbBot ? 320 : 560);
+        if (online || destroyed || paused || helpOpen || cheatOpen || !state || state.over || state.turn !== 2) return;
+        if (timers.has("ai") || deferredTimers.some((t) => t.key === "ai")) return;
+        later("ai", () => { aiMove(); }, dumbBot ? 320 : 560);
     }
     function aiMove() {
-        if (destroyed || !state || state.over || state.turn !== 2) return;
+        if (destroyed || paused || helpOpen || cheatOpen || !state || state.over || state.turn !== 2) return;
         const k = pickMove(dumbBot);
         if (!k) { state.over = true; publish(); return; }
         playEdge(k, 2);
@@ -364,7 +564,7 @@ export function mount(root, context = {}) {
     /* ---------- cheats (AI mode only) ---------- */
     const pushHistory = () => { history.push(JSON.stringify(state)); if (history.length > 80) history.shift(); };
     function cheat(id) {
-        if (online || !state) return;
+        if (online || !state || paused || helpOpen) return;
         if (id === "hint") {
             if (!myTurn()) return;
             const k = pickMove(false);
@@ -406,7 +606,7 @@ export function mount(root, context = {}) {
 
     /* ---------- input: mouse / keyboard / virtual pad ---------- */
     function moveCursor(dir) {
-        if (!state) return;
+        if (!state || paused || helpOpen || cheatOpen) return;
         const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
         const m = mid(cursor);
         const scan = (pool) => {
@@ -428,7 +628,7 @@ export function mount(root, context = {}) {
     }
 
     function humanPlay(k) {
-        if (!state || !myTurn() || state.edges[k]) return;
+        if (!canPlay() || state.edges[k]) return;
         if (!online) pushHistory();
         hintKey = null; hoverKey = null;
         submitAction({ type: "edge", key: k });
@@ -437,16 +637,22 @@ export function mount(root, context = {}) {
 
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
-        if (t.closest("[data-restart]")) { submitAction({ type: "restart" }); return; }
-        if (t.closest("[data-cheats]")) { if (!online) { cheatOpen = !cheatOpen; render(); } return; }
-        if (t.closest("[data-cheat-close]")) { cheatOpen = false; render(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartRound(); return; }
+        if (t.closest("[data-hint]")) { cheat("hint"); return; }
         const ch = t.closest("[data-cheat]");
         if (ch) { cheat(ch.getAttribute("data-cheat")); return; }
         const pad = t.closest("[data-pad]");
         if (pad) { const d = pad.getAttribute("data-pad"); if (d === "ok") placeCursor(); else moveCursor(d); return; }
         const hit = t.closest("[data-hit]");
-        if (hit) { humanPlay(hit.getAttribute("data-hit")); return; }
+        if (hit) humanPlay(hit.getAttribute("data-hit"));
     }
     function handleOver(e) {
         const h = e.target.closest?.("[data-hit]");
@@ -459,18 +665,27 @@ export function mount(root, context = {}) {
     function handleKey(e) {
         if (destroyed || !root.isConnected || e.ctrlKey || e.metaKey || e.altKey) return;
         const tag = e.target?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable) return;
+        const code = e.code || "";
         const k = e.key, low = k.toLowerCase();
-        if (k === "Escape" || (cheatOpen && low === "c")) { if (cheatOpen) { cheatOpen = false; render(); e.preventDefault(); } return; }
-        if (cheatOpen) return;
+        /* priority: help -> cheats -> pause -> escape -> restart -> game actions */
+        if (code === "KeyH" || k === "?") { if (!e.repeat) toggleHelp(); e.preventDefault(); return; }
+        if (code === "KeyC") { if (!e.repeat && !online && !helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (code === "KeyP") { if (!e.repeat && !online && !helpOpen && !cheatOpen) togglePause(); e.preventDefault(); return; }
+        if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else if (paused) togglePause(false);
+            e.preventDefault(); return;
+        }
+        if (code === "KeyR") { if (!e.repeat) restartRound(); e.preventDefault(); return; }
+        if (tag === "BUTTON") return; /* keep native Enter/Space on HUD buttons */
+        if (helpOpen || cheatOpen || paused) { e.preventDefault(); return; }
         const dir = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", w: "up", s: "down", a: "left", d: "right" }[k] ||
             { w: "up", s: "down", a: "left", d: "right" }[low];
         if (dir) { moveCursor(dir); e.preventDefault(); return; }
         if (k === "Enter" || k === " ") { placeCursor(); e.preventDefault(); return; }
-        if (low === "r") { submitAction({ type: "restart" }); e.preventDefault(); }
-        else if (low === "c" && !online) { cheatOpen = true; render(); e.preventDefault(); }
-        else if (low === "h") { cheat("hint"); e.preventDefault(); }
-        else if (low === "u") { cheat("undo"); e.preventDefault(); }
+        if (code === "KeyU") { cheat("undo"); e.preventDefault(); }
     }
 
     /* ---------- boot ---------- */

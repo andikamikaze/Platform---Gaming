@@ -1,4 +1,6 @@
 /* ==== GAME: cooking-simulator.js ==== */
+import { iconSVG } from "../JS/icons.js";
+
 /* Cooking Simulator - minimalist race-cooking game.
    Fill the customer order (any order), stop one timing bar, dish is served
    automatically. First to the level target wins the level. 5 random levels.
@@ -62,9 +64,21 @@ export function mount(root, context = {}) {
         egg: '<svg viewBox="0 0 24 24"><path d="M12 4c4 0 8 3 8 7 0 4-3 9-8 9s-8-5-8-9c0-4 4-7 8-7z" fill="#f8fafc"/><circle cx="12" cy="12" r="3.4" fill="#fbbf24"/></svg>',
     };
 
-    /* local (per-client) cheat flags */
+    /* local (per-client) cheat flags + UI overlays */
     const cheat = { perfect: false, slowBot: false };
     let cheatOpen = false;
+    let helpOpen = false;
+    let userPaused = false; /* explicit pause via button / P / Escape */
+    let paused = false;     /* derived: userPaused || cheatOpen || helpOpen */
+    let pauseWallAt = 0;
+
+    /* first-run internal guide (one flag per browser) */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("cookingSimulatorHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("cookingSimulatorHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     /* ---------------- pure helpers ---------------- */
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -101,93 +115,136 @@ export function mount(root, context = {}) {
         return { quality: Math.round(ing * 0.5 + timing * 0.5), ing, timing };
     }
 
-    /* ---------------- skeleton (minimalist, no tutorial text) ---------------- */
+    /* ---------------- layout: HUD bar + fill board + overlay modals ---------------- */
     root.innerHTML = `
 <style>
 .cs-scope{--ink:#1c1917;--mut:#78716c;--line:#e7e5e4;--acc:#ea580c;--soft:#fafaf9;color:var(--ink)}
+.cs-scope *{box-sizing:border-box}
 .cs-scope [hidden]{display:none!important}
-.cs-scope .cs-panel{position:relative;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
-.cs-scope .cs-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.cs-scope .cs-chip{font-size:12px;font-weight:600;color:var(--mut);border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px}
-.cs-scope .cs-turn{color:var(--acc);border-color:#fed7aa;background:#fff7ed}
-.cs-scope .cs-mini{margin-left:auto;font-size:12px;font-weight:600;color:var(--mut);background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 10px;cursor:pointer}
-.cs-scope .cs-mini:hover{border-color:var(--acc);color:var(--acc)}
-.cs-scope .cs-score{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.cs-scope .cs-player{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.cs-scope.game-fill{display:flex;flex-direction:column;gap:10px;min-height:100%}
+/* HUD: all run info lives here; the board only holds game content */
+.cs-scope .cs-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.cs-scope .cs-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--mut);border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:6px 10px;white-space:nowrap}
+.cs-scope .cs-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.cs-scope .cs-chip.cs-turn{color:var(--acc);border-color:#fed7aa;background:#fff7ed}
+.cs-scope .cs-spacer{flex:1 1 auto}
+.cs-scope .cs-icon-btn{display:inline-flex;align-items:center;gap:6px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.04em;color:var(--mut);background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:34px;cursor:pointer}
+.cs-scope .cs-icon-btn svg{flex:none;display:block}
+.cs-scope .cs-icon-btn:hover:not(:disabled),.cs-scope .cs-icon-btn:focus-visible{border-color:var(--acc);color:var(--acc)}
+.cs-scope .cs-icon-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.cs-scope .cs-icon-btn.on{border-color:var(--acc);color:var(--acc);background:#fff7ed}
+.cs-scope .cs-icon-btn:disabled{opacity:.45;cursor:default}
+/* board */
+.cs-scope .cs-panel{position:relative;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:12px;overflow-x:hidden;overflow-y:auto}
+.cs-scope .cs-score{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:none}
+.cs-scope .cs-player{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .cs-scope .cs-player.on{border-color:var(--acc)}
-.cs-scope .cs-player-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:6px}
+.cs-scope .cs-player-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px}
 .cs-scope .cs-pname{display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cs-scope .cs-you{font-style:normal;font-size:9px;font-weight:700;letter-spacing:.5px;color:var(--acc);border:1px solid #fed7aa;border-radius:4px;padding:1px 4px}
-.cs-scope .cs-prog{height:6px;border-radius:3px;background:#f5f5f4;overflow:hidden}
-.cs-scope .cs-prog i{display:block;height:100%;background:var(--acc);border-radius:3px;transition:width .3s}
-.cs-scope .cs-grid{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:12px;align-items:start}
+.cs-scope .cs-prog{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.cs-scope .cs-prog i{display:block;height:100%;background:var(--acc);border-radius:3px;transition:width .2s}
+.cs-scope .cs-grid{display:grid;grid-template-columns:minmax(200px,300px) 1fr;gap:12px;align-items:start;flex:1 1 auto;min-height:0}
 .cs-scope .cs-col{display:flex;flex-direction:column;gap:12px;min-width:0}
-.cs-scope .cs-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+.cs-scope .cs-card{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px}
 .cs-scope .cs-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);margin-bottom:8px}
 .cs-scope .cs-order-name{font-size:16px;font-weight:700;margin-bottom:8px}
-.cs-scope .cs-order-ings{display:flex;flex-wrap:wrap;gap:6px}
-.cs-scope .cs-ing-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:3px 9px 3px 5px;background:var(--soft)}
+.cs-scope .cs-order-ings{display:flex;flex-wrap:wrap;gap:8px}
+.cs-scope .cs-ing-chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:4px 10px 4px 6px;background:var(--soft)}
 .cs-scope .cs-ing-chip svg{width:18px;height:18px}
 .cs-scope .cs-recipes{display:flex;flex-direction:column;gap:4px}
-.cs-scope .cs-recipe{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:600;border-radius:8px;padding:5px 7px}
-.cs-scope .cs-recipe.now{background:#fff7ed;outline:1px solid #fed7aa}
-.cs-scope .cs-recipe-ings{display:flex;gap:3px;flex:none}
+.cs-scope .cs-recipe{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:600;border:1px solid transparent;border-radius:8px;padding:6px 8px}
+.cs-scope .cs-recipe.now{background:#fff7ed;border-color:#fed7aa}
+.cs-scope .cs-recipe-ings{display:flex;gap:4px;flex:none}
 .cs-scope .cs-recipe-ings svg{width:16px;height:16px}
-.cs-scope .cs-tray{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.cs-scope .cs-slot{width:44px;height:52px;border:1.5px dashed var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--soft)}
+.cs-scope .cs-tray{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.cs-scope .cs-slot{width:44px;height:52px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--soft)}
 .cs-scope .cs-slot.filled{border-style:solid;border-color:var(--acc);background:#fff7ed}
 .cs-scope .cs-slot svg{width:26px;height:26px}
-.cs-scope .cs-barwrap{margin-bottom:10px}
-.cs-scope .cs-bar{position:relative;height:26px;border-radius:8px;background:#f5f5f4;border:1px solid var(--line);overflow:hidden;cursor:pointer}
+.cs-scope .cs-barwrap{margin-bottom:12px}
+.cs-scope .cs-bar{position:relative;height:28px;border-radius:8px;background:var(--line);border:1px solid var(--line);overflow:hidden;cursor:pointer}
 .cs-scope .cs-zone{position:absolute;top:0;bottom:0;left:35%;width:30%;background:#dcfce7}
 .cs-scope .cs-zone::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#22c55e}
 .cs-scope .cs-marker{position:absolute;top:0;bottom:0;width:4px;margin-left:-2px;background:var(--acc);border-radius:2px;left:0}
 .cs-scope .cs-shimmer{position:absolute;top:0;bottom:0;width:30%;background:linear-gradient(90deg,transparent,#fdba74,transparent);animation:cs-slide 1s linear infinite}
 @keyframes cs-slide{0%{left:-30%}100%{left:100%}}
 .cs-scope .cs-actions{display:flex;gap:8px}
-.cs-scope .cs-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;touch-action:manipulation}
-.cs-scope .cs-btn:hover:not(:disabled){border-color:var(--acc)}
+.cs-scope .cs-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:600;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-height:44px;cursor:pointer;touch-action:manipulation}
+.cs-scope .cs-btn:hover:not(:disabled),.cs-scope .cs-btn:focus-visible{border-color:var(--acc)}
+.cs-scope .cs-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cs-scope .cs-btn:disabled{opacity:.45;cursor:default}
 .cs-scope .cs-btn.cs-primary{background:var(--acc);border-color:var(--acc);color:#fff}
 .cs-scope .cs-btn.cs-primary:disabled{background:#fdba74;border-color:#fdba74}
 .cs-scope .cs-btn kbd{font-size:10px;font-weight:600;font-family:inherit;border:1px solid currentColor;border-radius:4px;padding:0 4px;opacity:.7}
 .cs-scope .cs-pulse{animation:cs-pulse 1s ease-in-out infinite}
 @keyframes cs-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
-.cs-scope .cs-note{margin-top:10px;font-size:13px;color:var(--mut);min-height:18px}
+.cs-scope .cs-note{margin-top:12px;font-size:13px;color:var(--mut);min-height:18px}
 .cs-scope .cs-pantry{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.cs-scope .cs-ing{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border:1px solid var(--line);border-radius:10px;background:var(--soft);font-size:11.5px;font-weight:600;color:var(--ink);cursor:pointer;touch-action:manipulation}
-.cs-scope .cs-ing:hover:not(:disabled){border-color:var(--acc)}
+.cs-scope .cs-ing{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border:1px solid var(--line);border-radius:8px;background:var(--soft);font-size:11.5px;font-weight:600;color:var(--ink);cursor:pointer;touch-action:manipulation}
+.cs-scope .cs-ing:hover:not(:disabled),.cs-scope .cs-ing:focus-visible{border-color:var(--acc)}
+.cs-scope .cs-ing:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cs-scope .cs-ing:disabled{opacity:.45;cursor:default}
 .cs-scope .cs-ing svg{width:26px;height:26px}
 .cs-scope .cs-ing kbd{position:absolute;top:3px;right:5px;font-size:9px;font-family:inherit;color:var(--mut)}
-.cs-scope .cs-overlay{position:absolute;inset:0;background:rgba(250,250,249,.92);display:flex;align-items:center;justify-content:center;border-radius:14px;z-index:5}
-.cs-scope .cs-dialog{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;max-width:320px;width:calc(100% - 40px);display:flex;flex-direction:column;gap:10px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.06)}
-.cs-scope .cs-dialog-title{font-size:18px;font-weight:700}
-.cs-scope .cs-dialog-sub{font-size:13px;color:var(--mut)}
-.cs-scope .cs-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer;text-align:left}
+/* overlays: flex-column cards, scrollable body, sticky footer */
+.cs-scope .cs-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.94);border-radius:12px;padding:12px;overflow:auto}
+.cs-scope .cs-ov-card{display:flex;flex-direction:column;width:min(520px,100%);max-height:100%;overflow:hidden;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px 20px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
+.cs-scope .cs-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-bottom:10px}
+.cs-scope .cs-head h3{margin:0;font-size:17px;font-weight:700}
+.cs-scope .cs-head .cs-btn{flex:0 0 auto}
+.cs-scope .cs-body{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px;text-align:center}
+.cs-scope .cs-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;margin-top:12px}
+.cs-scope .cs-dialog-sub{font-size:13px;color:var(--mut);margin:0}
+.cs-scope .cs-note-inline{font:600 10px/1.4 ui-monospace,monospace;color:var(--mut);text-align:left}
+.cs-scope .cs-cheat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer;text-align:left}
 .cs-scope .cs-cheat-row input{accent-color:var(--acc);width:16px;height:16px;flex:none}
-@media (max-width:720px){
-.cs-scope .cs-grid{grid-template-columns:1fr}
+.cs-scope .cs-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;text-align:left}
+.cs-scope .cs-help b{display:block;margin-bottom:6px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.cs-scope .cs-help ul{margin:0 0 12px;padding-left:16px;font-size:11px;line-height:1.7;color:var(--mut)}
+.cs-scope .cs-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#fff;color:var(--ink);font:inherit}
+@media (max-width:720px){.cs-scope .cs-grid{grid-template-columns:1fr}}
+@media (max-width:480px){.cs-scope .cs-pantry{grid-template-columns:repeat(2,1fr)}.cs-scope .cs-score{grid-template-columns:1fr 1fr}}
+@media (pointer:coarse){.cs-scope .cs-btn{min-height:52px;font-size:15px}.cs-scope .cs-ing{min-height:64px}.cs-scope .cs-btn kbd,.cs-scope .cs-ing kbd{display:none}.cs-scope .cs-bar{height:34px}}
+@media (prefers-reduced-motion:reduce){.cs-scope *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (keep LAST: beats pointer:coarse 44px) --- */
+.cs-scope.game-fill > .cs-panel[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.cs-scope.game-fill > .cs-panel[data-board]:has(.cs-ov:not([hidden])){overflow:hidden}
+.cs-scope .cs-icon-btn svg{flex:none;display:block}
+.cs-scope .cs-ov-card .cs-body{min-height:0;overflow:auto}
+.cs-scope .cs-ov-card .cs-head,.cs-scope .cs-ov-card .cs-foot{flex:none}
+@media (max-width:640px){
+.cs-scope .cs-hud{gap:5px;margin-bottom:0}
+.cs-scope .cs-hud .cs-chip{padding:4px 6px;font-size:9px}
+.cs-scope .cs-hud .cs-chip.cs-turn{display:none}
+.cs-scope .cs-hud .cs-icon-btn{min-height:32px!important;padding:5px 9px;font-size:9px}
+.cs-scope .cs-hud .cs-btn-label,.cs-scope .cs-hud .cs-spacer{display:none}
+.cs-scope.game-fill > .cs-panel[data-board]{min-height:min(70dvh,620px)}
+.cs-scope .cs-ov{padding:8px}
+.cs-scope .cs-ov-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.cs-scope .cs-ov,.cs-scope .cs-body,.cs-scope .cs-help{scrollbar-width:none}
+.cs-scope .cs-ov::-webkit-scrollbar,.cs-scope .cs-body::-webkit-scrollbar,.cs-scope .cs-help::-webkit-scrollbar{display:none}
+.cs-scope .cs-foot{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.cs-scope .cs-note-inline{display:none}
 }
-@media (pointer:coarse){
-.cs-scope .cs-btn{min-height:52px;font-size:15px}
-.cs-scope .cs-ing{min-height:64px}
-.cs-scope .cs-btn kbd,.cs-scope .cs-ing kbd{display:none}
-.cs-scope .cs-bar{height:34px}
-}
+@media (pointer:coarse){.cs-scope .cs-hud .cs-icon-btn{min-height:32px!important;padding:5px 9px;font-size:9px}}
 </style>
-<div class="game-app cs-scope">
-  <div class="game-intro">
-    <div><h2>Cooking Simulator</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app cs-scope game-fill" data-cs>
+  <div class="cs-hud">
+    <span class="cs-chip">LV <b data-hud="level">1/${MAX_LEVEL}</b></span>
+    <span class="cs-chip">TARGET <b data-hud="target">—</b></span>
+    <span class="cs-chip cs-turn" data-hud="turn">—</span>
+    <span class="cs-chip">P1 <b data-hud="p1">0</b></span>
+    <span class="cs-chip">P2 <b data-hud="p2">0</b></span>
+    <span class="cs-chip" data-hud="status">Ready</span>
+    <span class="cs-spacer"></span>
+    <button class="cs-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="cs-btn-label">Help</span></button>
+    <button class="cs-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="cs-btn-label">Cheats</span></button>
+    <button class="cs-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="cs-btn-label">Pause</span></button>
+    <button class="cs-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="cs-btn-label">Restart</span></button>
+    <button class="cs-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cs-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel cs-panel" data-board>
-    <div class="cs-top">
-      <span class="cs-chip" data-level>Level 1/${MAX_LEVEL}</span>
-      <span class="cs-chip" data-target>Target -</span>
-      <span class="cs-chip cs-turn" data-turn>-</span>
-      <button class="cs-mini" type="button" data-cheats>Cheats</button>
-    </div>
     <div class="cs-score" data-score></div>
     <div class="cs-grid">
       <div class="cs-col">
@@ -214,7 +271,7 @@ export function mount(root, context = {}) {
           <div class="cs-actions">
             <button class="cs-btn" type="button" data-act="undo">Undo <kbd>Bksp</kbd></button>
             <button class="cs-btn cs-primary" type="button" data-act="main"><span data-main-label>Cook</span> <kbd>Space</kbd></button>
-            <button class="cs-btn" type="button" data-act="clear">Clear <kbd>C</kbd></button>
+            <button class="cs-btn" type="button" data-act="clear">Clear <kbd>X</kbd></button>
           </div>
           <div class="cs-note" data-note></div>
         </div>
@@ -224,33 +281,76 @@ export function mount(root, context = {}) {
         </div>
       </div>
     </div>
-    <div class="cs-overlay" data-overlay hidden>
-      <div class="cs-dialog">
-        <div class="cs-dialog-title" data-ov-title></div>
-        <div class="cs-dialog-sub" data-ov-sub></div>
-        <button class="cs-btn cs-primary" type="button" data-act="restart">Play again</button>
+    <div class="cs-ov" data-ov="result" hidden>
+      <div class="cs-ov-card">
+        <div class="cs-head"><h3 data-ov-title></h3></div>
+        <div class="cs-body"><p class="cs-dialog-sub" data-ov-sub></p></div>
+        <div class="cs-foot"><span class="cs-note-inline">Press R to play again</span><button class="cs-btn cs-primary" type="button" data-act="restart">Play again</button></div>
       </div>
     </div>
-    <div class="cs-overlay" data-cheat-overlay hidden>
-      <div class="cs-dialog">
-        <div class="cs-dialog-title">Cheats</div>
-        <label class="cs-cheat-row"><span>Perfect timing (always 100)</span><input type="checkbox" data-cheat="perfect"></label>
-        <label class="cs-cheat-row" data-slowbot-row><span>Slow &amp; sloppy bot</span><input type="checkbox" data-cheat="slowBot"></label>
-        <button class="cs-btn" type="button" data-act="fill">Auto-fill tray</button>
-        <button class="cs-btn" type="button" data-act="points">+100 points</button>
-        <button class="cs-btn cs-primary" type="button" data-act="closeCheats">Close</button>
+    <div class="cs-ov" data-ov="pause" hidden>
+      <div class="cs-ov-card">
+        <div class="cs-head"><h3>Paused</h3></div>
+        <div class="cs-body"><p class="cs-dialog-sub">The kitchen is frozen. Timers, the bot and the timing marker are stopped.</p></div>
+        <div class="cs-foot"><span class="cs-note-inline">Press P or Esc to resume</span><button class="cs-btn cs-primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="cs-ov" data-ov="cheat" hidden>
+      <div class="cs-ov-card">
+        <div class="cs-head"><h3>Cheats</h3><button class="cs-btn" type="button" data-act="closeCheats">Close</button></div>
+        <div class="cs-body">
+          <label class="cs-cheat-row"><span>Perfect timing (always 100)</span><input type="checkbox" data-cheat="perfect"></label>
+          <label class="cs-cheat-row" data-slowbot-row><span>Slow &amp; sloppy bot</span><input type="checkbox" data-cheat="slowBot"></label>
+          <button class="cs-btn" type="button" data-act="fill">Auto-fill tray</button>
+          <button class="cs-btn" type="button" data-act="points">+100 points</button>
+        </div>
+        <div class="cs-foot"><span class="cs-note-inline">Local cheats only</span><button class="cs-btn cs-primary" type="button" data-act="closeCheats">Done</button></div>
+      </div>
+    </div>
+    <div class="cs-ov" data-ov="help" hidden>
+      <div class="cs-ov-card">
+        <div class="cs-head"><h3>How to play</h3><button class="cs-btn" type="button" data-help-close>Close</button></div>
+        <div class="cs-body cs-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="cs-kbd">1</span>–<span class="cs-kbd">8</span> — add an ingredient to the tray</li>
+              <li><span class="cs-kbd">Backspace</span> — undo · <span class="cs-kbd">X</span> — clear tray</li>
+              <li><span class="cs-kbd">Space</span> / click the bar — cook, then stop the marker</li>
+              <li><span class="cs-kbd">H</span> help · <span class="cs-kbd">C</span> cheats · <span class="cs-kbd">P</span> pause · <span class="cs-kbd">R</span> restart</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap pantry tiles to fill the tray, then tap Cook.</li>
+              <li>Tap the timing bar (or Stop) when the marker crosses the green zone.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Fill the customer order in any order; matching ingredients + timing decide quality.</li>
+              <li>First to the level target wins the level. Five random levels.</li>
+              <li>Solo: race the bot. Room: a coin toss decides who cooks first.</li>
+              <li>Best level reached is saved on the game-over screen.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="cs-foot"><span class="cs-note-inline">Press H to reopen this guide</span><button class="cs-btn cs-primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     /* ---------------- refs ---------------- */
     const q = (s) => root.querySelector(s);
-    const statusEl = q("[data-status]");
-    const levelEl = q("[data-level]");
-    const targetEl = q("[data-target]");
-    const turnEl = q("[data-turn]");
+    const hudLevel = q('[data-hud="level"]');
+    const hudTarget = q('[data-hud="target"]');
+    const hudTurn = q('[data-hud="turn"]');
+    const hudP1 = q('[data-hud="p1"]');
+    const hudP2 = q('[data-hud="p2"]');
+    const hudStatus = q('[data-hud="status"]');
+    const pauseBtn = q("[data-pause]");
+    const cheatsBtn = q("[data-cheats]");
     const scoreEl = q("[data-score]");
     const orderForEl = q("[data-order-for]");
     const orderEl = q("[data-order]");
@@ -265,11 +365,12 @@ export function mount(root, context = {}) {
     const clearBtn = q('[data-act="clear"]');
     const noteEl = q("[data-note]");
     const pantryEl = q("[data-pantry]");
-    const overlayEl = q("[data-overlay]");
+    const ovResult = q('[data-ov="result"]');
+    const ovPause = q('[data-ov="pause"]');
+    const ovCheat = q('[data-ov="cheat"]');
+    const ovHelp = q('[data-ov="help"]');
     const ovTitle = q("[data-ov-title]");
     const ovSub = q("[data-ov-sub]");
-    const ovRestart = q('[data-act="restart"]');
-    const cheatOverlay = q("[data-cheat-overlay]");
     const fillBtn = q('[data-act="fill"]');
     const pointsBtn = q('[data-act="points"]');
     const slowRow = q("[data-slowbot-row]");
@@ -283,9 +384,12 @@ export function mount(root, context = {}) {
     const pantryBtns = Array.from(pantryEl.querySelectorAll("[data-ing]"));
     if (slowRow && online) slowRow.hidden = true;
 
-    /* ---------------- timers ---------------- */
+    /* ---------------- timers (pause-aware) ---------------- */
+    const clock = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
     let pendId = 0;
+    let pendSpec = null; /* { fn, remaining, started } */
     let botTimers = [];
+    let botSpecs = [];
     let rafId = 0;
     let markerT = 0;
     let markerDir = 1;
@@ -294,15 +398,91 @@ export function mount(root, context = {}) {
 
     function later(fn, ms) {
         clearPending();
-        pendId = setTimeout(() => { pendId = 0; fn(); }, ms);
+        const spec = { fn, remaining: ms, started: clock() };
+        pendSpec = spec;
+        pendId = setTimeout(() => {
+            pendId = 0;
+            if (pendSpec === spec) pendSpec = null;
+            fn();
+        }, ms);
     }
     function clearPending() {
         if (pendId) clearTimeout(pendId);
         pendId = 0;
+        pendSpec = null;
+    }
+    function botLater(fn, ms) {
+        const spec = { fn, remaining: ms, started: clock() };
+        botSpecs.push(spec);
+        const id = setTimeout(() => {
+            const si = botSpecs.indexOf(spec);
+            if (si >= 0) botSpecs.splice(si, 1);
+            const ti = botTimers.indexOf(id);
+            if (ti >= 0) botTimers.splice(ti, 1);
+            fn();
+        }, ms);
+        botTimers.push(id);
     }
     function clearBotTimers() {
         botTimers.forEach((t) => clearTimeout(t));
         botTimers = [];
+        botSpecs = [];
+    }
+    function pauseTimers() {
+        if (pendSpec && pendId) {
+            pendSpec.remaining = Math.max(0, pendSpec.remaining - (clock() - pendSpec.started));
+            clearTimeout(pendId);
+            pendId = 0;
+        }
+        botTimers.forEach((t) => clearTimeout(t));
+        botTimers = [];
+        botSpecs.forEach((spec) => {
+            spec.remaining = Math.max(0, spec.remaining - (clock() - spec.started));
+            spec.started = 0;
+        });
+    }
+    function resumeTimers() {
+        if (pendSpec && !pendId) {
+            pendSpec.started = clock();
+            const spec = pendSpec;
+            pendId = setTimeout(() => {
+                pendId = 0;
+                if (pendSpec === spec) pendSpec = null;
+                spec.fn();
+            }, spec.remaining);
+        }
+        botSpecs.forEach((spec) => {
+            spec.started = clock();
+            const id = setTimeout(() => {
+                const si = botSpecs.indexOf(spec);
+                if (si >= 0) botSpecs.splice(si, 1);
+                const ti = botTimers.indexOf(id);
+                if (ti >= 0) botTimers.splice(ti, 1);
+                spec.fn();
+            }, spec.remaining);
+            botTimers.push(id);
+        });
+    }
+    function syncPause() {
+        const want = Boolean(userPaused || cheatOpen || helpOpen);
+        if (want === paused) return;
+        if (want) {
+            pauseWallAt = Date.now();
+            pauseTimers();
+            if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+        } else {
+            /* shift wall-clock anchors so timers never jump after a pause */
+            const held = Date.now() - pauseWallAt;
+            if (state && state.cookAt) {
+                const oldKey = String(state.cookAt);
+                state.cookAt += held;
+                if (cookKey === oldKey) cookKey = String(state.cookAt);
+            }
+            lastTs = 0;
+            resumeTimers();
+        }
+        paused = want;
+        if (!want && !botTimers.length && !botSpecs.length) maybeBot();
     }
 
     /* ---------------- identity (random seats in multiplayer) ---------------- */
@@ -398,7 +578,7 @@ export function mount(root, context = {}) {
 
     /* ---------------- bot (AI mode, host-side only) ---------------- */
     function maybeBot() {
-        if (online || !state || state.over) return;
+        if (online || !state || state.over || paused || helpOpen || cheatOpen) return;
         if (state.turn !== 1 || state.phase !== "prep") return;
         clearBotTimers();
         const slow = cheat.slowBot ? 2.3 : 1;
@@ -406,17 +586,17 @@ export function mount(root, context = {}) {
         const errP = Math.max(0.04, 0.14 - state.level * 0.015) * (cheat.slowBot ? 2 : 1);
         let delay = randInt(600, 1000) * slow;
         order.ingredients.forEach((id) => {
-            botTimers.push(setTimeout(() => {
+            botLater(() => {
                 const pick = Math.random() < errP ? ING_IDS[randInt(0, ING_IDS.length - 1)] : id;
                 applyAction({ type: "pick", id: pick }, 1);
-            }, delay));
+            }, delay);
             delay += randInt(320, 620) * slow;
         });
-        botTimers.push(setTimeout(() => applyAction({ type: "cook" }, 1), delay + 300 * slow));
+        botLater(() => applyAction({ type: "cook" }, 1), delay + 300 * slow);
         const skill = (cheat.slowBot ? 42 : 66) + state.level * 4;
         const timing = clamp(Math.round(skill + (Math.random() * 2 - 1) * 26), 15, 100);
         const pos = 0.5 + (Math.random() < 0.5 ? -1 : 1) * (100 - timing) / 200;
-        botTimers.push(setTimeout(() => applyAction({ type: "stop", pos }, 1), delay + 300 * slow + randInt(650, 1400) * slow));
+        botLater(() => applyAction({ type: "stop", pos }, 1), delay + 300 * slow + randInt(650, 1400) * slow);
     }
 
     /* ---------------- canonical state (host / local only) ---------------- */
@@ -428,6 +608,7 @@ export function mount(root, context = {}) {
             return;
         }
         if (state.over) return;
+        if (paused) return; /* help / cheats / pause freeze all gameplay */
         const p = state.players[actor];
         const mine = actor === state.turn;
 
@@ -517,16 +698,17 @@ export function mount(root, context = {}) {
             lastTs = 0;
             if (markerEl) markerEl.style.left = "0%";
         }
-        if (want && !rafId) rafId = requestAnimationFrame(markerLoop);
-        if (!want && rafId) {
+        if (want && !paused && !rafId) rafId = requestAnimationFrame(markerLoop);
+        if ((!want || paused) && rafId) {
             cancelAnimationFrame(rafId);
             rafId = 0;
-            cookKey = "";
+            if (!want) cookKey = "";
         }
     }
     function markerLoop(ts) {
         rafId = 0;
         if (!(state && !state.over && state.phase === "cook" && state.turn === myIndex())) return;
+        if (paused) return;
         if (!lastTs) lastTs = ts;
         const dt = Math.min(0.05, (ts - lastTs) / 1000);
         lastTs = ts;
@@ -567,13 +749,40 @@ export function mount(root, context = {}) {
         } catch (_) { /* storage unavailable */ }
     }
 
+    function syncHudButtons() {
+        const active = Object.keys(cheat).filter((k) => cheat[k]).length;
+        if (cheatsBtn) {
+            const label = cheatsBtn.querySelector(".cs-btn-label");
+            if (label) label.textContent = cheatOpen ? "Close" : (active ? "Cheats " + active : "Cheats");
+            cheatsBtn.setAttribute("aria-label", cheatOpen ? "Close cheats" : "Cheats");
+            cheatsBtn.classList.toggle("on", cheatOpen || active > 0);
+        }
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".cs-btn-label");
+            if (label) label.textContent = userPaused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", userPaused ? "Resume" : "Pause");
+            pauseBtn.setAttribute("title", userPaused ? "Resume (P)" : "Pause (P)");
+        }
+    }
+
     function render() {
-        statusEl.textContent = statusText();
+        syncPause();
+        hudStatus.textContent = statusText();
         if (!state) {
+            hudLevel.textContent = "1/" + MAX_LEVEL;
+            hudTarget.textContent = "—";
+            hudTurn.textContent = "—";
+            hudP1.textContent = "0";
+            hudP2.textContent = "0";
             mainBtn.disabled = true;
             undoBtn.disabled = true;
             clearBtn.disabled = true;
             pantryBtns.forEach((b) => { b.disabled = true; });
+            ovResult.hidden = true;
+            ovPause.hidden = !userPaused || cheatOpen || helpOpen;
+            ovCheat.hidden = !cheatOpen || helpOpen;
+            ovHelp.hidden = !helpOpen;
+            syncHudButtons();
             return;
         }
         const me = myIndex();
@@ -582,10 +791,13 @@ export function mount(root, context = {}) {
         const active = state.players[t];
         const prepMine = mine && state.phase === "prep";
         const cookMine = mine && state.phase === "cook";
+        const canPlay = !paused;
 
-        levelEl.textContent = "Level " + state.level + "/" + MAX_LEVEL;
-        targetEl.textContent = "Target " + state.target + " pts";
-        turnEl.textContent = state.over ? "Finished" : mine ? "Your turn" : "P" + (t + 1) + " - " + labelFor(t);
+        hudLevel.textContent = state.level + "/" + MAX_LEVEL;
+        hudTarget.textContent = String(state.target);
+        hudTurn.textContent = state.over ? "Finished" : mine ? "Your turn" : "P" + (t + 1);
+        hudP1.textContent = String(state.players[0].points);
+        hudP2.textContent = String(state.players[1].points);
 
         scoreEl.innerHTML = state.players.map((p, i) => {
             const pct = clamp(Math.round((p.points / state.target) * 100), 0, 100);
@@ -620,31 +832,31 @@ export function mount(root, context = {}) {
         shimmerEl.hidden = cookMine;
 
         mainLabel.textContent = state.phase === "cook" ? "Stop!" : "Cook";
-        mainBtn.disabled = !(prepMine ? active.tray.length > 0 : cookMine);
-        mainBtn.classList.toggle("cs-pulse", cookMine);
-        undoBtn.disabled = !(prepMine && active.tray.length > 0);
-        clearBtn.disabled = !(prepMine && active.tray.length > 0);
-        pantryBtns.forEach((b) => { b.disabled = !prepMine || active.tray.length >= TRAY_MAX; });
+        mainBtn.disabled = !canPlay || !(prepMine ? active.tray.length > 0 : cookMine);
+        mainBtn.classList.toggle("cs-pulse", cookMine && canPlay);
+        undoBtn.disabled = !canPlay || !(prepMine && active.tray.length > 0);
+        clearBtn.disabled = !canPlay || !(prepMine && active.tray.length > 0);
+        pantryBtns.forEach((b) => { b.disabled = !canPlay || !prepMine || active.tray.length >= TRAY_MAX; });
 
-        fillBtn.disabled = !(prepMine);
-        pointsBtn.disabled = !(mine && (state.phase === "prep" || state.phase === "cook"));
+        fillBtn.disabled = !canPlay || !prepMine;
+        pointsBtn.disabled = !canPlay || !(mine && (state.phase === "prep" || state.phase === "cook"));
 
         noteEl.textContent = noteText();
 
+        const resultVisible = state.over || state.phase === "levelup";
         if (state.over) {
             saveBest();
-            overlayEl.hidden = false;
-            ovRestart.hidden = false;
             ovTitle.textContent = state.winner === me ? "You win!" : labelFor(state.winner) + " wins";
             ovSub.textContent = "Level " + state.level + " - " + state.players[0].points + " : " + state.players[1].points;
         } else if (state.phase === "levelup") {
-            overlayEl.hidden = false;
-            ovRestart.hidden = true;
             ovTitle.textContent = "Level " + state.level + " complete";
             ovSub.textContent = "New random level incoming...";
-        } else {
-            overlayEl.hidden = true;
         }
+        ovResult.hidden = !resultVisible || helpOpen || cheatOpen || userPaused;
+        ovPause.hidden = !userPaused || helpOpen || cheatOpen;
+        ovCheat.hidden = !cheatOpen || helpOpen;
+        ovHelp.hidden = !helpOpen;
+        syncHudButtons();
 
         syncMarker();
     }
@@ -658,21 +870,45 @@ export function mount(root, context = {}) {
             submitAction({ type: "stop", pos: cheat.perfect ? 0.5 : markerT });
         }
     }
-    function toggleCheats(open) {
-        cheatOpen = open;
-        cheatOverlay.hidden = !open;
-        if (open) {
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) helpOpen = false;
+        render();
+        if (cheatOpen) {
             perfectBox.checked = cheat.perfect;
             if (slowBox) slowBox.checked = cheat.slowBot;
         }
+    }
+    function togglePause(on) {
+        userPaused = typeof on === "boolean" ? on : !userPaused;
+        if (userPaused) { helpOpen = false; cheatOpen = false; }
+        render();
+    }
+    function restartGame() {
+        if (online && !room.isHost) return; /* guests follow host state */
+        helpOpen = false;
+        cheatOpen = false;
+        userPaused = false;
+        newGame();
+        render();
     }
 
     function handleClick(event) {
         const el = event.target;
         if (!el || !el.closest) return;
+        if (el.closest("[data-help]")) { toggleHelp(); return; }
+        if (el.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (el.closest("[data-exit]")) { onExit(); return; }
-        if (el.closest("[data-cheats]")) { toggleCheats(!cheatOpen); return; }
+        if (el.closest("[data-cheats]")) { toggleCheats(); return; }
         if (el.closest('[data-act="closeCheats"]')) { toggleCheats(false); return; }
+        if (el.closest("[data-pause]")) { togglePause(); return; }
+        if (el.closest("[data-resume]")) { togglePause(false); return; }
+        if (el.closest("[data-restart]")) { restartGame(); return; }
         const ing = el.closest("[data-ing]");
         if (ing) { submitAction({ type: "pick", id: ing.dataset.ing }); return; }
         if (el.closest("[data-bar]")) { tryMain(); return; }
@@ -682,7 +918,7 @@ export function mount(root, context = {}) {
         if (act === "main") tryMain();
         else if (act === "undo") submitAction({ type: "undo" });
         else if (act === "clear") submitAction({ type: "clear" });
-        else if (act === "restart") submitAction({ type: "restart" });
+        else if (act === "restart") restartGame();
         else if (act === "fill") submitAction({ type: "fill" });
         else if (act === "points") submitAction({ type: "cheatPoints" });
     }
@@ -705,17 +941,34 @@ export function mount(root, context = {}) {
         if (event.ctrlKey || event.metaKey || event.altKey) return;
         const tag = event.target && event.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        if (event.key === "Escape") { toggleCheats(false); return; }
-        if (cheatOpen) return;
-        if (event.key === " " || event.code === "Space" || event.key === "Enter") {
+        const code = event.code;
+        /* priority: help -> cheats -> pause/escape -> game actions */
+        if (code === "KeyH") { toggleHelp(); event.preventDefault(); return; }
+        if (code === "KeyC") {
+            if (helpOpen) toggleHelp(false);
+            else toggleCheats();
+            event.preventDefault(); return;
+        }
+        if (code === "KeyP" || code === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else togglePause();
+            event.preventDefault(); return;
+        }
+        if (code === "KeyR") {
+            if (!helpOpen && !cheatOpen) restartGame();
+            event.preventDefault(); return;
+        }
+        if (paused) return;
+        if (code === "Space" || code === "Enter") {
             event.preventDefault();
             if (event.repeat) return;
-            if (state && state.over) { submitAction({ type: "restart" }); return; }
+            if (state && state.over) { restartGame(); return; }
             tryMain();
             return;
         }
-        if (event.key === "Backspace") { event.preventDefault(); submitAction({ type: "undo" }); return; }
-        if (event.key === "c" || event.key === "C") { submitAction({ type: "clear" }); return; }
+        if (code === "Backspace") { event.preventDefault(); submitAction({ type: "undo" }); return; }
+        if (code === "KeyX") { submitAction({ type: "clear" }); return; }
         const n = Number(event.key);
         if (n >= 1 && n <= ING_IDS.length) submitAction({ type: "pick", id: ING_IDS[n - 1] });
     }

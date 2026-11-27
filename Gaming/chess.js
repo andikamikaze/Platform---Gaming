@@ -3,6 +3,7 @@
 - Template: export META + mount(root, context).
 - Setelah mengubah file ini jalankan: node tools/build-games-manifest.mjs
 */
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "chess",
@@ -472,85 +473,138 @@ export function mount(root, context = {}) {
     let U = [], LM = [], sel = -1, cursor = 52, kbd = false, flip = false;
     let hint = null, armed = null, cheatsOpen = false, aiFrozen = false;
     let aiTimer = 0, aiThinking = false, destroyed = false, seatKey = "";
+    let helpOpen = false, paused = false;
+    /* Pause-aware AI timer: keep the Date.now() due anchor and replay the
+       remaining delay on resume so the bot never jumps ahead after a pause. */
+    let pauseStart = 0, aiDue = 0, aiFn = null;
     const unsubs = [];
+
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("chessHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("chessHelpSeen", "1"); } catch (_) { /* storage blocked */ }
+    }
 
     /* ---------- markup ---------- */
     root.innerHTML = `
 <style>
-.cx-app{display:flex;flex-direction:column;gap:12px;color:#20242c;outline:none}
-.cx-app *{box-sizing:border-box}
-.cx-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.cx-chip{display:inline-flex;align-items:center;gap:6px;background:#f4f5f7;border:1px solid #e5e7ec;border-radius:999px;padding:4px 11px;font-size:12px;color:#4b5261;white-space:nowrap}
-.cx-chip b{color:#20242c;font-weight:600}
-.cx-sp{flex:1}
-.cx-btn,.cx-select{appearance:none;background:#fff;border:1px solid #d9dde4;border-radius:8px;padding:6px 11px;font-size:12.5px;font-family:inherit;color:#20242c;cursor:pointer;transition:background .12s,border-color .12s}
-.cx-btn:hover,.cx-select:hover{background:#f4f5f7}
+/* Chess — single HUD bar, fill-height board, overlay sheets. */
+.cx{--cx-acc:#5b5bd6;width:100%;height:100%;min-height:0;margin:0 auto;padding:2px;display:flex;flex-direction:column;gap:10px;color:#20242c;outline:none;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.cx *{box-sizing:border-box}
+.cx [hidden]{display:none!important}
+.cx :is(button,select,input):focus-visible{outline:2px solid var(--cx-acc);outline-offset:2px}
+.cx-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cx-chip{display:inline-flex;align-items:center;gap:6px;background:#f4f5f7;border:1px solid #e5e7ec;border-radius:999px;padding:5px 11px;min-height:30px;font-size:11px;color:#4b5261;white-space:nowrap}
+.cx-chip b{color:#20242c;font-weight:600;font-variant-numeric:tabular-nums}
+.cx-dot{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block}
+.cx-dot.w{background:#fbfbf9;border:1px solid #39404d}
+.cx-dot.b{background:#39404d}
+.cx-chip-last{max-width:230px;overflow:hidden;text-overflow:ellipsis}
+.cx-sp{flex:1 1 8px}
+.cx-btn,.cx-select{appearance:none;background:#fff;border:1px solid #d9dde4;border-radius:9px;padding:6px 10px;min-height:32px;font-size:11.5px;font-family:inherit;color:#20242c;cursor:pointer;transition:background .12s,border-color .12s}
+.cx-btn:hover:not(:disabled),.cx-select:hover{background:#f4f5f7;border-color:var(--cx-acc)}
 .cx-btn:disabled{opacity:.45;cursor:default}
+.cx-btn.on{border-color:var(--cx-acc);color:var(--cx-acc);background:#f1f1fd}
 .cx-btn.cx-primary{background:#20242c;border-color:#20242c;color:#fff}
 .cx-btn.cx-primary:hover{background:#3a4150}
-.cx-cheatbtn{color:#6d5bd0;border-style:dashed}
-.cx-panel{background:#fff;border:1px solid #e5e7ec;border-radius:14px;padding:14px}
-.cx-main{display:flex;gap:14px;justify-content:center;align-items:stretch}
-.cx-eval{position:relative;width:8px;border-radius:99px;background:#3a414d;overflow:hidden;flex:none}
-.cx-eval i{position:absolute;left:0;right:0;bottom:0;height:50%;background:#f6f7f9;transition:height .35s}
-.cx-bwrap{position:relative;width:min(520px,100%,calc(100vw - 90px));flex:none}
+.cx-icon-btn{display:inline-flex;align-items:center;gap:5px}
+.cx-icon-btn svg{flex:none;display:block}
+.cx-btn-label{white-space:nowrap}
+.cx.game-fill>.cx-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:0;border-radius:12px;overflow:hidden;background:#fff}
+.cx-main{display:flex;gap:16px;justify-content:center;align-items:center;flex-wrap:wrap;min-width:0;flex:1 1 auto;min-height:0;padding:12px 14px}
+.cx-eval{position:relative;width:8px;align-self:stretch;max-height:520px;border-radius:99px;background:#3a414d;overflow:hidden;flex:none}
+.cx-eval i{position:absolute;left:0;right:0;bottom:0;height:50%;background:#f6f7f9;transition:height .2s}
+.cx-bwrap{position:relative;width:min(520px,100%);flex:none;min-width:0}
 .cx-bwrap svg{display:block;width:100%;height:auto;border-radius:10px;border:1px solid #e5e7ec;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .cx-sq-l{fill:#eef0f3}
 .cx-sq-d{fill:#aeb9c4}
 .cx-co{fill:#8b93a3;font-size:12px;font-family:inherit;text-anchor:middle}
-.cx-app [data-i]{cursor:pointer}
-.cx-app g[data-i]:hover{opacity:.88}
+.cx [data-i]{cursor:pointer}
+.cx g[data-i]:hover{opacity:.88}
 .cx-last{fill:#5b5bd6;opacity:.16}
 .cx-chk{fill:#e5484d;opacity:.32}
 .cx-sel{fill:#5b5bd6;opacity:.28}
-.cx-dot{fill:#5b5bd6;opacity:.4}
+.cx-dot-mk{fill:#5b5bd6;opacity:.4}
 .cx-ring{fill:none;stroke:#5b5bd6;stroke-width:4;opacity:.75}
 .cx-cursor{fill:none;stroke:#20242c;stroke-width:2;stroke-dasharray:5 4}
 .cx-hint{fill:none;stroke:#0e9f9f;stroke-width:3.5}
-.cx-side{width:196px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.cx-side{width:196px;display:flex;flex-direction:column;gap:8px;min-width:0;max-height:100%}
 .cx-tray{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-height:20px;font-size:11px;color:#8b93a3}
 .cx-tray .cx-adv{margin-left:4px;font-weight:600;color:#4b5261}
 .cx-dotc{width:9px;height:9px;border-radius:50%;flex:none;margin-right:4px;border:1px solid #39404d}
-.cx-moves{flex:1;min-height:140px;max-height:352px;overflow-y:auto;background:#fafbfc;border:1px solid #e5e7ec;border-radius:10px;padding:6px 9px}
-.cx-mr{display:grid;grid-template-columns:24px 1fr 1fr;gap:4px;font-size:12.5px;color:#2c313b;padding:2px 0}
+.cx-moves{flex:1 1 auto;min-height:90px;max-height:min(352px,42vh);overflow-y:auto;background:#fafbfc;border:1px solid #e5e7ec;border-radius:10px;padding:6px 9px}
+.cx-mr{display:grid;grid-template-columns:24px 1fr 1fr;gap:4px;font-size:12.5px;color:#2c313b;padding:3px 0}
 .cx-mr>span:first-child{color:#9aa1af}
 .cx-mv{white-space:nowrap}
 .cx-badge{font-style:normal;font-weight:700;font-size:10.5px;margin-left:3px}
 .cx-empty{color:#9aa1af;font-size:12px;padding:2px 0}
-.cx-lastcls{font-size:12px;color:#4b5261;display:flex;align-items:center;gap:6px;min-height:18px}
+.cx-lastcls{font-size:11px;color:#4b5261;display:flex;align-items:center;gap:6px;min-height:18px;max-width:230px;overflow:hidden;text-overflow:ellipsis}
 .cx-lastcls i{width:8px;height:8px;border-radius:50%;flex:none;font-style:normal}
-.cx-over{position:absolute;inset:0;display:grid;place-items:center;background:rgba(250,251,252,.78);backdrop-filter:blur(3px);border-radius:10px;z-index:3}
-.cx-card{background:#fff;border:1px solid #e5e7ec;border-radius:12px;padding:20px 24px;text-align:center;box-shadow:0 10px 30px rgba(20,24,32,.12)}
-.cx-card h3{margin:0 0 4px;font-size:19px}
-.cx-card p{margin:0 0 14px;font-size:13px;color:#6b7280}
-.cx-row{display:flex;gap:8px;justify-content:center}
-.cx-cheats{position:absolute;top:10px;right:10px;width:200px;background:#fff;border:1px solid #e5e7ec;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;box-shadow:0 10px 30px rgba(20,24,32,.14);z-index:4}
-.cx-cheats-h{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6d5bd0;margin-bottom:2px}
-.cx-x{background:none;border:none;font-size:16px;cursor:pointer;color:#9aa1af;line-height:1;padding:0 2px}
+.cx-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(250,251,252,.82);backdrop-filter:blur(3px);border-radius:12px}
+.cx-card{background:#fff;border:1px solid #e5e7ec;border-radius:12px;padding:16px 20px;text-align:center;box-shadow:0 8px 24px rgba(20,24,32,.10);width:min(380px,100%);max-height:100%;overflow:hidden;display:flex;flex-direction:column;gap:12px}
+.cx-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.cx-head h3{margin:0;font-size:18px}
+.cx-card p{margin:0;font-size:13px;color:#6b7280}
+.cx-cheats,.cx-help,.cx-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.cx-cheats{display:flex;flex-direction:column;gap:6px;text-align:left}
 .cx-cheats .cx-btn{width:100%;text-align:left}
-.cx-cheats .cx-btn.on{border-color:#6d5bd0;color:#6d5bd0}
+.cx-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;text-align:left}
+.cx-help b{display:block;margin:0 0 5px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:#6b7280;text-transform:uppercase}
+.cx-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6}
+.cx-kbd{display:inline-block;padding:1px 5px;border:1px solid #d9dde4;border-bottom-width:2px;border-radius:5px;background:#fafbfc;font:600 10px/1.4 ui-monospace,monospace}
+.cx-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;flex:none}
+.cx-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.cx-note{font-size:11px;color:#6b7280}
 @media (max-width:820px){
-.cx-main{flex-wrap:wrap}
-.cx-side{width:100%;flex-direction:column}
-.cx-moves{max-height:170px;min-height:90px}
-.cx-bwrap{width:min(520px,calc(100vw - 76px))}
+  .cx-main{flex-wrap:wrap;padding:8px}
+  .cx-side{width:100%;flex-direction:column}
+  .cx-moves{max-height:170px;min-height:90px}
+  .cx-bwrap{width:min(520px,100%)}
+}
+@media (prefers-reduced-motion:reduce){.cx *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* --- layout overrides last (beat pointer:coarse 44px defaults) --- */
+.cx .cx-hud .cx-btn,.cx .cx-hud .cx-select{min-height:32px;padding:5px 9px;font-size:10px}
+@media (max-width:640px){
+  .cx.game-fill>.cx-panel:not(:has(.cx-ov:not([hidden]))){aspect-ratio:auto;flex:0 0 auto}
+  .cx.game-fill>.cx-panel:has(.cx-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .cx{gap:6px}
+  .cx .cx-hud{gap:4px}
+  .cx .cx-hud .cx-chip{padding:4px 6px;font-size:9px;min-height:0}
+  .cx .cx-hud .cx-chip-last{display:none}
+  .cx .cx-hud .cx-btn-label,.cx .cx-hud .cx-sp{display:none}
+  .cx .cx-hud .cx-btn,.cx .cx-hud .cx-select{min-height:32px;padding:5px 9px;font-size:9px}
+  .cx-side{width:100%}
+  .cx-moves{max-height:150px;min-height:80px}
+  .cx-ov{padding:8px}
+  .cx-card{width:100%;height:100%;max-height:100%;padding:12px}
+  .cx-help{grid-template-columns:1fr;gap:8px}
+  .cx-cheats,.cx-help,.cx-stats{scrollbar-width:none}
+  .cx-cheats::-webkit-scrollbar,.cx-help::-webkit-scrollbar,.cx-stats::-webkit-scrollbar{display:none}
+  .cx-foot{padding-top:8px;border-top:1px solid #e5e7ec}
+  .cx-note{display:none}
+}
+@media (pointer:coarse){
+  .cx .cx-hud .cx-btn,.cx .cx-hud .cx-select{min-height:32px;padding:5px 9px;font-size:9px}
 }
 </style>
-<div class="game-app cx-app">
-  <div class="game-intro">
-    <div><h2>Chess</h2></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <div class="cx-bar">
-    <span class="cx-chip" data-you></span>
+<div class="game-app cx game-fill" data-cx>
+  <div class="cx-hud">
+    <span class="cx-chip"><i class="cx-dot w" data-turn-dot></i><b data-status>Ready</b></span>
+    <span class="cx-chip" data-you hidden>You: White</span>
     <span class="cx-chip">Eval <b data-evalnum>0.0</b></span>
+    <span class="cx-chip cx-chip-last" data-last></span>
     <span class="cx-sp"></span>
     <select class="cx-select" data-elo title="Bot strength"></select>
     <button class="cx-btn" type="button" data-act="mode" title="Opponent type"></button>
     <button class="cx-btn" type="button" data-act="flip" title="Flip board (F)">Flip</button>
     <button class="cx-btn" type="button" data-act="undo" title="Undo (U)">Undo</button>
-    <button class="cx-btn cx-cheatbtn" type="button" data-act="cheat" title="Cheats (C)">Cheats</button>
-    <button class="cx-btn" type="button" data-act="new" title="New game (N)">New</button>
+    <button class="cx-btn cx-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="cx-btn-label">Help</span></button>
+    <button class="cx-btn cx-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)" ${online ? "disabled" : ""}>${iconSVG("wrench", { size: 14 })}<span class="cx-btn-label">Cheats</span></button>
+    <button class="cx-btn cx-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" ${online ? "disabled" : ""}>${iconSVG("pause", { size: 14 })}<span class="cx-btn-label">Pause</span></button>
+    <button class="cx-btn cx-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="cx-btn-label">Restart</span></button>
+    <button class="cx-btn cx-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="cx-btn-label">Exit game</span></button>
   </div>
   <section class="game-panel cx-panel" data-board>
     <div class="cx-main">
@@ -562,45 +616,89 @@ export function mount(root, context = {}) {
           <g data-g="pc"></g>
           <g data-g="co" pointer-events="none"></g>
         </svg>
-        <div class="cx-cheats" data-cheats hidden>
-          <div class="cx-cheats-h"><span>Cheats</span><button class="cx-x" type="button" data-cheat="close" title="Close">\u00d7</button></div>
-          <button class="cx-btn" type="button" data-cheat="hint" title="H">Best move hint</button>
+      </div>
+      <aside class="cx-side">
+        <div class="cx-tray" data-trayw></div>
+        <div class="cx-moves" data-moves></div>
+        <div class="cx-tray" data-trayb></div>
+      </aside>
+    </div>
+    <div class="cx-ov" data-ov="over" hidden>
+      <div class="cx-card">
+        <div class="cx-head"><h3 data-ovttl></h3></div>
+        <div class="cx-stats"><p data-ovwhy></p></div>
+        <div class="cx-foot"><span class="cx-note">Press R to restart</span><div class="cx-row"><button class="cx-btn cx-primary" type="button" data-restart>Play again</button><button class="cx-btn" type="button" data-exit>Exit</button></div></div>
+      </div>
+    </div>
+    <div class="cx-ov" data-ov="pause" hidden>
+      <div class="cx-card">
+        <div class="cx-head"><h3>Paused</h3></div>
+        <div class="cx-stats"><p>The board, bot and timer are frozen.</p></div>
+        <div class="cx-foot"><span class="cx-note">Press P or Esc to resume</span><button class="cx-btn cx-primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="cx-ov" data-ov="cheat" hidden>
+      <div class="cx-card">
+        <div class="cx-head"><h3>Cheats</h3><button class="cx-btn" type="button" data-cheat-close aria-label="Close">Close</button></div>
+        <div class="cx-cheats">
+          <button class="cx-btn" type="button" data-cheat="hint">Best move hint</button>
           <button class="cx-btn" type="button" data-cheat="undo">Undo move</button>
           <button class="cx-btn" type="button" data-cheat="skip">Skip opponent turn</button>
           <button class="cx-btn" type="button" data-cheat="remove">Remove enemy piece</button>
           <button class="cx-btn" type="button" data-cheat="promote">Promote a pawn</button>
           <button class="cx-btn" type="button" data-cheat="freeze">Freeze bot: off</button>
         </div>
-        <div class="cx-over" data-over hidden>
-          <div class="cx-card">
-            <h3 data-ovttl></h3>
-            <p data-ovwhy></p>
-            <div class="cx-row">
-              <button class="cx-btn cx-primary" type="button" data-act="new">Play again</button>
-              <button class="cx-btn" type="button" data-exit>Exit</button>
-            </div>
+        <div class="cx-foot"><span class="cx-note">Offline games only</span></div>
+      </div>
+    </div>
+    <div class="cx-ov" data-ov="help" hidden>
+      <div class="cx-card">
+        <div class="cx-head"><h3>How to play</h3><button class="cx-btn" type="button" data-help-close aria-label="Close">Close</button></div>
+        <div class="cx-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li>Click a piece, then a highlighted square to move it.</li>
+              <li><span class="cx-kbd">&#8592; &#8593; &#8594; &#8595;</span> move the cursor, <span class="cx-kbd">Enter</span> select / place.</li>
+              <li><span class="cx-kbd">H</span> help &middot; <span class="cx-kbd">C</span> cheats &middot; <span class="cx-kbd">P</span> pause &middot; <span class="cx-kbd">R</span> restart</li>
+              <li><span class="cx-kbd">U</span> undo &middot; <span class="cx-kbd">F</span> flip board &middot; <span class="cx-kbd">Esc</span> close</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap a piece then a highlighted destination; tap again to deselect.</li>
+              <li>Use the HUD buttons for Help, Cheats, Pause, Restart and Exit.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>White moves first; pieces move by their own rules and cannot leave your king in check.</li>
+              <li>Checkmate wins the game. Stalemate, insufficient material, the 50-move rule and threefold repetition are draws.</li>
+              <li>Pawns promote to a queen on the back rank; castling and en passant are supported.</li>
+              <li>The bot has an Elo rating and analyses every move; pick its strength in the HUD.</li>
+              <li>Cheats (offline only): hint, undo, skip a turn, remove a piece, promote or freeze the bot.</li>
+            </ul>
           </div>
         </div>
+        <div class="cx-foot"><span class="cx-note">Press H to reopen this guide</span><button class="cx-btn cx-primary" type="button" data-help-close>Got it</button></div>
       </div>
-      <aside class="cx-side">
-        <div class="cx-tray" data-trayw></div>
-        <div class="cx-moves" data-moves></div>
-        <div class="cx-tray" data-trayb></div>
-        <div class="cx-lastcls" data-last></div>
-      </aside>
     </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
     const gSq = $('[data-g="sq"]'), gMk = $('[data-g="mk"]'), gPc = $('[data-g="pc"]'), gCo = $('[data-g="co"]');
-    const elStatus = $("[data-status]"), elYou = $("[data-you]"), elEvalNum = $("[data-evalnum]"), elEval = $("[data-eval]");
+    const elStatus = $("[data-status]"), elTurnDot = $("[data-turn-dot]"), elYou = $("[data-you]");
+    const elEvalNum = $("[data-evalnum]"), elEval = $("[data-eval]");
     const elMoves = $("[data-moves]"), elTrayW = $("[data-trayw]"), elTrayB = $("[data-trayb]"), elLast = $("[data-last]");
-    const elOver = $("[data-over]"), elOvTtl = $("[data-ovttl]"), elOvWhy = $("[data-ovwhy]");
-    const elCheats = $("[data-cheats]"), elFreeze = $('[data-cheat="freeze"]');
-    const btnMode = $('[data-act="mode"]'), btnUndo = $('[data-act="undo"]'), btnCheat = $('[data-act="cheat"]');
-    const selElo = $("[data-elo]"), svg = $("[data-svg]");
+    const ov = {
+        over: $('[data-ov="over"]'), pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'), help: $('[data-ov="help"]'),
+    };
+    const elOvTtl = $("[data-ovttl]"), elOvWhy = $("[data-ovwhy]");
+    const elFreeze = $('[data-cheat="freeze"]');
+    const btnMode = $('[data-act="mode"]'), btnUndo = $('[data-act="undo"]'), btnCheat = $("[data-cheats]");
+    const pauseBtn = $("[data-pause]"), selElo = $("[data-elo]"), svg = $("[data-svg]");
 
     selElo.innerHTML = ELOS.map((e, i) => '<option value="' + i + '">Bot ' + e.elo + "</option>").join("");
     selElo.value = String(eloIdx);
@@ -687,7 +785,7 @@ export function mount(root, context = {}) {
     const refreshLM = () => { LM = state ? legalMoves(state.b, state.cast, state.ep, state.turn) : []; };
     const snapshot = () => { U.push(cloneState(state)); };
     const canPlayNow = () =>
-        Boolean(state) && !state.over && !aiThinking &&
+        Boolean(state) && !state.over && !paused && !aiThinking &&
         (!online || playersCount() >= 2) &&
         (online ? state.turn === myColor() : oppMode !== "ai" || state.turn === state.seats[0]);
 
@@ -707,6 +805,7 @@ export function mount(root, context = {}) {
 
     function statusText() {
         if (!state) return "Waiting for host...";
+        if (paused) return "Paused";
         if (state.over) { const [t, w] = overTexts(); return t + " - " + w; }
         if (online && playersCount() < 2) return "Waiting for opponent...";
         if (armed) return armed === "remove" ? "Cheat: pick an enemy piece" : "Cheat: pick your pawn";
@@ -730,7 +829,7 @@ export function mount(root, context = {}) {
         const [x, y] = dxy(i);
         return '<rect x="' + x + '" y="' + y + '" width="' + SQ + '" height="' + SQ + '" class="' + cls + '"/>';
     };
-    const dotMk = (i) => { const [x, y] = ctr(i); return '<circle cx="' + x + '" cy="' + y + '" r="9" class="cx-dot"/>'; };
+    const dotMk = (i) => { const [x, y] = ctr(i); return '<circle cx="' + x + '" cy="' + y + '" r="9" class="cx-dot-mk"/>'; };
     const ringMk = (i) => { const [x, y] = ctr(i); return '<circle cx="' + x + '" cy="' + y + '" r="26" class="cx-ring"/>'; };
 
     function trayHTML(list, dotFill, adv) {
@@ -752,13 +851,13 @@ export function mount(root, context = {}) {
     function render() {
         if (destroyed) return;
         elStatus.textContent = statusText();
+        elTurnDot.className = "cx-dot " + (state && state.turn === B ? "b" : "w");
         btnMode.textContent = oppMode === "ai" ? "vs Bot" : "2 Players";
         btnMode.hidden = online;
         selElo.hidden = online || oppMode !== "ai";
         btnCheat.hidden = online;
         btnUndo.hidden = online;
-        btnUndo.disabled = !U.length;
-        elCheats.hidden = online || !cheatsOpen;
+        btnUndo.disabled = !U.length || paused;
         elFreeze.textContent = "Freeze bot: " + (aiFrozen ? "on" : "off");
         elFreeze.classList.toggle("on", aiFrozen);
         elFreeze.hidden = oppMode !== "ai";
@@ -766,7 +865,7 @@ export function mount(root, context = {}) {
         if (!state) {
             gMk.innerHTML = ""; gPc.innerHTML = "";
             elMoves.innerHTML = '<div class="cx-empty">No moves yet</div>';
-            elOver.hidden = true;
+            syncUI();
             return;
         }
 
@@ -823,8 +922,41 @@ export function mount(root, context = {}) {
             const [t, w] = overTexts();
             elOvTtl.textContent = t;
             elOvWhy.textContent = w;
-            elOver.hidden = false;
-        } else elOver.hidden = true;
+        }
+        syncUI();
+    }
+
+    /* Overlays suppress each other: help > cheats > pause > result. HUD
+       labels are updated on the label span so the icon is never destroyed. */
+    function syncUI() {
+        const resultOpen = Boolean(state && state.over);
+        ov.help.hidden = !helpOpen;
+        ov.cheat.hidden = online || !cheatsOpen || helpOpen;
+        ov.pause.hidden = !paused || cheatsOpen || helpOpen;
+        ov.over.hidden = !resultOpen || cheatsOpen || helpOpen || paused;
+        btnCheat.classList.toggle("on", cheatsOpen);
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".cx-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.disabled = online;
+        }
+    }
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        if (next) { helpOpen = false; cheatsOpen = false; }
+        paused = next;
+        if (paused) pauseTimers(); else resumeTimers();
+        render();
     }
 
     function publish() {
@@ -874,17 +1006,45 @@ export function mount(root, context = {}) {
         maybeAI();
     }
 
+    /* ---------- pause-aware bot timer ---------- */
+    function clearAITimer() {
+        if (aiTimer) clearTimeout(aiTimer);
+        aiTimer = 0; aiFn = null; aiDue = 0;
+    }
+    function runAITimer() {
+        aiTimer = 0;
+        const fn = aiFn; aiFn = null; aiDue = 0;
+        if (!paused && !destroyed && fn) fn();
+    }
+    function armAITimer(fn, ms) {
+        clearAITimer();
+        aiFn = fn;
+        aiDue = Date.now() + ms;
+        if (paused) return;
+        aiTimer = setTimeout(runAITimer, ms);
+    }
+    function pauseTimers() {
+        pauseStart = Date.now();
+        if (aiTimer) { clearTimeout(aiTimer); aiTimer = 0; }
+    }
+    function resumeTimers() {
+        if (pauseStart) {
+            if (aiDue) aiDue += Date.now() - pauseStart; /* shift the Date.now() anchor */
+            pauseStart = 0;
+        }
+        if (aiFn && !aiTimer && !destroyed)
+            aiTimer = setTimeout(runAITimer, Math.max(0, aiDue - Date.now()));
+    }
+
     function maybeAI() {
-        if (destroyed || online || oppMode !== "ai" || !state || state.over || aiFrozen) return;
+        if (destroyed || paused || online || oppMode !== "ai" || !state || state.over || aiFrozen) return;
         if (state.turn === state.seats[1]) scheduleAI();
     }
 
     function scheduleAI() {
-        clearTimeout(aiTimer);
         aiThinking = true;
         render();
-        aiTimer = setTimeout(() => {
-            aiTimer = 0;
+        armAITimer(() => {
             if (destroyed || !state || state.over || online || oppMode !== "ai" ||
                 aiFrozen || state.turn !== state.seats[1]) {
                 aiThinking = false;
@@ -899,8 +1059,8 @@ export function mount(root, context = {}) {
     }
 
     function newGame() {
-        clearTimeout(aiTimer);
-        aiTimer = 0;
+        paused = false; pauseStart = 0;
+        clearAITimer();
         aiThinking = false;
         state = initState();
         const shuffled = Math.random() < 0.5 ? [W, B] : [B, W];
@@ -916,8 +1076,7 @@ export function mount(root, context = {}) {
 
     function undo() {
         if (online || !U.length || !state) return;
-        clearTimeout(aiTimer);
-        aiTimer = 0;
+        clearAITimer();
         aiThinking = false;
         let s = U.pop();
         if (oppMode === "ai") while (s.turn !== state.seats[0] && U.length) s = U.pop();
@@ -965,8 +1124,7 @@ export function mount(root, context = {}) {
     function cheatSkip() {
         if (!state || state.over) return;
         snapshot();
-        clearTimeout(aiTimer);
-        aiTimer = 0;
+        clearAITimer();
         aiThinking = false;
         state.turn = opp(state.turn);
         state.ep = -1;
@@ -1010,8 +1168,7 @@ export function mount(root, context = {}) {
         if (kind === "freeze") {
             aiFrozen = !aiFrozen;
             if (aiFrozen) {
-                clearTimeout(aiTimer);
-                aiTimer = 0;
+                clearAITimer();
                 aiThinking = false;
             } else maybeAI();
             render();
@@ -1036,25 +1193,36 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
-        const ex = event.target.closest("[data-exit]");
-        if (ex) { onExit(); return; }
-        const ch = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-cheats]")) {
+            if (!online) { cheatsOpen = !cheatsOpen; if (cheatsOpen) helpOpen = false; render(); }
+            root.focus({ preventScroll: true }); return;
+        }
+        if (t.closest("[data-cheat-close]")) { cheatsOpen = false; render(); root.focus({ preventScroll: true }); return; }
+        const ch = t.closest("[data-cheat]");
         if (ch) { handleCheat(ch.dataset.cheat); return; }
-        const btn = event.target.closest("[data-act]");
+        if (t.closest("[data-pause]")) { togglePause(); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); root.focus({ preventScroll: true }); return; }
+        if (t.closest("[data-restart]")) { submitAction({ type: "new" }); root.focus({ preventScroll: true }); return; }
+        const btn = t.closest("[data-act]");
         if (btn) {
             const a = btn.dataset.act;
             if (a === "new") submitAction({ type: "new" });
             else if (a === "undo") undo();
             else if (a === "flip") { flip = !flip; buildStatic(); render(); }
-            else if (a === "cheat" && !online) { cheatsOpen = !cheatsOpen; render(); }
             else if (a === "mode" && !online) {
                 oppMode = oppMode === "ai" ? "2p" : "ai";
                 aiFrozen = false;
                 newGame();
             }
+            root.focus({ preventScroll: true });
             return;
         }
-        const sq = event.target.closest("[data-i]");
+        if (helpOpen || cheatsOpen || paused) return;
+        const sq = t.closest("[data-i]");
         if (sq) {
             kbd = false;
             onSq(parseInt(sq.dataset.i, 10));
@@ -1070,12 +1238,34 @@ export function mount(root, context = {}) {
     }
 
     function handleKey(event) {
+        if (destroyed) return;
         const tag = event.target.tagName;
         if (tag === "SELECT" || tag === "INPUT" || tag === "TEXTAREA") return;
-        const k = event.key;
+        const k = event.key, code = event.code || "";
         if ((k === "Enter" || k === " ") && tag === "BUTTON") return;
-        let used = true;
-        if (k === "ArrowUp" || k === "ArrowDown" || k === "ArrowLeft" || k === "ArrowRight") {
+        const hit = (letter) => code === "Key" + letter || k === letter.toLowerCase() || k === letter.toUpperCase();
+        /* priority: help -> cheats -> pause -> escape -> restart -> game actions */
+        if (hit("H") || k === "?") {
+            if (!event.repeat) toggleHelp();
+        } else if (hit("C")) {
+            if (!event.repeat && !online && !helpOpen) {
+                cheatsOpen = !cheatsOpen;
+                if (cheatsOpen) helpOpen = false;
+                render();
+            }
+        } else if (hit("P")) {
+            if (!event.repeat && !helpOpen && !cheatsOpen) togglePause();
+        } else if (k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (paused) togglePause(false);
+            else if (armed) { armed = null; render(); }
+            else if (sel >= 0) { sel = -1; render(); }
+        } else if (hit("R")) {
+            if (!event.repeat && !helpOpen && !cheatsOpen) submitAction({ type: "new" });
+        } else if (helpOpen || cheatsOpen || paused) {
+            /* overlay open: swallow remaining game keys */
+        } else if (k === "ArrowUp" || k === "ArrowDown" || k === "ArrowLeft" || k === "ArrowRight") {
             let d = flip ? 63 - cursor : cursor;
             let r = d >> 3, c = d & 7;
             if (k === "ArrowUp") r = Math.max(0, r - 1);
@@ -1089,18 +1279,14 @@ export function mount(root, context = {}) {
         } else if (k === "Enter" || k === " ") {
             kbd = true;
             onSq(cursor);
-        } else if (k === "Escape") {
-            if (cheatsOpen) cheatsOpen = false;
-            else if (armed) armed = null;
-            else sel = -1;
-            render();
-        } else if (k === "n" || k === "N") submitAction({ type: "new" });
-        else if (k === "u" || k === "U") undo();
-        else if (k === "f" || k === "F") { flip = !flip; buildStatic(); render(); }
-        else if ((k === "c" || k === "C") && !online) { cheatsOpen = !cheatsOpen; render(); }
-        else if ((k === "h" || k === "H") && !online) { cheatsOpen = false; cheatHint(); }
-        else used = false;
-        if (used) event.preventDefault();
+        } else if (hit("U")) {
+            if (!online) undo();
+        } else if (hit("N")) {
+            submitAction({ type: "new" });
+        } else if (hit("F")) {
+            flip = !flip; buildStatic(); render();
+        } else return;
+        event.preventDefault();
     }
 
     function handleCtx(event) {
@@ -1140,8 +1326,7 @@ export function mount(root, context = {}) {
     return {
         destroy() {
             destroyed = true;
-            clearTimeout(aiTimer);
-            aiTimer = 0;
+            clearAITimer();
             root.removeEventListener("click", handleClick);
             root.removeEventListener("change", handleChange);
             root.removeEventListener("keydown", handleKey);

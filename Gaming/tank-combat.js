@@ -1,4 +1,5 @@
 /* ==== GAME: tank-combat.js ==== */
+import { iconSVG } from "../JS/icons.js";
 /*
   Template game baru:
   - META di bawah dibaca oleh tools/build-games-manifest.mjs (id = nama file tanpa .js).
@@ -224,38 +225,48 @@ export function mount(root, context = {}) {
 
     let best = 0;
     try { best = parseInt(localStorage.getItem(META.bestKey) || "0", 10) || 0; } catch (e) { }
+    let helpSeen = true;
+    try { helpSeen = localStorage.getItem("tankCombatHelpSeen") === "1"; } catch (e) { helpSeen = true; }
+    const firstHelp = !helpSeen;
+    if (firstHelp) { try { localStorage.setItem("tankCombatHelpSeen", "1"); } catch (e) { /* storage blocked */ } }
     const cheats = { god: false, oneHit: false, fullAim: false, slow: false };
 
     root.innerHTML = `
 <style>
 .tcx{--bg:#0b0f14;--panel:#10161d;--line:#1f2a37;--txt:#e5e7eb;--dim:#8b98a9;--acc:#f59e0b;--good:#4ade80;--bad:#f87171;color:var(--txt);font-family:ui-sans-serif,system-ui,sans-serif}
-.tcx .game-intro h2{margin:0 0 2px;font-size:18px;letter-spacing:.04em}
-.tcx .game-intro p{margin:0;color:var(--dim);font-size:12.5px;max-width:56ch}
-.tcx-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:10px 0 8px}
-.tcx-chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 9px;font-size:11px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+.tcx [hidden]{display:none!important}
+.tcx-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.tcx-chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:11px;letter-spacing:.06em;color:var(--dim);text-transform:uppercase;white-space:nowrap}
 .tcx-chip b{color:var(--txt);font-size:12px;font-variant-numeric:tabular-nums}
 .tcx-chip.flag{color:#fca5a5;border-color:#7f1d1d}
+.tcx-chip.status i{width:6px;height:6px;border-radius:50%;background:var(--good);display:inline-block}
 .tcx-bar{display:inline-block;width:86px;height:6px;background:#1c2733;border-radius:4px;overflow:hidden}
 .tcx-bar.sm{width:52px}
 .tcx-bar i{display:block;height:100%;width:100%;background:var(--good);border-radius:4px;transition:width .18s}
 .tcx-bar i.fuel{background:var(--acc)}
-.tcx-spacer{flex:1}
+.tcx-spacer{flex:1 1 auto}
 .tcx-btn{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:.03em}
 .tcx-btn:hover{border-color:#33465c}
 .tcx-btn.acc{background:var(--acc);border-color:var(--acc);color:#111827}
-.tcx-btn.ghost{padding:5px 9px;color:var(--dim)}
 .tcx-btn:disabled{opacity:.4;cursor:default}
-.tcx-stage{position:relative;padding:0;overflow:hidden;border-radius:12px;border:1px solid var(--line);background:var(--bg)}
-.tcx-board{display:block;width:100%;aspect-ratio:640/400;touch-action:none;cursor:crosshair;background:var(--bg)}
-.tcx-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#0f172acc;border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;pointer-events:none;max-width:92%;text-align:center;backdrop-filter:blur(3px)}
+.tcx-icon-btn{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 10px;font-size:10px;text-transform:uppercase}
+.tcx-icon-btn svg{flex:none;display:block}
+.tcx-icon-btn.on{border-color:var(--acc);color:var(--acc)}
+.tcx-board-panel{position:relative;padding:0;overflow:hidden;border-radius:12px;border:1px solid var(--line);background:var(--bg)}
+.tcx .tcx-board{display:block;width:100%;height:100%;aspect-ratio:auto;touch-action:none;cursor:crosshair;background:var(--bg)}
+.tcx-toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#0f172acc;border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;pointer-events:none;max-width:92%;text-align:center;backdrop-filter:blur(3px);z-index:4}
 .tcx-toast.good{border-color:#14532d;color:#bbf7d0}
 .tcx-toast.warn{border-color:#78350f;color:#fde68a}
 .tcx-toast.bad{border-color:#7f1d1d;color:#fecaca}
-.tcx-ov{position:absolute;inset:0;display:grid;place-items:center;background:#0b0f14d9;backdrop-filter:blur(3px);z-index:5}
-.tcx-card{width:min(94%,560px);max-height:92%;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
-.tcx-card h3{margin:0 0 6px;font-size:17px;letter-spacing:.03em}
+.tcx-ov{position:absolute;inset:0;display:grid;place-items:center;padding:12px;background:#0b0f14d9;backdrop-filter:blur(3px);z-index:5}
+.tcx-card{width:min(94%,560px);max-height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.tcx-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.tcx-head h3{margin:0;font-size:17px;letter-spacing:.03em}
+.tcx-tag{font:600 10px/1.4 ui-monospace,monospace;color:var(--dim);text-align:right}
+.tcx-body,.tcx-grid,.tcx-cheats,.tcx-help{flex:1 1 auto;min-height:0;overflow:auto}
+.tcx-foot{flex:none;display:flex;align-items:center;gap:8px;margin-top:12px}
 .tcx-card .sub{margin:0 0 12px;color:var(--dim);font-size:12.5px;line-height:1.55}
-.tcx-pickgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 14px}
+.tcx-pickgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 0}
 .tcx-tank{background:#0d1319;border:1px solid var(--line);border-radius:10px;padding:9px;cursor:pointer;text-align:left;color:var(--txt)}
 .tcx-tank:hover{border-color:#33465c}
 .tcx-tank.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
@@ -280,29 +291,57 @@ export function mount(root, context = {}) {
 .tcx-fire{min-width:118px;height:44px;background:#7f1d1d;border:1px solid #991b1b;color:#fecaca;border-radius:10px;font-size:13px;font-weight:800;letter-spacing:.12em;cursor:pointer;touch-action:none}
 .tcx-fire:active{background:#ef4444;color:#fff}
 .tcx-controls.off .tcx-pad,.tcx-controls.off .tcx-fire,.tcx-controls.off .tcx-btn{opacity:.35;pointer-events:none}
-.tcx-hint{color:var(--dim);font-size:11px;margin-left:auto}
-.tcx .game-actions{display:flex;align-items:center;gap:10px;margin-top:8px}
-@media (pointer:coarse){.tcx-pad{width:58px;height:50px}.tcx-fire{height:50px}.tcx-hint{display:none}}
-@media (max-width:560px){.tcx-pickgrid{grid-template-columns:repeat(2,1fr)}.tcx-bar{width:60px}}
+@media (pointer:coarse){.tcx-pad{width:58px;height:50px}.tcx-fire{height:50px}}
+
+/* --- Batch 02 design polish --- */
+.tcx :focus-visible,.tcx button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.tcx-hud{gap:8px;margin:12px 0}
+.tcx-chip{padding:6px 10px}
+.tcx-btn,.tcx-pill,.tcx-pad,.tcx-fire,.tcx-tank{min-height:44px}
+@media (pointer:coarse){.tcx button:not(:disabled){min-height:44px}}
+@media (prefers-reduced-motion:reduce){.tcx *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (harus paling akhir) --- */
+.tcx.game-fill > .tcx-board-panel{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.tcx.game-fill > .tcx-board-panel:not(:has(.tcx-ov:not([hidden]))){aspect-ratio:640/400;flex:0 0 auto}
+.tcx.game-fill > .tcx-board-panel:has(.tcx-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.tcx .tcx-hud{gap:5px;margin-bottom:8px}
+.tcx .tcx-hud .tcx-chip{padding:4px 6px;font-size:9px}
+.tcx .tcx-hud .tcx-chip[data-hud="best"],.tcx .tcx-hud .tcx-chip[data-hud="time"],.tcx .tcx-hud .tcx-chip.status{display:none}
+.tcx .tcx-hud .tcx-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.tcx .tcx-hud .tcx-btn-label,.tcx .tcx-hud .tcx-spacer{display:none}
+.tcx .tcx-ov{padding:8px}
+.tcx .tcx-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.tcx .tcx-body,.tcx .tcx-grid,.tcx .tcx-cheats,.tcx .tcx-help{scrollbar-width:none}
+.tcx .tcx-body::-webkit-scrollbar,.tcx .tcx-grid::-webkit-scrollbar,.tcx .tcx-cheats::-webkit-scrollbar,.tcx .tcx-help::-webkit-scrollbar{display:none}
+.tcx .tcx-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.tcx .tcx-pickgrid{grid-template-columns:repeat(2,1fr)}
+.tcx .tcx-bar{width:60px}
+.tcx .tcx-controls{padding:8px 0 0}
+.tcx .tcx-pad{width:48px;height:44px}
+.tcx .tcx-fire{min-width:104px;height:44px}
+}
 </style>
-<div class="game-app tcx">
-  <div class="game-intro">
-    <div><h2>Tank Combat</h2><p>Duel artileri arcade. Pilih tankmu, atur sudut meriam, dan lengkungkan peluru melewati medan. Wave dihasilkan acak — dan dijamin bisa diselesaikan.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Siap</span></span>
-  </div>
+<div class="game-app tcx game-fill" data-tcx>
   <div class="tcx-hud">
+    <span class="tcx-chip status"><i data-dot></i><span data-status>Siap</span></span>
     <span class="tcx-chip"><span data-hud="wlabel">Wave</span> <b data-hud="wave">1</b></span>
     <span class="tcx-chip">Skor <b data-hud="score">0</b></span>
     <span class="tcx-chip" data-chip="best">Rekor <b data-hud="best">0</b></span>
     <span class="tcx-chip"><span data-hud="veh">—</span> <i class="tcx-bar"><i data-bar="hp"></i></i></span>
     <span class="tcx-chip">BB <i class="tcx-bar sm"><i class="fuel" data-bar="fuel"></i></i></span>
-    <span class="tcx-chip">⏱ <b data-hud="time">∞</b></span>
+    <span class="tcx-chip" data-hud="timechip">⏱ <b data-hud="time">∞</b></span>
     <span class="tcx-chip flag" data-hud="cheatflag" hidden>Cheat</span>
     <span class="tcx-spacer"></span>
-    <button class="tcx-btn ghost" type="button" data-act="help" title="Cara main (H)">?</button>
-    <button class="tcx-btn ghost" type="button" data-act="cheat" data-cheatbtn title="Cheat (C)">Cheat</button>
+    <button class="tcx-btn tcx-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="tcx-btn-label">Help</span></button>
+    <button class="tcx-btn tcx-icon-btn" type="button" data-cheats data-cheatbtn aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="tcx-btn-label">Cheats</span></button>
+    <button class="tcx-btn tcx-icon-btn" type="button" data-pause data-pausebtn aria-label="Pause" title="Pause (P)"><span data-ico="pause">${iconSVG("pause", { size: 14 })}</span><span data-ico="play" hidden>${iconSVG("play", { size: 14 })}</span><span class="tcx-btn-label">Pause</span></button>
+    <button class="tcx-btn tcx-icon-btn" type="button" data-skip data-skipbtn aria-label="Lewati giliran" title="Lewati giliran (E)">${iconSVG("skipForward", { size: 14 })}<span class="tcx-btn-label">Lewati</span></button>
+    <button class="tcx-btn tcx-icon-btn" type="button" data-restart data-restartbtn aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="tcx-btn-label">Restart</span></button>
+    <button class="tcx-btn tcx-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="tcx-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel tcx-stage" data-board>
+  <section class="game-panel tcx-board-panel" data-board>
     <svg class="tcx-board" viewBox="0 0 640 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Medan duel tank 2D side-scrolling">
       <g data-g="far"></g><g data-g="mid"></g>
       <g data-g="world"><g data-g="static"></g><g data-g="dyn"></g></g>
@@ -311,63 +350,76 @@ export function mount(root, context = {}) {
     <div class="tcx-toast" data-toast hidden></div>
     <div class="tcx-ov" data-ov="pick">
       <div class="tcx-card">
-        <h3>Pilih Tankmu</h3>
-        <p class="sub">Setiap kelas punya gaya main berbeda. Angka damage & HP sudah termasuk bonus arcade pemain.</p>
-        <div class="tcx-pickgrid" data-pickgrid></div>
-        <div class="tcx-row">
+        <div class="tcx-head"><h3>Pilih Tankmu</h3><span class="tcx-tag" data-pickwait></span></div>
+        <div class="tcx-body">
+          <p class="sub">Setiap kelas punya gaya main berbeda. Angka damage &amp; HP sudah termasuk bonus arcade pemain.</p>
+          <div class="tcx-pickgrid" data-pickgrid></div>
+        </div>
+        <div class="tcx-foot">
           <button class="tcx-btn" type="button" data-act="pickrand">🎲 Acak</button>
           <span class="tcx-spacer"></span>
-          <span class="sub" data-pickwait style="margin:0"></span>
           <button class="tcx-btn acc" type="button" data-act="begin" data-beginbtn>Mulai ▶</button>
         </div>
       </div>
     </div>
     <div class="tcx-ov" data-ov="help" hidden>
-      <div class="tcx-card tcx-help">
-        <h3>Cara Main</h3>
-        <p class="sub">Duel artileri bergiliran 2D side-scrolling. Keluar dari pangkalan, lempar peluru melengkung, hancurkan semua lawan sebelum tankmu rontok.</p>
-        <h4>Aturan Giliran</h4>
-        <ul>
-          <li>Koin dilempar tiap wave/partai: siapa jalan duluan itu <b>acak</b>.</li>
-          <li>Tiap giliran kamu boleh bergerak (dibatasi bahan bakar / BB), membidik bebas, lalu <b>satu tembakan mengakhiri giliran</b>.</li>
-          <li>Tombol <b>Lewati</b> mengakhiri giliran tanpa menembak (untuk pindah posisi).</li>
-          <li>Multiplayer: giliran dibatasi 45 detik, posisi kiri/kanan diacak saat partai dimulai.</li>
-        </ul>
-        <h4>Kontrol Desktop</h4>
-        <p><kbd>A</kbd>/<kbd>D</kbd> atau <kbd>←</kbd>/<kbd>→</kbd> gerak · <kbd>W</kbd>/<kbd>S</kbd> atau <kbd>↑</kbd>/<kbd>↓</kbd> sudut meriam · gerakkan <b>mouse</b> untuk membidik · <kbd>Spasi</kbd> / <b>klik</b> tembak · <kbd>E</kbd> lewati · <kbd>H</kbd> bantuan · <kbd>C</kbd> cheat.</p>
-        <h4>Kontrol Mobile</h4>
-        <p>Tahan tombol ◀ ▶ untuk bergerak, ▲ ▼ untuk sudut, <b>drag di arena</b> untuk membidik cepat, lalu tekan <b>TEMBAK</b>.</p>
-        <h4>Tips</h4>
-        <ul>
-          <li>Perhatikan garis putus-putus: itu awal lintasan pelurumu. Gravitasi menariknya turun.</li>
-          <li>Tiap tank punya jarak efektif minimum & maksimum — mortir harus mendekat, artileri menjaga jarak.</li>
-          <li>Musuh bervariasi: ringan, medium, mortir, MBT, roket, artileri, plus <b>bos bunker</b> tiap wave ke-5. Yang bertanda ★ adalah elite (lebih keras, skor ×2).</li>
-          <li>Wave dibuat generator acak yang memverifikasi solusi tembakan & peluang menangmu — selalu bisa diselesaikan.</li>
-          <li>Cheat hanya tersedia melawan bot, dan skor ber-cheat tidak disimpan ke rekor.</li>
-        </ul>
-        <div class="tcx-row" style="margin-top:12px"><span class="tcx-spacer"></span><button class="tcx-btn acc" type="button" data-act="closehelp">Mengerti</button></div>
+      <div class="tcx-card">
+        <div class="tcx-head"><h3>How to play</h3><button class="tcx-btn" type="button" data-act="closehelp">Close</button></div>
+        <div class="tcx-help">
+          <p class="sub">Duel artileri bergiliran 2D side-scrolling. Keluar dari pangkalan, lempar peluru melengkung, hancurkan semua lawan sebelum tankmu rontok.</p>
+          <h4>Aturan Giliran</h4>
+          <ul>
+            <li>Koin dilempar tiap wave/partai: siapa jalan duluan itu <b>acak</b>.</li>
+            <li>Tiap giliran kamu boleh bergerak (dibatasi bahan bakar / BB), membidik bebas, lalu <b>satu tembakan mengakhiri giliran</b>.</li>
+            <li>Tombol <b>Lewati</b> mengakhiri giliran tanpa menembak (untuk pindah posisi).</li>
+            <li>Multiplayer: giliran dibatasi 45 detik, posisi kiri/kanan diacak saat partai dimulai.</li>
+          </ul>
+          <h4>Kontrol Desktop</h4>
+          <p><kbd>A</kbd>/<kbd>D</kbd> atau <kbd>←</kbd>/<kbd>→</kbd> gerak · <kbd>W</kbd>/<kbd>S</kbd> atau <kbd>↑</kbd>/<kbd>↓</kbd> sudut meriam · gerakkan <b>mouse</b> untuk membidik · <kbd>Spasi</kbd> / <b>klik</b> tembak · <kbd>E</kbd> lewati · <kbd>H</kbd> bantuan · <kbd>C</kbd> cheat · <kbd>P</kbd> jeda · <kbd>R</kbd> restart.</p>
+          <h4>Kontrol Mobile</h4>
+          <p>Tahan tombol ◀ ▶ untuk bergerak, ▲ ▼ untuk sudut, <b>drag di arena</b> untuk membidik cepat, lalu tekan <b>TEMBAK</b>.</p>
+          <h4>Tips</h4>
+          <ul>
+            <li>Perhatikan garis putus-putus: itu awal lintasan pelurumu. Gravitasi menariknya turun.</li>
+            <li>Tiap tank punya jarak efektif minimum &amp; maksimum — mortir harus mendekat, artileri menjaga jarak.</li>
+            <li>Musuh bervariasi: ringan, medium, mortir, MBT, roket, artileri, plus <b>bos bunker</b> tiap wave ke-5. Yang bertanda ★ adalah elite (lebih keras, skor ×2).</li>
+            <li>Wave dibuat generator acak yang memverifikasi solusi tembakan &amp; peluang menangmu — selalu bisa diselesaikan.</li>
+            <li>Cheat hanya tersedia melawan bot, dan skor ber-cheat tidak disimpan ke rekor.</li>
+          </ul>
+        </div>
+        <div class="tcx-foot"><span class="tcx-spacer"></span><button class="tcx-btn acc" type="button" data-act="closehelp">Mengerti</button></div>
       </div>
     </div>
     <div class="tcx-ov" data-ov="cheat" hidden>
       <div class="tcx-card">
-        <h3>Cheat <span style="color:#fca5a5;font-size:11px">(khusus vs bot)</span></h3>
-        <p class="sub">Mempermudah permainan. Begitu cheat dipakai, skor run ini tidak masuk rekor.</p>
-        <div data-cheatrows></div>
-        <div class="tcx-row" style="margin-top:12px"><span class="tcx-spacer"></span><button class="tcx-btn acc" type="button" data-act="closecheat">Tutup</button></div>
+        <div class="tcx-head"><h3>Cheat <span style="color:#fca5a5;font-size:11px">(khusus vs bot)</span></h3><button class="tcx-btn" type="button" data-act="closecheat">Close</button></div>
+        <div class="tcx-cheats" data-cheatrows></div>
+        <div class="tcx-foot"><span class="tcx-spacer"></span><button class="tcx-btn acc" type="button" data-act="closecheat">Tutup</button></div>
       </div>
     </div>
     <div class="tcx-ov" data-ov="clear" hidden>
       <div class="tcx-card">
-        <h3 style="color:var(--good)">Wave selesai! ✦</h3>
-        <p class="sub" data-clearmsg></p>
-        <div class="tcx-row"><span class="tcx-spacer"></span><button class="tcx-btn acc" type="button" data-act="next">Wave berikutnya ▶</button></div>
+        <div class="tcx-head"><h3 style="color:var(--good)">Wave selesai! ✦</h3></div>
+        <div class="tcx-body"><p class="sub" data-clearmsg></p></div>
+        <div class="tcx-foot"><span class="tcx-spacer"></span><button class="tcx-btn acc" type="button" data-act="next">Wave berikutnya ▶</button></div>
       </div>
     </div>
     <div class="tcx-ov" data-ov="over" hidden>
       <div class="tcx-card">
-        <h3 data-overtitle>—</h3>
-        <p class="sub" data-overmsg></p>
-        <div class="tcx-row" data-overbtns></div>
+        <div class="tcx-head"><h3 data-overtitle>—</h3></div>
+        <div class="tcx-body"><p class="sub" data-overmsg></p></div>
+        <div class="tcx-foot" data-overbtns></div>
+      </div>
+    </div>
+    <div class="tcx-ov" data-ov="pause" hidden>
+      <div class="tcx-card">
+        <div class="tcx-head"><h3>Dijeda</h3></div>
+        <div class="tcx-body"><p class="sub">Permainan dibekukan — timer, bot, dan animasi berhenti. Tekan <kbd>P</kbd> atau <kbd>Esc</kbd> untuk melanjutkan.</p></div>
+        <div class="tcx-foot">
+          <button class="tcx-btn" type="button" data-act="restart">Restart</button>
+          <span class="tcx-spacer"></span>
+          <button class="tcx-btn acc" type="button" data-act="resume">Lanjutkan ▶</button>
+        </div>
       </div>
     </div>
   </section>
@@ -383,10 +435,6 @@ export function mount(root, context = {}) {
     <button class="tcx-fire" type="button" data-act="fire">TEMBAK</button>
     <button class="tcx-btn" type="button" data-act="end">Lewati (E)</button>
   </div>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-exit>Keluar</button>
-    <span class="tcx-hint">A/D gerak · W/S / mouse bidik · Spasi / klik tembak · E lewati · H bantuan · C cheat</span>
-  </div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
@@ -394,11 +442,12 @@ export function mount(root, context = {}) {
     const farG = $('[data-g="far"]'), midG = $('[data-g="mid"]');
     const worldG = $('[data-g="world"]'), staticG = $('[data-g="static"]'), dynG = $('[data-g="dyn"]'), uiG = $('[data-g="ui"]');
     const ovPick = $('[data-ov="pick"]'), ovHelp = $('[data-ov="help"]'), ovCheat = $('[data-ov="cheat"]');
-    const ovClear = $('[data-ov="clear"]'), ovOver = $('[data-ov="over"]');
+    const ovClear = $('[data-ov="clear"]'), ovOver = $('[data-ov="over"]'), ovPause = $('[data-ov="pause"]');
     const toastEl = $("[data-toast]"), statusEl = $("[data-status]"), dotEl = $("[data-dot]");
     const controlsEl = $("[data-controls]");
     const pickGrid = $("[data-pickgrid]"), pickWait = $("[data-pickwait]"), beginBtn = $("[data-beginbtn]");
     const cheatRows = $("[data-cheatrows]"), cheatBtn = $("[data-cheatbtn]");
+    const pauseBtn = $("[data-pausebtn]"), skipBtn = $("[data-skipbtn]"), restartBtn = $("[data-restartbtn]");
     const hud = {
         wlabel: $('[data-hud="wlabel"]'), wave: $('[data-hud="wave"]'), score: $('[data-hud="score"]'),
         best: $('[data-hud="best"]'), veh: $('[data-hud="veh"]'), time: $('[data-hud="time"]'),
@@ -407,19 +456,39 @@ export function mount(root, context = {}) {
     const hpBar = $('[data-bar="hp"]'), fuelBar = $('[data-bar="fuel"]');
     const bestChip = $('[data-chip="best"]');
 
-    /* ---------- lifecycle helpers ---------- */
+    /* ---------- lifecycle helpers (timer bisa dibekukan saat pause) ---------- */
     let mounted = true, epoch = 0;
     const timers = new Set(), unsubs = [], listeners = [];
-    function after(ms, fn) {
-        const e = epoch;
-        const id = setTimeout(() => { timers.delete(id); if (e === epoch && mounted) fn(); }, ms);
-        timers.add(id); return id;
+    let paused = false, pauseAt = 0, pausePerfAt = 0;
+    function arm(entry, delay) {
+        const token = (entry.token || 0) + 1;
+        entry.token = token;
+        entry.id = setTimeout(() => {
+            if (paused || entry.token !== token) return;
+            timers.delete(entry);
+            if (mounted && (entry.raw || entry.epoch === epoch)) entry.fn();
+        }, Math.max(0, delay));
+        timers.add(entry);
+        return entry;
     }
-    function afterRaw(ms, fn) {
-        const id = setTimeout(() => { timers.delete(id); if (mounted) fn(); }, ms);
-        timers.add(id); return id;
+    function after(ms, fn) { return arm({ fn, epoch, at: Date.now() + ms }, ms); }
+    function afterRaw(ms, fn) { return arm({ fn, epoch, raw: true, at: Date.now() + ms }, ms); }
+    function clearEntry(entry) { if (!entry) return; clearTimeout(entry.id); timers.delete(entry); }
+    function clearTimers() { for (const entry of timers) clearTimeout(entry.id); timers.clear(); }
+    function pauseTimers() {
+        pauseAt = Date.now();
+        pausePerfAt = performance.now();
+        for (const entry of timers) clearTimeout(entry.id);
     }
-    function clearTimers() { for (const id of timers) clearTimeout(id); timers.clear(); }
+    function resumeTimers() {
+        if (!paused) return;
+        const delta = Date.now() - pauseAt;
+        const perfDelta = performance.now() - pausePerfAt;
+        if (state && state.turnEndsAt) state.turnEndsAt += delta;
+        flightT0 += perfDelta; rolloutT0 += perfDelta; lastPoseSent += perfDelta;
+        for (const entry of Array.from(timers)) arm(entry, Math.max(0, entry.at + delta - Date.now()));
+        paused = false;
+    }
     function on(t, ev, fn, opt) { t.addEventListener(ev, fn, opt); listeners.push([t, ev, fn, opt]); }
 
     /* ---------- local view state ---------- */
@@ -431,7 +500,7 @@ export function mount(root, context = {}) {
     let effects = [], flashT = 0;
     let flightT0 = 0, rolloutT0 = 0;
     let lastFxId = 0, lastMsgId = 0, lastShotId = 0, prevPhase = "", prevTurnKey = "", pickSig = "", staticSeed = -1;
-    let helpOpen = false, cheatOpen = false, toastTimer = null;
+    let helpOpen = firstHelp, cheatOpen = false, toastTimer = null;
     let raf = null, lastT = 0;
 
     /* ---------- small helpers ---------- */
@@ -478,7 +547,7 @@ export function mount(root, context = {}) {
     function toast(text, tone) {
         toastEl.textContent = text; toastEl.className = "tcx-toast " + (tone || "");
         toastEl.hidden = false;
-        if (toastTimer) { clearTimeout(toastTimer); timers.delete(toastTimer); }
+        clearEntry(toastTimer);
         toastTimer = afterRaw(3000, () => { toastEl.hidden = true; });
     }
     function saveBest() {
@@ -486,6 +555,30 @@ export function mount(root, context = {}) {
             best = state.score;
             try { localStorage.setItem(META.bestKey, String(best)); } catch (e) { }
         }
+    }
+
+    /* ---------- overlay toggles ---------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatOpen = false;
+        render();
+    }
+    function toggleCheats(on) {
+        cheatOpen = typeof on === "boolean" ? on : !cheatOpen;
+        if (cheatOpen) helpOpen = false;
+        render();
+    }
+    function togglePause(on) {
+        if (online && !isHost) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        if (next) { helpOpen = false; cheatOpen = false; pauseTimers(); paused = true; }
+        else resumeTimers();
+        render();
+    }
+    function restartGame() {
+        if (online) { if (state && state.phase === "over") submitAction({ t: "rematch" }); return; }
+        resetRun();
     }
 
     /* ---------- state & networking (template) ---------- */
@@ -569,7 +662,7 @@ export function mount(root, context = {}) {
         return { veh, x: START_X[side], aim: 0.6, hp, maxHp: hp, dmg };
     }
     function resetRun() {
-        epoch++; clearTimers();
+        epoch++; clearTimers(); paused = false;
         state = initialState();
         cheats.god = cheats.oneHit = cheats.fullAim = cheats.slow = false;
         localPose = null; effects = []; cam = 0;
@@ -1064,7 +1157,7 @@ export function mount(root, context = {}) {
     function render() {
         if (!state) {
             setStatus("Menunggu host…", "#94a3b8");
-            ovPick.hidden = ovHelp.hidden = ovCheat.hidden = ovClear.hidden = ovOver.hidden = true;
+            ovPick.hidden = ovHelp.hidden = ovCheat.hidden = ovClear.hidden = ovOver.hidden = ovPause.hidden = true;
             return;
         }
         if (state.scenery !== staticSeed) { staticSeed = state.scenery; renderStatic(); }
@@ -1093,7 +1186,10 @@ export function mount(root, context = {}) {
             if (myTurn() && myTank()) { localPose = { x: myTank().x, aim: myTank().aim }; poseAnchor = state.turnStartX; }
             else localPose = null;
         }
-        if (state.phase === "clear" || state.phase === "over") { helpOpen = false; cheatOpen = false; }
+        if (state.phase === "clear" || state.phase === "over") {
+            helpOpen = false; cheatOpen = false;
+            if (paused) resumeTimers();
+        }
         if (dispEn.length !== state.enemies.length) {
             dispEn = state.enemies.map((e, i) => (dispEn[i] != null ? dispEn[i] : e.x));
             dispEnAim = state.enemies.map((e, i) => (dispEnAim[i] != null ? dispEnAim[i] : e.aim));
@@ -1121,12 +1217,29 @@ export function mount(root, context = {}) {
             else setStatus(online ? "Giliran lawan…" : "Bot membidik…", "#f59e0b");
         } else if (state.phase === "clear") setStatus("Wave selesai!", "#4ade80");
         else setStatus(online ? "Partai selesai" : "Tankmu hancur", online ? "#4ade80" : "#f87171");
-        ovPick.hidden = state.phase !== "pick";
-        ovClear.hidden = state.phase !== "clear";
-        ovOver.hidden = state.phase !== "over";
+        ovPick.hidden = state.phase !== "pick" || helpOpen || cheatOpen || paused;
+        ovClear.hidden = state.phase !== "clear" || helpOpen || cheatOpen || paused;
+        ovOver.hidden = state.phase !== "over" || helpOpen || cheatOpen || paused;
         ovHelp.hidden = !helpOpen;
         ovCheat.hidden = !cheatOpen || online;
-        controlsEl.classList.toggle("off", !myTurn() || helpOpen || cheatOpen);
+        ovPause.hidden = !paused || helpOpen || cheatOpen;
+        controlsEl.classList.toggle("off", !myTurn() || helpOpen || cheatOpen || paused);
+        const cheatLabel = cheatBtn.querySelector(".tcx-btn-label");
+        const cheatCount = Object.keys(cheats).filter((k) => cheats[k]).length;
+        cheatBtn.classList.toggle("on", cheatCount > 0);
+        if (cheatLabel) cheatLabel.textContent = cheatCount ? "Cheats " + cheatCount : "Cheats";
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".tcx-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.title = paused ? "Resume (P)" : "Pause (P)";
+            const ip = pauseBtn.querySelector('[data-ico="pause"]'), ip2 = pauseBtn.querySelector('[data-ico="play"]');
+            if (ip) ip.hidden = paused;
+            if (ip2) ip2.hidden = !paused;
+            pauseBtn.disabled = online && !isHost;
+        }
+        if (skipBtn) skipBtn.disabled = !myTurn() || helpOpen || cheatOpen || paused || state.phase !== "battle";
+        if (restartBtn) restartBtn.disabled = online && !(isHost && state.phase === "over");
         if (state.phase === "pick") {
             const sig = state.picks.join("|") + ":" + myActor;
             if (sig !== pickSig) {
@@ -1190,6 +1303,7 @@ export function mount(root, context = {}) {
 
     /* ---------- frame loop ---------- */
     function step(dt, now) {
+        if (paused) return;
         const st = state;
         if (st && myTurn() && localPose && myTank() && !helpOpen && !cheatOpen) {
             const spec = TANKS[myTank().veh];
@@ -1265,7 +1379,7 @@ export function mount(root, context = {}) {
         raf = requestAnimationFrame(frame);
         const dt = Math.min(0.05, (t - (lastT || t)) / 1000);
         lastT = t;
-        if (!mounted) return;
+        if (!mounted || paused) return;
         step(dt, t);
         drawDyn(t);
     }
@@ -1283,14 +1397,20 @@ export function mount(root, context = {}) {
         }
     }
     function aimFromPointer(e) {
-        if (!myTurn() || !localPose || !myTank() || helpOpen || cheatOpen) return;
+        if (paused || !myTurn() || !localPose || !myTank() || helpOpen || cheatOpen) return;
         const p = toWorld(e), face = faceOf(mySide());
         const a = Math.atan2(GROUND - 34 - p.y, (p.x - localPose.x) * face);
         if (a > 0.03) { localPose.aim = aimClamp(a); schedulePose(); }
     }
-    function tryFire() { if (myTurn() && localPose && !helpOpen && !cheatOpen) submitAction({ t: "fire", x: localPose.x, aim: localPose.aim }); }
-    function tryEnd() { if (myTurn() && localPose && !helpOpen && !cheatOpen) submitAction({ t: "end", x: localPose.x, aim: localPose.aim }); }
+    function tryFire() { if (!paused && myTurn() && localPose && !helpOpen && !cheatOpen) submitAction({ t: "fire", x: localPose.x, aim: localPose.aim }); }
+    function tryEnd() { if (!paused && myTurn() && localPose && !helpOpen && !cheatOpen) submitAction({ t: "end", x: localPose.x, aim: localPose.aim }); }
     function handleClick(e) {
+        if (!e.target || !e.target.closest) return;
+        if (e.target.closest("[data-help]")) { toggleHelp(); return; }
+        if (e.target.closest("[data-cheats]")) { if (!online) toggleCheats(); return; }
+        if (e.target.closest("[data-pause]")) { togglePause(); return; }
+        if (e.target.closest("[data-restart]")) { restartGame(); return; }
+        if (e.target.closest("[data-skip]")) { tryEnd(); return; }
         if (e.target.closest("[data-exit]")) { onExit(); return; }
         const pv = e.target.closest("[data-veh]");
         if (pv && state && state.phase === "pick") { submitAction({ t: "pick", veh: pv.dataset.veh }); return; }
@@ -1299,10 +1419,10 @@ export function mount(root, context = {}) {
         const b = e.target.closest("[data-act]");
         if (!b) return;
         switch (b.dataset.act) {
-            case "help": helpOpen = !helpOpen; cheatOpen = false; render(); break;
-            case "cheat": if (!online) { cheatOpen = !cheatOpen; helpOpen = false; render(); } break;
-            case "closehelp": helpOpen = false; render(); break;
-            case "closecheat": cheatOpen = false; render(); break;
+            case "closehelp": toggleHelp(false); break;
+            case "closecheat": toggleCheats(false); break;
+            case "resume": togglePause(false); break;
+            case "restart": restartGame(); break;
             case "begin": submitAction({ t: "begin" }); break;
             case "pickrand": submitAction({ t: "pick", veh: PICKABLE[(Math.random() * PICKABLE.length) | 0] }); break;
             case "fire": tryFire(); break;
@@ -1318,7 +1438,7 @@ export function mount(root, context = {}) {
         const b = e.target.closest("[data-hold]");
         if (!b) return;
         e.preventDefault();
-        if (!myTurn()) return;
+        if (!myTurn() || paused) return;
         keys[b.dataset.hold] = 1;
         try { b.setPointerCapture(e.pointerId); } catch (err) { }
     });
@@ -1328,7 +1448,7 @@ export function mount(root, context = {}) {
     on(root, "pointerleave", () => { clearHolds(); dragging = false; });
     on(svgEl, "pointermove", (e) => { if (e.pointerType === "mouse" || dragging) aimFromPointer(e); });
     on(svgEl, "pointerdown", (e) => {
-        if (!myTurn()) return;
+        if (!myTurn() || paused) return;
         e.preventDefault();
         if (e.pointerType === "mouse") { aimFromPointer(e); tryFire(); }
         else { dragging = true; aimFromPointer(e); }
@@ -1337,10 +1457,17 @@ export function mount(root, context = {}) {
     on(document, "keydown", (e) => {
         if (!mounted) return;
         const k = e.code;
-        if (k === "Escape") { if (helpOpen || cheatOpen) { helpOpen = cheatOpen = false; render(); } return; }
-        if (k === "KeyH") { helpOpen = !helpOpen; cheatOpen = false; render(); e.preventDefault(); return; }
-        if (k === "KeyC" && !online) { cheatOpen = !cheatOpen; helpOpen = false; render(); e.preventDefault(); return; }
-        if (!myTurn() || helpOpen || cheatOpen) return;
+        if (k === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (k === "KeyC") { if (!online && !helpOpen) toggleCheats(); e.preventDefault(); return; }
+        if (k === "KeyP" || k === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatOpen) toggleCheats(false);
+            else togglePause();
+            e.preventDefault();
+            return;
+        }
+        if (k === "KeyR") { restartGame(); e.preventDefault(); return; }
+        if (paused || helpOpen || cheatOpen || !myTurn()) return;
         if (k === "ArrowLeft" || k === "KeyA") { keys.l = 1; e.preventDefault(); }
         if (k === "ArrowRight" || k === "KeyD") { keys.r = 1; e.preventDefault(); }
         if (k === "ArrowUp" || k === "KeyW") { keys.u = 1; e.preventDefault(); }

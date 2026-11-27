@@ -8,7 +8,10 @@
       mode "ai"   -> solo vs Bot (giliran jalan diundi, cheat tersedia).
       mode "room" -> multiplayer online (host authoritative; posisi P1/P2
                      dan giliran pertama diundi acak setiap match).
+  - Layout mengikuti sistem Airplane Combat: HUD bar + board fill + overlay modal.
 */
+
+import { iconSVG } from "../JS/icons.js";
 
 export const META = {
     id: "word-scramble",
@@ -171,26 +174,61 @@ export function mount(root, context = {}) {
 
     let state = null;
     let entry = [];            // index tile yang dipakai untuk jawaban (UI lokal)
-    let openOverlay = null;    // "howto" | "cheats" | null
+    let helpOpen = false;      // modal How to play (internal, first-run)
+    let cheatsOpen = false;    // modal Cheats
+    let paused = false;        // local pause: timer + bot + reveal ikut berhenti
+    let pauseAt = 0;           // Date.now() saat pause dimulai
+    let clockShift = 0;        // akumulasi durasi pause (virtual clock)
     let localToast = null;     // feedback lokal (mis. jawaban belum lengkap)
     let shakeNow = false;
     let timers = [], botTm = null, tick = null;
     let lastKey = "", lastWrongSeen = 0;
     const offs = [];
 
+    /* Virtual clock: semua deadline & timer memakai now() agar pause tidak meloncat. */
+    const now = () => Date.now() - clockShift;
+
+    function armTimer(entryTm) {
+        entryTm.tm = setTimeout(() => {
+            timers = timers.filter((x) => x !== entryTm);
+            if (entryTm === botTm) botTm = null;
+            entryTm.fn();
+        }, Math.max(0, entryTm.due - now()));
+    }
     const later = (fn, ms) => {
-        const tm = setTimeout(() => {
-            timers = timers.filter((x) => x !== tm);
-            fn();
-        }, ms);
-        timers.push(tm);
-        return tm;
+        const entryTm = { fn, due: now() + ms, tm: null };
+        timers.push(entryTm);
+        if (!paused) armTimer(entryTm);
+        return entryTm;
     };
     const clearTimers = () => {
-        timers.forEach(clearTimeout);
+        timers.forEach((t) => { if (t.tm) clearTimeout(t.tm); });
         timers = [];
         botTm = null;
     };
+    function cancelBot() {
+        if (!botTm) return;
+        timers = timers.filter((t) => t !== botTm);
+        if (botTm.tm) clearTimeout(botTm.tm);
+        botTm = null;
+    }
+    function setPaused(on) {
+        if (paused === on) return;
+        if (on) {
+            if (!state || state.phase !== "playing") return;
+            pauseAt = Date.now();
+            paused = true;
+            timers.forEach((t) => { if (t.tm) { clearTimeout(t.tm); t.tm = null; } });
+        } else {
+            const elapsed = Date.now() - pauseAt;
+            clockShift += elapsed;
+            if (state && state.deadline && !state.frozen) state.deadline += elapsed;
+            paused = false;
+            timers.forEach((t) => { if (!t.tm) armTimer(t); });
+        }
+        render();
+    }
+
     const mySeat = () =>
         !online ? 0 : room.isHost ? (state ? state.hostSeat : 0) : state ? 1 - state.hostSeat : 1;
     const cur = () => state.words[Math.min(state.idx, ROUNDS - 1)];
@@ -199,47 +237,59 @@ export function mount(root, context = {}) {
             ? 0
             : state.frozen
                 ? state.frozenLeft
-                : Math.max(0, state.deadline - Date.now());
-    const canEdit = () => Boolean(state) && state.phase === "playing" && state.turn === mySeat() && !openOverlay;
+                : Math.max(0, state.deadline - now());
+    const canEdit = () =>
+        Boolean(state) && state.phase === "playing" && state.turn === mySeat() && !helpOpen && !cheatsOpen && !paused;
 
-    /* ---------- skeleton + scoped styles (minimalist) ---------- */
+    /* ---------- first-run internal help ---------- */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("wordScrambleHelpSeen") === "1"; } catch (e) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("wordScrambleHelpSeen", "1"); } catch (e) { /* storage blocked */ }
+    }
+
+    /* ---------- skeleton + scoped styles ---------- */
     root.innerHTML = `
 <style>
-.ws-root{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1c1917}
-.ws-root .game-intro h2{margin:0 0 4px;font-size:20px;font-weight:800;letter-spacing:-.01em}
-.ws-root .game-intro p{margin:0;font-size:13.5px;color:#78716c;max-width:56ch}
-.ws-app{--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--accent:#4f46e5;--good:#16a34a;--bad:#dc2626;--warn:#b45309;
-  background:#fafaf9;border:1px solid var(--line);border-radius:16px;padding:16px;width:100%}
-.ws-stage{position:relative;display:flex;flex-direction:column;gap:14px;min-height:460px}
-.ws-min{display:grid;place-items:center}
-.ws-scores{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.ws-score{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;transition:border-color .2s,box-shadow .2s}
-.ws-score.ws-active{border-color:var(--accent);box-shadow:0 0 0 3px #4f46e51a}
-.ws-tag{font-size:10.5px;font-weight:800;letter-spacing:.08em;color:var(--muted)}
-.ws-name{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ws-pts{font-size:24px;font-weight:800;letter-spacing:-.02em}
-.ws-sub{font-size:11.5px;color:var(--muted)}
-.ws-meta{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-.ws-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--muted)}
-.ws-chip b{color:var(--ink);font-weight:800}
+.ws-root{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1c1917;min-height:0}
+.ws-root [hidden]{display:none!important}
+.ws{--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--accent:#4f46e5;--good:#16a34a;--bad:#dc2626;--warn:#b45309;
+  background:#fafaf9;border:1px solid var(--line);border-radius:14px;padding:12px;width:100%}
+.ws *{box-sizing:border-box}
+.ws-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ws-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);white-space:nowrap}
+.ws-chip b{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
+.ws-chip .ws-name{max-width:9ch;overflow:hidden;text-overflow:ellipsis}
 .ws-chip.ws-flag{border-color:#fde68a;background:#fffbeb;color:var(--warn);font-weight:700}
 .ws-chip.ws-pulse{animation:ws-pulse 1.2s ease-in-out infinite}
 @keyframes ws-pulse{0%,100%{opacity:1}50%{opacity:.45}}
-.ws-track{height:4px;border-radius:999px;background:var(--line);overflow:hidden}
-.ws-track i{display:block;height:100%;width:100%;background:var(--accent);border-radius:999px;transition:width .25s linear}
-.ws-track i.ws-low{background:var(--bad)}
-b[data-time].ws-low{color:var(--bad)}
-.ws-dots{display:flex;gap:7px;justify-content:center}
-.ws-dot{width:10px;height:10px;border-radius:50%;background:var(--line);transition:transform .2s,background .2s}
+.ws-bar{width:46px;height:4px;border-radius:999px;background:var(--line);overflow:hidden}
+.ws-bar i{display:block;height:100%;width:100%;background:var(--accent);border-radius:999px;transition:width .2s linear}
+.ws-bar i.ws-low{background:var(--bad)}
+b.ws-low{color:var(--bad)}
+.ws-dots{gap:4px}
+.ws-dot{width:7px;height:7px;border-radius:50%;background:var(--line);transition:transform .2s,background .2s}
 .ws-dot.ws-ok{background:var(--good)}
 .ws-dot.ws-skip{background:#d97706}
 .ws-dot.ws-miss{background:#fca5a5}
-.ws-dot.ws-now{transform:scale(1.35);background:var(--accent);box-shadow:0 0 0 3px #4f46e522}
-.ws-hint{border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:10px;padding:8px 12px;font-size:13px;text-align:center;line-height:1.45}
+.ws-dot.ws-now{transform:scale(1.25);background:var(--accent);box-shadow:0 0 0 2px #4f46e522}
+.ws-spacer{flex:1 1 auto}
+.ws-btn{border:1px solid #d6d3d1;background:#fff;color:var(--ink);border-radius:8px;padding:8px 12px;min-height:38px;font:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:border-color .12s,transform .12s}
+.ws-btn:focus-visible,.ws-tile:focus-visible,.ws-slot:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ws-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.ws-btn:disabled{opacity:.4;cursor:default}
+.ws-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.ws-btn.primary:hover:not(:disabled){color:#fff;opacity:.92}
+.ws-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ws-icon-btn svg{flex:none;display:block}
+.ws-board{position:relative;display:flex;flex-direction:column;min-height:0;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+.ws-play{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;width:100%;max-width:760px;margin:0 auto;padding:8px 0}
+.ws-hint{border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:8px;padding:8px 12px;font-size:13px;text-align:center;line-height:1.45}
 .ws-hint-cheat{border-color:#bbf7d0;background:#f0fdf4;color:#166534}
 .ws-bank{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .ws-bank.ws-dim{opacity:.35}
-.ws-tile{width:clamp(42px,10vw,52px);height:clamp(50px,12vw,60px);border:1.5px solid #d6d3d1;border-radius:12px;background:#fff;
+.ws-tile{width:clamp(42px,10vw,52px);height:clamp(50px,12vw,60px);border:1px solid #d6d3d1;border-radius:10px;background:#fff;
   display:grid;place-items:center;font-size:clamp(18px,4.5vw,22px);font-weight:800;color:var(--ink);cursor:pointer;
   transition:transform .12s,border-color .12s,opacity .12s;font-family:inherit}
 .ws-tile:not(:disabled):hover{transform:translateY(-2px);border-color:var(--accent)}
@@ -248,61 +298,88 @@ b[data-time].ws-low{color:var(--bad)}
 .ws-answer{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .ws-answer.ws-shake{animation:ws-shake .3s}
 @keyframes ws-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
-.ws-slot{width:clamp(38px,9vw,46px);height:clamp(46px,11vw,54px);border:2px dashed #d6d3d1;border-radius:10px;background:transparent;
+.ws-slot{width:clamp(38px,9vw,46px);height:clamp(46px,11vw,54px);border:1px dashed #d6d3d1;border-radius:8px;background:transparent;
   display:grid;place-items:center;font-size:clamp(16px,4vw,20px);font-weight:800;color:var(--accent);cursor:default;font-family:inherit}
 .ws-slot.ws-full{border-style:solid;border-color:#c7d2fe;background:#eef2ff;cursor:pointer}
 .ws-slot.ws-slot-ok{border-style:solid;border-color:#86efac;background:#f0fdf4;color:var(--good)}
 .ws-controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-.ws-btn{border:1.5px solid #d6d3d1;background:#fff;color:var(--ink);border-radius:10px;padding:10px 16px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:border-color .12s,transform .12s}
-.ws-btn:not(:disabled):hover{border-color:var(--accent);transform:translateY(-1px)}
-.ws-btn:disabled{opacity:.4;cursor:default}
-.ws-btn.ws-primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.ws-toast{min-height:20px;text-align:center;font-size:13.5px;font-weight:600;color:var(--muted)}
+.ws-toast{min-height:20px;text-align:center;font-size:13px;font-weight:600;color:var(--muted)}
 .ws-toast.ws-good{color:var(--good)}
 .ws-toast.ws-bad{color:var(--bad)}
-.ws-keys{text-align:center;font-size:12px;color:var(--muted)}
+.ws-keys{text-align:center;font-size:11.5px;color:var(--muted)}
 .ws-keys-m{display:none}
-.ws-ov{position:absolute;inset:0;background:#fafaf9eb;backdrop-filter:blur(3px);display:grid;place-items:center;padding:14px;z-index:5;border-radius:12px}
-.ws-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;max-width:430px;width:100%;text-align:center;box-shadow:0 8px 30px #0000000d}
-.ws-card h3{margin:0 0 8px;font-size:18px;font-weight:800;letter-spacing:-.01em}
-.ws-card p{margin:0 0 6px;font-size:13.5px;color:var(--muted);line-height:1.55}
-.ws-card ul{margin:8px 0;padding-left:18px;text-align:left;font-size:13px;color:#44403c;line-height:1.6}
-.ws-card .ws-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px}
-.ws-cheats{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.ws-cheat{border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font:inherit;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:1px}
-.ws-cheat b{font-size:13.5px}
+.ws-ov{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:14px;background:#fafaf9eb;backdrop-filter:blur(3px)}
+.ws-card{display:flex;flex-direction:column;width:min(430px,100%);max-height:100%;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:0 4px 16px #0000000d}
+.ws-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 8px}
+.ws-head h3{margin:0;font-size:17px;font-weight:800;letter-spacing:-.01em}
+.ws-tag{font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 9px;text-transform:uppercase}
+.ws-body{flex:1 1 auto;min-height:0;overflow:auto;padding:0 16px;font-size:13px;line-height:1.55;color:var(--muted)}
+.ws-body p{margin:0 0 8px}
+.ws-body ul{margin:8px 0;padding-left:18px;color:#44403c;line-height:1.6}
+.ws-body b{color:var(--ink)}
+.ws-foot{flex:none;display:flex;gap:8px;justify-content:flex-end;padding:12px 16px 14px;border-top:1px solid var(--line)}
+.ws-note{font-size:11px;color:var(--muted);margin-right:auto}
+.ws-cheats{display:flex;flex-direction:column;gap:8px}
+.ws-cheat{border:1px solid var(--line);background:#fff;border-radius:8px;padding:10px 12px;min-height:44px;font:inherit;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:2px}
+.ws-cheat b{font-size:13px}
 .ws-cheat span{font-size:11.5px;color:var(--muted)}
 .ws-cheat:not(:disabled):hover{border-color:var(--accent)}
 .ws-cheat:disabled{opacity:.4;cursor:default}
-@media (pointer:coarse){
-  .ws-keys-d{display:none}
-  .ws-keys-m{display:inline}
-  .ws-btn{min-height:44px}
-}
-@media (max-width:560px){
-  .ws-app{padding:12px}
-  .ws-pts{font-size:20px}
-  .ws-controls .ws-btn{flex:1 1 auto}
-}
-@media (prefers-reduced-motion:reduce){
-  .ws-app *{animation:none!important;transition:none!important}
+@media (max-width:560px){.ws-controls .ws-btn{flex:1 1 auto}}
+@media (prefers-reduced-motion:reduce){.ws *{animation:none!important;transition:none!important}}
+/* --- Batch 02 design polish --- */
+.ws :focus-visible,.ws button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ws-chip{padding:6px 10px}
+.ws-btn{min-height:44px;padding:10px 16px}
+@media (pointer:coarse){.ws button:not(:disabled){min-height:44px}}
+/* --- fill height + mobile refinements (LAST: menang pointer:coarse) --- */
+.ws-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ws-icon-btn svg{flex:none;display:block}
+.ws-card{display:flex;flex-direction:column;overflow:hidden}
+.ws-head,.ws-foot{flex:none}
+.ws-body,.ws-cheats{flex:1 1 auto;min-height:0;overflow:auto}
+@media (max-width:640px){
+ .ws.game-fill > .ws-board{flex:1 1 auto;min-height:320px;aspect-ratio:auto}
+ .ws.game-fill > .ws-board:has(.ws-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px)}
+ .ws .ws-hud{gap:5px;margin-bottom:8px}
+ .ws .ws-hud .ws-chip{padding:4px 6px;font-size:9px}
+ .ws .ws-hud .ws-chip[data-hud="dots"],.ws .ws-hud .ws-chip[data-hud="skip"]{display:none}
+ .ws .ws-hud .ws-name{display:none}
+ .ws .ws-hud .ws-btn{min-height:32px;padding:5px 9px;font-size:9px}
+ .ws .ws-hud .ws-btn-label,.ws .ws-hud .ws-spacer{display:none}
+ .ws .ws-ov{padding:8px}
+ .ws .ws-card{width:100%;height:100%;max-height:100%;padding:0;border-radius:12px}
+ .ws .ws-body,.ws .ws-cheats{scrollbar-width:none}
+ .ws .ws-body::-webkit-scrollbar,.ws .ws-cheats::-webkit-scrollbar{display:none}
+ .ws .ws-foot{position:static;margin:0;padding:10px 16px 12px}
+ .ws .ws-note{display:none}
+ .ws-tile{width:clamp(36px,10vw,46px);height:clamp(44px,11vw,54px);font-size:18px}
+ .ws-slot{width:clamp(34px,9vw,42px);height:clamp(40px,10vw,50px);font-size:16px}
 }
 </style>
-<div class="game-app ws-root">
-  <div class="game-intro">
-    <div><h2>Word Scramble</h2><p>${META.desc}</p></div>
-    <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
+<div class="game-app ws-root ws game-fill" data-ws>
+  <div class="ws-hud">
+    <span class="ws-chip">P1 <span class="ws-name" data-hud="name0">You</span> <b data-hud="s0">0</b></span>
+    <span class="ws-chip">P2 <span class="ws-name" data-hud="name1">Bot</span> <b data-hud="s1">0</b></span>
+    <span class="ws-chip">ROUND <b data-hud="round">1/8</b></span>
+    <span class="ws-chip">TIME <b data-hud="time">25s</b><span class="ws-bar"><i data-hud="bar"></i></span></span>
+    <span class="ws-chip" data-hud="turn">Coin flip on start</span>
+    <span class="ws-chip" data-hud="skip">SKIP <b data-hud="skipn">${SKIPS}</b></span>
+    <span class="ws-chip ws-dots" data-hud="dots"></span>
+    <span class="ws-chip ws-flag" data-hud="cheat" hidden>CH</span>
+    <span class="ws-spacer"></span>
+    <button class="ws-btn ws-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ws-btn-label">Help</span></button>
+    ${vsBot ? `<button class="ws-btn ws-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ws-btn-label">Cheats</span></button>` : ""}
+    <button class="ws-btn ws-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)" disabled><span class="ws-icon">${iconSVG("pause", { size: 14 })}</span><span class="ws-btn-label">Pause</span></button>
+    <button class="ws-btn ws-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ws-btn-label">Restart</span></button>
+    <button class="ws-btn ws-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ws-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board></section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="howto">How to play</button>
-    ${vsBot ? '<button class="game-action-button" type="button" data-act="cheats">Cheats</button>' : ""}
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
+  <section class="game-panel ws-board" data-board></section>
 </div>`;
 
     const boardEl = root.querySelector("[data-board]");
-    const statusEl = root.querySelector("[data-status]");
+    const hud = (sel) => root.querySelector(sel);
+    const hudSet = (sel, txt) => { const el = hud(sel); if (el) el.textContent = String(txt); };
 
     /* ---------- state factory ---------- */
     function freshState(names, hostSeat) {
@@ -335,7 +412,8 @@ b[data-time].ws-low{color:var(--bad)}
         }
         state = freshState(names, hostSeat);
         entry = [];
-        openOverlay = null;
+        cheatsOpen = false;
+        paused = false;
         localToast = null;
         publish();
     }
@@ -383,7 +461,7 @@ b[data-time].ws-low{color:var(--bad)}
             return;
         }
         state.turn = (state.first + state.idx) % 2;
-        state.deadline = Date.now() + TIME_MS;
+        state.deadline = now() + TIME_MS;
         state.phase = "playing";
         publish();
     }
@@ -406,7 +484,7 @@ b[data-time].ws-low{color:var(--bad)}
             // Random siapa yang jalan duluan (coin flip) setiap match.
             state.first = Math.random() < 0.5 ? 0 : 1;
             state.turn = state.first;
-            state.deadline = Date.now() + TIME_MS;
+            state.deadline = now() + TIME_MS;
             state.phase = "playing";
             state.last = { kind: "coin", seat: state.first };
             publish();
@@ -435,8 +513,8 @@ b[data-time].ws-low{color:var(--bad)}
             return;
         }
         if (t === "timeout") {
-            if (state.frozen) return;
-            if (state.deadline && Date.now() < state.deadline - 300) return;
+            if (state.frozen || paused) return;
+            if (state.deadline && now() < state.deadline - 300) return;
             state.results[state.idx] = { seat: state.turn, kind: "miss", pts: 0 };
             toReveal({ kind: "timeout", seat: state.turn });
             return;
@@ -458,13 +536,13 @@ b[data-time].ws-low{color:var(--bad)}
 
     /* ---------- bot (hanya mode AI, dijadwalkan sisi "host") ---------- */
     function scheduleBot() {
-        if (botTm) { clearTimeout(botTm); botTm = null; }
-        if (!vsBot || !state || state.phase !== "playing" || state.turn !== 1 || state.frozen) return;
+        cancelBot();
+        if (paused || !vsBot || !state || state.phase !== "playing" || state.turn !== 1 || state.frozen) return;
         const { w } = cur();
         const plan = botPlan(w.length);
         botTm = later(() => {
             botTm = null;
-            if (!state || state.phase !== "playing" || state.turn !== 1) return;
+            if (!state || state.phase !== "playing" || state.turn !== 1 || paused) return;
             if (Math.random() < plan.p) applyAction({ type: "guess", word: w }, 1);
             else applyAction({ type: "botfail" }, 1);
         }, plan.delay);
@@ -472,7 +550,7 @@ b[data-time].ws-low{color:var(--bad)}
 
     /* ---------- cheats (solo saja; menandai run sebagai cheated) ---------- */
     function applyCheat(kind) {
-        if (online || !state || state.phase !== "playing") return;
+        if (online || paused || !state || state.phase !== "playing") return;
         const me = mySeat();
         if (kind === "reveal") {
             state.cheated = true; state.cheatReveal = true;
@@ -488,12 +566,12 @@ b[data-time].ws-low{color:var(--bad)}
         } else if (kind === "freeze") {
             state.cheated = true;
             if (state.frozen) {
-                state.deadline = Date.now() + state.frozenLeft;
+                state.deadline = now() + state.frozenLeft;
                 state.frozen = false;
             } else {
                 state.frozenLeft = remaining();
                 state.frozen = true;
-                if (botTm) { clearTimeout(botTm); botTm = null; }
+                cancelBot();
             }
         } else if (kind === "skips") {
             state.cheated = true; state.skips[me] = 99;
@@ -534,22 +612,28 @@ b[data-time].ws-low{color:var(--bad)}
         return { msg: "", mood: "" };
     }
 
-    function startOv(me) {
+    /* ---------- overlays (modal di dalam board) ---------- */
+    function ovWrap(name, activeOv, card) {
+        return `<div class="ws-ov" data-ov="${name}"${activeOv === name ? "" : " hidden"}>${card}</div>`;
+    }
+    function startOv(me, activeOv) {
         const best = bestScore();
-        return `<div class="ws-ov"><div class="ws-card">
-      <h3>Word Scramble</h3>
-      <p>The tiles hide a real word with its letters mixed up. Build the answer from the letter buttons (or type it) and submit before the 25-second clock empties. Eight rounds, turns alternate, faster solves earn more points.</p>
-      <p>${online
+        return ovWrap("start", activeOv, `<div class="ws-card">
+      <div class="ws-head"><h3>Word Scramble</h3><span class="ws-tag">${online ? "Online" : "VS Bot"}</span></div>
+      <div class="ws-body">
+        <p>The tiles hide a real word with its letters mixed up. Build the answer from the letter buttons (or type it) and submit before the 25-second clock empties. Eight rounds, turns alternate, faster solves earn more points.</p>
+        <p>${online
                 ? "You are <b>P" + (me + 1) + "</b> this match. Seats and the opening turn are drawn at random; either player can press start."
                 : "A coin flip decides whether you or the bot moves first."}</p>
-      ${!online && best > 0 ? "<p>Best score: <b>" + best + "</b></p>" : ""}
-      <div class="ws-row">
-        <button type="button" class="ws-btn ws-primary" data-act="start">Start game</button>
-        <button type="button" class="ws-btn" data-act="howto">How to play</button>
+        ${!online && best > 0 ? "<p>Best score: <b>" + best + "</b></p>" : ""}
       </div>
-    </div></div>`;
+      <div class="ws-foot">
+        <button type="button" class="ws-btn" data-act="howto">How to play</button>
+        <button type="button" class="ws-btn primary" data-act="start">Start game</button>
+      </div>
+    </div>`);
     }
-    function overOv(me) {
+    function overOv(me, activeOv) {
         const a = state.scores[0], b = state.scores[1];
         let title;
         if (a === b) title = "It's a draw";
@@ -557,62 +641,126 @@ b[data-time].ws-low{color:var(--bad)}
             const winSeat = a > b ? 0 : 1;
             title = winSeat === me ? "You win!" : vsBot ? "Bot wins" : esc(state.names[winSeat]) + " wins";
         }
-        return `<div class="ws-ov"><div class="ws-card">
-      <h3>${title}</h3>
-      <p>${esc(state.names[0])} <b>${a}</b> — <b>${b}</b> ${esc(state.names[1])}.<br/>
-      You solved ${state.solved[me]} of ${ROUNDS / 2} turns.</p>
-      ${state.cheated ? "<p>Cheats were used — best score was not saved.</p>" : !online && bestScore() > 0 ? "<p>Best score: <b>" + bestScore() + "</b></p>" : ""}
-      <div class="ws-row">
-        <button type="button" class="ws-btn ws-primary" data-act="restart">Play again</button>
-        <button type="button" class="ws-btn" data-exit>Exit game</button>
+        return ovWrap("over", activeOv, `<div class="ws-card">
+      <div class="ws-head"><h3>${title}</h3><span class="ws-tag">Match over</span></div>
+      <div class="ws-body">
+        <p>${esc(state.names[0])} <b>${a}</b> — <b>${b}</b> ${esc(state.names[1])}.<br/>
+        You solved ${state.solved[me]} of ${ROUNDS / 2} turns.</p>
+        ${state.cheated ? "<p>Cheats were used — best score was not saved.</p>" : !online && bestScore() > 0 ? "<p>Best score: <b>" + bestScore() + "</b></p>" : ""}
       </div>
-    </div></div>`;
+      <div class="ws-foot">
+        <button type="button" class="ws-btn" data-exit>Exit game</button>
+        <button type="button" class="ws-btn primary" data-act="restart">Play again</button>
+      </div>
+    </div>`);
     }
-    function howtoOv() {
-        return `<div class="ws-ov"><div class="ws-card">
-      <h3>How to play</h3>
-      <ul>
-        <li>Unscramble the tiles into the hidden word before the 25-second timer empties.</li>
-        <li>Turns alternate; a coin flip decides who starts. Each side plays 4 of the 8 rounds.</li>
-        <li>Score: 100 points + 4 per second left. Wrong guesses cost only time.</li>
-        <li>After ${WRONG_FOR_HINT} wrong guesses a hint appears: a clue plus the first letter.</li>
-        <li>Each player has ${SKIPS} skips. Skipping reveals the word but scores 0.</li>
-        <li>Every level is generated from a real word and is always solvable; words get longer in later rounds.</li>
-        <li>Desktop: type A–Z, Backspace deletes, Enter submits, Esc clears. Mouse: click tiles to add, click a filled slot to remove.</li>
-        <li>Mobile: tap the letter buttons, then Submit. No keyboard needed.</li>
-        ${vsBot ? "<li>The Cheats button opens helpers (reveal, auto-solve, extra time, freeze, skips, hint). Using them flags the run.</li>" : "<li>Cheats are disabled in online matches for fairness.</li>"}
-      </ul>
-      <div class="ws-row"><button type="button" class="ws-btn ws-primary" data-act="close">Got it</button></div>
-    </div></div>`;
+    function helpOv(activeOv) {
+        return ovWrap("help", activeOv, `<div class="ws-card">
+      <div class="ws-head"><h3>How to play</h3><button class="ws-btn" type="button" data-help-close>Close</button></div>
+      <div class="ws-body">
+        <ul>
+          <li>Unscramble the tiles into the hidden word before the 25-second timer empties.</li>
+          <li>Turns alternate; a coin flip decides who starts. Each side plays 4 of the 8 rounds.</li>
+          <li>Score: 100 points + 4 per second left. Wrong guesses cost only time.</li>
+          <li>After ${WRONG_FOR_HINT} wrong guesses a hint appears: a clue plus the first letter.</li>
+          <li>Each player has ${SKIPS} skips. Skipping reveals the word but scores 0.</li>
+          <li>Every level is generated from a real word and is always solvable; words get longer in later rounds.</li>
+          <li>Desktop: type A–Z, Backspace deletes, Enter submits, Esc clears. Mouse: click tiles to add, click a filled slot to remove.</li>
+          <li>Mobile: tap the letter buttons, then Submit. No keyboard needed.</li>
+          ${vsBot ? "<li>The Cheats button opens helpers (reveal, auto-solve, extra time, freeze, skips, hint). Using them flags the run.</li>" : "<li>Cheats are disabled in online matches for fairness.</li>"}
+          <li>Keys: <b>Shift+H</b> help · <b>Shift+C</b> cheats · <b>Shift+P</b> pause · <b>Shift+R</b> restart · <b>Esc</b> close / clear. On your turn plain letters A–Z build the word.</li>
+        </ul>
+      </div>
+      <div class="ws-foot"><span class="ws-note">Press H to reopen this guide</span><button type="button" class="ws-btn primary" data-help-close>Got it</button></div>
+    </div>`);
     }
-    function cheatsOv(me) {
-        const dis = state.phase !== "playing" ? "disabled" : "";
-        const solveDis = state.phase !== "playing" || state.turn !== me ? "disabled" : "";
+    function cheatsOv(me, activeOv) {
+        const dis = state.phase !== "playing" || paused ? "disabled" : "";
+        const solveDis = dis || state.turn !== me ? "disabled" : "";
         const row = (id, name, desc, d) =>
             `<button type="button" class="ws-cheat" data-cheat="${id}" ${d}><b>${name}</b><span>${desc}</span></button>`;
-        return `<div class="ws-ov"><div class="ws-card">
-      <h3>Cheats</h3>
-      <p>Solo mode only. Using any cheat flags this run and disables best-score saving.</p>
-      <div class="ws-cheats">
-        ${row("reveal", "Reveal word", "Show the answer for this round.", dis)}
-        ${row("solve", "Auto-solve", "Instantly submit the correct word (your turn only).", solveDis)}
-        ${row("time", "+15 seconds", "Add time to the current round.", dis)}
-        ${row("freeze", state.frozen ? "Unfreeze timer" : "Freeze timer", "Pause or resume the clock (also pauses the bot).", dis)}
-        ${row("skips", "Unlimited skips", "Set your skips to 99.", dis)}
-        ${row("hint", "Instant hint", "Unlock the clue and first letter right away.", dis)}
+        return ovWrap("cheats", activeOv, `<div class="ws-card">
+      <div class="ws-head"><h3>Cheats</h3><button class="ws-btn" type="button" data-close>Close</button></div>
+      <div class="ws-body">
+        <p>Solo mode only. Using any cheat flags this run and disables best-score saving.</p>
+        <div class="ws-cheats">
+          ${row("reveal", "Reveal word", "Show the answer for this round.", dis)}
+          ${row("solve", "Auto-solve", "Instantly submit the correct word (your turn only).", solveDis)}
+          ${row("time", "+15 seconds", "Add time to the current round.", dis)}
+          ${row("freeze", state.frozen ? "Unfreeze timer" : "Freeze timer", "Pause or resume the clock (also pauses the bot).", dis)}
+          ${row("skips", "Unlimited skips", "Set your skips to 99.", dis)}
+          ${row("hint", "Instant hint", "Unlock the clue and first letter right away.", dis)}
+        </div>
       </div>
-      <div class="ws-row"><button type="button" class="ws-btn ws-primary" data-act="close">Close</button></div>
-    </div></div>`;
+      <div class="ws-foot"><button type="button" class="ws-btn primary" data-close>Close</button></div>
+    </div>`);
+    }
+    function pauseOv(activeOv) {
+        return ovWrap("pause", activeOv, `<div class="ws-card">
+      <div class="ws-head"><h3>Paused</h3><span class="ws-tag">Clock stopped</span></div>
+      <div class="ws-body"><p>The timer, bot and round advance are frozen. Your remaining time is restored on resume.</p></div>
+      <div class="ws-foot"><span class="ws-note">Press P or Esc to resume</span><button type="button" class="ws-btn primary" data-resume>Resume</button></div>
+    </div>`);
+    }
+
+    function syncHUD(me, turnLabel, botThinking) {
+        if (!state) {
+            hudSet('[data-hud="s0"]', "0");
+            hudSet('[data-hud="s1"]', "0");
+            hudSet('[data-hud="name0"]', "P1");
+            hudSet('[data-hud="name1"]', "P2");
+            hudSet('[data-hud="round"]', "—/8");
+            hudSet('[data-hud="turn"]', "Waiting…");
+            hudSet('[data-hud="time"]', "—");
+            const bar = hud('[data-hud="bar"]');
+            if (bar) bar.style.width = "100%";
+            const dotsEl = hud('[data-hud="dots"]');
+            if (dotsEl) dotsEl.innerHTML = "";
+            hud('[data-hud="cheat"]')?.setAttribute("hidden", "");
+            return;
+        }
+        const { phase, scores, skips, results, idx } = state;
+        hudSet('[data-hud="s0"]', String(scores[0]));
+        hudSet('[data-hud="s1"]', String(scores[1]));
+        hudSet('[data-hud="name0"]', me === 0 ? "You" : String(state.names[0] || "P1"));
+        hudSet('[data-hud="name1"]', me === 1 ? "You" : String(state.names[1] || "P2"));
+        hudSet('[data-hud="round"]', Math.min(idx + 1, ROUNDS) + "/" + ROUNDS);
+        hudSet('[data-hud="turn"]', turnLabel);
+        hudSet('[data-hud="skipn"]', String(skips[me]));
+        hud('[data-hud="turn"]')?.classList.toggle("ws-pulse", Boolean(botThinking));
+        const dotHtml = Array.from({ length: ROUNDS }, (_, i) => {
+            const r = results[i];
+            let cls = "ws-dot";
+            if (r) cls += r.kind === "ok" ? " ws-ok" : r.kind === "skip" ? " ws-skip" : " ws-miss";
+            if (i === idx && phase !== "over") cls += " ws-now";
+            return `<i class="${cls}"></i>`;
+        }).join("");
+        const dotsEl = hud('[data-hud="dots"]');
+        if (dotsEl) dotsEl.innerHTML = dotHtml;
+        const flag = hud('[data-hud="cheat"]');
+        if (flag) { if (state.cheated) flag.removeAttribute("hidden"); else flag.setAttribute("hidden", ""); }
+        const pbtn = hud("[data-pause]");
+        if (pbtn) {
+            pbtn.disabled = phase !== "playing";
+            const label = pbtn.querySelector(".ws-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pbtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            const icon = pbtn.querySelector(".ws-icon");
+            if (icon) icon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+        }
     }
 
     function render() {
         if (!state) {
-            boardEl.innerHTML = `<div class="ws-app"><div class="ws-stage ws-min"><div class="ws-card"><h3>Waiting for host…</h3><p>The match state has not arrived yet.</p></div></div></div>`;
-            if (statusEl) statusEl.textContent = "Waiting…";
+            syncHUD(null, "Waiting…", false);
+            boardEl.innerHTML = `<div class="ws-play"><div class="ws-card" style="max-height:none">
+        <div class="ws-head"><h3>Waiting for host…</h3></div>
+        <div class="ws-body"><p>The match state has not arrived yet.</p></div>
+      </div></div>`;
             return;
         }
         const me = mySeat();
-        const { phase, idx, turn, names, scores, solved, skips, wrong } = state;
+        const { phase, idx, turn, names, skips, wrong } = state;
         const results = state.results || [];
         const { w, hint, s } = cur();
         const myTurn = phase === "playing" && turn === me;
@@ -635,25 +783,6 @@ b[data-time].ws-low{color:var(--bad)}
                         : myTurn ? "Your turn"
                             : botThinking ? "Bot thinking…"
                                 : esc(names[turn]) + "'s turn";
-
-        const scoreCard = (seat) => {
-            const active = phase === "playing" && turn === seat;
-            const label = seat === me ? "You" : esc(names[seat]);
-            return `<div class="ws-score${active ? " ws-active" : ""}">
-        <span class="ws-tag">P${seat + 1}${seat === me ? " · YOU" : ""}</span>
-        <span class="ws-name">${label}</span>
-        <span class="ws-pts">${scores[seat]}</span>
-        <span class="ws-sub">solved ${solved[seat]} · skips ${skips[seat]}</span>
-      </div>`;
-        };
-
-        const dots = Array.from({ length: ROUNDS }, (_, i) => {
-            const r = results[i];
-            let cls = "ws-dot";
-            if (r) cls += r.kind === "ok" ? " ws-ok" : r.kind === "skip" ? " ws-skip" : " ws-miss";
-            if (i === idx && phase !== "over") cls += " ws-now";
-            return `<span class="${cls}"></span>`;
-        }).join("");
 
         let hintBar = "";
         if (state.cheatReveal && phase === "playing") {
@@ -679,62 +808,50 @@ b[data-time].ws-low{color:var(--bad)}
         const dis = myTurn ? "" : "disabled";
         const skipDis = !myTurn || skips[me] <= 0 ? "disabled" : "";
 
-        const ov =
-            openOverlay === "howto" ? howtoOv()
-                : openOverlay === "cheats" ? cheatsOv(me)
-                    : phase === "ready" ? startOv(me)
-                        : phase === "over" ? overOv(me)
-                            : "";
+        /* Priority: help → cheats → pause → phase overlay */
+        const activeOv = helpOpen ? "help"
+            : cheatsOpen ? "cheats"
+                : paused ? "pause"
+                    : phase === "ready" ? "start"
+                        : phase === "over" ? "over"
+                            : null;
 
         boardEl.innerHTML = `
-<div class="ws-app"><div class="ws-stage">
-  <div class="ws-scores">${scoreCard(0)}${scoreCard(1)}</div>
-  <div class="ws-meta">
-    <span class="ws-chip">Round <b>${Math.min(idx + 1, ROUNDS)}/${ROUNDS}</b></span>
-    <span class="ws-chip">Time <b data-time>25s</b></span>
-    <span class="ws-chip${botThinking ? " ws-pulse" : ""}">${turnLabel}</span>
-    ${state.cheated ? '<span class="ws-chip ws-flag">Cheats on</span>' : ""}
+  <div class="ws-play">
+    ${hintBar}
+    <div class="ws-bank${reveal ? " ws-dim" : ""}">${bank}</div>
+    <div class="ws-answer${shake ? " ws-shake" : ""}">${slots}</div>
+    <div class="ws-controls">
+      <button type="button" class="ws-btn" data-act="del" ${dis}>Delete</button>
+      <button type="button" class="ws-btn" data-act="clear" ${dis}>Clear</button>
+      <button type="button" class="ws-btn primary" data-act="submit" ${dis}>Submit</button>
+      <button type="button" class="ws-btn" data-act="skip" ${skipDis}>Skip (${skips[me]})</button>
+    </div>
+    <div class="ws-toast${toast.mood ? " ws-" + toast.mood : ""}">${toast.msg}</div>
+    <div class="ws-keys">
+      <span class="ws-keys-d">Keyboard: A–Z add · Backspace delete · Enter submit · Esc clear — or click tiles and slots.</span>
+      <span class="ws-keys-m">Tap letters to build the word, then Submit. Tap a filled slot to remove it.</span>
+    </div>
   </div>
-  <div class="ws-track"><i data-bar></i></div>
-  <div class="ws-dots">${dots}</div>
-  ${hintBar}
-  <div class="ws-bank${reveal ? " ws-dim" : ""}">${bank}</div>
-  <div class="ws-answer${shake ? " ws-shake" : ""}">${slots}</div>
-  <div class="ws-controls">
-    <button type="button" class="ws-btn" data-act="del" ${dis}>Delete</button>
-    <button type="button" class="ws-btn" data-act="clear" ${dis}>Clear</button>
-    <button type="button" class="ws-btn ws-primary" data-act="submit" ${dis}>Submit</button>
-    <button type="button" class="ws-btn" data-act="skip" ${skipDis}>Skip (${skips[me]})</button>
-  </div>
-  <div class="ws-toast${toast.mood ? " ws-" + toast.mood : ""}">${toast.msg}</div>
-  <div class="ws-keys">
-    <span class="ws-keys-d">Keyboard: A–Z add · Backspace delete · Enter submit · Esc clear — or click tiles and slots.</span>
-    <span class="ws-keys-m">Tap letters to build the word, then Submit. Tap a filled slot to remove it.</span>
-  </div>
-  ${ov}
-</div></div>`;
+  ${startOv(me, activeOv)}
+  ${overOv(me, activeOv)}
+  ${helpOv(activeOv)}
+  ${vsBot ? cheatsOv(me, activeOv) : ""}
+  ${pauseOv(activeOv)}`;
 
-        if (statusEl) {
-            statusEl.textContent =
-                phase === "ready" ? "Ready"
-                    : phase === "reveal" ? "Revealing…"
-                        : phase === "over" ? "Finished"
-                            : myTurn ? "Your turn"
-                                : botThinking ? "Bot is thinking…"
-                                    : names[turn] + "'s turn";
-        }
+        syncHUD(me, turnLabel, botThinking);
         updateClock();
     }
 
     function updateClock() {
-        const tEl = root.querySelector("[data-time]");
-        const bEl = root.querySelector("[data-bar]");
+        const tEl = hud('[data-hud="time"]');
+        const bEl = hud('[data-hud="bar"]');
         if (!tEl || !state) return;
         let ms = 0, label = "—";
         if (state.phase === "ready") ms = TIME_MS;
-        else if (state.phase === "playing") ms = state.frozen ? state.frozenLeft : Math.max(0, state.deadline - Date.now());
+        else if (state.phase === "playing") ms = state.frozen ? state.frozenLeft : Math.max(0, state.deadline - now());
         if (state.phase === "ready" || state.phase === "playing") {
-            label = Math.ceil(ms / 1000) + "s" + (state.frozen ? " (paused)" : "");
+            label = Math.ceil(ms / 1000) + "s" + (state.frozen || paused ? " ⏸" : "");
         }
         tEl.textContent = label;
         const low = state.phase === "playing" && ms <= 6000;
@@ -765,19 +882,32 @@ b[data-time].ws-low{color:var(--bad)}
         }
         submitAction({ type: "guess", word: entry.map((i) => s[i]).join("") });
     }
+    function restartGame() {
+        helpOpen = false;
+        cheatsOpen = false;
+        paused = false;
+        submitAction({ type: "restart" });
+    }
     function handleClick(event) {
         const el = event.target;
         if (el.closest("[data-exit]")) { onExit(); return; }
+        if (el.closest("[data-help]")) { toggleHelp(); return; }
+        if (el.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (el.closest("[data-cheats]")) { if (vsBot) { cheatsOpen = !cheatsOpen; render(); } return; }
+        if (el.closest("[data-close]")) { cheatsOpen = false; render(); return; }
+        if (el.closest("[data-pause]")) { if (state && state.phase === "playing") setPaused(!paused); return; }
+        if (el.closest("[data-resume]")) { setPaused(false); return; }
+        if (el.closest("[data-restart]")) { restartGame(); return; }
         const cheat = el.closest("[data-cheat]");
         if (cheat) { applyCheat(cheat.dataset.cheat); return; }
         const act = el.closest("[data-act]");
         if (act) {
             const a = act.dataset.act;
-            if (a === "howto") { openOverlay = "howto"; render(); return; }
-            if (a === "cheats") { openOverlay = "cheats"; render(); return; }
-            if (a === "close") { openOverlay = null; render(); return; }
+            if (a === "howto") { toggleHelp(true); return; }
+            if (a === "cheats") { if (vsBot) { cheatsOpen = true; render(); } return; }
+            if (a === "close") { cheatsOpen = false; render(); return; }
             if (a === "start") { submitAction({ type: "start" }); return; }
-            if (a === "restart") { submitAction({ type: "restart" }); return; }
+            if (a === "restart") { restartGame(); return; }
             if (a === "submit") { submitGuess(); return; }
             if (a === "skip") { submitAction({ type: "skip" }); return; }
             if (a === "del") { if (canEdit()) { entry.pop(); render(); } return; }
@@ -798,24 +928,58 @@ b[data-time].ws-low{color:var(--bad)}
         }
     }
 
+    /* ---------- first-run help toggle ---------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+
     /* ---------- input: keyboard fisik (desktop) ---------- */
     function handleKey(e) {
         if (!root.isConnected || e.defaultPrevented) return;
         const t = e.target;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
-        if (openOverlay) {
-            if (e.key === "Escape") { e.preventDefault(); openOverlay = null; render(); }
+        if ((e.key === "Enter" || e.key === " ") && t && t.closest && t.closest(".ws-hud button")) return;
+        const code = e.code || "";
+
+        /* Huruf adalah input game saat giliran sendiri; Shift (atau di luar
+           kondisi mengetik) mengubah H/C/P/R menjadi shortcut HUD. */
+        const typing = canEdit();
+        const shortcut = () => e.shiftKey || !typing;
+
+        /* Priority: help → cheats → pause → Escape → game actions */
+        if ((code === "KeyH" && shortcut()) || e.key === "?") { e.preventDefault(); toggleHelp(); return; }
+        if (code === "KeyC" && shortcut()) {
+            e.preventDefault();
+            if (vsBot && !helpOpen) { cheatsOpen = !cheatsOpen; render(); }
             return;
         }
+        if (code === "KeyP" && shortcut()) {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (state && state.phase === "playing") setPaused(!paused);
+            return;
+        }
+        if (e.key === "Escape") {
+            e.preventDefault();
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) { cheatsOpen = false; render(); }
+            else if (paused) setPaused(false);
+            else if (canEdit()) { entry = []; render(); }
+            return;
+        }
+        if (helpOpen || cheatsOpen || paused) return;
+        if (code === "KeyR" && shortcut()) { e.preventDefault(); restartGame(); return; }
         if (!state) return;
         if (state.phase === "ready" && e.key === "Enter") { e.preventDefault(); submitAction({ type: "start" }); return; }
-        if (state.phase === "over" && e.key === "Enter") { e.preventDefault(); submitAction({ type: "restart" }); return; }
+        if (state.phase === "over" && e.key === "Enter") { e.preventDefault(); restartGame(); return; }
         if (!canEdit()) return;
         if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); addLetter(e.key.toUpperCase()); return; }
         if (e.key === "Backspace") { e.preventDefault(); entry.pop(); render(); return; }
         if (e.key === "Enter") { e.preventDefault(); submitGuess(); return; }
-        if (e.key === "Escape") { e.preventDefault(); entry = []; render(); return; }
     }
 
     /* ---------- wiring ---------- */
@@ -838,10 +1002,10 @@ b[data-time].ws-low{color:var(--bad)}
     }
 
     tick = setInterval(() => {
-        if (!state) return;
+        if (!state || paused) return;
         updateClock();
         // Hanya host/AI yang menegakkan timeout (authoritative).
-        if (isHost && state.phase === "playing" && !state.frozen && state.deadline && Date.now() >= state.deadline) {
+        if (isHost && state.phase === "playing" && !state.frozen && state.deadline && now() >= state.deadline) {
             applyAction({ type: "timeout" }, state.turn);
         }
     }, 250);

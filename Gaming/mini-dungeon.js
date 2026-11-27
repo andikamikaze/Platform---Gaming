@@ -3,6 +3,8 @@
    Fixed, hand-validated levels. Race a rival (bot or human) for the gold key.
    Enemies telegraph and move on a cadence, so damage is never guaranteed. */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "mini-dungeon",
     name: "Mini Dungeon",
@@ -405,6 +407,53 @@ export function mount(root, context = {}) {
     const canManage = !online || room.isHost;
     let roomData = (room && room.room) || null;
     let state = null;
+    let helpOpen = false, cheatsOpen = false, paused = false, destroyed = false;
+
+    /* Pause-aware timers: keep a Date.now() due anchor and replay only the
+       remaining delay on resume, so the rival bot never jumps ahead. */
+    const timers = new Map();
+    let deferredTimers = [];
+    let pauseStart = 0, pauseOffset = 0;
+    const nowMs = () => Date.now() - pauseOffset;
+    function clearTimer(key) {
+        const rec = timers.get(key);
+        if (rec) { clearTimeout(rec.id); timers.delete(key); }
+        deferredTimers = deferredTimers.filter((t) => t.key !== key);
+    }
+    function clearTimers() {
+        for (const rec of timers.values()) clearTimeout(rec.id);
+        timers.clear();
+        deferredTimers = [];
+    }
+    function later(key, fn, ms) {
+        clearTimer(key);
+        if (paused) { deferredTimers.push({ key, fn, wait: Math.max(0, ms) }); return; }
+        const id = setTimeout(() => {
+            timers.delete(key);
+            if (!destroyed && !paused) fn();
+        }, ms);
+        timers.set(key, { id, due: nowMs() + ms, fn });
+    }
+    function pauseTimers() {
+        const now = nowMs();
+        for (const [key, rec] of timers) {
+            clearTimeout(rec.id);
+            deferredTimers.push({ key, fn: rec.fn, wait: Math.max(0, rec.due - now) });
+        }
+        timers.clear();
+    }
+    function resumeTimers() {
+        const queue = deferredTimers; deferredTimers = [];
+        for (const t of queue) later(t.key, t.fn, t.wait);
+    }
+
+    /* First-run internal guide, shown once per install. */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("miniDungeonHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("miniDungeonHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
 
     const NS = "http://www.w3.org/2000/svg";
     const mk = (tag, attrs) => {
@@ -416,116 +465,203 @@ export function mount(root, context = {}) {
 
     root.innerHTML = `
 <style>
-.md-app{max-width:940px;margin:0 auto;padding:14px 14px 18px;display:flex;flex-direction:column;gap:10px;color:#e6ebf2;font-family:inherit}
+.md-app{max-width:940px;width:100%;box-sizing:border-box;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:10px;color:#e6ebf2;font-family:inherit}
 .md-app *{box-sizing:border-box}
-.md-app .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.md-app .game-intro h2{margin:0;font-size:15px;font-weight:650;letter-spacing:.03em}
-.md-app .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#aab4c4;background:#ffffff08;border:1px solid #ffffff12;border-radius:999px;padding:4px 11px}
-.md-app .game-status-dot{width:7px;height:7px;border-radius:50%;background:#5b6678;transition:background .2s,box-shadow .2s}
-.md-app .game-status-dot.on{background:#38bdf8;box-shadow:0 0 8px #38bdf8aa}
-.md-hud{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
-.md-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#c3ccda;background:#ffffff08;border:1px solid #ffffff12;border-radius:999px;padding:4px 10px;line-height:1}
-.md-chip b{color:#eef2f8;font-weight:650}
+.md-app [hidden]{display:none!important}
+.md-app :is(button):focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
+.md-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.md-chip{display:inline-flex;align-items:center;gap:6px;min-height:28px;font-size:11px;color:#c3ccda;background:#ffffff08;border:1px solid #ffffff12;border-radius:999px;padding:5px 10px;line-height:1;white-space:nowrap}
+.md-chip b{color:#eef2f8;font-weight:700;font-variant-numeric:tabular-nums}
 .md-hearts{gap:3px;padding:4px 9px}
 .md-hearts svg{display:block}
-.md-turn{font-weight:650}
+.md-turn{font-weight:700}
+.md-dot{width:7px;height:7px;border-radius:50%;background:#5b6678;transition:background .2s}
+.md-dot.on{background:#38bdf8;box-shadow:0 0 8px #38bdf8aa}
 .md-beat{width:12px;height:12px;margin-left:2px;border-radius:3px;background:#ffffff14;border:1px solid #ffffff1f;transform:rotate(45deg)}
 .md-cheatflag{color:#facc15;font-size:12px}
-.md-app .game-panel{padding:10px;background:#0f141d;border:1px solid #ffffff10;border-radius:16px}
-.md-boardwrap{position:relative;width:min(100%,calc(72vh * 21 / 15));aspect-ratio:21/15;margin:0 auto}
-.md-board{width:100%;height:100%;display:block;border-radius:12px;touch-action:none;cursor:pointer;background:#0a0e15}
-.md-toast{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);background:#111831ee;border:1px solid #ffffff1f;border-radius:999px;padding:5px 14px;font-size:12px;font-weight:600;color:#dbe1ea;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .25s;z-index:3}
-.md-overlay{position:absolute;inset:0;display:grid;place-items:center;background:#0a0e15d9;backdrop-filter:blur(4px);border-radius:12px;z-index:4}
-.md-card{width:min(88%,360px);background:#141a26;border:1px solid #ffffff14;border-radius:16px;padding:22px 22px 20px;text-align:center;box-shadow:0 18px 50px #00000066}
-.md-card h3{margin:0 0 8px;font-size:21px;font-weight:700;letter-spacing:.01em}
-.md-card p{margin:0 0 16px;font-size:12.5px;color:#9aa6b8;line-height:1.55}
+.md-spacer{flex:1 1 auto}
+.md-btn{font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;min-height:32px;padding:6px 10px;border-radius:9px;border:1px solid #ffffff14;background:#ffffff0a;color:#dbe1ea;cursor:pointer}
+.md-btn:hover:not(:disabled){background:#ffffff16;border-color:#38bdf855}
+.md-btn:disabled{opacity:.4;cursor:not-allowed}
+.md-btn.primary{background:#38bdf8;border-color:#38bdf8;color:#06202c}
+.md-btn.primary:hover:not(:disabled){background:#7dd3fc}
+.md-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.md-icon-btn svg{flex:none;display:block}
+.md-btn.on{border-color:#facc1588;color:#facc15}
+.md-app .md-board{position:relative;width:100%;aspect-ratio:21/15;padding:0;border:1px solid #ffffff10;border-radius:12px;background:#0f141d;overflow:hidden;min-width:0}
+.md-canvas{display:block;width:100%;height:100%;border-radius:11px;touch-action:none;cursor:pointer;background:#0a0e15}
+.md-toast{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);max-width:92%;background:#111831ee;border:1px solid #ffffff1f;border-radius:999px;padding:6px 14px;font-size:12px;font-weight:600;color:#dbe1ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;opacity:0;transition:opacity .2s;z-index:3}
+.md-ov{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:12px;overflow:auto;background:#0a0e15d9;border-radius:11px}
+.md-card{width:min(380px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;background:#141a26;border:1px solid #ffffff14;border-radius:12px;padding:18px;text-align:center}
+.md-head{flex:none;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px}
+.md-head h3{margin:0;font-size:19px;font-weight:700}
+.md-body,.md-help,.md-cheats{flex:1 1 auto;min-height:0;overflow:auto}
+.md-body p{margin:0 0 12px;font-size:12.5px;line-height:1.55;color:#9aa6b8}
+.md-wait{margin:12px 0 0!important;font-size:12px;color:#7c8798}
+.md-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px}
 .md-cardbtns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.md-wait{margin:12px 0 0;font-size:12px;color:#7c8798}
-.md-cheats{position:absolute;top:10px;right:10px;width:min(86%,250px);background:#141a26f2;border:1px solid #ffffff16;border-radius:14px;padding:12px;z-index:5;backdrop-filter:blur(6px);box-shadow:0 14px 40px #00000066}
-.md-cheatshead{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#facc15;margin-bottom:9px}
-.md-cheatshead button{background:none;border:none;color:#8b95a7;font-size:18px;line-height:1;cursor:pointer;padding:0 2px}
-.md-switch{display:flex;align-items:center;gap:9px;width:100%;background:#ffffff07;border:1px solid #ffffff10;border-radius:9px;color:#c3ccda;font-size:12px;padding:7px 9px;margin-bottom:6px;cursor:pointer;font-family:inherit}
+.md-note{font-size:10.5px;color:#7c8798}
+.md-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;text-align:left}
+.md-help b{display:block;margin:0 0 6px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;color:#94a3b8;text-transform:uppercase}
+.md-help ul{margin:0 0 12px;padding-left:16px;font:600 11px/1.7 ui-monospace,monospace;color:#aab4c4}
+.md-kbd{display:inline-block;padding:1px 5px;border:1px solid #ffffff1f;border-bottom-width:2px;border-radius:5px;background:#ffffff08;color:#e6ebf2;font:inherit}
+.md-help .md-foot{grid-column:1/-1}
+.md-switch{display:flex;align-items:center;gap:9px;width:100%;min-height:44px;background:#ffffff07;border:1px solid #ffffff10;border-radius:9px;color:#c3ccda;font-size:12px;padding:8px 10px;margin-bottom:6px;cursor:pointer;font-family:inherit;text-align:left}
 .md-switch i{width:26px;height:15px;border-radius:999px;background:#3a4356;position:relative;transition:background .18s;flex:0 0 auto}
 .md-switch i::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#cbd5e1;transition:left .18s}
 .md-switch[aria-pressed="true"]{color:#eef2f8;border-color:#38bdf855}
 .md-switch[aria-pressed="true"] i{background:#38bdf8}
 .md-switch[aria-pressed="true"] i::after{left:13px}
 .md-cheatgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
-.md-cheatgrid button{background:#ffffff07;border:1px solid #ffffff10;border-radius:9px;color:#c3ccda;font-size:11.5px;padding:7px 6px;cursor:pointer;font-family:inherit}
+.md-cheatgrid button{min-height:44px;background:#ffffff07;border:1px solid #ffffff10;border-radius:9px;color:#c3ccda;font-size:11.5px;padding:8px 6px;cursor:pointer;font-family:inherit}
 .md-cheatgrid button:hover,.md-switch:hover{background:#ffffff12}
-.md-app .game-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-.md-app .game-action-button{font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 15px;border-radius:10px;border:1px solid #ffffff14;background:#ffffff0a;color:#dbe1ea;cursor:pointer}
-.md-app .game-action-button:hover{background:#ffffff16}
-.md-app .game-action-button.md-primary{background:#38bdf8;border-color:#38bdf8;color:#06202c}
-.md-app .game-action-button.md-primary:hover{background:#5cc8fa}
-.md-app .game-action-button.md-ghost{background:transparent}
-.md-app [hidden]{display:none!important}
-@media (max-width:560px){.md-app{padding:10px}.md-app .game-panel{padding:7px}.md-chip{font-size:11px;padding:3px 8px}}
+@media (max-width:640px){
+.md-app{padding:12px 8px;gap:8px}
+.md-app .md-board{padding:0}
+.md-chip{font-size:10px;padding:4px 8px;min-height:26px}
+.md-card{padding:16px}
+.md-ov{padding:8px}
+}
+@media (prefers-reduced-motion:reduce){.md-app *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (keep last) --- */
+.md.game-fill > .md-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.md-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.md-icon-btn svg{flex:none;display:block}
+.md-card{overflow:hidden}
+.md-head,.md-foot{flex:none}
+.md-body,.md-help,.md-cheats{flex:1 1 auto;min-height:0;overflow:auto}
+@media (pointer:coarse){.md button:not(:disabled){min-height:44px}}
+@media (max-width:640px){
+.md.game-fill > .md-board:not(:has(.md-ov:not([hidden]))){aspect-ratio:21/15;flex:0 0 auto}
+.md.game-fill > .md-board:has(.md-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.md .md-hud{gap:5px;margin-bottom:0}
+.md .md-hud .md-chip{padding:4px 6px;font-size:9px}
+.md .md-hud .md-chip[data-hud="status"],.md .md-hud .md-chip[data-hud="beat"]{display:none}
+.md .md-hud .md-btn{min-height:32px;padding:5px 9px;font-size:9px}
+.md .md-hud .md-btn-label,.md .md-hud .md-spacer{display:none}
+.md .md-ov{padding:8px}
+.md .md-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.md .md-body,.md .md-cheats,.md .md-help{scrollbar-width:none}
+.md .md-body::-webkit-scrollbar,.md .md-cheats::-webkit-scrollbar,.md .md-help::-webkit-scrollbar{display:none}
+.md .md-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid #ffffff14}
+.md .md-note{display:none}
+}
 </style>
-<div class="game-app md-app">
-  <div class="game-intro">
-    <h2>Mini Dungeon</h2>
-    <span class="game-status"><i class="game-status-dot" data-dot></i><span data-status>Ready</span></span>
-  </div>
+<div class="game-app md-app game-fill" data-md>
   <div class="md-hud">
-    <span class="md-chip md-hearts" data-hearts></span>
-    <span class="md-chip"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="12" r="3.4"/><path d="M11.4 12h8M16 12v3M19 12v3"/></svg><b data-keytext>—</b></span>
-    <span class="md-chip">◉ <b data-coins>0</b></span>
-    <span class="md-chip">Lv <b data-level>1</b>/${LEVELS.length}</span>
-    <span class="md-chip md-turn" data-turn>—</span>
-    <span class="md-beat" data-beat></span>
-    <span class="md-cheatflag" data-cheatflag hidden>⚡</span>
+    <span class="md-chip md-hearts" data-hud="hearts" data-hearts></span>
+    <span class="md-chip"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="12" r="3.4"/><path d="M11.4 12h8M16 12v3M19 12v3"/></svg>KEY <b data-hud="key" data-keytext>—</b></span>
+    <span class="md-chip">◉ <b data-hud="coins" data-coins>0</b></span>
+    <span class="md-chip">LV <b data-hud="level" data-level>1</b>/${LEVELS.length}</span>
+    <span class="md-chip">SCORE <b data-hud="score" data-score>0</b></span>
+    <span class="md-chip md-turn" data-hud="turn" data-turn>—</span>
+    <span class="md-chip" data-hud="status"><i class="md-dot" data-dot></i><span data-status>Ready</span></span>
+    <span class="md-beat" data-hud="beat" data-beat></span>
+    <span class="md-cheatflag" data-hud="cheatflag" data-cheatflag hidden>⚡</span>
+    <span class="md-spacer"></span>
+    <button class="md-btn md-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="md-btn-label">Help</span></button>
+    <button class="md-btn md-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="md-btn-label">Cheats</span></button>
+    <button class="md-btn md-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="md-btn-label">Pause</span></button>
+    <button class="md-btn md-icon-btn" type="button" data-wait aria-label="Wait one beat" title="Wait one beat (Space)">${iconSVG("clock", { size: 14 })}<span class="md-btn-label">Wait</span></button>
+    <button class="md-btn md-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="md-btn-label">Restart</span></button>
+    <button class="md-btn md-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="md-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel">
-    <div class="md-boardwrap" data-boardwrap>
-      <svg class="md-board" data-board viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet" aria-label="Mini Dungeon board">
-        <rect x="0" y="0" width="${VW}" height="${VH}" rx="12" fill="#0a0e15"></rect>
-        <g data-tiles></g><g data-items></g><g data-foes></g><g data-players></g><g data-fx></g>
-        <rect data-beatflash x="0" y="0" width="${VW}" height="${VH}" rx="12" fill="#ffffff" opacity="0" pointer-events="none"></rect>
-        <rect data-hover width="${TS - 2}" height="${TS - 2}" rx="4" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0" pointer-events="none"></rect>
-      </svg>
-      <div class="md-toast" data-toast></div>
-      <div class="md-overlay" data-end hidden>
-        <div class="md-card">
-          <h3 data-endtitle>—</h3><p data-endsub></p>
-          <div class="md-cardbtns">
-            <button class="game-action-button md-primary" type="button" data-endprimary hidden>—</button>
-            <button class="game-action-button md-ghost" type="button" data-exit>Exit game</button>
+  <section class="game-panel md-board" data-board>
+    <svg class="md-canvas" data-canvas viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet" aria-label="Mini Dungeon board">
+      <rect x="0" y="0" width="${VW}" height="${VH}" rx="12" fill="#0a0e15"></rect>
+      <g data-tiles></g><g data-items></g><g data-foes></g><g data-players></g><g data-fx></g>
+      <rect data-beatflash x="0" y="0" width="${VW}" height="${VH}" rx="12" fill="#ffffff" opacity="0" pointer-events="none"></rect>
+      <rect data-hover width="${TS - 2}" height="${TS - 2}" rx="4" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0" pointer-events="none"></rect>
+    </svg>
+    <div class="md-toast" data-toast></div>
+    <div class="md-ov" data-ov="end" hidden>
+      <div class="md-card">
+        <div class="md-head"><h3 data-endtitle>—</h3></div>
+        <div class="md-body"><p data-endsub></p><p class="md-wait" data-endwait hidden>Waiting for host…</p></div>
+        <div class="md-foot"><span class="md-note">Best <b data-endbest>0</b></span><div class="md-cardbtns"><button class="md-btn primary" type="button" data-endprimary hidden>—</button><button class="md-btn" type="button" data-exit>Exit game</button></div></div>
+      </div>
+    </div>
+    <div class="md-ov" data-ov="pause" hidden>
+      <div class="md-card">
+        <div class="md-head"><h3>Paused</h3></div>
+        <div class="md-body"><p>The rival's turn, enemy cadence and effects are frozen. Press <span class="md-kbd">P</span> or <span class="md-kbd">Esc</span> to resume.</p></div>
+        <div class="md-foot"><span class="md-note">Crypt held</span><button class="md-btn primary" type="button" data-resume>Resume</button></div>
+      </div>
+    </div>
+    <div class="md-ov" data-ov="cheat" hidden>
+      <div class="md-card">
+        <div class="md-head"><h3>Cheats</h3><button class="md-btn" type="button" data-cheat-close aria-label="Close cheats">Close</button></div>
+        <div class="md-cheats">
+          <button class="md-switch" type="button" data-cheat="god" aria-pressed="false"><i></i>God mode</button>
+          <button class="md-switch" type="button" data-cheat="reveal" aria-pressed="false"><i></i>Reveal map</button>
+          <button class="md-switch" type="button" data-cheat="freeze" aria-pressed="false"><i></i>Freeze enemies</button>
+          <div class="md-cheatgrid">
+            <button type="button" data-cheat="heal">Full heal</button>
+            <button type="button" data-cheat="key">Give key</button>
+            <button type="button" data-cheat="slay">Slay all</button>
+            <button type="button" data-cheat="warp">Warp to exit</button>
+            <button type="button" data-cheat="coins">+10 coins</button>
           </div>
-          <p class="md-wait" data-endwait hidden>Waiting for host…</p>
         </div>
       </div>
-      <div class="md-cheats" data-cheats hidden>
-        <div class="md-cheatshead"><span>Cheats</span><button type="button" data-cheat-close aria-label="Close cheats">×</button></div>
-        <button class="md-switch" type="button" data-cheat="god" aria-pressed="false"><i></i>God mode</button>
-        <button class="md-switch" type="button" data-cheat="reveal" aria-pressed="false"><i></i>Reveal map</button>
-        <button class="md-switch" type="button" data-cheat="freeze" aria-pressed="false"><i></i>Freeze enemies</button>
-        <div class="md-cheatgrid">
-          <button type="button" data-cheat="heal">Full heal</button>
-          <button type="button" data-cheat="key">Give key</button>
-          <button type="button" data-cheat="slay">Slay all</button>
-          <button type="button" data-cheat="warp">Warp to exit</button>
-          <button type="button" data-cheat="coins">+10 coins</button>
+    </div>
+    <div class="md-ov" data-ov="help" hidden>
+      <div class="md-card">
+        <div class="md-head"><h3>How to play</h3><button class="md-btn" type="button" data-help-close aria-label="Close help">Close</button></div>
+        <div class="md-help">
+          <div>
+            <b>Desktop</b>
+            <ul>
+              <li><span class="md-kbd">W A S D</span> / arrows — step one tile</li>
+              <li><span class="md-kbd">Space</span> / <span class="md-kbd">.</span> — wait a beat</li>
+              <li>Click an adjacent tile — step or attack; click yourself — wait</li>
+              <li><span class="md-kbd">H</span> help · <span class="md-kbd">C</span> cheats · <span class="md-kbd">P</span> pause · <span class="md-kbd">R</span> restart · <span class="md-kbd">Esc</span> close</li>
+            </ul>
+            <b>Mobile</b>
+            <ul>
+              <li>Tap an adjacent tile to move or attack, swipe to step, tap yourself to wait.</li>
+              <li>Use the HUD icons for Help, Cheats, Pause, Wait, Restart and Exit.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Rules</b>
+            <ul>
+              <li>Grab the gold key, then reach the exit arch to escape.</li>
+              <li>You and your rival take turns; enemies strike on a telegraphed cadence.</li>
+              <li>Coins, kills and a clean escape build your score; potions restore health.</li>
+              <li>The exit stays locked until the key holder reaches it; you can steal it from your rival.</li>
+              <li>Cheats, pause and restart are unavailable in multiplayer rooms.</li>
+            </ul>
+            <div class="md-foot"><span class="md-note">Press H to reopen this guide</span><button class="md-btn primary" type="button" data-help-close>Got it</button></div>
+          </div>
         </div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button md-ghost" type="button" data-cheats-toggle>⚡ Cheats</button>
-    <button class="game-action-button md-ghost" type="button" data-act="restart" data-restart>Restart</button>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     const $ = (sel) => root.querySelector(sel);
     const board = $("[data-board]");
+    const canvas = $("[data-canvas]");
     const tilesG = $("[data-tiles]"), itemsG = $("[data-items]"), foesG = $("[data-foes]"), playersG = $("[data-players]"), fxG = $("[data-fx]");
     const beatFlash = $("[data-beatflash]"), hoverRect = $("[data-hover]");
-    const heartsEl = $("[data-hearts]"), keyText = $("[data-keytext]"), coinsEl = $("[data-coins]"), levelEl = $("[data-level]");
-    const turnEl = $("[data-turn]"), beatEl = $("[data-beat]"), cheatFlag = $("[data-cheatflag]");
-    const statusEl = $("[data-status]"), dotEl = $("[data-dot]"), toastEl = $("[data-toast]");
-    const endOv = $("[data-end]"), endTitle = $("[data-endtitle]"), endSub = $("[data-endsub]"), endPrimary = $("[data-endprimary]"), endWait = $("[data-endwait]");
-    const cheatsOv = $("[data-cheats]"), restartBtn = $("[data-restart]");
+    const hud = {
+        hearts: $("[data-hearts]"), key: $("[data-keytext]"), coins: $("[data-coins]"),
+        level: $("[data-level]"), score: $("[data-score]"), turn: $("[data-turn]"),
+        beat: $("[data-beat]"), cheatFlag: $("[data-cheatflag]"),
+        status: $("[data-status]"), dot: $("[data-dot]"),
+    };
+    const toastEl = $("[data-toast]");
+    const ov = {
+        end: $('[data-ov="end"]'), pause: $('[data-ov="pause"]'),
+        cheat: $('[data-ov="cheat"]'), help: $('[data-ov="help"]'),
+    };
+    const endTitle = $("[data-endtitle]"), endSub = $("[data-endsub]"), endPrimary = $("[data-endprimary]"), endWait = $("[data-endwait]"), endBest = $("[data-endbest]");
+    const cheatBtns = {
+        god: $('[data-cheat="god"]'), reveal: $('[data-cheat="reveal"]'), freeze: $('[data-cheat="freeze"]'),
+    };
+    const pauseBtn = $("[data-pause]"), cheatsBtn = $("[data-cheats]"), restartBtn = $("[data-restart]"), waitBtn = $("[data-wait]");
 
     /* ---------------- view state ---------------- */
     let buildKey = "";
@@ -534,7 +670,7 @@ export function mount(root, context = {}) {
     const disp = {}, lunges = {}, anims = [];
     let lastFxId = 0, lastMsgId = 0;
     let shakeT = 0, beatT = 0, toastT = 0, windupPhase = 0;
-    let raf = 0, lastT = 0, botTimer = 0, destroyed = false;
+    let raf = 0, lastT = 0;
 
     const mySeat = () => {
         if (!online) return 0;
@@ -708,7 +844,7 @@ export function mount(root, context = {}) {
             const col = god ? "#38bdf8" : "#ef4444";
             s += '<svg viewBox="0 0 24 24" width="13" height="13" fill="' + (on ? col : "none") + '" stroke="' + (on ? col : "#4b5563") + '" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
         }
-        heartsEl.innerHTML = s;
+        hud.hearts.innerHTML = s;
     }
     function msgText(m) {
         if (!m) return "";
@@ -765,22 +901,23 @@ export function mount(root, context = {}) {
             playerEls[seat].setAttribute("opacity", shown ? "1" : "0");
         }
         heartRow(mp.hp, mp.god);
-        keyText.textContent = state.key.holder === me ? "you" : state.key.holder === rs ? "rival" : "—";
-        keyText.style.color = state.key.holder === me ? "#facc15" : state.key.holder === rs ? "#f87171" : "";
-        coinsEl.textContent = String(mp.coins);
-        levelEl.textContent = String(state.level + 1);
-        cheatFlag.hidden = !state.cheated;
+        hud.key.textContent = state.key.holder === me ? "you" : state.key.holder === rs ? "rival" : "—";
+        hud.key.style.color = state.key.holder === me ? "#facc15" : state.key.holder === rs ? "#f87171" : "";
+        hud.coins.textContent = String(mp.coins);
+        hud.level.textContent = String(state.level + 1);
+        hud.score.textContent = String(score(me));
+        hud.cheatFlag.hidden = !state.cheated;
         const myTurn = state.phase === "play" && cur(state) === me && active(state, me);
-        turnEl.textContent = state.phase !== "play" ? "—" : myTurn ? "YOU" : "RIVAL";
-        turnEl.style.color = state.phase !== "play" ? "" : PCOL[cur(state)];
-        turnEl.style.borderColor = state.phase !== "play" ? "" : PCOL[cur(state)] + "55";
+        hud.turn.textContent = state.phase !== "play" ? "—" : myTurn ? "YOU" : "RIVAL";
+        hud.turn.style.color = state.phase !== "play" ? "" : PCOL[cur(state)];
+        hud.turn.style.borderColor = state.phase !== "play" ? "" : PCOL[cur(state)] + "55";
         let st, on = false;
         if (state.phase === "play") { st = myTurn ? "Your turn" : "Rival's turn"; on = myTurn; }
         else if (state.phase === "clear") st = "Level clear";
         else if (state.phase === "win") st = state.winner === me ? "Escaped" : "Rival escaped";
         else if (state.phase === "lose") st = "You fell";
         else st = "Draw";
-        statusEl.textContent = st; dotEl.classList.toggle("on", on);
+        hud.status.textContent = st; hud.dot.classList.toggle("on", on);
         for (const e of state.fx) {
             if (e.id <= lastFxId) continue;
             lastFxId = e.id;
@@ -793,13 +930,18 @@ export function mount(root, context = {}) {
             const txt = msgText(state.msg);
             if (txt) { toastEl.textContent = txt; toastEl.style.opacity = "1"; toastT = 2.6; }
         }
-        cheatsOv.querySelector('[data-cheat="god"]').setAttribute("aria-pressed", String(mp.god));
-        cheatsOv.querySelector('[data-cheat="reveal"]').setAttribute("aria-pressed", String(state.cheats.reveal));
-        cheatsOv.querySelector('[data-cheat="freeze"]').setAttribute("aria-pressed", String(state.cheats.freeze));
-        restartBtn.hidden = !canManage;
-        if (state.phase === "play") { endOv.hidden = true; }
+        cheatBtns.god.setAttribute("aria-pressed", String(mp.god));
+        cheatBtns.reveal.setAttribute("aria-pressed", String(state.cheats.reveal));
+        cheatBtns.freeze.setAttribute("aria-pressed", String(state.cheats.freeze));
+
+        /* Overlays suppress each other: help > cheats > pause > result. */
+        const blocked = helpOpen || cheatsOpen || paused;
+        ov.help.hidden = !helpOpen;
+        ov.cheat.hidden = !cheatsOpen || helpOpen;
+        ov.pause.hidden = !paused || helpOpen || cheatsOpen;
+        ov.end.hidden = state.phase === "play" || blocked;
+        if (ov.end.hidden) { endWait.hidden = true; }
         else {
-            endOv.hidden = false;
             const won = state.winner === me;
             let title, sub, primary = null;
             const sc = score(me);
@@ -815,10 +957,25 @@ export function mount(root, context = {}) {
             endTitle.textContent = title;
             endTitle.style.color = won || state.phase === "clear" ? "#34d399" : state.phase === "draw" ? "#c4b5fd" : "#f87171";
             endSub.textContent = sub;
+            endBest.textContent = String(best);
             if (primary) { endPrimary.hidden = false; endPrimary.dataset.act = primary[0]; endPrimary.textContent = primary[1]; }
             else endPrimary.hidden = true;
             endWait.hidden = !(online && !canManage);
         }
+        if (pauseBtn) {
+            const label = pauseBtn.querySelector(".md-btn-label");
+            if (label) label.textContent = paused ? "Resume" : "Pause";
+            pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+            pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+            pauseBtn.disabled = !canManage;
+            pauseBtn.classList.toggle("on", paused);
+        }
+        if (cheatsBtn) {
+            cheatsBtn.disabled = !canManage;
+            cheatsBtn.classList.toggle("on", state.cheated);
+        }
+        if (restartBtn) restartBtn.disabled = !canManage;
+        if (waitBtn) waitBtn.disabled = blocked || state.phase !== "play" || cur(state) !== me || !active(state, me);
     }
 
     /* ---------------- action pipeline ---------------- */
@@ -836,39 +993,70 @@ export function mount(root, context = {}) {
         applyAction(action, mySeat());
     }
     function scheduleBot() {
-        if (botTimer) { clearTimeout(botTimer); botTimer = 0; }
-        if (online || !state || state.phase !== "play") return;
+        clearTimer("bot");
+        if (online || !state || state.phase !== "play" || paused) return;
         if (cur(state) === 1 && active(state, 1)) {
-            botTimer = setTimeout(() => {
-                botTimer = 0;
-                if (!destroyed && state && state.phase === "play" && cur(state) === 1) applyAction(botAction(state, 1), 1);
+            later("bot", () => {
+                if (!destroyed && !paused && state && state.phase === "play" && cur(state) === 1) applyAction(botAction(state, 1), 1);
             }, 420 + Math.random() * 220);
         }
     }
     function startGame(level) {
         if (!canManage) return;
+        clearTimers();
+        if (paused) { paused = false; pauseStart = 0; }
+        cheatsOpen = false;
         state = newGame(level, !online, (Math.random() * 0x7fffffff) | 0);
         publish();
     }
     function submitMove(dx, dy) {
-        if (!state || state.phase !== "play" || cur(state) !== mySeat() || !active(state, mySeat())) return;
+        if (!state || helpOpen || cheatsOpen || paused) return;
+        if (state.phase !== "play" || cur(state) !== mySeat() || !active(state, mySeat())) return;
         submitAction({ t: "move", d: [dx, dy] });
     }
     function submitWait() {
-        if (!state || state.phase !== "play" || cur(state) !== mySeat() || !active(state, mySeat())) return;
+        if (!state || helpOpen || cheatsOpen || paused) return;
+        if (state.phase !== "play" || cur(state) !== mySeat() || !active(state, mySeat())) return;
         submitAction({ t: "wait" });
+    }
+
+    /* ---------------- overlay controls ---------------- */
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        render();
+    }
+    function setCheats(on) {
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        render();
+    }
+    function setPaused(on) {
+        on = typeof on === "boolean" ? on : !paused;
+        if (paused === on) return;
+        paused = on;
+        if (paused) { pauseStart = Date.now(); pauseTimers(); }
+        else { if (pauseStart) pauseOffset += Date.now() - pauseStart; pauseStart = 0; resumeTimers(); }
+        render();
     }
 
     /* ---------------- click delegation ---------------- */
     function handleClick(event) {
         const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
-        if (t.closest("[data-cheats-toggle]")) { cheatsOv.hidden = !cheatsOv.hidden; return; }
-        if (t.closest("[data-cheat-close]")) { cheatsOv.hidden = true; return; }
+        if (t.closest("[data-cheats]")) { if (canManage) setCheats(); return; }
+        if (t.closest("[data-cheat-close]")) { setCheats(false); return; }
+        if (t.closest("[data-pause]")) { if (canManage) setPaused(); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-wait]")) { submitWait(); return; }
         const ch = t.closest("[data-cheat]");
         if (ch) { submitAction({ t: "cheat", c: ch.dataset.cheat }); return; }
         const actBtn = t.closest("[data-act]");
         if (actBtn) {
+            if (helpOpen || cheatsOpen || paused) return;
             const a = actBtn.dataset.act;
             if (a === "restart") startGame(state ? state.level : 0);
             else if (a === "retry") startGame(state ? state.level : 0);
@@ -887,9 +1075,30 @@ export function mount(root, context = {}) {
         const tag = (e.target && e.target.tagName) || "";
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
         if (e.metaKey || e.ctrlKey || e.altKey) return;
-        if (e.key === "Escape") { cheatsOv.hidden = true; return; }
-        if (e.key === "c" || e.key === "C") { cheatsOv.hidden = !cheatsOv.hidden; e.preventDefault(); return; }
-        if ((e.key === "r" || e.key === "R") && canManage) { startGame(state.level); e.preventDefault(); return; }
+        const hit = (code, key) => e.code === code || (typeof e.key === "string" && e.key.toLowerCase() === key);
+        /* priority: help -> cheats -> pause -> Escape -> restart -> game actions */
+        if (hit("KeyH", "h")) { toggleHelp(); e.preventDefault(); return; }
+        if (hit("KeyC", "c")) { if (canManage) setCheats(); e.preventDefault(); return; }
+        if (hit("KeyP", "p")) { if (canManage) setPaused(); e.preventDefault(); return; }
+        if (e.key === "Escape" || e.code === "Escape") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) setCheats(false);
+            else if (paused) setPaused(false);
+            e.preventDefault(); return;
+        }
+        if (hit("KeyR", "r")) {
+            if (canManage && !helpOpen && !cheatsOpen) { if (paused) setPaused(false); startGame(state.level); }
+            e.preventDefault(); return;
+        }
+        if (e.key === "Enter") {
+            if (helpOpen) toggleHelp(false);
+            else if (cheatsOpen) setCheats(false);
+            else if (paused) setPaused(false);
+            else if (!ov.end.hidden && !endPrimary.hidden) endPrimary.click();
+            else submitWait();
+            e.preventDefault(); return;
+        }
+        if (helpOpen || cheatsOpen || paused) { e.preventDefault(); return; }
         if (e.key === " " || e.key === ".") { submitWait(); e.preventDefault(); return; }
         const d = KEYMAP[e.key];
         if (d) { submitMove(d[0], d[1]); e.preventDefault(); }
@@ -899,7 +1108,7 @@ export function mount(root, context = {}) {
     /* ---------------- pointer: swipe (mobile) + click (desktop) ---------------- */
     let ptr = null;
     function tileFromEvent(e) {
-        const rect = board.getBoundingClientRect();
+        const rect = canvas.getBoundingClientRect();
         const scale = Math.min(rect.width / VW, rect.height / VH);
         const ox = (rect.width - VW * scale) / 2, oy = (rect.height - VH * scale) / 2;
         const x = Math.floor((e.clientX - rect.left - ox) / (TS * scale));
@@ -907,14 +1116,15 @@ export function mount(root, context = {}) {
         return { x, y };
     }
     function onPointerDown(e) {
-        if (!state || state.phase !== "play") return;
+        if (!state || state.phase !== "play" || helpOpen || cheatsOpen || paused) return;
         ptr = { x: e.clientX, y: e.clientY, id: e.pointerId };
-        try { board.setPointerCapture(e.pointerId); } catch (err) { }
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
     }
     function onPointerUp(e) {
         if (!ptr || ptr.id !== e.pointerId) return;
         const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y;
         ptr = null;
+        if (helpOpen || cheatsOpen || paused || !state || state.phase !== "play") return;
         if (Math.max(Math.abs(dx), Math.abs(dy)) > 26) {
             if (Math.abs(dx) >= Math.abs(dy)) submitMove(Math.sign(dx), 0);
             else submitMove(0, Math.sign(dy));
@@ -939,7 +1149,7 @@ export function mount(root, context = {}) {
         if (best) submitMove(best[1][0], best[1][1]);
     }
     function onPointerMove(e) {
-        if (!state || e.pointerType !== "mouse") { hoverRect.setAttribute("opacity", "0"); return; }
+        if (!state || e.pointerType !== "mouse" || helpOpen || cheatsOpen || paused) { hoverRect.setAttribute("opacity", "0"); return; }
         const { x, y } = tileFromEvent(e);
         if (x >= 0 && y >= 0 && x < W && y < H && floor(state, x, y) && seen[y] && seen[y][x]) {
             hoverRect.setAttribute("x", x * TS + 1); hoverRect.setAttribute("y", y * TS + 1);
@@ -947,11 +1157,11 @@ export function mount(root, context = {}) {
         } else hoverRect.setAttribute("opacity", "0");
     }
     function onPointerLeave() { hoverRect.setAttribute("opacity", "0"); }
-    board.addEventListener("pointerdown", onPointerDown);
-    board.addEventListener("pointerup", onPointerUp);
-    board.addEventListener("pointercancel", () => { ptr = null; });
-    board.addEventListener("pointermove", onPointerMove);
-    board.addEventListener("pointerleave", onPointerLeave);
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", () => { ptr = null; });
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerleave", onPointerLeave);
 
     /* ---------------- animation loop ---------------- */
     function tick(t) {
@@ -959,6 +1169,8 @@ export function mount(root, context = {}) {
         raf = requestAnimationFrame(tick);
         if (!lastT) lastT = t;
         let dt = (t - lastT) / 1000; lastT = t;
+        /* lastT advances even while paused, so the animation clock keeps no debt. */
+        if (paused) dt = 0;
         if (!(dt > 0)) dt = 0; if (dt > 0.05) dt = 0.05;
         windupPhase += dt;
         const k = 1 - Math.exp(-dt * 16);
@@ -988,15 +1200,15 @@ export function mount(root, context = {}) {
         if (shakeT > 0) {
             shakeT -= dt;
             const amp = Math.max(0, shakeT / 0.22) * 3;
-            board.style.transform = `translate(${(Math.random() * 2 - 1) * amp}px,${(Math.random() * 2 - 1) * amp}px)`;
-        } else board.style.transform = "";
+            canvas.style.transform = `translate(${(Math.random() * 2 - 1) * amp}px,${(Math.random() * 2 - 1) * amp}px)`;
+        } else canvas.style.transform = "";
         if (beatT > 0) {
             beatT -= dt;
             const bk = Math.max(0, beatT / 0.3);
             beatFlash.setAttribute("opacity", (bk * 0.05).toFixed(3));
-            beatEl.style.transform = `rotate(45deg) scale(${(1 + bk * 0.5).toFixed(2)})`;
-            beatEl.style.background = `rgba(56,189,248,${(0.15 + bk * 0.6).toFixed(2)})`;
-        } else { beatFlash.setAttribute("opacity", "0"); beatEl.style.transform = "rotate(45deg)"; beatEl.style.background = ""; }
+            hud.beat.style.transform = `rotate(45deg) scale(${(1 + bk * 0.5).toFixed(2)})`;
+            hud.beat.style.background = `rgba(56,189,248,${(0.15 + bk * 0.6).toFixed(2)})`;
+        } else { beatFlash.setAttribute("opacity", "0"); hud.beat.style.transform = "rotate(45deg)"; hud.beat.style.background = ""; }
         if (toastT > 0) {
             toastT -= dt;
             if (toastT <= 0) toastEl.style.opacity = "0";
@@ -1024,13 +1236,13 @@ export function mount(root, context = {}) {
         destroy() {
             destroyed = true;
             if (raf) cancelAnimationFrame(raf);
-            if (botTimer) clearTimeout(botTimer);
+            clearTimers();
             document.removeEventListener("keydown", onKey);
             root.removeEventListener("click", handleClick);
-            board.removeEventListener("pointerdown", onPointerDown);
-            board.removeEventListener("pointerup", onPointerUp);
-            board.removeEventListener("pointermove", onPointerMove);
-            board.removeEventListener("pointerleave", onPointerLeave);
+            canvas.removeEventListener("pointerdown", onPointerDown);
+            canvas.removeEventListener("pointerup", onPointerUp);
+            canvas.removeEventListener("pointermove", onPointerMove);
+            canvas.removeEventListener("pointerleave", onPointerLeave);
         },
     };
 }

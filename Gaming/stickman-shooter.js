@@ -16,6 +16,8 @@
   - Posisi pemain (kiri/kanan) diacak saat pertandingan multiplayer dimulai.
 */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "stickman-shooter",
     name: "Stickman Shooter",
@@ -388,13 +390,22 @@ export function mount(root, context = {}) {
     let fx = [], bannerQueue = [], bannerT = 0;
     let lastEv = 0, matchSeen = null, staticSeed = null, lastPhase = null, bestSavedMatch = null;
     let dispP = [null, null], dispB = new Map();
-    let tutOpen = false, cheatOpen = false;
+    let helpOpen = false, cheatsOpen = false, paused = false, pauseAt = 0;
     const flags = { kl: 0, kr: 0, kj: 0, kf: 0, bl: 0, br: 0, bj: 0, bf: 0, boardF: 0 };
     let manualAim = null, aimUntil = 0;
     const net = { snap: null, at: 0, round: -1 };
     let lastPub = 0, lastPubPhase = "", lastSentKey = "", lastSentAt = 0;
     let raf = null, lastT = 0, acc = 0;
     const clouds = [];
+
+    /* panduan internal: tampil sekali per perangkat, bisa dibuka lagi dengan H */
+    const HELP_KEY = "stickmanShooterHelpSeen";
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem(HELP_KEY) === "1"; } catch (e) { }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem(HELP_KEY, "1"); } catch (e) { /* disimpan terblokir */ }
+    }
 
     function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
     function setText(el, txt) { if (el && el.__t !== txt) { el.__t = txt; el.textContent = txt; } }
@@ -582,112 +593,144 @@ export function mount(root, context = {}) {
 
     /* ---------- UI (desain minimalis, layout: HUD -> arena -> kontrol) ---------- */
     root.innerHTML = `
-<div class="game-app ss-shell">
+<div class="game-app ss-app game-fill" data-ss>
 <style>
-.ss-shell{max-width:1020px;margin:0 auto;display:flex;flex-direction:column;gap:12px;color:#0f172a}
-.ss-shell *{box-sizing:border-box}
-.ss-shell .game-action-button{border:1px solid #cbd5e1;background:#fff;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;color:#0f172a;font-family:inherit}
-.ss-shell .game-action-button:hover{background:#f8fafc}
-.ss-shell .game-action-button:disabled{opacity:.45;cursor:not-allowed}
-.ss-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.ss-head h2{margin:0;font-size:20px;letter-spacing:-.02em}
-.ss-head p{margin:2px 0 0;font-size:12.5px;color:#64748b}
-.ss-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#475569;background:#fff;border:1px solid #e2e8f0;padding:4px 10px;border-radius:99px;white-space:nowrap}
-.ss-status .game-status-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;animation:ssPulse 1.2s infinite alternate}
-.ss-hud{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch}
-.ss-pcard{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
-.ss-pcard.right{align-items:flex-end}
-.ss-pname{display:flex;gap:6px;align-items:center;font-size:12.5px;min-width:0}
-.ss-pcard.right .ss-pname{flex-direction:row-reverse}
-.ss-pname b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.ss-app{--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;display:flex;flex:1 1 auto;flex-direction:column;gap:8px;min-width:0;min-height:0;overflow-x:clip;padding:8px 10px;background:#f8fafc;color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.ss-app *{box-sizing:border-box}
+.ss-app [hidden]{display:none!important}
+.ss-app button{font:inherit;color:var(--ink);background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:6px 10px;cursor:pointer}
+.ss-app button:hover:not(:disabled){background:#f8fafc}
+.ss-app button:disabled{opacity:.45;cursor:not-allowed}
+.ss-app button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.ss-app.game-fill>.game-panel.ss-board[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+
+/* HUD bar: all match info + icon controls above the board */
+.ss-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;border:1px solid var(--line);border-radius:12px;background:#fff;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ss-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--line);border-radius:99px;background:#f8fafc;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ss-chip b{color:var(--ink);font-weight:700}
+.ss-chip.ss-time b{font-size:13px}
+.ss-chip.ss-time.hot b{color:#e11d48}
+.ss-spacer{flex:1 1 auto}
+.ss-pcard{max-width:200px;min-width:0}
+.ss-pcard b[data-name]{max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ss-dot{width:9px;height:9px;border-radius:50%;flex:none}
 .ss-pcard[data-seat="0"] .ss-dot{background:#2563eb}
 .ss-pcard[data-seat="1"] .ss-dot{background:#e11d48}
-.ss-you{font-size:9px;font-weight:700;letter-spacing:.08em;background:#eff6ff;color:#2563eb;border-radius:4px;padding:1px 5px;flex:none}
-.ss-hpbar{width:100%;height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden}
+.ss-you{font-size:8px;font-weight:700;letter-spacing:.06em;background:#eff6ff;color:#2563eb;border-radius:4px;padding:1px 4px;flex:none}
+.ss-hpbar{display:inline-block;width:42px;height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;flex:none}
 .ss-hpbar i{display:block;height:100%;width:100%;border-radius:99px;transition:width .18s ease}
 .ss-pcard[data-seat="0"] .ss-hpbar i{background:#2563eb}
 .ss-pcard[data-seat="1"] .ss-hpbar i{background:#e11d48}
-.ss-hpbar i.low{background:#f59e0b !important;animation:ssPulse .6s infinite alternate}
-.ss-psub{display:flex;justify-content:space-between;align-items:center;width:100%;font-size:11px;color:#64748b}
-.ss-pcard.right .ss-psub{flex-direction:row-reverse}
-.ss-pips{display:inline-flex;gap:4px;align-items:center}
-.ss-pips i{width:8px;height:8px;border-radius:50%;background:#e2e8f0}
+.ss-hpbar i.low{background:#f59e0b!important;animation:ssPulse .6s infinite alternate}
+.ss-pips{display:inline-flex;gap:3px;align-items:center}
+.ss-pips i{width:6px;height:6px;border-radius:50%;background:#e2e8f0}
 .ss-pcard[data-seat="0"] .ss-pips i.on{background:#2563eb}
 .ss-pcard[data-seat="1"] .ss-pips i.on{background:#e11d48}
-.ss-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 6px}
-.ss-round{font-size:11px;font-weight:600;color:#64748b;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
-.ss-timer{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.ss-timer.hot{color:#e11d48;animation:ssPulse .5s infinite alternate}
-.ss-mode{font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#94a3b8;white-space:nowrap}
-.ss-stage{position:relative;padding:0 !important;border-radius:14px;overflow:hidden;background:#eef2f7;border:1px solid #e2e8f0;line-height:0}
-.ss-svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
+.ss-btn{font-size:10px;font-weight:700;letter-spacing:.02em;min-height:34px}
+.ss-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.ss-icon-btn svg{flex:none;display:block}
+.ss-btn-label{white-space:nowrap}
+.ss-app .ss-hud .ss-btn[data-pad] .ss-btn-label,
+.ss-app .ss-hud .ss-btn[data-exit] .ss-btn-label{display:none}
+.ss-picon{display:inline-flex}
+.ss-primary{background:#2563eb!important;color:#fff!important;border-color:#2563eb!important}
+.ss-primary:hover{background:#1d4ed8!important}
+
+/* board = arena only; SVG + HUD mods are direct children, no stage wrapper */
+.ss-board{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#eef2f7;line-height:0}
+.ss-svg{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
 .ss-svg text{font-family:inherit}
 .ss-vignette{position:absolute;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 60px 18px rgba(225,29,72,.55)}
 .ss-count{position:absolute;inset:0;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;pointer-events:none;line-height:1.1}
-.ss-count b{font-size:76px;font-weight:800;color:#0f172a;animation:ssPop .8s ease infinite;text-shadow:0 2px 0 #fff}
-.ss-count span{font-size:12px;color:#64748b;background:rgba(255,255,255,.9);padding:3px 10px;border-radius:99px;border:1px solid #e2e8f0}
-.ss-init{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #e2e8f0;color:#0f172a;font-size:12px;font-weight:600;padding:4px 12px;border-radius:99px;pointer-events:none;box-shadow:0 2px 8px rgba(15,23,42,.08);line-height:1.4;white-space:nowrap}
-.ss-banner{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);pointer-events:none;font-size:26px;font-weight:800;color:#0f172a;background:rgba(255,255,255,.93);border:1px solid #e2e8f0;padding:8px 22px;border-radius:14px;box-shadow:0 8px 24px rgba(15,23,42,.12);white-space:nowrap;line-height:1.3}
+.ss-count b{font-size:76px;font-weight:800;color:var(--ink);animation:ssPop .8s ease infinite;text-shadow:0 2px 0 #fff}
+.ss-count span{font-size:12px;color:var(--mut);background:rgba(255,255,255,.9);padding:3px 10px;border-radius:99px;border:1px solid var(--line)}
+.ss-init{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#fff;border:1px solid var(--line);color:var(--ink);font-size:12px;font-weight:600;padding:4px 12px;border-radius:99px;pointer-events:none;box-shadow:0 2px 8px rgba(15,23,42,.08);line-height:1.4;white-space:nowrap}
+.ss-banner{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);pointer-events:none;font-size:26px;font-weight:800;color:var(--ink);background:rgba(255,255,255,.93);border:1px solid var(--line);padding:8px 22px;border-radius:14px;box-shadow:0 8px 24px rgba(15,23,42,.12);white-space:nowrap;line-height:1.3}
 .ss-banner.show{animation:ssBanner 1.5s ease forwards}
 @keyframes ssBanner{0%{opacity:0;transform:translate(-50%,-50%) scale(.7)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.06)}20%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(.96)}}
 @keyframes ssPop{0%{transform:scale(.82)}30%{transform:scale(1.08)}100%{transform:scale(1)}}
 @keyframes ssPulse{from{opacity:1}to{opacity:.5}}
-.ss-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(241,245,249,.9);backdrop-filter:blur(3px);z-index:5;line-height:1.5;padding:14px;overflow:auto}
-.ss-ov[data-ov="tutorial"],.ss-ov[data-ov="cheats"]{z-index:7}
-.ss-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px 22px;max-width:460px;width:100%;box-shadow:0 12px 32px rgba(15,23,42,.1);text-align:center;margin:auto}
-.ss-card h3{margin:0 0 6px;font-size:20px}
-.ss-ovsub{margin:0 0 12px;font-size:13px;color:#64748b}
-.ss-quick{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px}
-.ss-quick span{font-size:11px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:99px;padding:3px 9px;color:#475569}
-.ss-ovbtns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.ss-primary{background:#2563eb !important;color:#fff !important;border-color:#2563eb !important}
-.ss-primary:hover{background:#1d4ed8 !important}
-.ss-best{font-size:12px;color:#64748b;margin:12px 0 0}
+
+/* modal overlays: fixed head/foot, scrollable body */
+.ss-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(241,245,249,.9);backdrop-filter:blur(3px);line-height:1.5;padding:14px;overflow:auto}
+.ss-ov[data-ov="pause"]{z-index:7}
+.ss-ov[data-ov="cheats"]{z-index:8}
+.ss-ov[data-ov="help"]{z-index:9}
+.ss-card{display:flex;flex-direction:column;overflow:hidden;width:min(520px,100%);max-height:100%;padding:16px 20px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 32px rgba(15,23,42,.1);text-align:center;margin:auto}
+.ss-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ss-head h3{margin:0;font-size:18px}
+.ss-head .ss-btn{min-height:32px;padding:4px 8px}
+.ss-body{flex:1 1 auto;min-height:0;overflow:auto;text-align:left}
+.ss-foot{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;padding-top:10px;margin-top:10px;border-top:1px solid var(--line)}
+.ss-note{font-size:11px;color:#94a3b8}
+.ss-ovsub{margin:0 0 10px;font-size:13px;color:var(--mut)}
+.ss-quick{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:12px}
+.ss-quick span{font-size:11px;background:#f8fafc;border:1px solid var(--line);border-radius:99px;padding:3px 9px;color:#475569}
+.ss-best{font-size:12px;color:var(--mut);margin:10px 0 0}
 .ss-wait{font-size:12.5px;color:#2563eb;margin:10px 0 0;animation:ssPulse .8s infinite alternate}
-.ss-tut{text-align:left;max-width:500px}
-.ss-tut h3{text-align:center}
-.ss-tut ul{margin:8px 0 14px;padding-left:18px;font-size:12.5px;color:#334155;display:flex;flex-direction:column;gap:7px}
-.ss-tut kbd{background:#f1f5f9;border:1px solid #cbd5e1;border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px;font-family:inherit}
+.ss-help ul{margin:6px 0 10px;padding-left:18px;font-size:12.5px;color:#334155;display:flex;flex-direction:column;gap:7px}
+.ss-help kbd{background:#f1f5f9;border:1px solid #cbd5e1;border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px;font-family:inherit}
 .ss-cheatnote{font-size:11px;color:#94a3b8;font-weight:500}
-.ss-cheats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:10px 0 14px;text-align:left}
-.ss-cheats label{display:flex;gap:7px;align-items:center;font-size:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 9px;cursor:pointer}
+.ss-cheats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:4px 0 8px;text-align:left}
+.ss-cheats label{display:flex;gap:7px;align-items:center;font-size:12px;background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:7px 9px;cursor:pointer}
 .ss-cheats input{accent-color:#2563eb}
-.ss-touch{display:none;justify-content:space-between;gap:10px;align-items:center}
+
+/* touch pad is a sibling AFTER the board, never inside it */
+.ss-touch{display:none;justify-content:space-between;gap:10px;align-items:center;flex:none}
 .ss-touch.force{display:flex}
-@media (pointer:coarse),(max-width:760px){.ss-touch{display:flex}.ss-keys{display:none}}
+@media (pointer:coarse),(max-width:760px){.ss-touch{display:flex}}
 .ss-tcluster{display:flex;gap:10px}
-.ss-tbtn{width:58px;height:58px;border-radius:50%;border:1px solid #cbd5e1;background:#fff;font-size:20px;color:#0f172a;display:grid;place-items:center;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer;box-shadow:0 2px 6px rgba(15,23,42,.06);font-family:inherit;padding:0}
+.ss-tbtn{width:58px;height:58px;border-radius:50%;border:1px solid #cbd5e1;background:#fff;font-size:20px;color:var(--ink);display:grid;place-items:center;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer;box-shadow:0 2px 6px rgba(15,23,42,.06);font-family:inherit;padding:0}
 .ss-tbtn:active{background:#eff6ff;border-color:#2563eb;transform:scale(.94)}
 .ss-tfire{width:72px;height:72px;background:#e11d48;border-color:#e11d48;color:#fff;font-size:26px}
 .ss-tfire:active{background:#be123c;border-color:#be123c}
-.ss-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.ss-keys{font-size:11.5px;color:#94a3b8;flex:1;text-align:center;min-width:120px}
-.ss-bar [data-exit]{margin-left:auto}
-@media (max-width:640px){.ss-timer{font-size:19px}.ss-pname b{max-width:80px}.ss-banner{font-size:17px;padding:6px 14px}.ss-count b{font-size:56px}.ss-cheats{grid-template-columns:1fr}.ss-head p{display:none}}
+
+/* --- Batch 02 design polish --- */
+.ss-app button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.ss-tbtn{min-width:44px;min-height:44px}
+@media (prefers-reduced-motion:reduce){.ss-app *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (LAST: beat pointer:coarse 44px) --- */
+@media (max-width:640px){
+  .ss-app{gap:6px;padding:6px}
+  .ss-app.game-fill>.game-panel.ss-board[data-board]{flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+  .ss-app .ss-hud{gap:5px;padding:5px 6px}
+  .ss-app .ss-hud .ss-chip{padding:4px 6px;font-size:9px}
+  .ss-app .ss-hud .ss-chip[data-modelabel],.ss-app .ss-hud .ss-chip[data-status],.ss-app .ss-hud .ss-bestchip,.ss-app .ss-hud .ss-you,.ss-app .ss-hud .ss-pips{display:none}
+  .ss-app .ss-hud .ss-btn-label,.ss-app .ss-hud .ss-spacer{display:none}
+  .ss-app .ss-hud .ss-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+  .ss-app .ss-banner{font-size:17px;padding:6px 14px}
+  .ss-app .ss-count b{font-size:56px}
+  .ss-app .ss-cheats{grid-template-columns:1fr}
+  .ss-app .ss-ov{padding:8px}
+  .ss-app .ss-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+  .ss-app .ss-body,.ss-app .ss-cheats,.ss-app .ss-help{scrollbar-width:none}
+  .ss-app .ss-body::-webkit-scrollbar,.ss-app .ss-cheats::-webkit-scrollbar,.ss-app .ss-help::-webkit-scrollbar{display:none}
+  .ss-app .ss-foot{position:static;margin:0;padding:8px 0 0}
+  .ss-app .ss-note{display:none}
+}
+@media (pointer:coarse){
+  .ss-app .ss-hud .ss-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+  .ss-app .ss-hud .ss-btn-label,.ss-app .ss-hud .ss-spacer{display:none}
+}
 </style>
-  <div class="game-intro ss-head">
-    <div><h2>Stickman Shooter</h2><p>Duel tembak 2D real-time &middot; arena acak side-scrolling &middot; pertama menang 3 ronde</p></div>
-    <span class="game-status ss-status"><i class="game-status-dot"></i><span data-status>Siap</span></span>
-  </div>
   <div class="ss-hud">
-    <div class="ss-pcard" data-pcard="0" data-seat="0">
-      <div class="ss-pname"><i class="ss-dot"></i><b data-name="0">Kamu</b><span class="ss-you" data-you="0">KAMU</span></div>
-      <div class="ss-hpbar"><i data-hp="0"></i></div>
-      <div class="ss-psub"><span class="ss-pips" data-pips="0"></span><span>Skor <b data-score="0">0</b></span></div>
-    </div>
-    <div class="ss-mid">
-      <div class="ss-round" data-round>Ronde 1</div>
-      <div class="ss-timer" data-timer>60</div>
-      <div class="ss-mode" data-modelabel>VS BOT</div>
-    </div>
-    <div class="ss-pcard right" data-pcard="1" data-seat="1">
-      <div class="ss-pname"><i class="ss-dot"></i><b data-name="1">Bot</b><span class="ss-you" data-you="1" hidden>KAMU</span></div>
-      <div class="ss-hpbar"><i data-hp="1"></i></div>
-      <div class="ss-psub"><span class="ss-pips" data-pips="1"></span><span>Skor <b data-score="1">0</b></span></div>
-    </div>
+    <span class="ss-chip" data-modelabel>VS BOT</span>
+    <span class="ss-chip"><b data-round>Ronde 1</b></span>
+    <span class="ss-chip ss-time">&#9201; <b data-timer>60</b></span>
+    <span class="ss-chip ss-pcard" data-pcard="0" data-seat="0"><i class="ss-dot"></i><b data-name="0">Kamu</b><span class="ss-you" data-you="0">KAMU</span><span class="ss-hpbar"><i data-hp="0"></i></span><span class="ss-pips" data-pips="0"></span><b data-score="0">0</b></span>
+    <span class="ss-chip ss-pcard" data-pcard="1" data-seat="1"><i class="ss-dot"></i><b data-name="1">Bot</b><span class="ss-you" data-you="1" hidden>KAMU</span><span class="ss-hpbar"><i data-hp="1"></i></span><span class="ss-pips" data-pips="1"></span><b data-score="1">0</b></span>
+    <span class="ss-chip" data-status>Siap</span>
+    <span class="ss-chip ss-bestchip">BEST <b data-hudbest>0</b></span>
+    <span class="ss-spacer"></span>
+    <button class="ss-btn ss-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ss-btn-label">Help</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ss-btn-label">Cheats</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span class="ss-picon">${iconSVG("pause", { size: 14 })}</span><span class="ss-btn-label">Pause</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="ss-btn-label">Restart</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-pad aria-label="Virtual pad" title="Virtual pad">${iconSVG("gamepad2", { size: 14 })}<span class="ss-btn-label">Pad</span></button>
+    <button class="ss-btn ss-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ss-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel ss-stage" data-board>
+  <section class="game-panel ss-board" data-board>
     <svg class="ss-svg" viewBox="0 0 960 420" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Arena duel stickman side-scrolling">
       <defs>
         <linearGradient id="ssSky${uid}" x1="0" y1="0" x2="0" y2="1">
@@ -708,49 +751,53 @@ export function mount(root, context = {}) {
     <div class="ss-banner" data-banner hidden></div>
     <div class="ss-ov" data-ov="lobby">
       <div class="ss-card">
-        <h3>Stickman Shooter</h3>
-        <p class="ss-ovsub" data-lobbyinfo></p>
-        <div class="ss-quick"><span>🎯 Bidik otomatis</span><span>📦 Peti = tameng</span><span>⚡ Undian jalan duluan</span><span>🏆 Menang 3 ronde</span></div>
-        <div class="ss-ovbtns">
-          <button class="game-action-button ss-primary" type="button" data-act="start">Mulai duel</button>
-          <button class="game-action-button" type="button" data-act="tutorial">📖 Cara main</button>
+        <div class="ss-head"><h3>Stickman Shooter</h3><button class="ss-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}</button></div>
+        <div class="ss-body">
+          <p class="ss-ovsub" data-lobbyinfo></p>
+          <div class="ss-quick"><span>🎯 Bidik otomatis</span><span>📦 Peti = tameng</span><span>⚡ Undian jalan duluan</span><span>🏆 Menang 3 ronde</span></div>
+          <p class="ss-best">Skor terbaik: <b data-best>0</b></p>
+          <p class="ss-wait" data-wait hidden>Menunggu host memulai&hellip;</p>
         </div>
-        <p class="ss-best">Skor terbaik: <b data-best>0</b></p>
-        <p class="ss-wait" data-wait hidden>Menunggu host memulai&hellip;</p>
+        <div class="ss-foot"><button class="ss-btn ss-primary" type="button" data-act="start">Mulai duel</button></div>
       </div>
     </div>
     <div class="ss-ov" data-ov="end" hidden>
       <div class="ss-card">
-        <h3 data-endtitle>Selesai</h3>
-        <p class="ss-ovsub" data-endinfo></p>
-        <div class="ss-ovbtns">
-          <button class="game-action-button ss-primary" type="button" data-act="rematch">Main lagi</button>
-          <button class="game-action-button" type="button" data-exit>Keluar</button>
+        <div class="ss-head"><h3 data-endtitle>Selesai</h3></div>
+        <div class="ss-body">
+          <p class="ss-ovsub" data-endinfo></p>
+          <p class="ss-best" data-endbest></p>
+          <p class="ss-wait" data-wait2 hidden>Menunggu host memulai ulang&hellip;</p>
         </div>
-        <p class="ss-best" data-endbest></p>
-        <p class="ss-wait" data-wait2 hidden>Menunggu host memulai ulang&hellip;</p>
+        <div class="ss-foot">
+          <button class="ss-btn ss-primary" type="button" data-act="rematch">Main lagi</button>
+          <button class="ss-btn" type="button" data-exit>Keluar</button>
+        </div>
       </div>
     </div>
-    <div class="ss-ov" data-ov="tutorial" hidden>
-      <div class="ss-card ss-tut">
-        <h3>📖 Cara Main</h3>
-        <ul>
-          <li><b>Tujuan:</b> habiskan 100 HP lawan. Pertama menang <b>3 ronde</b> jadi juara. Waktu ronde 60 detik &mdash; jika habis, HP terbanyak menang.</li>
-          <li><b>Gerak:</b> <kbd>A</kbd>/<kbd>D</kbd> atau <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> &middot; <b>Lompat:</b> <kbd>W</kbd>/<kbd>&uarr;</kbd> &middot; <b>Tembak:</b> tahan <kbd>Spasi</kbd> atau klik/tahan di arena.</li>
-          <li><b>Bidik otomatis:</b> tembakan selalu mengarah ke lawan &mdash; cukup bergerak, melompat &amp; menembak. Gerakkan mouse di arena untuk bidik manual sesaat.</li>
-          <li><b>Peti:</b> menahan peluru dan bisa hancur. Lompati peti tinggi lalu tembak dari udara.</li>
-          <li><b>⚡ Giliran awal:</b> tiap ronde diundi acak siapa yang boleh bergerak duluan selama 1,3 detik (lawan terkunci 🔒).</li>
-          <li><b>👥 Multiplayer:</b> posisi kiri/kanan diacak saat pertandingan dimulai.</li>
-          <li><b>📱 Mobile:</b> gunakan tombol virtual di bawah arena.</li>
-          <li><b>🧪 Cheat:</b> tombol Cheat (atau <kbd>C</kbd>) saat latihan vs Bot; nonaktif di multiplayer.</li>
-        </ul>
-        <div class="ss-ovbtns"><button class="game-action-button ss-primary" type="button" data-act="closetut">Mengerti!</button></div>
+    <div class="ss-ov" data-ov="help" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><h3>📖 Cara Main</h3><button class="ss-btn" type="button" data-help-close aria-label="Close">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="ss-body ss-help">
+          <ul>
+            <li><b>Tujuan:</b> habiskan 100 HP lawan. Pertama menang <b>3 ronde</b> jadi juara. Waktu ronde 60 detik &mdash; jika habis, HP terbanyak menang.</li>
+            <li><b>Gerak:</b> <kbd>A</kbd>/<kbd>D</kbd> atau <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> &middot; <b>Lompat:</b> <kbd>W</kbd>/<kbd>&uarr;</kbd> &middot; <b>Tembak:</b> tahan <kbd>Spasi</kbd> atau klik/tahan di arena.</li>
+            <li><b>Bidik otomatis:</b> tembakan selalu mengarah ke lawan &mdash; cukup bergerak, melompat &amp; menembak. Gerakkan mouse di arena untuk bidik manual sesaat.</li>
+            <li><b>Peti:</b> menahan peluru dan bisa hancur. Lompati peti tinggi lalu tembak dari udara.</li>
+            <li><b>⚡ Giliran awal:</b> tiap ronde diundi acak siapa yang boleh bergerak duluan selama 1,3 detik (lawan terkunci 🔒).</li>
+            <li><b>👥 Multiplayer:</b> posisi kiri/kanan diacak saat pertandingan dimulai.</li>
+            <li><b>📱 Mobile:</b> gunakan tombol virtual di bawah arena (tombol Pad di HUD untuk menampilkannya di desktop).</li>
+            <li><b>🧪 Cheat:</b> tombol Cheats (atau <kbd>C</kbd>) saat latihan vs Bot; nonaktif di multiplayer.</li>
+            <li><b>⏸ Jeda:</b> <kbd>P</kbd> membekukan waktu &amp; bot; <kbd>R</kbd> mengulang pertandingan.</li>
+          </ul>
+        </div>
+        <div class="ss-foot"><span class="ss-note">Tekan H untuk membuka panduan</span><button class="ss-btn ss-primary" type="button" data-help-close>Mengerti!</button></div>
       </div>
     </div>
     <div class="ss-ov" data-ov="cheats" hidden>
       <div class="ss-card">
-        <h3>🧪 Cheat <span class="ss-cheatnote">(khusus latihan vs Bot)</span></h3>
-        <div class="ss-cheats">
+        <div class="ss-head"><h3>🧪 Cheat <span class="ss-cheatnote">(khusus latihan vs Bot)</span></h3><button class="ss-btn" type="button" data-cheats-close aria-label="Close">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="ss-body ss-cheats">
           <label><input type="checkbox" data-cheat="god"> 🛡️ Kebal (God Mode)</label>
           <label><input type="checkbox" data-cheat="rapid"> 🔥 Tembak cepat</label>
           <label><input type="checkbox" data-cheat="oneshot"> 💥 Sekali tembak KO</label>
@@ -759,10 +806,20 @@ export function mount(root, context = {}) {
           <label><input type="checkbox" data-cheat="aimbot"> 🎯 Aimbot prediksi</label>
           <label><input type="checkbox" data-cheat="trigger"> 🤖 Auto-tembak</label>
         </div>
-        <div class="ss-ovbtns">
-          <button class="game-action-button" type="button" data-cheatcmd="heal">❤️ Pulihkan HP</button>
-          <button class="game-action-button" type="button" data-cheatcmd="win">🏆 Menangkan ronde</button>
-          <button class="game-action-button ss-primary" type="button" data-act="closecheat">Tutup</button>
+        <div class="ss-foot">
+          <button class="ss-btn" type="button" data-cheatcmd="heal">❤️ Pulihkan HP</button>
+          <button class="ss-btn" type="button" data-cheatcmd="win">🏆 Menangkan ronde</button>
+          <button class="ss-btn ss-primary" type="button" data-cheats-close>Tutup</button>
+        </div>
+      </div>
+    </div>
+    <div class="ss-ov" data-ov="pause" hidden>
+      <div class="ss-card">
+        <div class="ss-head"><h3>⏸ Jeda</h3></div>
+        <div class="ss-body"><p class="ss-ovsub">Waktu, peluru dan bot dibekukan. Tekan P atau Esc untuk lanjut.</p></div>
+        <div class="ss-foot">
+          <button class="ss-btn" type="button" data-restart>Restart</button>
+          <button class="ss-btn ss-primary" type="button" data-pause-resume>Lanjut</button>
         </div>
       </div>
     </div>
@@ -777,25 +834,20 @@ export function mount(root, context = {}) {
       <button class="ss-tbtn ss-tfire" type="button" data-k="f" aria-label="Tembak">&#9679;</button>
     </div>
   </div>
-  <div class="game-actions ss-bar">
-    <button class="game-action-button" type="button" data-act="tutorial">📖 Cara main</button>
-    <button class="game-action-button" type="button" data-act="cheats" data-cheatbtn>🧪 Cheat</button>
-    <span class="ss-keys">A/D gerak &middot; W lompat &middot; Spasi/klik tembak &middot; mouse = bidik manual &middot; C cheat</span>
-    <button class="game-action-button" type="button" data-exit>Exit game</button>
-  </div>
 </div>`;
 
     /* ---------- referensi elemen ---------- */
     const q = function (s) { return root.querySelector(s); };
     const svg = q(".ss-svg");
-    const stage = q("[data-board]");
+    const board = q("[data-board]");
     const cloudsG = q('[data-g="clouds"]'), farG = q('[data-g="far"]'), nearG = q('[data-g="near"]');
     const worldG = q('[data-g="world"]'), staticG = q('[data-g="static"]'), cratesG = q('[data-g="crates"]');
     const dynG = q('[data-g="dyn"]'), fxG = q('[data-g="fx"]'), edgeG = q('[data-g="edge"]');
     const ovLobby = q('[data-ov="lobby"]'), ovEnd = q('[data-ov="end"]');
-    const ovTut = q('[data-ov="tutorial"]'), ovCheat = q('[data-ov="cheats"]');
+    const ovHelp = q('[data-ov="help"]'), ovCheat = q('[data-ov="cheats"]'), ovPause = q('[data-ov="pause"]');
     const bannerEl = q("[data-banner]"), countEl = q("[data-count]"), initEl = q("[data-init]"), vigEl = q("[data-vig]");
-    const touchEl = q("[data-touch]"), cheatBtn = q("[data-cheatbtn]");
+    const touchEl = q("[data-touch]"), cheatBtn = q("[data-cheats]");
+    const pauseBtn = q("[data-pause]"), pauseIcon = q(".ss-picon"), restartBtn = q("[data-restart]");
     const hud = {
         status: q("[data-status]"), round: q("[data-round]"), timer: q("[data-timer]"), mode: q("[data-modelabel]"),
         cards: [q('[data-pcard="0"]'), q('[data-pcard="1"]')],
@@ -805,7 +857,7 @@ export function mount(root, context = {}) {
         pips: [q('[data-pips="0"]'), q('[data-pips="1"]')],
         score: [q('[data-score="0"]'), q('[data-score="1"]')],
         lobbyinfo: q("[data-lobbyinfo]"), wait: q("[data-wait]"), wait2: q("[data-wait2]"),
-        best: q("[data-best]"), endtitle: q("[data-endtitle]"), endinfo: q("[data-endinfo]"), endbest: q("[data-endbest]"),
+        best: q("[data-best]"), bestHud: q("[data-hudbest]"), endtitle: q("[data-endtitle]"), endinfo: q("[data-endinfo]"), endbest: q("[data-endbest]"),
         startBtn: q('[data-act="start"]'), rematchBtn: q('[data-act="rematch"]'),
     };
     const SEAT_FILL = ["#2563eb", "#e11d48"];
@@ -1019,10 +1071,10 @@ export function mount(root, context = {}) {
         setText(hud.round, "Ronde " + Math.max(1, view.round));
         const tsec = Math.max(0, Math.ceil(view.roundT));
         setText(hud.timer, String(tsec));
-        hud.timer.classList.toggle("hot", view.phase === "play" && tsec < 10);
-        const paused = !online && (tutOpen || cheatOpen);
+        hud.timer.parentElement.classList.toggle("hot", view.phase === "play" && tsec < 10);
+        const frozen = paused || helpOpen || cheatsOpen;
         let status = "Siap";
-        if (paused && view.phase !== "lobby" && view.phase !== "matchEnd") status = "Jeda";
+        if (frozen && view.phase !== "lobby" && view.phase !== "matchEnd") status = "Jeda";
         else if (view.phase === "countdown") status = "Bersiap…";
         else if (view.phase === "play") status = "Bermain";
         else if (view.phase === "roundEnd") status = "Ronde selesai";
@@ -1038,12 +1090,11 @@ export function mount(root, context = {}) {
         hud.wait.hidden = canStart();
         if (!canStart()) setText(hud.wait, net.snap ? "Menunggu host memulai…" : "Menghubungkan ke host…");
         setText(hud.best, String(best));
+        setText(hud.bestHud, String(best));
     }
     function syncPhase(view) {
         if (view.phase === lastPhase) return;
         lastPhase = view.phase;
-        ovLobby.hidden = view.phase !== "lobby";
-        ovEnd.hidden = view.phase !== "matchEnd";
         if (view.phase === "lobby") refreshLobby();
         if (view.phase === "countdown" && view.round === 1) {
             showBanner("Kamu: " + SEAT_NAME[localSeat()] + " · start dari " + (localSeat() === 0 ? "kiri" : "kanan"));
@@ -1062,9 +1113,29 @@ export function mount(root, context = {}) {
                 if (sc > best) { best = sc; rec = true; try { localStorage.setItem(META.bestKey, String(best)); } catch (e) { } }
                 setText(hud.endbest, "Skor terbaik: " + best + (rec ? " · Rekor baru! 🎉" : ""));
                 setText(hud.best, String(best));
+                setText(hud.bestHud, String(best));
             }
         }
         if (online && room.isHost) publish(true);
+    }
+    /* Satu tempat untuk semua overlay: help > cheats > pause > phase. */
+    function syncUI(view) {
+        const v = view || state || net.snap;
+        const phase = v ? v.phase : "lobby";
+        ovHelp.hidden = !helpOpen;
+        ovCheat.hidden = !cheatsOpen || helpOpen;
+        ovPause.hidden = !paused || helpOpen || cheatsOpen;
+        const phaseHidden = helpOpen || cheatsOpen || paused;
+        ovLobby.hidden = phase !== "lobby" || phaseHidden;
+        ovEnd.hidden = phase !== "matchEnd" || phaseHidden;
+        const label = pauseBtn.querySelector(".ss-btn-label");
+        if (label && label.textContent !== (paused ? "Resume" : "Pause")) label.textContent = paused ? "Resume" : "Pause";
+        pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        pauseBtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        if (pauseIcon.__p !== paused) { pauseIcon.__p = paused; pauseIcon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 }); }
+        pauseBtn.disabled = online;
+        cheatBtn.disabled = online;
+        restartBtn.disabled = online && !room.isHost;
     }
 
     /* ---------- input: keyboard + mouse (desktop), tombol virtual (mobile) ---------- */
@@ -1082,19 +1153,65 @@ export function mount(root, context = {}) {
         flags.bl = flags.br = flags.bj = flags.bf = 0;
         flags.boardF = 0;
     }
-    function openTut() { tutOpen = true; ovTut.hidden = false; }
-    function closeTut() { tutOpen = false; ovTut.hidden = true; }
-    function openCheats() { if (online) return; cheatOpen = true; ovCheat.hidden = false; }
-    function closeCheats() { cheatOpen = false; ovCheat.hidden = true; }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) cheatsOpen = false;
+        clearFlags();
+        syncUI();
+    }
+    function toggleCheats(on) {
+        if (online) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) helpOpen = false;
+        clearFlags();
+        syncUI();
+    }
+    function togglePause(on) {
+        if (online) return;
+        const next = typeof on === "boolean" ? on : !paused;
+        if (next === paused) return;
+        paused = next;
+        clearFlags();
+        if (paused) { pauseAt = performance.now(); acc = 0; }
+        else {
+            /* geser semua penanda waktu agar tidak loncat setelah jeda */
+            const held = Math.max(0, performance.now() - pauseAt);
+            aimUntil += held;
+            net.at += held;
+            lastPub += held;
+            lastSentAt += held;
+            lastT = performance.now();
+            acc = 0;
+        }
+        syncUI();
+    }
+    function restartGame() {
+        if (online && !room.isHost) return;
+        if (paused) togglePause(false);
+        helpOpen = false;
+        cheatsOpen = false;
+        submitAction({ type: "start" });
+    }
     function onKeyDown(e) {
         if (destroyed) return;
-        if (e.code === "Escape") { closeTut(); closeCheats(); return; }
+        /* prioritas: help -> cheats -> pause/Escape -> aksi game */
+        if (e.code === "KeyH") { e.preventDefault(); toggleHelp(); return; }
         if (e.code === "KeyC" && !online) {
-            e.preventDefault();
-            if (cheatOpen) closeCheats(); else if (!tutOpen) openCheats();
+            if (helpOpen) return;
+            e.preventDefault(); toggleCheats(); return;
+        }
+        if (e.code === "KeyP" || e.code === "Escape") {
+            if (helpOpen) { e.preventDefault(); toggleHelp(false); return; }
+            if (cheatsOpen) { e.preventDefault(); toggleCheats(false); return; }
+            if (paused) { e.preventDefault(); togglePause(false); return; }
+            if (e.code === "KeyP" && !online) { e.preventDefault(); togglePause(true); }
             return;
         }
-        if (tutOpen || cheatOpen) return;
+        if (e.code === "KeyR") {
+            if (helpOpen || cheatsOpen || paused) return;
+            e.preventDefault(); restartGame(); return;
+        }
+        if (helpOpen || cheatsOpen || paused) return;
         if (e.code === "Enter" && state && (state.phase === "lobby" || state.phase === "matchEnd") && canStart()) {
             e.preventDefault(); submitAction({ type: "start" }); return;
         }
@@ -1117,12 +1234,20 @@ export function mount(root, context = {}) {
             case "Space": case "KeyJ": flags.kf = 0; break;
         }
     }
+    /* SVG memakai preserveAspectRatio="xMidYMid meet": petakan klik ke area gambar, bukan ke bbox letterbox */
+    function viewRect() {
+        const r = svg.getBoundingClientRect();
+        if (!r.width || !r.height) return null;
+        const scale = Math.min(r.width / VIEW_W, r.height / VIEW_H);
+        const w = VIEW_W * scale, h = VIEW_H * scale;
+        return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h };
+    }
     function aimAt(e) {
         const src = online && !room.isHost ? net.snap : state;
         if (!src) return;
         const me = src.players[localSeat()];
-        const r = svg.getBoundingClientRect();
-        if (!r.width) return;
+        const r = viewRect();
+        if (!r || !r.width) return;
         const wx = cam + ((e.clientX - r.left) * VIEW_W) / r.width;
         const wy = ((e.clientY - r.top) * VIEW_H) / r.height;
         const a = Math.atan2(me.y - 36 - wy, wx - me.x);
@@ -1130,13 +1255,13 @@ export function mount(root, context = {}) {
         aimUntil = performance.now() + 1200;   // bidik manual sementara, lalu kembali otomatis
     }
     function onBoardDown(e) {
-        if (destroyed || tutOpen || cheatOpen) return;
+        if (destroyed || helpOpen || cheatsOpen || paused) return;
         e.preventDefault();
         aimAt(e);
         flags.boardF = 1;
     }
     function onBoardMove(e) {
-        if (destroyed || tutOpen || cheatOpen) return;
+        if (destroyed || helpOpen || cheatsOpen || paused) return;
         if (e.pointerType === "mouse" || e.buttons > 0) aimAt(e);
     }
     function onWinUp() { flags.boardF = 0; }
@@ -1159,17 +1284,19 @@ export function mount(root, context = {}) {
     function handleClick(e) {
         if (destroyed) return;
         if (e.target.closest("[data-exit]")) { onExit(); return; }
+        if (e.target.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (e.target.closest("[data-help]")) { toggleHelp(); return; }
+        if (e.target.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (e.target.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (e.target.closest("[data-pause-resume]")) { togglePause(false); return; }
+        if (e.target.closest("[data-pause]")) { togglePause(); return; }
+        if (e.target.closest("[data-restart]")) { restartGame(); return; }
+        if (e.target.closest("[data-pad]")) { touchEl.classList.toggle("force"); return; }
         const cc = e.target.closest("[data-cheatcmd]");
         if (cc) { if (!online) submitAction({ type: "cheatcmd", cmd: cc.dataset.cheatcmd }); return; }
         const act = e.target.closest("[data-act]");
         if (!act) return;
-        switch (act.dataset.act) {
-            case "start": case "rematch": submitAction({ type: "start" }); break;
-            case "tutorial": openTut(); break;
-            case "closetut": closeTut(); break;
-            case "cheats": openCheats(); break;
-            case "closecheat": closeCheats(); break;
-        }
+        if (act.dataset.act === "start" || act.dataset.act === "rematch") submitAction({ type: "start" });
     }
     function handleChange(e) {
         const c = e.target.closest("[data-cheat]");
@@ -1184,7 +1311,7 @@ export function mount(root, context = {}) {
     document.addEventListener("visibilitychange", onVis);
     svg.addEventListener("pointerdown", onBoardDown);
     svg.addEventListener("pointermove", onBoardMove);
-    stage.addEventListener("contextmenu", onContext);
+    board.addEventListener("contextmenu", onContext);
     touchEl.addEventListener("pointerdown", onTouchDown);
     touchEl.addEventListener("pointerup", onTouchUp);
     touchEl.addEventListener("pointercancel", onTouchUp);
@@ -1201,8 +1328,9 @@ export function mount(root, context = {}) {
         lastT = t;
         const now = performance.now();
         const isHostSide = !online || room.isHost;
-        const paused = !online && (tutOpen || cheatOpen);
-        if (state && isHostSide && !paused) {
+        const frozen = !online && (paused || helpOpen || cheatsOpen);
+        const simDt = frozen ? 0 : dt;
+        if (state && isHostSide && !frozen) {
             acc += dt;
             let n = 0;
             const env = { vsBot: !online, cheats: cheats, diff: diffFor(state.round) };
@@ -1216,11 +1344,12 @@ export function mount(root, context = {}) {
                 publish(false);
                 if (state.phase !== lastPubPhase) { lastPubPhase = state.phase; publish(true); }
             }
-        } else if (paused) acc = 0;
+        } else if (frozen) acc = 0;
         const view = online && !room.isHost ? guestView(now) : state;
-        if (view) { render(view, dt, now); syncPhase(view); updateHud(view); }
-        if (online && !room.isHost && net.snap) maybeSendInput(now);
-        tickBanners(dt);
+        if (view) { render(view, simDt, now); syncPhase(view); updateHud(view); }
+        if (online && !room.isHost && net.snap && !frozen) maybeSendInput(now);
+        tickBanners(simDt);
+        syncUI(view);
     }
 
     /* ---------- inisialisasi ---------- */
@@ -1228,7 +1357,10 @@ export function mount(root, context = {}) {
     setText(hud.mode, online ? "VS PEMAIN" : "VS BOT");
     if (online) {
         cheatBtn.disabled = true;
+        pauseBtn.disabled = true;
+        restartBtn.disabled = !room.isHost;
         cheatBtn.title = "Cheat hanya tersedia saat latihan vs Bot (offline).";
+        pauseBtn.title = "Jeda tidak tersedia di mode online.";
         const u0 = room.onRoom(function (r) { if (!destroyed) { roomData = r; if (state && state.phase === "lobby") refreshLobby(); } });
         if (typeof u0 === "function") unsubs.push(u0);
         if (room.isHost) {
@@ -1247,6 +1379,7 @@ export function mount(root, context = {}) {
     }
     refreshLobby();
     resetClientFx();
+    syncUI();
     raf = requestAnimationFrame(frame);
 
     return {
@@ -1261,7 +1394,7 @@ export function mount(root, context = {}) {
             document.removeEventListener("visibilitychange", onVis);
             svg.removeEventListener("pointerdown", onBoardDown);
             svg.removeEventListener("pointermove", onBoardMove);
-            stage.removeEventListener("contextmenu", onContext);
+            board.removeEventListener("contextmenu", onContext);
             touchEl.removeEventListener("pointerdown", onTouchDown);
             touchEl.removeEventListener("pointerup", onTouchUp);
             touchEl.removeEventListener("pointercancel", onTouchUp);

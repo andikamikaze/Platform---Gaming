@@ -4,6 +4,8 @@
    no virtual buttons. Gestures on mobile, keyboard+mouse on desktop.
    Host-authoritative multiplayer, local AI otherwise. */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "badminton",
     name: "Badminton",
@@ -121,80 +123,124 @@ export function mount(root, context = {}) {
     /* ---------------- markup (minimal, scoped) ---------------- */
     root.innerHTML = `
 <style>
-.bdm{--bdm-fg:#e7ecf2;--bdm-mut:#8b95a3;--bdm-line:#ffffff16;--bdm-bg:#0f1216;
-  color:var(--bdm-fg);font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto}
+.bdm{--bdm-fg:#e7ecf2;--bdm-mut:#8b95a3;--bdm-line:#ffffff1f;--bdm-bg:#0f1216;--bdm-panel:#141920;--bdm-acc:#0ea5e9;--bdm-warn:#f59e0b;
+  color:var(--bdm-fg);font-family:system-ui,-apple-system,sans-serif;width:100%;min-width:0}
+.bdm *{box-sizing:border-box}
 .bdm [hidden]{display:none!important}
-.bdm .game-intro{display:flex;align-items:center;gap:12px;padding:4px 2px 12px}
-.bdm .game-intro h2{margin:0;font-size:18px;font-weight:700;letter-spacing:.2px}
-.bdm .game-intro p{margin:2px 0 0;font-size:12px;color:var(--bdm-mut)}
-.bdm .bdm-spacer{flex:1}
-.bdm .game-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--bdm-mut);
-  border:1px solid var(--bdm-line);border-radius:999px;padding:5px 11px;white-space:nowrap}
-.bdm .game-status-dot{width:7px;height:7px;border-radius:50%;background:#34d399;display:inline-block}
-.bdm-btn{appearance:none;background:none;border:1px solid var(--bdm-line);color:var(--bdm-fg);
-  border-radius:999px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;transition:border-color .15s}
-.bdm-btn:hover{border-color:#ffffff40}
-.bdm-btn.solid{background:#e7ecf2;color:#0f1216;border-color:transparent}
-.bdm-btn .bdm-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#f59e0b;margin-left:6px;vertical-align:1px}
-.bdm .game-panel{position:relative;border:1px solid var(--bdm-line);border-radius:18px;overflow:hidden;background:var(--bdm-bg)}
-.bdm canvas{display:block;width:100%;aspect-ratio:480/840;touch-action:none;cursor:crosshair}
-.bdm-score{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
-  background:#0f1216d9;border:1px solid var(--bdm-line);border-radius:999px;padding:6px 16px;font-size:13px;font-weight:700;pointer-events:none}
-.bdm-score .n{display:flex;align-items:center;gap:6px}
-.bdm-score .me{color:${COL_ME}} .bdm-score .op{color:${COL_OP}}
-.bdm-score .sv{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:0}
-.bdm-score .sv.on{opacity:1}
-.bdm-score .num{font-size:17px;font-variant-numeric:tabular-nums}
-.bdm-score .sep{color:var(--bdm-mut);font-weight:400}
-.bdm-mp{font-size:10px;color:#f59e0b;border:1px solid #f59e0b55;border-radius:999px;padding:2px 7px;font-weight:700}
-.bdm-shot{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;
-  letter-spacing:.8px;color:var(--bdm-mut);background:#0f1216cc;border:1px solid var(--bdm-line);border-radius:999px;padding:5px 11px;pointer-events:none}
-.bdm-shot i{width:7px;height:7px;border-radius:50%;background:#8b95a3}
-.bdm-card{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0f1216b8;backdrop-filter:blur(3px)}
-.bdm-card>div{background:#141920;border:1px solid var(--bdm-line);border-radius:16px;padding:22px 26px;text-align:center;min-width:220px}
-.bdm-card h3{margin:0 0 4px;font-size:19px}
-.bdm-card p{margin:0 0 16px;font-size:13px;color:var(--bdm-mut)}
-.bdm-cheats{position:absolute;top:52px;right:10px;width:210px;background:#141920f2;border:1px solid var(--bdm-line);
-  border-radius:14px;padding:12px 14px;font-size:12.5px}
+.bdm-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.bdm-spacer{flex:1 1 auto}
+.bdm-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--bdm-line);border-radius:999px;padding:5px 11px;
+  font-size:12px;color:var(--bdm-mut);white-space:nowrap;background:#0f1216aa}
+.bdm-chip b{color:var(--bdm-fg)}
+.bdm-chip .n{display:inline-flex;align-items:center;gap:6px}
+.bdm-shotseg{display:flex;gap:4px;flex-wrap:wrap}
+.bdm-shotseg .bdm-btn{padding:5px 9px;min-height:30px;font-size:10px}
+.bdm-shotseg .bdm-btn.on{border-color:#ffffff66;background:#ffffff14}
+.bdm .bdm-hbtn{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;min-height:30px;border:1px solid var(--bdm-line);
+  border-radius:9px;background:transparent;color:var(--bdm-fg);font-size:11px;font-weight:600;cursor:pointer}
+.bdm .bdm-hbtn svg{flex:none;display:block}
+.bdm .bdm-hbtn.on{border-color:var(--bdm-acc);color:var(--bdm-acc)}
+.bdm .game-status{display:inline-flex;align-items:center;gap:7px;min-height:32px;font-size:12px;color:var(--bdm-mut);
+  border:1px solid var(--bdm-line);border-radius:999px;padding:5px 12px;white-space:nowrap}
+.bdm .game-status-dot{width:7px;height:7px;border-radius:50%;background:#34d399;display:inline-block;flex:none}
+.bdm-btn{appearance:none;background:transparent;border:1px solid var(--bdm-line);color:var(--bdm-fg);
+  border-radius:9px;padding:8px 12px;min-height:36px;font-size:12px;font-weight:600;cursor:pointer;transition:border-color .16s,background .16s}
+.bdm-btn:hover{border-color:#ffffff40;background:#ffffff0a}
+.bdm-btn:focus-visible{outline:2px solid var(--bdm-acc);outline-offset:2px}
+.bdm-btn.solid{background:var(--bdm-fg);color:var(--bdm-bg);border-color:transparent}
+.bdm-btn .bdm-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bdm-warn);margin-left:6px;vertical-align:1px}
+.bdm .game-panel{position:relative;border:1px solid var(--bdm-line);border-radius:12px;overflow:hidden;background:var(--bdm-bg);
+  display:flex;align-items:center;justify-content:center;min-height:0}
+.bdm canvas{display:block;height:100%;width:auto;max-width:100%;aspect-ratio:480/840;margin:0 auto;touch-action:none;cursor:crosshair}
+.bdm-hud .me{color:${COL_ME}} .bdm-hud .op{color:${COL_OP}}
+.bdm-hud .num{font-size:15px;font-variant-numeric:tabular-nums;color:var(--bdm-fg)}
+.bdm-hud .sep{color:var(--bdm-mut)}
+.bdm-hud .sv{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:0;flex:none}
+.bdm-hud .sv.on{opacity:1}
+.bdm-mp{font-size:10px;color:var(--bdm-warn);border:1px solid #f59e0b55;border-radius:999px;padding:2px 7px;font-weight:700;flex:none}
+.bdm-shot i{width:7px;height:7px;border-radius:50%;background:var(--bdm-mut);flex:none}
+.bdm-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;text-align:left}
+.bdm-help b{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--bdm-mut)}
+.bdm-help ul{margin:0 0 10px;padding-left:16px;font-size:12px;line-height:1.6;color:var(--bdm-mut)}
+.bdm-card{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0f1216b8;backdrop-filter:blur(3px);padding:16px}
+.bdm-card>div{background:var(--bdm-panel);border:1px solid var(--bdm-line);border-radius:12px;padding:20px 24px;text-align:center;width:min(280px,100%)}
+.bdm-card h3{margin:0 0 8px;font-size:18px}
+.bdm-card p{margin:0 0 16px;font-size:13px;color:var(--bdm-mut);line-height:1.5}
+.bdm-card .bdm-btn{min-height:44px}
+.bdm-cheats{width:min(300px,100%);max-height:100%;overflow:auto;background:var(--bdm-panel);border:1px solid var(--bdm-line);
+  border-radius:10px;padding:12px;font-size:12.5px}
 .bdm-cheats header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-weight:700;font-size:12px;letter-spacing:.6px;color:var(--bdm-mut)}
-.bdm-cheats header button{background:none;border:none;color:var(--bdm-mut);cursor:pointer;font-size:15px;padding:0 2px}
-.bdm-cheats label{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;cursor:pointer;border-top:1px solid #ffffff0d}
-.bdm-cheats input{appearance:none;width:30px;height:17px;border-radius:999px;background:#2a323d;position:relative;cursor:pointer;transition:background .15s;flex:none}
-.bdm-cheats input::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#8b95a3;transition:all .15s}
-.bdm-cheats input:checked{background:#0ea5e9}
-.bdm-cheats input:checked::after{left:15px;background:#fff}
-.bdm-cheats .row{display:flex;gap:6px;margin-top:10px}
-.bdm-cheats .row .bdm-btn{flex:1;padding:6px 4px;font-size:11.5px}
-.bdm .game-actions{display:flex;justify-content:flex-end;padding-top:12px}
-.bdm .game-action-button{appearance:none;background:none;border:1px solid var(--bdm-line);color:var(--bdm-mut);
-  border-radius:999px;padding:7px 16px;font-size:12px;cursor:pointer}
+.bdm-cheats header button{background:none;border:none;color:var(--bdm-mut);cursor:pointer;font-size:15px;min-width:32px;min-height:32px}
+.bdm-cheats header button:focus-visible{outline:2px solid var(--bdm-acc);outline-offset:2px}
+.bdm-cheats label{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;padding:4px 0;cursor:pointer;border-top:1px solid var(--bdm-line)}
+.bdm-cheats input{appearance:none;width:30px;height:17px;border-radius:999px;background:#2a323d;position:relative;cursor:pointer;transition:background .16s;flex:none}
+.bdm-cheats input::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--bdm-mut);transition:left .16s,background .16s}
+.bdm-cheats input:checked{background:var(--bdm-acc)}
+.bdm-cheats input:checked::after{left:15px;background:var(--bdm-fg)}
+.bdm-cheats .row{display:flex;gap:8px;margin-top:8px}
+.bdm-cheats .row .bdm-btn{flex:1;min-width:0;padding:8px 4px;font-size:11.5px}
+.bdm .game-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;padding-top:4px}
+.bdm .game-action-button{appearance:none;background:transparent;border:1px solid var(--bdm-line);color:var(--bdm-mut);
+  border-radius:9px;padding:8px 16px;min-height:36px;font-size:12px;cursor:pointer;transition:color .16s,border-color .16s}
 .bdm .game-action-button:hover{color:var(--bdm-fg);border-color:#ffffff40}
+@media (pointer:coarse){
+  .bdm-btn,.bdm .game-action-button,.bdm-cheats header button,.bdm-cheats label{min-height:44px}
+  .bdm-cheats input{width:44px;height:26px}
+  .bdm-cheats input::after{top:3px;left:3px;width:20px;height:20px}
+  .bdm-cheats input:checked::after{left:21px}
+}
+@media (max-width:420px){
+  .bdm .game-intro h2{font-size:16px}
+  .bdm-score{gap:6px;padding:6px 10px}
+  .bdm-score .n>span{max-width:64px}
+}
+@media (prefers-reduced-motion:reduce){.bdm *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* --- layout redesign overrides (keep last) --- */
+@media (max-width:640px){
+.bdm .bdm-hud{gap:5px 8px;margin-bottom:6px}
+.bdm .bdm-hbtn{min-width:28px;min-height:28px;padding:4px 6px;font-size:10px}
+.bdm .bdm-hbtn .bdm-hlbl,.bdm .bdm-spacer{display:none}
+.bdm-shotseg .bdm-btn{min-width:32px;min-height:28px;padding:4px 6px}
+.bdm .game-panel{flex:0 0 auto;min-height:min(70dvh,620px)}
+.bdm-card>div{padding:14px}
+}
 </style>
 <div class="game-app bdm">
-  <div class="game-intro">
-    <div><h2>Badminton</h2><p>${online ? "Online match" : "vs Bot"}</p></div>
-    <span class="bdm-spacer"></span>
-    ${online ? "" : '<button class="bdm-btn" type="button" data-cheats>Cheats<span class="bdm-dot" data-cheat-dot hidden></span></button>'}
+  <div class="bdm-hud">
     <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-  </div>
-  <section class="game-panel" data-board>
-    <canvas data-canvas></canvas>
-    <div class="bdm-score">
+    <span class="bdm-chip">
       <span class="n me"><i class="sv" data-sv-me></i><span>${myName}</span><b class="num" data-sc-me>0</b></span>
       <span class="sep">:</span>
       <span class="n op"><b class="num" data-sc-op>0</b><span>${oppName}</span><i class="sv" data-sv-op></i></span>
       <span class="bdm-mp" data-mp hidden>MP</span>
+    </span>
+    <span class="bdm-chip bdm-shot"><i data-shot-dot></i><span data-shot-label>AUTO</span></span>
+    <div class="bdm-shotseg">
+      <button class="bdm-btn on" type="button" data-shot="auto">Auto</button>
+      <button class="bdm-btn" type="button" data-shot="clear">Clear</button>
+      <button class="bdm-btn" type="button" data-shot="drop">Drop</button>
+      <button class="bdm-btn" type="button" data-shot="smash">Smash</button>
     </div>
-    <div class="bdm-shot"><i data-shot-dot></i><span data-shot-label>AUTO</span></div>
-    <div class="bdm-cheats" data-cheat-panel hidden>
-      <header><span>CHEATS</span><button type="button" data-cheat-close aria-label="Close">×</button></header>
-      <label>Auto swing<input type="checkbox" data-cheat="auto"></label>
-      <label>Big reach<input type="checkbox" data-cheat="reach"></label>
-      <label>Slow shuttle<input type="checkbox" data-cheat="slow"></label>
-      <label>Freeze bot<input type="checkbox" data-cheat="freeze"></label>
-      <div class="row">
-        <button class="bdm-btn" type="button" data-cheat-act="point">+1 point</button>
-        <button class="bdm-btn" type="button" data-cheat-act="win">Win match</button>
+    <span class="bdm-spacer"></span>
+    <button class="bdm-btn bdm-hbtn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="bdm-hlbl">Help</span></button>
+    <button class="bdm-btn bdm-hbtn" type="button" data-cheats ${online ? "hidden" : ""} aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="bdm-hlbl">Cheats</span><span class="bdm-dot" data-cheat-dot hidden></span></button>
+    <button class="bdm-btn bdm-hbtn" type="button" data-pause-btn aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="bdm-hlbl">Pause</span></button>
+    <button class="bdm-btn bdm-hbtn" type="button" data-act="rematch" data-rematch aria-label="Restart" title="Restart">${iconSVG("refresh", { size: 14 })}<span class="bdm-hlbl">Restart</span></button>
+    <button class="bdm-btn bdm-hbtn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="bdm-hlbl">Exit</span></button>
+  </div>
+  <section class="game-panel" data-board>
+    <canvas data-canvas></canvas>
+    <div class="bdm-card" data-cheat-panel hidden>
+      <div class="bdm-cheats">
+        <header><span>CHEATS</span><button type="button" data-cheat-close aria-label="Close">×</button></header>
+        <label>Auto swing<input type="checkbox" data-cheat="auto"></label>
+        <label>Big reach<input type="checkbox" data-cheat="reach"></label>
+        <label>Slow shuttle<input type="checkbox" data-cheat="slow"></label>
+        <label>Freeze bot<input type="checkbox" data-cheat="freeze"></label>
+        <div class="row">
+          <button class="bdm-btn" type="button" data-cheat-act="point">+1 point</button>
+          <button class="bdm-btn" type="button" data-cheat-act="win">Win match</button>
+        </div>
       </div>
     </div>
     <div class="bdm-card" data-over hidden>
@@ -204,8 +250,39 @@ export function mount(root, context = {}) {
         <button class="bdm-btn solid" type="button" data-rematch>Rematch</button>
       </div>
     </div>
+    <div class="bdm-card" data-ov="help" hidden>
+      <div>
+        <h3>How to play</h3>
+        <div class="bdm-help">
+          <div>
+            <b>Goal</b>
+            <ul>
+              <li>Rally scoring to 11, win by 2, cap at 15.</li>
+              <li>The server wins points only; a coin toss decides who serves first.</li>
+              <li>Clear, drop or smash past your opponent and keep the shuttle in court.</li>
+            </ul>
+          </div>
+          <div>
+            <b>Controls</b>
+            <ul>
+              <li>Mouse: move to aim, click to swing · wheel changes shot.</li>
+              <li>Touch: drag to move, tap to swing, two-finger tap changes shot.</li>
+              <li>Arrows/WASD move · Space/Enter/J swing · 0–3 choose shot.</li>
+              <li>C cheats · P pause · R rematch · H help.</li>
+            </ul>
+            <button class="bdm-btn" type="button" data-help-close>Got it</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="bdm-card" data-ov="pause" hidden>
+      <div>
+        <h3>Paused</h3>
+        <p>The match clock and bot are stopped.</p>
+        <button class="bdm-btn" type="button" data-resume>Resume <kbd>P</kbd></button>
+      </div>
+    </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
 </div>`;
 
     const $ = (s) => root.querySelector(s);
@@ -215,6 +292,9 @@ export function mount(root, context = {}) {
     const elShotL = $("[data-shot-label]"), elShotD = $("[data-shot-dot]");
     const elOver = $("[data-over]"), elOverT = $("[data-over-title]"), elOverS = $("[data-over-score]");
     const elCheatPanel = $("[data-cheat-panel]"), elCheatDot = $("[data-cheat-dot]");
+    const ovHelp = $('[data-ov="help"]'), ovPause = $('[data-ov="pause"]');
+    const pauseBtn = $("[data-pause-btn]");
+    const shotBtns = Array.from(root.querySelectorAll("[data-shot]"));
 
     /* ---------------- local (non-synced) ---------------- */
     const cheats = { auto: false, reach: false, slow: false, freeze: false };
@@ -227,7 +307,33 @@ export function mount(root, context = {}) {
     let trail = [], effects = [], shakeT = 0, netWobbleT = 0;
     let rafId = null, lastT = 0, acc = 0, lastPub = 0, lastMoveSend = 0;
     let aiThink = 0, aiTX = 240, aiTY = 200;
+    let helpOpen = false, paused = false, pausedAt = 0;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("badmintonHelpSeen") === "1"; } catch (err) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("badmintonHelpSeen", "1"); } catch (err) { /* storage blocked */ }
+    }
     const unsubs = [];
+
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) elCheatPanel.hidden = true;
+        render(performance.now(), 0);
+    }
+    function togglePause(on) {
+        const now = performance.now();
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) {
+            pausedAt = now;
+            elCheatPanel.hidden = true;
+        } else if (pausedAt) {
+            const delta = now - pausedAt;
+            if (authority && state) { state.until += delta; aiThink += delta; }
+            pausedAt = 0;
+        }
+        render(now, 0);
+    }
 
     const mySide = () => (state ? state.sides[playerIndex] : "B");
     const flip = () => mySide() === "T";
@@ -357,6 +463,7 @@ export function mount(root, context = {}) {
         state = freshMatch();
         state.ev.seq = evSeq + 1;
         lastRally = -1;
+        helpOpen = false; paused = false; pausedAt = 0;
         publish();
     }
 
@@ -720,6 +827,23 @@ export function mount(root, context = {}) {
         setText(elStatus, "st", st);
         setText(elShotL, "sh", shotSel.toUpperCase());
         elShotD.style.background = shotSel === "auto" ? "#8b95a3" : SHOTS[shotSel].col;
+
+        ovHelp.hidden = !helpOpen;
+        ovPause.hidden = !paused || helpOpen;
+        elOver.hidden = rs.phase !== "over" || helpOpen || paused;
+        if (helpOpen || paused) elCheatPanel.hidden = true;
+        if (pauseBtn) {
+            const want = paused ? "play" : "pause";
+            if (pauseBtn.dataset.iconState !== want) {
+                pauseBtn.dataset.iconState = want;
+                const ico = pauseBtn.querySelector("svg");
+                if (ico) ico.outerHTML = iconSVG(want, { size: 14 });
+                const label = pauseBtn.querySelector(".bdm-hlbl");
+                if (label) label.textContent = paused ? "Resume" : "Pause";
+            }
+        }
+        shotBtns.forEach((b) => b.classList.toggle("on", b.dataset.shot === shotSel));
+        elCheatDot.hidden = !Object.values(cheats).some(Boolean);
     }
 
     /* ---------------- main loop ---------------- */
@@ -732,7 +856,7 @@ export function mount(root, context = {}) {
         /* local intent from keyboard */
         let kx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
         let ky = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
-        if (kx || ky) {
+        if (!paused && !helpOpen && (kx || ky)) {
             const f = flip() ? -1 : 1;
             const n = Math.hypot(kx, ky);
             me.tx += (kx / n) * P_SPEED * dt * f;
@@ -741,14 +865,14 @@ export function mount(root, context = {}) {
             me.tx = c.x; me.ty = c.y;
         }
         if (authority) {
-            if (state) tick(dt, now);
+            if (state && !paused && !helpOpen) tick(dt, now);
             if (online && state && now - lastPub > 80) { lastPub = now; publish(); }
         } else {
             const c = clampHalf(mySide(), me.tx, me.ty);
             me.tx = c.x; me.ty = c.y;
             me.x += (me.tx - me.x) * Math.min(1, dt * 14);
             me.y += (me.ty - me.y) * Math.min(1, dt * 14);
-            if (state && now - lastMoveSend > 60) {
+            if (!paused && !helpOpen && state && now - lastMoveSend > 60) {
                 lastMoveSend = now;
                 const n = toNorm(mySide(), me.tx, me.ty);
                 room.sendAction({ t: "move", u: n.u, v: n.v }).catch(console.warn);
@@ -764,7 +888,7 @@ export function mount(root, context = {}) {
         shotSel = SHOT_ORDER[i];
     }
     function swingInput() {
-        if (!state) return;
+        if (!state || paused || helpOpen) return;
         if (state.phase === "over") { submitAction({ t: "rematch" }); return; }
         submitAction({ t: "swing", shot: shotSel });
     }
@@ -772,17 +896,28 @@ export function mount(root, context = {}) {
     const onKeyDown = (e) => {
         if (destroyed) return;
         const k = e.key;
+        if (helpOpen) {
+            if (k === "Escape" || k === "h" || k === "H" || k === "Enter" || k === " ") toggleHelp(false);
+            e.preventDefault(); return;
+        }
+        if (paused) {
+            if (k === "p" || k === "P" || k === "Escape" || k === "Enter" || k === " ") togglePause(false);
+            e.preventDefault(); return;
+        }
         const map = {
             ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right",
             ArrowUp: "up", w: "up", ArrowDown: "down", s: "down"
         };
         if (map[k]) { e.preventDefault(); keys[map[k]] = true; return; }
         if (k === " " || k === "Enter" || k === "j") { e.preventDefault(); swingInput(); }
-        else if (k === "1" || k === "c" || k === "C") shotSel = "clear";
+        else if (k === "1") shotSel = "clear";
         else if (k === "2" || k === "v" || k === "V") shotSel = "drop";
         else if (k === "3" || k === "x" || k === "X") shotSel = "smash";
         else if (k === "0" || k === "q" || k === "Q") shotSel = "auto";
         else if (k === "r" || k === "R") { if (state?.phase === "over") submitAction({ t: "rematch" }); }
+        else if (k === "h" || k === "H") toggleHelp();
+        else if (k === "p" || k === "P") togglePause();
+        else if (k === "c" || k === "C") { if (!online) elCheatPanel.hidden = !elCheatPanel.hidden; }
         else if (k === "Escape") elCheatPanel.hidden = true;
         else if (k === "`" && !online) elCheatPanel.hidden = !elCheatPanel.hidden;
     };
@@ -844,6 +979,12 @@ export function mount(root, context = {}) {
     /* ---------------- click delegation (template contract) ---------------- */
     function handleClick(event) {
         const t = event.target;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-pause-btn]")) { togglePause(); return; }
+        const shotBtn = t.closest("[data-shot]");
+        if (shotBtn) { shotSel = shotBtn.dataset.shot; render(performance.now(), 0); return; }
         if (t.closest("[data-exit]")) { onExit(); return; }
         if (t.closest("[data-rematch]")) { submitAction({ t: "rematch" }); return; }
         if (!online) {

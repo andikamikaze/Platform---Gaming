@@ -1,15 +1,17 @@
 /* ==== GAME: farming-mini.js ==== */
 /* ================================================================== */
-/* Open Farm - open-world farming 2D top-down (terinspirasi Stardew    */
+/* Farming Mini - open-world farming 2D top-down (terinspirasi Stardew    */
 /* Valley). Pemain berkeliling farm: olah tanah, tanam, siram, panen,  */
 /* jual di bin. Lawan: bot (mode AI) atau pemain lain (mode room).     */
 /* Mengikuti template: export META + export mount(root, context).      */
 /* Setelah mengubah file ini, jalankan: node tools/build-games-manifest.mjs */
 /* ================================================================== */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "farming-mini", // harus sama dengan nama file (tanpa .js)
-    name: "Open Farm",
+    name: "Farming Mini",
     category: "simulation",
     catLabel: "Simulation",
     desc: "Jelajahi pertanian open-world 2D: olah tanah, tanam, siram, panen, lalu jual di bin sebelum musim berakhir.",
@@ -289,154 +291,197 @@ export function mount(root, context = {}) {
     };
     const sec = (ms) => Math.round(ms / 1000);
 
+    /* Bantuan internal ditampilkan sekali per browser (lihat GAMES_WITH_INTERNAL_HELP). */
+    let helpOpen = false, cheatsOpen = false, paused = false;
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem("openFarmHelpSeen") === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        helpOpen = true;
+        try { localStorage.setItem("openFarmHelpSeen", "1"); } catch (_) { /* storage diblokir */ }
+    }
+
     root.innerHTML = `
 <style>
-.ofa{--ink:#243041;--mut:#7b8794;--line:#e7e3da;--card:#fff;--accent:#16a34a;display:flex;flex-direction:column;gap:10px;height:100%;min-height:0;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.ofa{--ink:#243041;--mut:#7b8794;--line:#e7e3da;--card:#fff;--accent:#16a34a;display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.ofa *{box-sizing:border-box}
 .ofa [hidden]{display:none!important}
-.ofa .game-intro{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.ofa .game-intro h2{margin:0;font-size:18px;letter-spacing:.2px}
-.ofa .game-intro p{margin:2px 0 0;font-size:12.5px;color:var(--mut)}
-.ofa .game-panel{position:relative;flex:1;min-height:340px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#abd094;user-select:none;-webkit-user-select:none}
-.ofa canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
-.ofa-hud{position:absolute;top:10px;left:10px;display:flex;gap:6px;flex-wrap:wrap;max-width:70%;z-index:2}
-.ofa-chip{display:inline-flex;align-items:center;gap:6px;background:#ffffffe6;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600}
-.ofa-chip b{font-weight:800}
+.ofa-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ofa-chip{display:inline-flex;align-items:center;gap:6px;background:#ffffffe6;border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+.ofa-chip b{font-weight:800;font-variant-numeric:tabular-nums}
 .ofa-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
-.ofa-score{position:absolute;top:10px;right:10px;background:#ffffffe6;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;z-index:2;max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ofa-toast{position:absolute;top:52px;left:50%;transform:translateX(-50%);background:#243041f0;color:#fff;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:600;pointer-events:none;transition:opacity .25s;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;z-index:4}
-.ofa-hint{position:absolute;bottom:66px;left:50%;transform:translateX(-50%);background:#ffffffe6;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--mut);pointer-events:none;z-index:2;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
-.ofa-hotbar{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px;background:#ffffffe6;border:1px solid var(--line);border-radius:14px;padding:6px;z-index:3}
-.ofa-tool{position:relative;width:44px;height:44px;border-radius:10px;border:1.5px solid transparent;background:transparent;color:#5b6472;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
-.ofa-tool:hover{background:#f1efe8}
-.ofa-tool.sel{border-color:var(--accent);color:var(--accent);background:#f0fdf4}
-.ofa-tool svg{width:22px;height:22px}
-.ofa-tool em{position:absolute;top:2px;right:4px;font-style:normal;font-size:9px;color:var(--mut);font-weight:700}
-.ofa-seedchip{display:flex;align-items:center;gap:6px;border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:0 10px;font-size:12px;font-weight:700;color:var(--ink);cursor:pointer;height:44px}
-.ofa-seedchip i{width:10px;height:10px;border-radius:50%;flex:none}
-.ofa-touch{display:none}
-.ofa-stick{position:absolute;left:16px;bottom:16px;width:116px;height:116px;border-radius:50%;background:#ffffffb0;border:1.5px solid var(--line);touch-action:none;z-index:3}
-.ofa-stick i{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:#fff;border:1.5px solid var(--line);box-shadow:0 2px 6px #00000014;pointer-events:none}
-.ofa-use{position:absolute;right:16px;bottom:20px;width:76px;height:76px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-weight:800;font-size:13px;letter-spacing:.5px;box-shadow:0 3px 10px #16a34a55;touch-action:none;z-index:3;cursor:pointer}
-.ofa-use:active{transform:scale(.94)}
-.ofa.ofa-mobile .ofa-touch{display:block}
-.ofa.ofa-mobile .ofa-hotbar{left:auto;right:12px;bottom:112px;transform:none;flex-direction:column;padding:5px}
-.ofa.ofa-mobile .ofa-tool{width:40px;height:40px}
-.ofa.ofa-mobile .ofa-tool em{display:none}
-.ofa.ofa-mobile .ofa-seedchip{height:36px;padding:0 8px}
-.ofa.ofa-mobile .ofa-hint{bottom:16px;max-width:46%}
-.ofa.ofa-mobile .ofa-hud{max-width:calc(100% - 100px)}
-.ofa-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#f7f5f0d9;backdrop-filter:blur(3px);z-index:5;padding:14px;box-sizing:border-box;overflow:auto}
-.ofa-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;max-width:430px;width:100%;box-shadow:0 10px 30px #24304114;text-align:center;margin:auto}
-.ofa-card.wide{max-width:520px;text-align:left}
-.ofa-card h3{margin:0 0 6px;font-size:19px}
-.ofa-card p{margin:6px 0;font-size:13px;color:#4b5563;line-height:1.5}
-.ofa-card .small{font-size:11.5px;color:var(--mut)}
-.ofa-card h4{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
-.ofa-card ul{margin:4px 0;padding-left:18px;font-size:12.5px;color:#4b5563;line-height:1.65}
-.ofa-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:9px 16px;font-size:13.5px;font-weight:700;cursor:pointer;margin:4px 3px 0}
-.ofa-btn:hover{border-color:#c9c4b8}
+.ofa-spacer{flex:1 1 auto}
+.ofa-tools{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.ofa-btn,.ofa-tool,.ofa-seedchip{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 10px;min-height:34px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer}
+.ofa-btn:hover,.ofa-tool:hover,.ofa-seedchip:hover{border-color:#c9c4b8}
+.ofa-btn:focus-visible,.ofa-tool:focus-visible,.ofa-seedchip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ofa-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .ofa-btn.primary:hover{background:#15803d}
 .ofa-btn:disabled{opacity:.5;cursor:default}
+.ofa-icon-btn svg{flex:none;display:block}
+.ofa-tool{position:relative}
+.ofa-tool.sel{border-color:var(--accent);color:var(--accent);background:#f0fdf4}
+.ofa-tool svg{width:18px;height:18px}
+.ofa-tool em{position:absolute;top:1px;right:3px;font-style:normal;font-size:8px;color:var(--mut);font-weight:700}
+.ofa-seedchip i{width:10px;height:10px;border-radius:50%;flex:none}
+.ofa-board{position:relative;width:100%;aspect-ratio:4/3;flex:1 1 auto;min-height:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#abd094;user-select:none;-webkit-user-select:none}
+.ofa canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.ofa-toast{position:absolute;top:48px;left:50%;transform:translateX(-50%);background:#243041f0;color:#fff;border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:600;pointer-events:none;transition:opacity .2s;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;z-index:4}
+.ofa-hint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:#ffffffe6;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--mut);pointer-events:none;z-index:2;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
+.ofa-touch{display:none;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;user-select:none;-webkit-user-select:none}
+.ofa-stick{position:relative;width:104px;height:104px;border-radius:50%;background:#ffffffb0;border:1px solid var(--line);touch-action:none}
+.ofa-stick i{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:#fff;border:1px solid var(--line);box-shadow:0 2px 6px #00000014;pointer-events:none}
+.ofa-use{width:68px;height:68px;border-radius:50%;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:800;font-size:12px;letter-spacing:.5px;box-shadow:0 3px 10px #16a34a55;touch-action:none;cursor:pointer}
+.ofa-use:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.ofa-use:active{transform:scale(.94)}
+.ofa.ofa-mobile .ofa-touch{display:flex}
+.ofa-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#f7f5f0d9;backdrop-filter:blur(3px);z-index:5;padding:14px;overflow:auto}
+.ofa-card{display:flex;flex-direction:column;overflow:hidden;max-height:100%;width:min(520px,100%);margin:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;box-shadow:0 4px 16px #24304114}
+.ofa-card.wide{width:min(640px,100%)}
+.ofa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.ofa-head h3{margin:0;font-size:19px}
+.ofa-tag{font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 9px}
+.ofa-body,.ofa-cheats,.ofa-help{flex:1 1 auto;min-height:0;overflow:auto}
+.ofa-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:none;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.ofa-card p{margin:8px 0;font-size:13px;color:#4b5563;line-height:1.5}
+.ofa-card .small{font-size:11.5px;color:var(--mut)}
+.ofa-card h4{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
+.ofa-card ul{margin:4px 0;padding-left:18px;font-size:12.5px;color:#4b5563;line-height:1.65}
+.ofa-note{font-size:11px;color:var(--mut);margin-right:auto}
 .ofa-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
 .ofa-table th,.ofa-table td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
-.ofa-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.ofa-cheat{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 10px;font-size:12.5px;font-weight:700;cursor:pointer;text-align:left;color:var(--ink)}
+.ofa-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.ofa-cheat{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:10px 12px;font-size:12.5px;font-weight:700;cursor:pointer;text-align:left;color:var(--ink);min-height:44px}
+.ofa-cheat:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ofa-cheat span{display:block;font-size:10.5px;color:var(--mut);font-weight:600;margin-top:2px}
 .ofa-cheat.on{border-color:var(--accent);background:#f0fdf4}
 .ofa-win{color:var(--accent)}
 .ofa-lose{color:#ef4444}
-@media (max-width:640px){.ofa .game-intro p{display:none}.ofa .game-panel{min-height:300px}}
+@media (prefers-reduced-motion:reduce){.ofa *{animation:none!important;transition:none!important}}
+
+/* --- fill height + mobile refinements (LAST: mengalahkan pointer:coarse) --- */
+.ofa.game-fill > .ofa-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+@media (max-width:640px){
+.ofa.game-fill > .ofa-board:not(:has(.ofa-ov:not([hidden]))){aspect-ratio:4/3;flex:0 0 auto}
+.ofa.game-fill > .ofa-board:has(.ofa-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.ofa .ofa-hud{gap:5px;margin-bottom:8px}
+.ofa .ofa-hud .ofa-chip{padding:4px 6px;font-size:9px}
+.ofa .ofa-hud .hud-target,.ofa .ofa-hud .hud-status,.ofa .ofa-hud .hud-score,.ofa .ofa-hud .hud-inv{display:none}
+.ofa .ofa-hud .ofa-btn,.ofa .ofa-hud .ofa-tool{min-height:32px;min-width:0;padding:5px 8px;font-size:9px}
+.ofa .ofa-hud .ofa-btn-label,.ofa .ofa-hud .ofa-tool-label,.ofa .ofa-hud .ofa-spacer{display:none}
+.ofa .ofa-hud .ofa-tool em{display:none}
+.ofa .ofa-hud .ofa-seedchip{min-height:32px;height:32px;padding:0 6px;font-size:9px}
+.ofa .ofa-ov{padding:8px}
+.ofa .ofa-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.ofa .ofa-body,.ofa .ofa-cheats,.ofa .ofa-help{scrollbar-width:none}
+.ofa .ofa-body::-webkit-scrollbar,.ofa .ofa-cheats::-webkit-scrollbar,.ofa .ofa-help::-webkit-scrollbar{display:none}
+.ofa .ofa-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+.ofa .ofa-note{display:none}
+.ofa .ofa-table{font-size:10px}
+}
 </style>
-<div class="game-app ofa" data-app>
-  <div class="game-intro">
-    <div><h2>Open Farm</h2><p>Pertanian terbuka 2D &mdash; raih ${TARGET} koin sebelum musim ${sec(SEASON_MS)} detik berakhir.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-statusdot></i><span data-status>Siap</span></span>
+<div class="game-app ofa game-fill" data-app>
+  <div class="ofa-hud">
+    <span class="ofa-chip"><i class="ofa-dot" style="background:#f59e0b"></i>KOIN <b data-hud="money">${START_MONEY}</b></span>
+    <span class="ofa-chip hud-target">TARGET <b>${TARGET}</b></span>
+    <span class="ofa-chip">WAKTU <b data-hud="time">${sec(SEASON_MS)}</b>&nbsp;dtk</span>
+    <span class="ofa-chip"><i class="ofa-dot" style="background:#38bdf8"></i>AIR <b data-hud="can">${CAN_MAX}</b>/${CAN_MAX}</span>
+    <span class="ofa-chip hud-inv" data-hud="inv" hidden></span>
+    <span class="ofa-chip hud-score" data-hud="score"></span>
+    <span class="ofa-chip hud-status"><i class="ofa-dot" data-statusdot></i><span data-status>Siap</span></span>
+    <span class="ofa-spacer"></span>
+    <span class="ofa-tools">
+      <button class="ofa-tool" type="button" data-tool="hoe" title="Cangkul (1)" aria-label="Cangkul">${ICONS.hoe}<span class="ofa-tool-label">Cangkul</span><em>1</em></button>
+      <button class="ofa-tool" type="button" data-tool="seed" title="Benih (2)" aria-label="Benih">${ICONS.seed}<span class="ofa-tool-label">Benih</span><em>2</em></button>
+      <button class="ofa-tool" type="button" data-tool="can" title="Air (3)" aria-label="Air">${ICONS.can}<span class="ofa-tool-label">Air</span><em>3</em></button>
+      <button class="ofa-tool" type="button" data-tool="hand" title="Panen (4)" aria-label="Panen">${ICONS.hand}<span class="ofa-tool-label">Panen</span><em>4</em></button>
+      <button class="ofa-seedchip" type="button" data-act="seedcycle" title="Ganti benih (Tab/Q)" aria-label="Ganti benih"><i data-seeddot></i><span data-seedlabel></span></button>
+    </span>
+    <button class="ofa-btn ofa-icon-btn" type="button" data-help aria-label="Cara bermain" title="Cara bermain (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ofa-btn-label">Bantuan</span></button>
+    <button class="ofa-btn ofa-icon-btn" type="button" data-cheats aria-label="Cheat" title="Cheat (C)">${iconSVG("wrench", { size: 14 })}<span class="ofa-btn-label">Cheat</span></button>
+    <button class="ofa-btn ofa-icon-btn" type="button" data-pause aria-label="Jeda" title="Jeda (P)"><span data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="ofa-btn-label">Jeda</span></button>
+    <button class="ofa-btn ofa-icon-btn" type="button" data-restart aria-label="Dunia baru" title="Dunia baru (R)">${iconSVG("refresh", { size: 14 })}<span class="ofa-btn-label">Baru</span></button>
+    <button class="ofa-btn ofa-icon-btn" type="button" data-exit aria-label="Keluar game" title="Keluar game">${iconSVG("logOut", { size: 14 })}<span class="ofa-btn-label">Keluar</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <canvas data-canvas aria-label="Dunia Open Farm"></canvas>
-    <div class="ofa-hud">
-      <span class="ofa-chip"><i class="ofa-dot" style="background:#f59e0b"></i><b data-hud="money">${START_MONEY}</b></span>
-      <span class="ofa-chip">Target <b>${TARGET}</b></span>
-      <span class="ofa-chip"><b data-hud="time">${sec(SEASON_MS)}</b>&nbsp;dtk</span>
-      <span class="ofa-chip"><i class="ofa-dot" style="background:#38bdf8"></i><b data-hud="can">${CAN_MAX}</b>/${CAN_MAX}</span>
-      <span class="ofa-chip" data-hud="inv" hidden></span>
-    </div>
-    <div class="ofa-score" data-hud="score"></div>
+  <section class="game-panel ofa-board" data-board>
+    <canvas data-canvas aria-label="Dunia Farming Mini"></canvas>
     <div class="ofa-toast" data-toast hidden></div>
     <div class="ofa-hint" data-hint hidden></div>
-    <div class="ofa-hotbar">
-      <button class="ofa-tool" type="button" data-tool="hoe" title="Cangkul (1)" aria-label="Cangkul">${ICONS.hoe}<em>1</em></button>
-      <button class="ofa-tool" type="button" data-tool="seed" title="Benih (2)" aria-label="Benih">${ICONS.seed}<em>2</em></button>
-      <button class="ofa-tool" type="button" data-tool="can" title="Air (3)" aria-label="Air">${ICONS.can}<em>3</em></button>
-      <button class="ofa-tool" type="button" data-tool="hand" title="Panen (4)" aria-label="Panen">${ICONS.hand}<em>4</em></button>
-      <button class="ofa-seedchip" type="button" data-act="seedcycle" title="Ganti benih (Tab/Q)"><i data-seeddot></i><span data-seedlabel></span></button>
-    </div>
-    <div class="ofa-touch">
-      <div class="ofa-stick" data-stick aria-label="Stik gerak"><i data-knob></i></div>
-      <button class="ofa-use" type="button" data-usebtn aria-label="Aksi">AKSI</button>
-    </div>
     <div class="ofa-ov" data-ov="ready">
       <div class="ofa-card">
-        <h3>Open Farm</h3>
-        <p>Kelilingi farm, olah tanah, tanam, siram, panen &mdash; lalu jual di bin kayu. Raih <b>${TARGET} koin</b> sebelum musim <b>${sec(SEASON_MS)} detik</b> habis. Lawanmu berlomba ke target yang sama.</p>
-        <p class="small" data-world>Dunia acak &middot; terverifikasi bisa dimenangkan</p>
-        <p class="small" data-best></p>
-        <button class="ofa-btn primary" type="button" data-act="start" data-startbtn>Mulai</button>
-        <button class="ofa-btn" type="button" data-act="help">Cara bermain</button>
+        <div class="ofa-head"><h3>Farming Mini</h3><span class="ofa-tag">SIMULASI</span></div>
+        <div class="ofa-body">
+          <p>Kelilingi farm, olah tanah, tanam, siram, panen &mdash; lalu jual di bin kayu. Raih <b>${TARGET} koin</b> sebelum musim <b>${sec(SEASON_MS)} detik</b> habis. Lawanmu berlomba ke target yang sama.</p>
+          <p class="small" data-world>Dunia acak &middot; terverifikasi bisa dimenangkan</p>
+          <p class="small" data-best></p>
+        </div>
+        <div class="ofa-foot"><span class="ofa-note">H: bantuan &middot; C: cheat &middot; P: jeda</span><button class="ofa-btn primary" type="button" data-act="start" data-startbtn data-label="Mulai">Mulai</button></div>
       </div>
     </div>
     <div class="ofa-ov" data-ov="over" hidden>
       <div class="ofa-card">
-        <h3 data-over-title>Selesai</h3>
-        <p data-over-reason></p>
-        <p class="small" data-over-score></p>
-        <p class="small" data-best2></p>
-        <button class="ofa-btn primary" type="button" data-act="start" data-startbtn>Main lagi &middot; dunia baru</button>
-        <button class="ofa-btn" type="button" data-exit>Keluar</button>
+        <div class="ofa-head"><h3 data-over-title>Selesai</h3></div>
+        <div class="ofa-body">
+          <p data-over-reason></p>
+          <p class="small" data-over-score></p>
+          <p class="small" data-best2></p>
+        </div>
+        <div class="ofa-foot"><span class="ofa-note"></span><button class="ofa-btn primary" type="button" data-act="start" data-startbtn data-label="Main lagi &middot; dunia baru">Main lagi &middot; dunia baru</button><button class="ofa-btn" type="button" data-exit>Keluar</button></div>
+      </div>
+    </div>
+    <div class="ofa-ov" data-ov="pause" hidden>
+      <div class="ofa-card">
+        <div class="ofa-head"><h3>Dijeda</h3></div>
+        <div class="ofa-body"><p>Waktu musim, pergerakan, dan Farmbot dihentikan sementara.</p></div>
+        <div class="ofa-foot"><span class="ofa-note">P / Esc untuk lanjut</span><button class="ofa-btn primary" type="button" data-resume>Lanjut</button></div>
       </div>
     </div>
     <div class="ofa-ov" data-ov="help" hidden>
-      <div class="ofa-card wide">
-        <h3>Cara bermain</h3>
-        <h4>Tujuan</h4>
-        <ul>
-          <li>Raih ${TARGET} koin sebelum musim ${sec(SEASON_MS)} detik berakhir. Panen masuk tas &mdash; jual semuanya di <b>bin kayu</b> dekat rumah.</li>
-          <li>Tanaman hanya tumbuh saat tanah basah. Kering ${sec(WITHER_MS)} detik = layu. Isi ulang teko di <b>kolam</b>.</li>
-          <li>Undian koin menentukan siapa jalan duluan; posisi Player 1/2 juga diacak tiap main.</li>
-        </ul>
-        <h4>Desktop (keyboard &amp; mouse)</h4>
-        <ul>
-          <li>WASD / panah: jalan &middot; klik petak: pakai alat &middot; E / Spasi: pakai alat di depan.</li>
-          <li>1&ndash;4: pilih alat &middot; Tab / Q: ganti benih &middot; Enter: mulai &middot; H: bantuan &middot; C: cheat &middot; Esc: tutup.</li>
-        </ul>
-        <h4>Mobile (sentuh)</h4>
-        <ul>
-          <li>Stik kiri: jalan &middot; tombol AKSI: pakai alat di depan &middot; ketuk petak: pakai alat di situ.</li>
-          <li>Ikon alat &amp; benih di sisi kanan.</li>
-        </ul>
-        <h4>Alat</h4>
-        <ul>
-          <li><b>Cangkul</b>: rumput jadi petak olah (dan membersihkan tanaman layu).</li>
-          <li><b>Benih</b>: tanam di petak kosong (koin dipotong otomatis).</li>
-          <li><b>Air</b>: sirami tanaman; pakai di kolam untuk isi ulang (${CAN_MAX} siraman).</li>
-          <li><b>Panen</b>: petik tanaman matang; dekat bin otomatis menjual isi tas.</li>
-        </ul>
-        <h4>Tanaman</h4>
-        <table class="ofa-table">
-          <tr><th>Tanaman</th><th>Beli</th><th>Tumbuh</th><th>Jual</th><th>Air tahan</th></tr>
-          <tr><td>Wortel</td><td>5</td><td>10 dtk</td><td>12</td><td>12 dtk</td></tr>
-          <tr><td>Tomat</td><td>10</td><td>20 dtk</td><td>28</td><td>8 dtk</td></tr>
-          <tr><td>Labu</td><td>18</td><td>32 dtk</td><td>55</td><td>7 dtk</td></tr>
-        </table>
-        <p class="small">Dunia dibuat acak tiap main dan selalu diverifikasi bisa dimenangkan (jalur ke kolam &amp; bin terjamin, lahan cukup, simulasi ekonomi lolos).</p>
-        <button class="ofa-btn primary" type="button" data-act="closehelp">Tutup</button>
+      <div class="ofa-card wide" role="dialog" aria-label="Cara bermain">
+        <div class="ofa-head"><h3>Cara bermain</h3><button class="ofa-btn" type="button" data-help-close aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
+        <div class="ofa-help">
+          <div>
+            <h4>Tujuan</h4>
+            <ul>
+              <li>Raih ${TARGET} koin sebelum musim ${sec(SEASON_MS)} detik berakhir. Panen masuk tas &mdash; jual semuanya di <b>bin kayu</b> dekat rumah.</li>
+              <li>Tanaman hanya tumbuh saat tanah basah. Kering ${sec(WITHER_MS)} detik = layu. Isi ulang teko di <b>kolam</b>.</li>
+              <li>Undian koin menentukan siapa jalan duluan; posisi Player 1/2 juga diacak tiap main.</li>
+            </ul>
+            <h4>Desktop (keyboard &amp; mouse)</h4>
+            <ul>
+              <li>WASD / panah: jalan &middot; klik petak: pakai alat &middot; E / Spasi: pakai alat di depan.</li>
+              <li>1&ndash;4: pilih alat &middot; Tab / Q: ganti benih &middot; Enter: mulai.</li>
+              <li>H: bantuan &middot; C: cheat &middot; P: jeda &middot; R: dunia baru &middot; Esc: tutup panel.</li>
+            </ul>
+            <h4>Mobile (sentuh)</h4>
+            <ul>
+              <li>Stik kiri: jalan &middot; tombol AKSI: pakai alat di depan &middot; ketuk petak: pakai alat di situ.</li>
+              <li>Ikon alat &amp; pemilih benih ada di bar atas.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Alat</h4>
+            <ul>
+              <li><b>Cangkul</b>: rumput jadi petak olah (dan membersihkan tanaman layu).</li>
+              <li><b>Benih</b>: tanam di petak kosong (koin dipotong otomatis).</li>
+              <li><b>Air</b>: sirami tanaman; pakai di kolam untuk isi ulang (${CAN_MAX} siraman).</li>
+              <li><b>Panen</b>: petik tanaman matang; dekat bin otomatis menjual isi tas.</li>
+            </ul>
+            <h4>Tanaman</h4>
+            <table class="ofa-table">
+              <tr><th>Tanaman</th><th>Beli</th><th>Tumbuh</th><th>Jual</th><th>Air tahan</th></tr>
+              <tr><td>Wortel</td><td>5</td><td>10 dtk</td><td>12</td><td>12 dtk</td></tr>
+              <tr><td>Tomat</td><td>10</td><td>20 dtk</td><td>28</td><td>8 dtk</td></tr>
+              <tr><td>Labu</td><td>18</td><td>32 dtk</td><td>55</td><td>7 dtk</td></tr>
+            </table>
+            <p class="small">Dunia dibuat acak tiap main dan selalu diverifikasi bisa dimenangkan (jalur ke kolam &amp; bin terjamin, lahan cukup, simulasi ekonomi lolos).</p>
+          </div>
+        </div>
+        <div class="ofa-foot"><span class="ofa-note">Tekan H untuk membuka lagi</span><button class="ofa-btn primary" type="button" data-help-close>Mengerti</button></div>
       </div>
     </div>
     <div class="ofa-ov" data-ov="cheats" hidden>
-      <div class="ofa-card wide">
-        <h3>Cheat</h3>
-        <p class="small" data-cheatnote>Mempermudah permainan. Permainan ditandai cheat &mdash; rekor tidak dicatat.</p>
+      <div class="ofa-card wide" role="dialog" aria-label="Cheat">
+        <div class="ofa-head"><h3>Cheat</h3><button class="ofa-btn" type="button" data-cheats-close aria-label="Tutup">${iconSVG("x", { size: 14 })}</button></div>
         <div class="ofa-cheats">
           <button class="ofa-cheat" type="button" data-cheat="coins">+100 koin<span>Tambah saldo</span></button>
           <button class="ofa-cheat" type="button" data-cheat="grow">Matang instan<span>Semua tanamanmu langsung matang</span></button>
@@ -446,15 +491,13 @@ export function mount(root, context = {}) {
           <button class="ofa-cheat" type="button" data-cheat="speed">Lari cepat<span data-cstate="speed">Mati</span></button>
           <button class="ofa-cheat" type="button" data-cheat="freeze">Bekukan waktu<span data-cstate="freeze">Mati</span></button>
         </div>
-        <button class="ofa-btn primary" type="button" data-act="closecheats">Tutup</button>
+        <div class="ofa-foot"><span class="ofa-note" data-cheatnote>Mempermudah permainan. Permainan ditandai cheat &mdash; rekor tidak dicatat.</span><button class="ofa-btn primary" type="button" data-cheats-close>Selesai</button></div>
       </div>
     </div>
   </section>
-  <div class="game-actions">
-    <button class="game-action-button" type="button" data-act="help">Bantuan</button>
-    <button class="game-action-button" type="button" data-act="cheats" data-btn="cheats">Cheat</button>
-    <button class="game-action-button" type="button" data-act="start" data-btn="restart" data-startbtn>Dunia baru</button>
-    <button class="game-action-button" type="button" data-exit>Keluar</button>
+  <div class="ofa-touch">
+    <div class="ofa-stick" data-stick aria-label="Stik gerak"><i data-knob></i></div>
+    <button class="ofa-use" type="button" data-usebtn aria-label="Aksi">AKSI</button>
   </div>
 </div>`;
 
@@ -467,7 +510,9 @@ export function mount(root, context = {}) {
     const hudMoney = q('[data-hud="money"]'), hudTime = q('[data-hud="time"]'), hudCan = q('[data-hud="can"]'), hudInv = q('[data-hud="inv"]'), hudScore = q('[data-hud="score"]');
     const statusEl = q("[data-status]"), statusDot = q("[data-statusdot]");
     const toastEl = q("[data-toast]"), hintEl = q("[data-hint]");
-    const ovReady = q('[data-ov="ready"]'), ovOver = q('[data-ov="over"]'), ovHelp = q('[data-ov="help"]'), ovCheats = q('[data-ov="cheats"]');
+    const ovReady = q('[data-ov="ready"]'), ovOver = q('[data-ov="over"]'), ovPause = q('[data-ov="pause"]'), ovHelp = q('[data-ov="help"]'), ovCheats = q('[data-ov="cheats"]');
+    const pauseBtn = q("[data-pause]"), pauseLabel = pauseBtn.querySelector(".ofa-btn-label"), pauseIcon = q("[data-pause-icon]");
+    const cheatsBtn = q("[data-cheats]"), restartBtn = q("[data-restart]");
     const overTitle = q("[data-over-title]"), overReason = q("[data-over-reason]"), overScore = q("[data-over-score]");
     const worldEl = q("[data-world]"), bestEl = q("[data-best]"), bestEl2 = q("[data-best2]");
     const seedDot = q("[data-seeddot]"), seedLabel = q("[data-seedlabel]");
@@ -484,11 +529,10 @@ export function mount(root, context = {}) {
     let lastSentInput = { x: 0, y: 0 };
     let tool = "hoe", seedSel = "carrot";
     let hoverTile = null;
-    let helpOpen = false, cheatsOpen = false;
     let particles = [];
     let disp = [{ x: 0, y: 0, init: false }, { x: 0, y: 0, init: false }];
     let pred = null, frozenLocal = 0;
-    let lastAnnounceKey = "", toastTimer = 0;
+    let lastAnnounceKey = "", toastTimer = 0, toastDue = 0, freezeAt = 0;
     let botGoal = null, botPath = [], botClock = 0, botRng = Math.random;
     let cw = 300, ch = 300, dpr = 1;
     const cam = { x: 0, y: 0, ts: 36 };
@@ -1188,15 +1232,62 @@ export function mount(root, context = {}) {
     }
 
     /* ---------------- HUD / overlay ---------------- */
+    function isFrozen() { return helpOpen || cheatsOpen || paused; }
+    function armToast() {
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            toastTimer = 0;
+            toastEl.style.opacity = "0";
+            toastEl.hidden = true;
+        }, Math.max(0, toastDue - Date.now()));
+    }
     function toast(text, ms) {
         toastEl.textContent = text;
         toastEl.hidden = false;
         toastEl.style.opacity = "1";
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => {
-            toastEl.style.opacity = "0";
-            toastTimer = setTimeout(() => { toastEl.hidden = true; }, 260);
-        }, ms || 1900);
+        toastDue = Date.now() + (ms || 1900);
+        armToast();
+    }
+    /* Overlay/pause: sim, bot dan timer dijeda; anchor wall-clock digeser saat lanjut. */
+    function freezeTimers() {
+        if (freezeAt) return;
+        freezeAt = Date.now();
+        if (toastTimer) { clearTimeout(toastTimer); toastTimer = 0; }
+        acc = 0;
+        keys = Object.create(null);
+        stick.x = 0; stick.y = 0; stick.id = null;
+        if (knobEl) knobEl.style.transform = "translate(0,0)";
+    }
+    function thawTimers() {
+        if (!freezeAt) return;
+        const shift = Date.now() - freezeAt;
+        freezeAt = 0;
+        toastDue += shift;
+        if (!toastEl.hidden) armToast();
+        lastPub += shift; lastHud += shift; lastT = 0; acc = 0;
+    }
+    function syncFreeze() { if (isFrozen()) freezeTimers(); else thawTimers(); }
+    function toggleHelp(on) {
+        helpOpen = typeof on === "boolean" ? on : !helpOpen;
+        if (helpOpen) { cheatsOpen = false; paused = false; }
+        syncFreeze(); renderHud();
+    }
+    function toggleCheats(on) {
+        if (!canCheat()) return;
+        cheatsOpen = typeof on === "boolean" ? on : !cheatsOpen;
+        if (cheatsOpen) { helpOpen = false; paused = false; }
+        syncFreeze(); renderHud();
+    }
+    function togglePause(on) {
+        paused = typeof on === "boolean" ? on : !paused;
+        if (paused) { helpOpen = false; cheatsOpen = false; }
+        syncFreeze(); renderHud();
+    }
+    function restartMatch() {
+        helpOpen = false; cheatsOpen = false; paused = false;
+        syncFreeze();
+        if (canStart()) submitAction({ type: "start" });
+        renderHud();
     }
     function contextHint() {
         if (!state || state.phase !== "play") return "";
@@ -1223,10 +1314,20 @@ export function mount(root, context = {}) {
     }
     function updateOverlays() {
         const phase = state ? state.phase : "ready";
-        ovReady.hidden = helpOpen || cheatsOpen || phase !== "ready";
-        ovOver.hidden = helpOpen || cheatsOpen || phase !== "over";
+        ovReady.hidden = helpOpen || cheatsOpen || paused || phase !== "ready";
+        ovOver.hidden = helpOpen || cheatsOpen || paused || phase !== "over";
+        ovPause.hidden = helpOpen || cheatsOpen || !paused;
         ovHelp.hidden = !helpOpen;
-        ovCheats.hidden = !cheatsOpen;
+        ovCheats.hidden = !cheatsOpen || helpOpen;
+        if (pauseLabel) pauseLabel.textContent = paused ? "Lanjut" : "Jeda";
+        pauseBtn.setAttribute("aria-label", paused ? "Lanjut" : "Jeda");
+        pauseBtn.setAttribute("title", paused ? "Lanjut (P)" : "Jeda (P)");
+        if (pauseIcon.dataset.state !== String(paused)) {
+            pauseIcon.dataset.state = String(paused);
+            pauseIcon.innerHTML = iconSVG(paused ? "play" : "pause", { size: 14 });
+        }
+        if (cheatsBtn) cheatsBtn.hidden = !canCheat();
+        if (restartBtn) restartBtn.disabled = !canStart();
     }
     function renderHud() {
         updateOverlays();
@@ -1234,11 +1335,8 @@ export function mount(root, context = {}) {
         for (let i = 0; i < startBtns.length; i++) {
             startBtns[i].disabled = !canStart();
             if (!canStart()) startBtns[i].textContent = "Menunggu host...";
+            else if (startBtns[i].dataset.label) startBtns[i].textContent = startBtns[i].dataset.label;
         }
-        const restartBtn = q('[data-btn="restart"]');
-        if (restartBtn) restartBtn.disabled = !canStart();
-        const cheatBtn = q('[data-btn="cheats"]');
-        if (cheatBtn) cheatBtn.hidden = !canCheat();
         const tools = qa("[data-tool]");
         for (let i = 0; i < tools.length; i++) tools[i].classList.toggle("sel", tools[i].dataset.tool === tool);
         seedDot.style.background = CROPS[seedSel].color;
@@ -1305,40 +1403,47 @@ export function mount(root, context = {}) {
         raf = requestAnimationFrame(frame);
         const dt = Math.min(100, lastT ? t - lastT : 16);
         lastT = t;
-        if (authority) {
-            if (state && state.phase === "play") {
-                acc += dt;
-                while (acc >= SIM_MS) { simStep(SIM_MS); acc -= SIM_MS; }
-            } else acc = 0;
-        } else {
-            guestPredict(dt);
+        if (!isFrozen()) {
+            if (authority) {
+                if (state && state.phase === "play") {
+                    acc += dt;
+                    while (acc >= SIM_MS) { simStep(SIM_MS); acc -= SIM_MS; }
+                } else acc = 0;
+            } else {
+                guestPredict(dt);
+            }
+            updateParticles(dt);
+            updateDisp(dt);
         }
-        updateParticles(dt);
-        updateDisp(dt);
         draw(t);
         if (t - lastHud > 150) { lastHud = t; renderHud(); }
     }
 
     /* ---------------- event: klik / sentuh ---------------- */
     function handleClick(event) {
-        const exitBtn = event.target.closest("[data-exit]");
-        if (exitBtn) { onExit(); return; }
-        const toolBtn = event.target.closest("[data-tool]");
-        if (toolBtn) { setTool(toolBtn.dataset.tool); toolBtn.blur(); return; }
-        const cheatBtn = event.target.closest("[data-cheat]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-cheats-close]")) { toggleCheats(false); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { togglePause(false); return; }
+        if (t.closest("[data-restart]")) { restartMatch(); return; }
+        const cheatBtn = t.closest("[data-cheat]");
         if (cheatBtn) {
             if (canCheat()) submitAction({ type: "cheat", id: cheatBtn.dataset.cheat });
             cheatBtn.blur();
             return;
         }
-        const btn = event.target.closest("[data-act]");
+        if (isFrozen()) return;
+        const toolBtn = t.closest("[data-tool]");
+        if (toolBtn) { setTool(toolBtn.dataset.tool); toolBtn.blur(); return; }
+        const btn = t.closest("[data-act]");
         if (!btn) return;
         const act = btn.dataset.act;
         if (act === "start") { if (canStart()) submitAction({ type: "start" }); }
-        else if (act === "help") { helpOpen = true; cheatsOpen = false; updateOverlays(); }
-        else if (act === "closehelp") { helpOpen = false; updateOverlays(); }
-        else if (act === "cheats") { if (canCheat()) { cheatsOpen = true; helpOpen = false; updateOverlays(); } }
-        else if (act === "closecheats") { cheatsOpen = false; updateOverlays(); }
         else if (act === "seedcycle") cycleSeed();
         btn.blur();
     }
@@ -1350,7 +1455,7 @@ export function mount(root, context = {}) {
     }
     function onCanvasDown(e) {
         if (e.button != null && e.button !== 0) return;
-        if (!state || state.phase !== "play" || helpOpen || cheatsOpen) return;
+        if (!state || state.phase !== "play" || isFrozen()) return;
         const t = canvasTile(e);
         if (t) submitUseAt(t[0], t[1]);
     }
@@ -1371,6 +1476,7 @@ export function mount(root, context = {}) {
     }
     function onStickDown(e) {
         e.preventDefault();
+        if (isFrozen()) return;
         stick.id = e.pointerId;
         if (stickEl.setPointerCapture) { try { stickEl.setPointerCapture(e.pointerId); } catch (err) { } }
         stickSet(e);
@@ -1381,7 +1487,7 @@ export function mount(root, context = {}) {
         stick.id = null; stick.x = 0; stick.y = 0;
         knobEl.style.transform = "translate(0,0)";
     }
-    function onUseDown(e) { e.preventDefault(); frontUse(); }
+    function onUseDown(e) { e.preventDefault(); if (!isFrozen()) frontUse(); }
 
     /* ---------------- event: keyboard ---------------- */
     const MOVE_KEYS = {
@@ -1394,17 +1500,30 @@ export function mount(root, context = {}) {
         if (destroyed || e.ctrlKey || e.metaKey || e.altKey) return;
         const tag = e.target && e.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target && e.target.isContentEditable)) return;
+        if (e.repeat && !MOVE_KEYS[e.code]) return;
+        /* Prioritas: help → cheats → pause → Escape → aksi game. */
+        if (e.code === "KeyH") { toggleHelp(); e.preventDefault(); return; }
+        if (helpOpen) {
+            if (e.code === "Escape" || e.code === "Enter" || e.code === "NumpadEnter" || e.code === "KeyP") { toggleHelp(false); e.preventDefault(); }
+            return;
+        }
+        if (e.code === "KeyC") { toggleCheats(); e.preventDefault(); return; }
+        if (cheatsOpen) {
+            if (e.code === "Escape" || e.code === "Enter" || e.code === "NumpadEnter" || e.code === "KeyP") { toggleCheats(false); e.preventDefault(); }
+            return;
+        }
+        if (e.code === "KeyP") { togglePause(); e.preventDefault(); return; }
+        if (e.code === "Escape") { if (paused) togglePause(false); e.preventDefault(); return; }
+        if (e.code === "KeyR") { restartMatch(); e.preventDefault(); return; }
+        if (isFrozen()) return;
         const mv = MOVE_KEYS[e.code];
         if (mv) { keys[mv] = true; e.preventDefault(); return; }
-        if (e.repeat) return;
         if (e.code === "Space" || e.code === "KeyE") { e.preventDefault(); frontUse(); return; }
         if (e.code === "Tab" || e.code === "KeyQ") { e.preventDefault(); cycleSeed(); return; }
         if (e.code >= "Digit1" && e.code <= "Digit4") { setTool(TOOL_IDS[Number(e.code.slice(5)) - 1]); return; }
-        if (e.code === "KeyH") { helpOpen = !helpOpen; cheatsOpen = false; updateOverlays(); return; }
-        if (e.code === "KeyC") { if (canCheat()) { cheatsOpen = !cheatsOpen; helpOpen = false; updateOverlays(); } return; }
-        if (e.code === "Escape") { helpOpen = false; cheatsOpen = false; updateOverlays(); return; }
         if (e.code === "Enter" || e.code === "NumpadEnter") {
-            if (state && state.phase !== "play" && canStart() && !helpOpen && !cheatsOpen) submitAction({ type: "start" });
+            if (state && state.phase !== "play" && canStart()) submitAction({ type: "start" });
+            e.preventDefault();
         }
     }
     function onKeyUp(e) {
@@ -1455,6 +1574,7 @@ export function mount(root, context = {}) {
         state = newMatch(randSeed(), [sanitizeName(playerName), "Farmbot"], 0);
         publish(true);
     }
+    syncFreeze();
     renderHud();
     raf = requestAnimationFrame(frame);
 

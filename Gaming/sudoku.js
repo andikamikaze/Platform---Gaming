@@ -12,6 +12,8 @@ SUDOKU - minimalist 9x9 sudoku (template: export META + mount)
 - Cheat overlay, mobile virtual pad + D-pad, full keyboard/mouse.
 ============================================================= */
 
+import { iconSVG } from "../JS/icons.js";
+
 export const META = {
     id: "sudoku",
     name: "Sudoku",
@@ -200,6 +202,8 @@ export function mount(root, context = {}) {
     let state = null;
 
     /* ----- local (per-client) UI state: never published ----- */
+    const HELP_KEY = "sudokuHelpSeen";
+    const icon = (name) => iconSVG(name, { size: 14 });
     const ZERO = new Array(81).fill(0);
     let notes = new Array(81).fill(0);   // pencil bitmask per cell (private)
     let notesMode = false;
@@ -207,6 +211,8 @@ export function mount(root, context = {}) {
     let selected = -1;
     let showHelp = false;
     let showCheats = false;
+    let paused = false;
+    let pauseStart = 0;
     let toast = "";
     let toastTimer = null;
     let botTimer = null;
@@ -230,6 +236,7 @@ export function mount(root, context = {}) {
     const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
     const fmt = (s) => ((s / 60) | 0) + ":" + String(s % 60).padStart(2, "0");
     const SEAT_COLORS = ["#2563eb", "#d97706"];
+    const blocked = () => paused || showHelp || showCheats;
 
     function loadBest() {
         try {
@@ -248,125 +255,154 @@ export function mount(root, context = {}) {
         } catch { }
     }
 
-    /* ----- skeleton (minimalist light theme, scoped under .sdk) ----- */
+    /* ----- skeleton: single HUD + fill-height board + sibling pad ----- */
     root.innerHTML = `
 <style>
-.sdk{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--box:#94a3b8;--soft:#f8fafc;--blue:#2563eb;--blue-bg:#dbeafe;--amber:#d97706;--green:#059669;--red:#dc2626;color:var(--ink);font-variant-numeric:tabular-nums}
+.sdk{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--box:#94a3b8;--soft:#f8fafc;--blue:#2563eb;--blue-bg:#dbeafe;--amber:#d97706;--green:#059669;--red:#dc2626;color:var(--ink);font-variant-numeric:tabular-nums;color-scheme:light;min-width:0;min-height:0;flex:1 1 auto;overflow-x:clip;-webkit-tap-highlight-color:transparent}
 .sdk [hidden]{display:none!important}
-.sdk .sdk-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 12px}
-.sdk .sdk-chips{display:inline-flex;gap:8px;flex-wrap:wrap}
-.sdk .sdk-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:var(--soft);font-size:12.5px;color:var(--mut);white-space:nowrap}
-.sdk .sdk-chip b{color:var(--ink);font-weight:700}
-.sdk .sdk-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
-.sdk .sdk-spacer{flex:1}
-.sdk .sdk-btn{padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;touch-action:manipulation;transition:background .12s,border-color .12s}
-.sdk .sdk-btn:hover:not(:disabled){background:var(--soft);border-color:var(--box)}
-.sdk .sdk-btn:disabled{opacity:.4;cursor:default}
-.sdk .sdk-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
-.sdk .sdk-btn.primary:hover:not(:disabled){background:#1e293b}
-.sdk .sdk-btn.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
-.sdk .sdk-big{padding:10px 22px;font-size:14px}
-.sdk .sdk-stage{position:relative;display:flex;gap:18px;align-items:flex-start;justify-content:center;flex-wrap:wrap;padding:2px 0}
-.sdk .sdk-board{display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);width:min(92vw,432px);aspect-ratio:1;background:#fff;border:2px solid #334155;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.08);user-select:none;touch-action:manipulation}
-.sdk .sdk-cell{display:flex;align-items:center;justify-content:center;font-size:clamp(15px,4.6vw,22px);font-weight:600;color:var(--blue);cursor:pointer;background:#fff;border-right:1px solid var(--line);border-bottom:1px solid var(--line);transition:background .12s}
-.sdk .sdk-cell:hover{background:#f1f5f9}
-.sdk .sdk-nr{border-right:none}
-.sdk .sdk-nb{border-bottom:none}
-.sdk .sdk-bl{border-left:2px solid var(--box)}
-.sdk .sdk-bt{border-top:2px solid var(--box)}
-.sdk .sdk-given{color:var(--ink);font-weight:800;background:var(--soft)}
-.sdk .sdk-p1{color:var(--amber)}
-.sdk .sdk-hintv{color:var(--green)}
-.sdk .sdk-peer{background:#f1f5f9}
-.sdk .sdk-same{background:var(--blue-bg);font-weight:800}
-.sdk .sdk-sel{background:var(--blue-bg);box-shadow:inset 0 0 0 2px var(--blue)}
-.sdk .sdk-ghost{color:#94a3b8;font-weight:500;font-style:italic}
-.sdk .sdk-notes{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);width:100%;height:100%;padding:2px;box-sizing:border-box}
-.sdk .sdk-notes i{display:flex;align-items:center;justify-content:center;font-style:normal;font-size:clamp(6px,1.7vw,9.5px);font-weight:600;color:var(--mut);line-height:1}
-.sdk .sdk-flash{animation:sdk-fl .5s}
-.sdk .sdk-pop{animation:sdk-pop .25s}
+.sdk *,.sdk *::before,.sdk *::after{box-sizing:border-box}
+.sdk :where(svg,canvas,img){max-width:100%;height:auto}
+.sdk :where(button,[role="button"],select,input){touch-action:manipulation}
+.sdk :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.sdk-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sdk-chips{display:inline-flex;gap:8px;flex-wrap:wrap}
+.sdk-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:var(--soft);font-size:12.5px;color:var(--mut);white-space:nowrap}
+.sdk-chip b{color:var(--ink);font-weight:700}
+.sdk-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.sdk-spacer{flex:1 1 auto}
+.sdk-btn{padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;touch-action:manipulation;transition:background .12s,border-color .12s}
+.sdk-btn:hover:not(:disabled){background:var(--soft);border-color:var(--box)}
+.sdk-btn:disabled{opacity:.4;cursor:default}
+.sdk-btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.sdk-btn.primary:hover:not(:disabled){background:#1e293b}
+.sdk-btn.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+.sdk-icon-btn{display:inline-flex;align-items:center;gap:6px}
+.sdk-icon-btn svg{flex:none;display:block}
+.sdk-btn-label{white-space:nowrap}
+.sdk-big{padding:10px 22px;font-size:14px}
+.sdk-app.game-fill>.sdk-board[data-board]{flex:1 1 auto;min-height:0;aspect-ratio:auto}
+.sdk-board{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:8px;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden;container-type:size}
+.sdk-gridboard{width:min(100cqw,100cqh,432px);height:auto;max-width:100%;aspect-ratio:1;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);background:#fff;border:2px solid #334155;border-radius:10px;overflow:hidden;box-shadow:0 4px 12px rgba(15,23,42,.08);user-select:none;touch-action:manipulation}
+.sdk-cell{display:flex;align-items:center;justify-content:center;font-size:clamp(15px,4.6vw,22px);font-weight:600;color:var(--blue);cursor:pointer;background:#fff;border-right:1px solid var(--line);border-bottom:1px solid var(--line);transition:background .12s}
+.sdk-cell:hover{background:#f1f5f9}
+.sdk-nr{border-right:none}
+.sdk-nb{border-bottom:none}
+.sdk-bl{border-left:2px solid var(--box)}
+.sdk-bt{border-top:2px solid var(--box)}
+.sdk-given{color:var(--ink);font-weight:800;background:var(--soft)}
+.sdk-p1{color:var(--amber)}
+.sdk-hintv{color:var(--green)}
+.sdk-peer{background:#f1f5f9}
+.sdk-same{background:var(--blue-bg);font-weight:800}
+.sdk-sel{background:var(--blue-bg);box-shadow:inset 0 0 0 2px var(--blue)}
+.sdk-ghost{color:#94a3b8;font-weight:500;font-style:italic}
+.sdk-notes{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);width:100%;height:100%;padding:2px;box-sizing:border-box}
+.sdk-notes i{display:flex;align-items:center;justify-content:center;font-style:normal;font-size:clamp(6px,1.7vw,9.5px);font-weight:600;color:var(--mut);line-height:1}
+.sdk-flash{animation:sdk-fl .5s}
+.sdk-pop{animation:sdk-pop .25s}
 @keyframes sdk-fl{0%,100%{background:#fee2e2}50%{background:#fecaca}}
 @keyframes sdk-pop{0%{transform:scale(1.16)}100%{transform:scale(1)}}
-.sdk .sdk-side{display:flex;flex-direction:column;gap:10px;width:176px}
-.sdk .sdk-sidrest{display:flex;flex-direction:column;gap:10px}
-.sdk .sdk-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.sdk .sdk-key{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:46px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font-family:inherit;touch-action:manipulation}
-.sdk .sdk-key b{font-size:19px;font-weight:700;color:var(--ink)}
-.sdk .sdk-key small{font-size:9.5px;color:var(--mut);line-height:1}
-.sdk .sdk-key:hover:not(:disabled){background:var(--soft);border-color:var(--box)}
-.sdk .sdk-key:disabled{opacity:.3;cursor:default}
-.sdk .sdk-tools{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.sdk .sdk-tool{height:40px;padding:0 4px;font-size:11.5px}
-.sdk .sdk-dpad{display:grid;grid-template-columns:repeat(3,36px);grid-template-rows:repeat(2,30px);gap:4px;justify-content:center}
-.sdk .sdk-dbtn{padding:0;font-size:11px;line-height:1}
-.sdk .sdk-legend{display:flex;flex-wrap:wrap;gap:8px;font-size:10.5px;color:var(--mut);justify-content:center}
-.sdk .sdk-legend span{display:inline-flex;align-items:center;gap:4px}
-.sdk .sdk-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(248,250,252,.9);backdrop-filter:blur(3px);padding:12px}
-.sdk .sdk-ov-top{z-index:6}
-.sdk .sdk-ov-top2{z-index:7}
-.sdk .sdk-card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 48px rgba(15,23,42,.14);padding:20px;max-width:440px;width:100%;max-height:100%;overflow:auto;text-align:center;box-sizing:border-box}
-.sdk .sdk-card h3{margin:0 0 6px;font-size:20px}
-.sdk .sdk-sub{margin:0 0 12px;font-size:13px;color:var(--mut);line-height:1.55}
-.sdk .sdk-seg{display:flex;gap:6px;justify-content:center;margin:0 0 10px;flex-wrap:wrap}
-.sdk .sdk-seg .sdk-btn{flex:1;min-width:82px}
-.sdk .sdk-stats{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:0 0 14px}
-.sdk .sdk-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#fef3c7;color:#b45309;font-size:11px;font-weight:700;margin:0 0 12px}
-.sdk .sdk-help{text-align:left;font-size:13px;line-height:1.6;color:#334155}
-.sdk .sdk-help h4{margin:12px 0 4px;font-size:13px;color:var(--ink)}
-.sdk .sdk-help ul{margin:4px 0;padding-left:18px}
-.sdk .sdk-help kbd{background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:11.5px;font-family:inherit}
-.sdk .sdk-cheats{display:flex;flex-direction:column;gap:6px;text-align:left}
-.sdk .sdk-cheat{display:flex;flex-direction:column;gap:2px;align-items:flex-start;padding:9px 12px}
-.sdk .sdk-cheat small{color:var(--mut);font-size:11px;font-weight:500}
-.sdk .sdk-foot{margin-top:12px;font-size:11.5px;color:var(--mut);text-align:center;line-height:1.7}
-@media (max-width:760px){
-.sdk .sdk-stage{flex-direction:column;align-items:center}
-.sdk .sdk-side{width:min(92vw,432px);flex-direction:row;align-items:flex-start}
-.sdk .sdk-pad{flex:1;min-width:140px}
-.sdk .sdk-sidrest{flex:1;min-width:140px}
-.sdk .sdk-key{height:42px}
+.sdk-pad{display:flex;flex-direction:column;gap:8px;align-items:center;margin-top:10px}
+.sdk-padmain{display:flex;gap:10px;align-items:flex-start;justify-content:center;flex-wrap:wrap;width:100%}
+.sdk-padkeys{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;flex:1 1 180px;max-width:300px}
+.sdk-key{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:46px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font-family:inherit;touch-action:manipulation}
+.sdk-key b{font-size:19px;font-weight:700;color:var(--ink)}
+.sdk-key small{font-size:9.5px;color:var(--mut);line-height:1}
+.sdk-key:hover:not(:disabled){background:var(--soft);border-color:var(--box)}
+.sdk-key:disabled{opacity:.3;cursor:default}
+.sdk-sidrest{display:flex;flex-direction:column;gap:8px;flex:0 1 150px}
+.sdk-tools{display:grid;grid-template-columns:1fr;gap:6px}
+.sdk-tool{height:36px;padding:0 6px;font-size:11.5px}
+.sdk-dpad{display:grid;grid-template-columns:repeat(3,36px);grid-template-rows:repeat(2,30px);gap:4px;justify-content:center}
+.sdk-dbtn{padding:0;font-size:11px;line-height:1}
+.sdk-legend{display:flex;flex-wrap:wrap;gap:8px;font-size:10.5px;color:var(--mut);justify-content:center}
+.sdk-legend span{display:inline-flex;align-items:center;gap:4px}
+.sdk-ov{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(248,250,252,.9);backdrop-filter:blur(3px)}
+.sdk-ov-pause{z-index:5}
+.sdk-ov-top{z-index:6}
+.sdk-ov-top2{z-index:7}
+.sdk-card{display:flex;flex-direction:column;width:min(440px,100%);max-height:100%;padding:18px;border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 12px rgba(15,23,42,.14);background:#fff;overflow:hidden;text-align:center;box-sizing:border-box}
+.sdk-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;text-align:left}
+.sdk-head h3{margin:0;font-size:18px}
+.sdk-tag{font:600 10px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 9px;white-space:nowrap}
+.sdk-body,.sdk-cheats,.sdk-help,.sdk-stats{flex:1 1 auto;min-height:0;overflow:auto}
+.sdk-sub{margin:0 0 12px;font-size:13px;color:var(--mut);line-height:1.55}
+.sdk-seg{display:flex;gap:6px;justify-content:center;margin:0 0 10px;flex-wrap:wrap}
+.sdk-seg .sdk-btn{flex:1;min-width:82px}
+.sdk-stats{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:0 0 14px}
+.sdk-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#fef3c7;color:#b45309;font-size:11px;font-weight:700;margin:0 0 12px}
+.sdk-help{text-align:left;font-size:13px;line-height:1.6;color:#334155}
+.sdk-help h4{margin:12px 0 4px;font-size:13px;color:var(--ink)}
+.sdk-help ul{margin:4px 0;padding-left:18px}
+.sdk-help kbd{background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:11.5px;font-family:inherit}
+.sdk-cheats{display:flex;flex-direction:column;gap:6px;text-align:left}
+.sdk-cheat{display:flex;flex-direction:column;gap:2px;align-items:flex-start;padding:9px 12px}
+.sdk-cheat small{color:var(--mut);font-size:11px;font-weight:500}
+.sdk-foot{flex:none;margin-top:12px;font-size:11.5px;color:var(--mut);text-align:center;line-height:1.7}
+.sdk-foot .sdk-note{margin-right:auto}
+/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
+.sdk :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"]){flex-wrap:wrap;min-width:0;gap:8px}
+.sdk :is([class*="card"],[class*="panel"],[class*="sheet"],[class*="wrap"]){border-radius:12px;box-shadow:none}
+.sdk :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
+.sdk :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
+@media (max-width:480px){.sdk :where(kbd,[class*="kbd"]){display:none}}
+@media (pointer:coarse){.sdk :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}}
+@media (prefers-reduced-motion:reduce){.sdk *,.sdk *::before,.sdk *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* --- fill-height + mobile refinements (LAST: beat pointer:coarse 44px) --- */
+@media (max-width:640px){
+.sdk-app.game-fill>.sdk-board[data-board]{flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
+.sdk-app .sdk-hud{gap:5px;margin-bottom:8px}
+.sdk-app .sdk-hud .sdk-chip{padding:4px 6px;font-size:9px}
+.sdk-app .sdk-hud .sdk-chip[data-hud="best"]{display:none}
+.sdk-app .sdk-hud .sdk-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+.sdk-app .sdk-hud .sdk-btn-label,.sdk-app .sdk-hud .sdk-spacer{display:none}
+.sdk-app .sdk-gridboard{width:min(100cqw,100cqh,432px)}
+.sdk-app .sdk-padkeys{flex:1 1 100%;max-width:none}
+.sdk-app .sdk-sidrest{flex:1 1 100%}
+.sdk-app .sdk-ov{padding:8px}
+.sdk-app .sdk-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
+.sdk-app .sdk-body,.sdk-app .sdk-cheats,.sdk-app .sdk-help,.sdk-app .sdk-stats{scrollbar-width:none}
+.sdk-app .sdk-body::-webkit-scrollbar,.sdk-app .sdk-cheats::-webkit-scrollbar,.sdk-app .sdk-help::-webkit-scrollbar,.sdk-app .sdk-stats::-webkit-scrollbar{display:none}
+.sdk-app .sdk-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
+}
+@media (pointer:coarse){
+.sdk-app .sdk-hud .sdk-btn{min-height:32px;min-width:0;padding:5px 9px;font-size:9px}
+.sdk-app .sdk-card .sdk-btn{min-height:44px}
 }
 </style>
-<div class="game-app sdk">
-  <div class="game-intro">
-    <div><h2>Sudoku</h2><p>Classic 9&times;9 logic puzzle &mdash; every row, column and 3&times;3 box holds 1&ndash;9. Every puzzle has exactly one solution.</p></div>
-    <span class="game-status"><i class="game-status-dot" data-el="dot"></i><span data-status>Ready</span></span>
+<div class="game-app sdk sdk-app game-fill" data-sdk>
+  <div class="sdk-hud">
+    <span class="sdk-chip">TIME <b data-hud="time">0:00</b></span>
+    <span class="sdk-chip"><i class="sdk-dot" data-el="dot"></i><b data-el="statustxt">Ready</b></span>
+    <span class="sdk-chips" data-el="chips"></span>
+    <span class="sdk-spacer"></span>
+    <button class="sdk-btn" type="button" data-act="diff" data-el="diff" title="Cycle difficulty (starts a new puzzle)">Easy</button>
+    <button class="sdk-btn sdk-icon-btn" type="button" data-act="notestoggle" data-el="notesbtn" aria-label="Notes" title="Pencil mode (N)">${icon("pencil")}<span class="sdk-btn-label">Notes</span></button>
+    <button class="sdk-btn sdk-icon-btn" type="button" data-act="hint" data-el="hintbtn" aria-label="Hint" title="Hint (T)">${icon("lightbulb")}<span class="sdk-btn-label">Hint 3</span></button>
+    <button class="sdk-btn sdk-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${icon("helpCircle")}<span class="sdk-btn-label">Help</span></button>
+    <button class="sdk-btn sdk-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${icon("wrench")}<span class="sdk-btn-label">Cheats</span></button>
+    <button class="sdk-btn sdk-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)"><span data-el="pauseicon">${icon("pause")}</span><span class="sdk-btn-label">Pause</span></button>
+    <button class="sdk-btn sdk-icon-btn" type="button" data-restart aria-label="Restart" title="Restart (R)">${icon("refresh")}<span class="sdk-btn-label">Restart</span></button>
+    <button class="sdk-btn sdk-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${icon("logOut")}<span class="sdk-btn-label">Exit game</span></button>
   </div>
-  <section class="game-panel" data-board>
-    <div class="sdk-bar">
-      <button class="sdk-btn" type="button" data-act="diff" data-el="diff" title="Cycle difficulty (starts a new puzzle)">Easy</button>
-      <span class="sdk-chip">Time <b data-hud="time">0:00</b></span>
-      <span class="sdk-chips" data-el="chips"></span>
-      <span class="sdk-spacer"></span>
-      <button class="sdk-btn" type="button" data-act="help" title="How to play (?)">How to play</button>
-      <button class="sdk-btn" type="button" data-act="cheats" data-el="cheatbtn" title="Cheat menu (C)">Cheats</button>
-      <button class="sdk-btn" type="button" data-act="restart" data-el="restart">Restart</button>
-    </div>
-    <div class="sdk-stage">
-      <div class="sdk-board" data-el="board" role="grid" aria-label="Sudoku board"></div>
-      <div class="sdk-side">
-        <div class="sdk-pad" data-el="pad"></div>
-        <div class="sdk-sidrest">
-          <div class="sdk-tools">
-            <button class="sdk-btn sdk-tool" type="button" data-act="erase" data-el="erasebtn" title="Clear notes (Backspace)">Erase</button>
-            <button class="sdk-btn sdk-tool" type="button" data-act="notestoggle" data-el="notesbtn" title="Pencil mode (N / right-click)">Notes</button>
-            <button class="sdk-btn sdk-tool" type="button" data-act="hint" data-el="hintbtn" title="Hint (H)">Hint 3</button>
-          </div>
-          <div class="sdk-dpad">
-            <span></span><button class="sdk-btn sdk-dbtn" type="button" data-act="move" data-dir="up" aria-label="Move up">&#9650;</button><span></span>
-            <button class="sdk-btn sdk-dbtn" type="button" data-act="move" data-dir="left" aria-label="Move left">&#9664;</button><button class="sdk-btn sdk-dbtn" type="button" data-act="move" data-dir="down" aria-label="Move down">&#9660;</button><button class="sdk-btn sdk-dbtn" type="button" data-act="move" data-dir="right" aria-label="Move right">&#9654;</button>
-          </div>
-          <div class="sdk-legend" data-el="legend"></div>
-        </div>
+  <section class="game-panel sdk-board" data-board>
+    <div class="sdk-gridboard" data-el="board" role="grid" aria-label="Sudoku board"></div>
+    <div class="sdk-ov" data-ov="wait" hidden><div class="sdk-card"><div class="sdk-head"><h3>Connecting…</h3></div><div class="sdk-body"><p class="sdk-sub">Waiting for the host to set up the game.</p></div></div></div>
+    <div class="sdk-ov" data-ov="lobby" hidden><div class="sdk-card" data-el="lobbycard"></div></div>
+    <div class="sdk-ov" data-ov="over" hidden><div class="sdk-card" data-el="overcard"></div></div>
+    <div class="sdk-ov sdk-ov-pause" data-ov="pause" hidden>
+      <div class="sdk-card">
+        <div class="sdk-head"><h3>Paused</h3><span class="sdk-tag">Sudoku</span></div>
+        <div class="sdk-body"><p class="sdk-sub">The clock and the bot are frozen. Take your time.</p></div>
+        <div class="sdk-foot"><span class="sdk-note">Press P or Esc to resume</span><button class="sdk-btn primary" type="button" data-resume>Resume</button></div>
       </div>
-      <div class="sdk-ov" data-ov="wait" hidden><div class="sdk-card"><h3>Connecting&hellip;</h3><p class="sdk-sub">Waiting for the host to set up the game.</p></div></div>
-      <div class="sdk-ov" data-ov="lobby" hidden><div class="sdk-card" data-el="lobbycard"></div></div>
-      <div class="sdk-ov" data-ov="over" hidden><div class="sdk-card" data-el="overcard"></div></div>
-      <div class="sdk-ov sdk-ov-top" data-ov="cheats" hidden><div class="sdk-card" data-el="cheatcard"></div></div>
-      <div class="sdk-ov sdk-ov-top2" data-ov="help" hidden>
-        <div class="sdk-card">
-          <h3>How to play</h3>
-          <div class="sdk-help">
+    </div>
+    <div class="sdk-ov sdk-ov-top" data-ov="cheats" hidden><div class="sdk-card" data-el="cheatcard"></div></div>
+    <div class="sdk-ov sdk-ov-top2" data-ov="help" hidden>
+      <div class="sdk-card">
+        <div class="sdk-head"><h3>How to play</h3><button class="sdk-btn" type="button" data-help-close>Close</button></div>
+        <div class="sdk-help">
+          <div>
             <h4>Goal</h4>
             <ul>
               <li>Fill the 9&times;9 grid so every row, column and 3&times;3 box contains the digits 1&ndash;9 exactly once.</li>
@@ -375,19 +411,15 @@ export function mount(root, context = {}) {
             <h4>Modes</h4>
             <ul>
               <li><b>Solo</b> &mdash; a wrong digit is not placed and costs a mistake; 3 mistakes ends the run. You get 3 hints. Best clean times are saved per difficulty.</li>
-              <li><b>VS Bot / Room race</b> &mdash; one shared board, alternating turns. A correct digit scores that cell for you and locks it; a wrong digit costs a mistake. 3 mistakes loses the round; otherwise the most cells wins when the board is full. <b>Who starts and which player seat you get are randomized every round.</b></li>
+              <li><b>VS Bot / Room race</b> &mdash; one shared board, alternating turns. A correct digit scores that cell for you and locks it; a wrong digit costs a mistake. <b>Who starts and which player seat you get are randomized every round.</b></li>
             </ul>
-            <h4>Notes (pencil marks)</h4>
-            <ul>
-              <li>Toggle Notes, then tap digits to mark candidates in an empty cell.</li>
-              <li>Only digits still possible for that cell&rsquo;s row, column and box are allowed &mdash; impossible digits are dimmed on the pad.</li>
-              <li>Notes auto-clean when a matching digit is placed in a peer cell. In a race, notes are private to you.</li>
-            </ul>
+          </div>
+          <div>
             <h4>Desktop controls</h4>
             <ul>
               <li>Click a cell, then type <kbd>1</kbd>&ndash;<kbd>9</kbd> to place. <kbd>Shift</kbd>+digit adds a note in any mode.</li>
               <li><kbd>N</kbd> notes mode &middot; <kbd>&larr;&uarr;&darr;&rarr;</kbd> / <kbd>WASD</kbd> move &middot; <kbd>Backspace</kbd>/<kbd>0</kbd> erase notes.</li>
-              <li><kbd>H</kbd> hint &middot; <kbd>C</kbd> cheats &middot; <kbd>?</kbd> help &middot; <kbd>Esc</kbd> close &middot; <kbd>Enter</kbd> start / play again &middot; right-click toggles notes.</li>
+              <li><kbd>T</kbd> hint &middot; <kbd>H</kbd> help &middot; <kbd>C</kbd> cheats &middot; <kbd>P</kbd> pause &middot; <kbd>R</kbd> restart &middot; right-click toggles notes.</li>
             </ul>
             <h4>Mobile controls</h4>
             <ul>
@@ -399,16 +431,26 @@ export function mount(root, context = {}) {
               <li>The <b>Cheats</b> menu can reveal the solution, fill cells, auto-write notes, reset mistakes, grant hints, force your turn or solve everything. Using any cheat flags the round and blocks best-time records.</li>
             </ul>
           </div>
-          <button class="sdk-btn primary" type="button" data-act="closehelp" style="margin-top:14px">Got it</button>
         </div>
+        <div class="sdk-foot"><span class="sdk-note">Press H to reopen this guide</span><button class="sdk-btn primary" type="button" data-help-close>Got it</button></div>
       </div>
     </div>
-    <div class="sdk-foot">
-      Desktop: click a cell, type 1&ndash;9 &middot; Shift+digit / N = notes &middot; arrows or WASD move &middot; H hint &middot; C cheats &middot; ? help.<br>
-      Mobile: tap a cell, then the pad &middot; Notes = pencil mode &middot; Erase clears notes &middot; D-pad moves the selection.
-    </div>
   </section>
-  <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
+  <div class="sdk-pad">
+    <div class="sdk-padmain">
+      <div class="sdk-padkeys" data-el="pad"></div>
+      <div class="sdk-sidrest">
+        <div class="sdk-tools">
+          <button class="sdk-btn sdk-tool" type="button" data-act="erase" data-el="erasebtn" title="Clear notes (Backspace)">Erase</button>
+        </div>
+        <div class="sdk-dpad">
+          <span></span><button class="sdk-btn sdk-dbtn" type="button" data-act="move" data-dir="up" aria-label="Move up">&#9650;</button><span></span>
+          <button class="sdk-btn sdk-dbtn" type="button" data-act="move" data-dir="left" aria-label="Move left">&#9664;</button><button class="sdk-btn sdk-dbtn" type="button" data-act="move" data-dir="down" aria-label="Move down">&#9660;</button><button class="sdk-btn sdk-dbtn" type="button" data-act="move" data-dir="right" aria-label="Move right">&#9654;</button>
+        </div>
+        <div class="sdk-legend" data-el="legend"></div>
+      </div>
+    </div>
+  </div>
 </div>`;
 
     const $ = (s, r) => (r || root).querySelector(s);
@@ -421,17 +463,20 @@ export function mount(root, context = {}) {
         overcard: $('[data-el="overcard"]'),
         cheatcard: $('[data-el="cheatcard"]'),
         dot: $('[data-el="dot"]'),
-        status: $("[data-status]"),
+        statustxt: $('[data-el="statustxt"]'),
         time: $('[data-hud="time"]'),
         diff: $('[data-el="diff"]'),
-        restart: $('[data-el="restart"]'),
-        cheatbtn: $('[data-el="cheatbtn"]'),
+        restart: $('[data-restart]'),
+        pausebtn: $('[data-pause]'),
+        pauseicon: $('[data-el="pauseicon"]'),
+        cheatbtn: $('[data-cheats]'),
         notesbtn: $('[data-el="notesbtn"]'),
         hintbtn: $('[data-el="hintbtn"]'),
         erasebtn: $('[data-el="erasebtn"]'),
         ovWait: $('[data-ov="wait"]'),
         ovLobby: $('[data-ov="lobby"]'),
         ovOver: $('[data-ov="over"]'),
+        ovPause: $('[data-ov="pause"]'),
         ovCheats: $('[data-ov="cheats"]'),
         ovHelp: $('[data-ov="help"]'),
     };
@@ -479,7 +524,8 @@ export function mount(root, context = {}) {
     }
     function elapsed() {
         if (!state || !state.startedAt) return 0;
-        return Math.max(0, Math.floor(((state.endedAt || Date.now()) - state.startedAt) / 1000));
+        const end = state.endedAt || (paused && pauseStart ? pauseStart : Date.now());
+        return Math.max(0, Math.floor((end - state.startedAt) / 1000));
     }
     function emptyCells() {
         const a = [];
@@ -688,6 +734,7 @@ export function mount(root, context = {}) {
         clearTimeout(botTimer);
         botTimer = null;
         if (destroyed || online || !state) return;
+        if (blocked()) return;
         if (state.phase === "playing" && state.opp === "bot" && state.turn === 1) {
             botTimer = setTimeout(botMove, 700 + Math.random() * 900);
         }
@@ -695,7 +742,7 @@ export function mount(root, context = {}) {
     function botMove() {
         botTimer = null;
         if (destroyed || !state || state.phase !== "playing") return;
-        if (state.opp !== "bot" || state.turn !== 1) return;
+        if (blocked() || state.opp !== "bot" || state.turn !== 1) return;
         const empt = emptyCells();
         if (!empt.length) return;
         // look smart: prefer cells with fewest candidates (MRV), random tie-break
@@ -721,6 +768,60 @@ export function mount(root, context = {}) {
             }
         }
         applyAction({ type: "place", i: i, d: d }, 1);
+    }
+
+    /* ----- pause: freeze clock + bot, shift time anchors on resume ----- */
+    function setPaused(on) {
+        if (destroyed || paused === on) return;
+        if (on) {
+            pauseStart = Date.now();
+            paused = true;
+            clearTimeout(botTimer);
+            botTimer = null;
+        } else {
+            const delta = Date.now() - pauseStart;
+            if (state && (!online || room.isHost)) {
+                if (state.startedAt) {
+                    state.startedAt += delta;
+                    lastRound = state.startedAt; // do not re-trigger round reset
+                }
+                if (state.endedAt) state.endedAt += delta;
+            }
+            paused = false;
+            pauseStart = 0;
+            if (online && room.isHost) publish();
+            else scheduleBot();
+        }
+        render();
+    }
+    function togglePause() {
+        if (showHelp) toggleHelp(false);
+        else if (showCheats) toggleCheats(false);
+        else setPaused(!paused);
+    }
+    function toggleHelp(on) {
+        const next = typeof on === "boolean" ? on : !showHelp;
+        showHelp = next;
+        if (showHelp) {
+            showCheats = false;
+            if (paused) setPaused(false);
+        } else scheduleBot();
+        render();
+    }
+    function toggleCheats(on) {
+        if (!state || state.phase !== "playing") return;
+        const next = typeof on === "boolean" ? on : !showCheats;
+        showCheats = next;
+        if (showCheats) {
+            showHelp = false;
+            if (paused) setPaused(false);
+        } else scheduleBot();
+        render();
+    }
+    function doRestart() {
+        if (!state) return;
+        if (paused) setPaused(false);
+        submitAction({ type: state.phase === "lobby" ? "start" : "rematch" });
     }
 
     /* ----- local sync: notes pruning, round resets, event FX ----- */
@@ -788,6 +889,7 @@ export function mount(root, context = {}) {
             if (w === -1) return { t: "Draw", c: "#94a3b8" };
             return w === mySeat() ? { t: "You win!", c: "#22c55e" } : { t: "You lose", c: "#ef4444" };
         }
+        if (paused) return { t: "Paused", c: "#f59e0b" };
         if (state.opp === "none") return { t: "Your move", c: "#22c55e" };
         return state.turn === mySeat()
             ? { t: "Your turn", c: "#22c55e" }
@@ -797,7 +899,8 @@ export function mount(root, context = {}) {
         const versus = state.opp !== "none";
         const my = mySeat();
         const best = loadBest()[state.difficulty];
-        let h = "<h3>Sudoku</h3>";
+        let h = '<div class="sdk-head"><h3>Sudoku</h3><span class="sdk-tag">' + (versus ? "Race" : "Solo") + "</span></div>";
+        h += '<div class="sdk-body">';
         h += '<p class="sdk-sub">' + (versus
             ? "Turn-based race on one shared board: a correct digit scores that cell for you, a wrong digit costs a mistake (3 = lose). Most cells wins. First turn and player seats are randomized every round."
             : "A wrong digit is not placed and costs a mistake — three mistakes ends the run. You get 3 hints. Every puzzle has exactly one solution.") + "</p>";
@@ -813,8 +916,8 @@ export function mount(root, context = {}) {
         }
         if (!versus)
             h += '<p class="sdk-sub">Best clean time (' + cap(state.difficulty) + "): <b>" + (best ? fmt(best) : "—") + "</b></p>";
-        h += '<button class="sdk-btn primary sdk-big" type="button" data-act="start">Start game</button>';
-        h += '<div style="margin-top:10px"><button class="sdk-btn" type="button" data-act="help">How to play</button></div>';
+        h += "</div>";
+        h += '<div class="sdk-foot"><span class="sdk-note">Press Enter to start</span><button class="sdk-btn primary sdk-big" type="button" data-act="start">Start game</button></div>';
         return h;
     }
     function overHTML() {
@@ -839,8 +942,8 @@ export function mount(root, context = {}) {
             color = w === my ? "#059669" : "#dc2626";
             reason = seatName(w) + " filled " + st.scores[w] + " cells vs " + st.scores[1 - w] + " in " + time + ".";
         }
-        let h = '<h3 style="color:' + color + '">' + title + "</h3>";
-        h += '<p class="sdk-sub">' + reason + "</p>";
+        let h = '<div class="sdk-head"><h3 style="color:' + color + '">' + title + "</h3><span class=\"sdk-tag\">" + cap(st.difficulty) + "</span></div>";
+        h += '<div class="sdk-body"><p class="sdk-sub">' + reason + "</p>";
         if (st.cheated) h += '<span class="sdk-badge">Cheats used — no record saved</span>';
         h += '<div class="sdk-stats">' + chip("Time", time);
         if (versus) {
@@ -851,8 +954,8 @@ export function mount(root, context = {}) {
             h += chip("Miss", st.mistakes[0] + "/3");
             h += chip("Hints left", st.hints[0]);
         }
-        h += "</div>";
-        h += '<div class="sdk-seg"><button class="sdk-btn primary" type="button" data-act="again">Play again</button>' +
+        h += "</div></div>";
+        h += '<div class="sdk-foot"><button class="sdk-btn primary" type="button" data-act="again">Play again</button>' +
             '<button class="sdk-btn" type="button" data-act="settings">Settings</button></div>';
         return h;
     }
@@ -862,8 +965,8 @@ export function mount(root, context = {}) {
         const item = (key, label, sub, dis) =>
             '<button class="sdk-btn sdk-cheat" type="button" data-act="cheat" data-cheat="' + key + '"' +
             (dis ? " disabled" : "") + "><span>" + label + "</span><small>" + sub + "</small></button>";
-        let h = "<h3>Cheats</h3>";
-        h += '<p class="sdk-sub">Fun-only helpers. Using any cheat flags this round and blocks best-time records.</p>';
+        let h = '<div class="sdk-head"><h3>Cheats</h3><button class="sdk-btn" type="button" data-act="closecheats">Close</button></div>';
+        h += '<div class="sdk-body"><p class="sdk-sub">Fun-only helpers. Using any cheat flags this round and blocks best-time records.</p></div>';
         h += '<div class="sdk-cheats">';
         h += item("reveal", "◉ Reveal solution — " + (reveal ? "ON" : "OFF"), "Ghost digits on empty cells (private to you).");
         h += item("cell", "✎ Fill selected cell", "Places the correct digit for free.", !cellOk);
@@ -874,7 +977,7 @@ export function mount(root, context = {}) {
         if (versus) h += item("turn", "⏭ Force my turn", "Steal the move from your rival.");
         h += item("solve", "⚑ Solve everything", "Fill the whole board and win instantly.");
         h += "</div>";
-        h += '<button class="sdk-btn" type="button" data-act="closecheats" style="margin-top:12px">Close (Esc)</button>';
+        h += '<div class="sdk-foot"><span class="sdk-note">Press Esc to close</span><button class="sdk-btn" type="button" data-act="closecheats">Close</button></div>';
         return h;
     }
 
@@ -926,12 +1029,12 @@ export function mount(root, context = {}) {
             const left = 9 - counts[d];
             const k = padKeys[d - 1];
             k.small.textContent = String(left);
-            let dis = !playing;
-            if (playing) dis = notesMode ? (selected >= 0 && !(cand & (1 << d))) : left <= 0;
+            let dis = !playing || blocked();
+            if (playing && !blocked()) dis = notesMode ? (selected >= 0 && !(cand & (1 << d))) : left <= 0;
             k.btn.disabled = dis;
         }
 
-        /* HUD chips */
+        /* HUD chips (all info lives in the HUD bar) */
         let chips = "";
         if (st && versus) {
             chips += chip("You · P" + (my + 1), st.scores[my], SEAT_COLORS[my]);
@@ -942,29 +1045,39 @@ export function mount(root, context = {}) {
             const best = loadBest()[st.difficulty];
             chips += chip("Miss", st.mistakes[0] + "/3");
             chips += chip("Hints", st.hints[0]);
-            chips += chip("Best", best ? fmt(best) : "—");
+            chips += chip("Best", best ? fmt(best) : "—", null).replace('class="sdk-chip"', 'class="sdk-chip" data-hud="best"');
         }
         els.chips.innerHTML = chips;
         els.time.textContent = fmt(elapsed());
 
         /* status */
         const si = statusInfo();
-        els.status.textContent = toast || si.t;
+        els.statustxt.textContent = toast || si.t;
         els.dot.style.background = si.c;
 
-        /* toolbar + tools */
+        /* HUD controls: update labels, never button.textContent */
         els.diff.textContent = cap(st ? st.difficulty : "easy");
-        els.diff.disabled = !st;
-        els.restart.disabled = !st;
-        els.restart.textContent = st && st.phase === "over" ? "Play again" : st && st.phase === "lobby" ? "Start" : "Restart";
-        els.cheatbtn.disabled = !playing;
-        els.erasebtn.disabled = !playing;
-        els.notesbtn.disabled = !playing;
+        els.diff.disabled = !st || blocked();
+        els.erasebtn.disabled = !playing || blocked();
+        els.notesbtn.disabled = !playing || blocked();
         els.notesbtn.classList.toggle("active", notesMode);
         els.notesbtn.setAttribute("aria-pressed", String(notesMode));
-        els.hintbtn.disabled = !playing || st.hints[my] <= 0 || (versus && st.turn !== my);
-        els.hintbtn.textContent = "Hint " + (st ? st.hints[my] : 3);
-        dpadBtns.forEach((b) => { b.disabled = !playing; });
+        els.notesbtn.setAttribute("aria-label", notesMode ? "Notes on" : "Notes off");
+        const hintLabel = els.hintbtn.querySelector(".sdk-btn-label");
+        if (hintLabel) hintLabel.textContent = "Hint " + (st ? st.hints[my] : 3);
+        els.hintbtn.setAttribute("aria-label", "Hint " + (st ? st.hints[my] : 3));
+        els.hintbtn.disabled = !playing || blocked() || st.hints[my] <= 0 || (versus && st.turn !== my);
+        els.cheatbtn.disabled = !playing;
+        const restartLabel = els.restart.querySelector(".sdk-btn-label");
+        if (restartLabel) restartLabel.textContent = !st ? "Restart" : st.phase === "over" ? "Play again" : st.phase === "lobby" ? "Start" : "Restart";
+        els.restart.setAttribute("aria-label", restartLabel ? restartLabel.textContent : "Restart");
+        const pauseLabel = els.pausebtn.querySelector(".sdk-btn-label");
+        if (pauseLabel) pauseLabel.textContent = paused ? "Resume" : "Pause";
+        els.pausebtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+        els.pausebtn.setAttribute("title", paused ? "Resume (P)" : "Pause (P)");
+        els.pauseicon.innerHTML = icon(paused ? "play" : "pause");
+        els.pausebtn.disabled = !playing;
+        dpadBtns.forEach((b) => { b.disabled = !playing || blocked(); });
 
         /* legend */
         let leg = '<span><span class="sdk-dot" style="background:#0f172a"></span>Given</span>' +
@@ -974,12 +1087,13 @@ export function mount(root, context = {}) {
             leg += '<span><span class="sdk-dot" style="background:' + SEAT_COLORS[1 - my] + '"></span>' + seatName(1 - my) + "</span>";
         els.legend.innerHTML = leg;
 
-        /* overlays */
+        /* overlays: help → cheats → pause → phase, all mutually suppressing */
         if (showCheats && !playing) showCheats = false;
-        els.ovWait.hidden = !(online && !st);
-        els.ovLobby.hidden = !(st && st.phase === "lobby");
-        els.ovOver.hidden = !(st && st.phase === "over");
-        els.ovCheats.hidden = !showCheats;
+        els.ovWait.hidden = !(online && !st) || showCheats || showHelp || paused;
+        els.ovLobby.hidden = !(st && st.phase === "lobby") || showCheats || showHelp || paused;
+        els.ovOver.hidden = !(st && st.phase === "over") || showCheats || showHelp || paused;
+        els.ovPause.hidden = !paused || showCheats || showHelp;
+        els.ovCheats.hidden = !showCheats || showHelp;
         els.ovHelp.hidden = !showHelp;
         if (!els.ovLobby.hidden) els.lobbycard.innerHTML = lobbyHTML();
         if (!els.ovOver.hidden) els.overcard.innerHTML = overHTML();
@@ -988,37 +1102,37 @@ export function mount(root, context = {}) {
 
     /* ----- player input ----- */
     function selectCell(i) {
-        if (!state || state.phase !== "playing") return;
+        if (blocked() || !state || state.phase !== "playing") return;
         selected = i;
         render();
     }
     function placeDigit(d) {
-        if (!state || state.phase !== "playing" || selected < 0) return;
+        if (blocked() || !state || state.phase !== "playing" || selected < 0) return;
         const i = selected;
         if (state.puzzle[i] || state.grid[i]) { nudge("That cell is locked"); return; }
         if (state.opp !== "none" && state.turn !== mySeat()) { nudge("Wait for your turn"); return; }
         submitAction({ type: "place", i: i, d: d });
     }
     function toggleNote(i, d) {
-        if (!state || state.phase !== "playing" || i < 0) return;
+        if (blocked() || !state || state.phase !== "playing" || i < 0) return;
         if (state.puzzle[i] || state.grid[i]) { nudge("That cell is filled"); return; }
         if (!(candMask(state.grid, i) & (1 << d))) { nudge(d + " is not possible here"); return; }
         notes[i] ^= 1 << d;
         render();
     }
     function padPress(d) {
-        if (!state || state.phase !== "playing") return;
+        if (blocked() || !state || state.phase !== "playing") return;
         if (selected < 0) { nudge("Select a cell first"); return; }
         if (notesMode) toggleNote(selected, d);
         else placeDigit(d);
     }
     function eraseNotes() {
-        if (!state || state.phase !== "playing" || selected < 0) return;
+        if (blocked() || !state || state.phase !== "playing" || selected < 0) return;
         if (notes[selected]) { notes[selected] = 0; render(); }
         else if (state.grid[selected] && !state.puzzle[selected]) nudge("Correct digits are locked");
     }
     function moveSel(dir) {
-        if (!state || state.phase !== "playing") return;
+        if (blocked() || !state || state.phase !== "playing") return;
         let r = selected >= 0 ? ROW(selected) : 4;
         let c = selected >= 0 ? COL(selected) : 4;
         if (dir === "left") c = Math.max(0, c - 1);
@@ -1033,7 +1147,7 @@ export function mount(root, context = {}) {
             if (!state.grid[i]) notes[i] = candMask(state.grid, i);
     }
     function doCheat(kind) {
-        if (!state || state.phase !== "playing") return;
+        if (blocked() || !state || state.phase !== "playing") return;
         if (kind === "reveal") {
             reveal = !reveal;
             if (reveal) submitAction({ type: "cheat", cheat: "flag" });
@@ -1055,37 +1169,41 @@ export function mount(root, context = {}) {
     }
 
     function handleClick(event) {
-        if (event.target.closest("[data-exit]")) { onExit(); return; }
-        const cell = event.target.closest("[data-i]");
+        const t = event.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-help]")) { toggleHelp(); return; }
+        if (t.closest("[data-help-close]")) { toggleHelp(false); return; }
+        if (t.closest("[data-exit]")) { onExit(); return; }
+        if (t.closest("[data-cheats]")) { toggleCheats(); return; }
+        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-resume]")) { setPaused(false); return; }
+        if (t.closest("[data-restart]")) { doRestart(); return; }
+        const cell = t.closest("[data-i]");
         if (cell) { selectCell(Number(cell.dataset.i)); return; }
-        const key = event.target.closest("[data-d]");
+        const key = t.closest("[data-d]");
         if (key) { padPress(Number(key.dataset.d)); return; }
-        const actEl = event.target.closest("[data-act]");
+        const actEl = t.closest("[data-act]");
         if (!actEl) return;
         switch (actEl.dataset.act) {
-            case "help": showHelp = true; showCheats = false; render(); break;
-            case "closehelp": showHelp = false; render(); break;
-            case "cheats":
-                if (state && state.phase === "playing") { showCheats = !showCheats; showHelp = false; render(); }
-                break;
-            case "closecheats": showCheats = false; render(); break;
-            case "restart":
-                submitAction({ type: state && state.phase === "lobby" ? "start" : "rematch" });
-                break;
+            case "help": toggleHelp(true); break;
+            case "closehelp": toggleHelp(false); break;
+            case "cheats": toggleCheats(); break;
+            case "closecheats": toggleCheats(false); break;
+            case "restart": doRestart(); break;
             case "diff": {
-                if (!state) break;
+                if (!state || blocked()) break;
                 const next = state.difficulty === "easy" ? "medium" : state.difficulty === "medium" ? "hard" : "easy";
                 submitAction({ type: "difficulty", value: next });
                 break;
             }
-            case "start": submitAction({ type: "start" }); break;
-            case "again": submitAction({ type: "rematch" }); break;
-            case "settings": submitAction({ type: "lobby" }); break;
-            case "setdiff": submitAction({ type: "difficulty", value: actEl.dataset.diff }); break;
-            case "mode": submitAction({ type: "mode", value: actEl.dataset.mode }); break;
+            case "start": if (!blocked()) submitAction({ type: "start" }); break;
+            case "again": if (!blocked()) submitAction({ type: "rematch" }); break;
+            case "settings": if (!blocked()) submitAction({ type: "lobby" }); break;
+            case "setdiff": if (!blocked()) submitAction({ type: "difficulty", value: actEl.dataset.diff }); break;
+            case "mode": if (!blocked()) submitAction({ type: "mode", value: actEl.dataset.mode }); break;
             case "erase": eraseNotes(); break;
-            case "notestoggle": notesMode = !notesMode; render(); break;
-            case "hint": submitAction({ type: "hint" }); break;
+            case "notestoggle": if (!blocked()) { notesMode = !notesMode; render(); } break;
+            case "hint": if (!blocked()) submitAction({ type: "hint" }); break;
             case "move": moveSel(actEl.dataset.dir); break;
             case "cheat": doCheat(actEl.dataset.cheat); break;
         }
@@ -1099,23 +1217,29 @@ export function mount(root, context = {}) {
     function onKey(e) {
         if (destroyed || !root.isConnected) return;
         const tag = e.target && e.target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && root.contains(e.target)) return;
         const k = e.key;
+        /* keyboard priority: help → cheats → pause → Escape → game actions */
+        if (k === "h" || k === "H" || k === "?" || k === "F1") { e.preventDefault(); toggleHelp(); return; }
+        if (k === "c" || k === "C") { e.preventDefault(); toggleCheats(); return; }
+        if (k === "p" || k === "P") { e.preventDefault(); togglePause(); return; }
+        if (k === "r" || k === "R") { e.preventDefault(); doRestart(); return; }
         if (k === "Escape") {
-            if (showCheats) { showCheats = false; render(); }
-            else if (showHelp) { showHelp = false; render(); }
-            return;
-        }
-        if (k === "?" || k === "F1") {
+            if (showHelp) toggleHelp(false);
+            else if (showCheats) toggleCheats(false);
+            else if (paused) setPaused(false);
             e.preventDefault();
-            showHelp = !showHelp; showCheats = false; render();
             return;
         }
-        if (k === "c" || k === "C") {
-            if (state && state.phase === "playing") { showCheats = !showCheats; showHelp = false; render(); }
+        if (blocked()) {
+            if (k === "Enter") {
+                if (showHelp) toggleHelp(false);
+                else if (showCheats) toggleCheats(false);
+                else if (paused) setPaused(false);
+                e.preventDefault();
+            }
             return;
         }
-        if (showHelp || showCheats) return;
         if (k === "Enter") {
             if (state && state.phase === "lobby") submitAction({ type: "start" });
             else if (state && state.phase === "over") submitAction({ type: "rematch" });
@@ -1128,7 +1252,7 @@ export function mount(root, context = {}) {
             render();
             return;
         }
-        if (k === "h" || k === "H") { submitAction({ type: "hint" }); return; }
+        if (k === "t" || k === "T") { submitAction({ type: "hint" }); return; }
         if (DIRS[k]) { e.preventDefault(); moveSel(DIRS[k]); return; }
         // digits: also read e.code so Shift+digit works on every layout
         let num = 0;
@@ -1149,7 +1273,7 @@ export function mount(root, context = {}) {
     }
     function onCtx(e) {
         e.preventDefault();
-        if (state && state.phase === "playing") { notesMode = !notesMode; render(); }
+        if (!blocked() && state && state.phase === "playing") { notesMode = !notesMode; render(); }
     }
 
     /* ----- wiring ----- */
@@ -1157,9 +1281,17 @@ export function mount(root, context = {}) {
     document.addEventListener("keydown", onKey);
     els.board.addEventListener("contextmenu", onCtx);
     tickTimer = setInterval(() => {
-        if (!destroyed && state && state.phase === "playing")
+        if (!destroyed && state && state.phase === "playing" && !paused)
             els.time.textContent = fmt(elapsed());
     }, 500);
+
+    /* ----- first-run internal help (once per browser) ----- */
+    let seenHelp = true;
+    try { seenHelp = localStorage.getItem(HELP_KEY) === "1"; } catch (_) { seenHelp = true; }
+    if (!seenHelp) {
+        showHelp = true;
+        try { localStorage.setItem(HELP_KEY, "1"); } catch (_) { /* storage blocked */ }
+    }
 
     if (online) {
         const offRoom = room.onRoom?.((nextRoom) => { roomData = nextRoom; render(); });
