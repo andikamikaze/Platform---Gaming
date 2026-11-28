@@ -6,6 +6,7 @@
    ============================================================ */
 
 import { iconSVG } from "../JS/icons.js";
+import { createGameShell } from "../JS/game-ui.js";
 
 const W = 960, H = 540, GROUND = 470;
 const BOUND = { x0: 30, x1: W - 46, y0: 42, y1: GROUND - 26 };
@@ -763,7 +764,6 @@ export function mount(root, context = {}) {
     let lastInputSend = 0;
     let lastInputSig = "";
     let gridSig = "";
-    let cheatSig = "";
     const unsubs = [];
     const specialQ = [0, 0];
     const netInput = [null, null];
@@ -783,227 +783,93 @@ export function mount(root, context = {}) {
         try { localStorage.setItem("sky-arcade-help-seen", "1"); } catch (err) { /* storage blocked */ }
     }
 
-    root.innerHTML = `
-<style>
-.sa{--bg:#f8fafc;--surface:#fff;--ink:#334155;--mut:#64748b;--line:#e2e8f0;--acc:#4f46e5;--ok:#0f766e;--warn:#b45309;--danger:#dc2626}
-.sa [hidden]{display:none!important}
-.sa-board{position:relative;width:100%;aspect-ratio:16/9;padding:0;border:0;background:var(--bg);border-radius:12px;overflow:hidden}
-.sa-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
-.sa-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
-.sa-hud .sa-btn{min-height:32px;padding:6px 10px;font-size:10px}
-.sa-spacer{flex:1 1 auto}
-.sa-btn.on{border-color:var(--acc);color:var(--acc);background:#eef0ff}
-.sa-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--mut);white-space:nowrap}
-.sa-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
-.sa-bar{width:58px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
-.sa-bar i{display:block;height:100%;width:100%;background:var(--acc);transition:width .12s linear}
-.sa-ov{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:14px;background:rgba(248,250,252,.9)}
-.sa-card{width:min(600px,100%);max-height:100%;overflow:auto;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 10px 30px rgba(15,23,42,.08)}
-.sa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
-.sa-head h3{margin:0;font-size:13px;font-weight:700;color:var(--ink)}
-.sa-tag{font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 9px}
-.sa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-.sa-craft{display:block;width:100%;text-align:left;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);cursor:pointer;transition:border-color .15s,background .15s}
-.sa-craft:hover{border-color:var(--acc)}
-.sa-craft.on{border-color:var(--acc);background:#eef0ff}
-.sa-craft svg{display:block;margin-bottom:6px;color:var(--acc)}
-.sa-craft .n{font-size:12px;font-weight:700}
-.sa-craft .s{margin-top:2px;font:600 9px/1.5 ui-monospace,monospace;letter-spacing:.06em;color:var(--mut);text-transform:uppercase}
-.sa-stat{display:flex;align-items:center;gap:6px;margin-top:4px;font:600 9px/1 ui-monospace,monospace;color:var(--mut)}
-.sa-stat span{width:26px}
-.sa-stat i{flex:1;height:3px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
-.sa-stat i::after{content:"";position:absolute;inset:0;width:var(--v,50%);background:#cbd5e1}
-.sa-craft.on .sa-stat i::after{background:var(--acc)}
-.sa-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px}
-.sa-note{font:600 10px/1.4 ui-monospace,monospace;color:var(--mut)}
-.sa-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:9px 14px;min-height:38px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
-.sa-btn:hover{border-color:var(--acc);color:var(--acc)}
-.sa-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
-.sa-btn.primary:hover{color:#fff;opacity:.92}
-.sa-btn:disabled{opacity:.45;cursor:not-allowed}
-.sa-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:6px 0 4px}
-.sa-stat-box{border:1px solid var(--line);border-radius:10px;padding:10px}
-.sa-stat-box u{display:block;font:600 9px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--mut);text-decoration:none;text-transform:uppercase}
-.sa-stat-box b{display:block;margin-top:6px;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
-.sa-cheats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-.sa-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-size:11px;font-weight:600;text-align:left;cursor:pointer}
-.sa-toggle:hover{border-color:var(--acc)}
-.sa-toggle.on{border-color:var(--acc);color:var(--acc);background:#eef0ff}
-.sa-toggle em{font-style:normal;font:600 9px/1 ui-monospace,monospace;color:var(--mut)}
-.sa-sep{margin:12px 0 8px;font:700 9px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--mut);text-transform:uppercase}
-.sa-help{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:8px}
-.sa-help b{display:block;margin-bottom:6px;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--mut);text-transform:uppercase}
-.sa-help ul{margin:0 0 12px;padding-left:16px;font:600 11px/1.7 ui-monospace,monospace;color:var(--mut)}
-.sa-kbd{display:inline-block;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--bg);color:var(--ink);font:inherit}
-.sa-pad{display:none;margin-top:10px;justify-content:space-between;align-items:center;gap:12px;user-select:none}
-.sa.touch .sa-pad{display:flex}
-.sa-dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,44px);gap:4px}
-.sa-dpad [data-pad="u"]{grid-area:1/2}
-.sa-dpad [data-pad="l"]{grid-area:2/1}
-.sa-dpad [data-pad="r"]{grid-area:2/3}
-.sa-dpad [data-pad="d"]{grid-area:3/2}
-.sa-acts{display:flex;gap:8px}
-.sa-key{display:grid;place-items:center;min-width:46px;min-height:44px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-size:13px;font-weight:700;touch-action:none;cursor:pointer}
-.sa-key svg{width:1.15em;height:1.15em;display:block}
-.sa-key.on{background:#eef0ff;border-color:var(--acc);color:var(--acc)}
-.sa-acts .sa-key{width:64px;height:64px;border-radius:50%;font-size:11px;letter-spacing:.06em}
-.sa-acts .fire{color:var(--warn);border-color:#e9d5b7}
-.sa-acts .spec{color:var(--acc);border-color:#c7d2fe}
-@media (max-width:640px){
-.sa-hud{font-size:9px;gap:5px;margin-bottom:8px}
-.sa-chip{padding:4px 7px}
-.sa-bar{width:44px}
-.sa-card{padding:14px}
-.sa-board:has(.sa-ov:not([hidden])){aspect-ratio:auto;min-height:min(62dvh,420px)}
-.sa-board:has(.sa-ov:not([hidden])) .sa-canvas{position:absolute;top:50%;height:auto;aspect-ratio:16/9;transform:translateY(-50%)}
-.sa-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
-.sa-craft{padding:8px}
-.sa-craft svg{width:44px;height:21px;margin-bottom:2px}
-.sa-stat{display:none}
-.sa-foot{position:sticky;bottom:-14px;margin:12px -14px -14px;padding:10px 14px;background:var(--surface);border-top:1px solid var(--line);z-index:1}
-}
-@media (prefers-reduced-motion:reduce){.sa *,.sa *::before,.sa *::after{transition:none!important;animation:none!important}}
+    const ui = createGameShell(root, {
+      prefix: "sa",
+      category: META.category,
+      info: [
+        { key: "ammo", label: "ORD" },
+        { key: "left", label: "LEFT" },
+        { key: "init" },
+        { key: "combo", hidden: true },
+      ],
+      board: { type: "canvas", className: "sa-canvas", width: 960, height: 540 },
+      overlays: {
+        select: {
+          title: "Select aircraft",
+          headExtra: '<span class="gui-tag" data-tag="mode">Solo</span>',
+          body: '<div class="gui-grid" data-grid></div>',
+          noteAttrs: ' data-note="ready"',
+          primary: "Launch", primaryAction: "launch",
+        },
+        clear: {
+          title: "Wave clear",
+          headExtra: '<span class="gui-tag" data-tag="clearlv">LV 1</span>',
+          stats: [
+            { label: "Bonus", key: "bonus" },
+            { label: "Score", key: "cscore" },
+            { label: "Kills", key: "ckills" },
+          ],
+          noteAttrs: ' data-note="next"',
+          primary: "Next wave", primaryAction: "next",
+        },
+        over: {
+          title: "Game over",
+          headExtra: '<span class="gui-tag" data-tag="overlv">LV 1</span>',
+          stats: [
+            { label: "Score", key: "oscore" },
+            { label: "Best", key: "obest" },
+            { label: "Kills", key: "okills" },
+          ],
+          noteAttrs: ' data-note="over"',
+          primary: "Retry", primaryAction: "retry",
+        },
+        pause: {
+          title: "Paused",
+          primary: "Resume", primaryAction: "resume",
+        },
+        cheat: {
+          title: "Cheats",
+          closeLabel: "Close", closeAction: "close",
+          toggles: CHEAT_TOGGLES.map((c) => ({ key: "cheat", value: c.key, label: c.label })),
+          cardActions: CHEAT_ACTIONS.map((c) => ({ key: "cheatact", value: c.key, label: c.label })),
+        },
+        help: {
+          title: "How to play",
+          closeLabel: "Close", closeAction: "help-close",
+          sections: [
+            { title: "Desktop", items: [
+              '<span class="gui-kbd">W A S D</span> / arrows — fly',
+              '<span class="gui-kbd">Space</span> — fire (hold)',
+              '<span class="gui-kbd">X</span> / <span class="gui-kbd">Shift</span> — special weapon',
+              "Mouse — aim · click — fire · right-click — special",
+              '<span class="gui-kbd">P</span> pause · <span class="gui-kbd">H</span> help · <span class="gui-kbd">C</span> cheats',
+            ] },
+            { title: "Mobile", items: [
+              "On-screen D-pad to fly, FIRE and ORD buttons to attack",
+              "Drag on the canvas to aim and fire",
+            ] },
+            { title: "Rules", items: [
+              "Destroy every generated aircraft and ground target to clear the wave.",
+              "A coin flip decides who launches first; a boss appears every 5th wave.",
+              "Combos, remaining hull and boss kills grant extra bonus points.",
+              "Pickups repair the hull, refill ordnance or add score.",
+              "Cheats are available to the host only.",
+            ] },
+          ],
+          note: "Press H to reopen this guide",
+          primary: "Got it", primaryAction: "help-close",
+        },
+      },
+      pad: {
+        dpad: true,
+        actions: [
+          { pad: "s", label: "ORD", variant: "spec" },
+          { pad: "f", label: "FIRE", variant: "fire" },
+        ],
+      },
+    });
 
-/* --- Batch 02 design polish --- */
-.sa :focus-visible,.sa button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-.sa-hud{gap:8px}
-.sa-chip{padding:6px 10px}
-.sa-card{box-shadow:none}
-.sa-btn{min-height:44px;padding:10px 16px}
-.sa-foot{gap:12px;margin-top:16px}
-.sa-key{min-width:44px;border-radius:10px}
-@media (pointer:coarse){.sa button:not(:disabled){min-height:44px}}
 
-/* --- fill height + mobile refinements --- */
-.sa-icon-btn{display:inline-flex;align-items:center;gap:6px}
-.sa-icon-btn svg{flex:none;display:block}
-.sa-card{display:flex;flex-direction:column;overflow:hidden}
-.sa-head,.sa-foot{flex:none}
-.sa-grid,.sa-cheats,.sa-stats,.sa-help{flex:1 1 auto;min-height:0;overflow:auto}
-@media (max-width:640px){
-.sa.game-fill > .sa-board:not(:has(.sa-ov:not([hidden]))){aspect-ratio:16/9;flex:0 0 auto}
-.sa.game-fill > .sa-board:has(.sa-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
-.sa .sa-hud{gap:5px;margin-bottom:8px}
-.sa .sa-hud .sa-chip{padding:4px 6px;font-size:9px}
-.sa .sa-hud .sa-chip[data-hud="init"],.sa .sa-hud .sa-chip[data-hud="combo"]{display:none}
-.sa .sa-hud .sa-btn{min-height:32px;padding:5px 9px;font-size:9px}
-.sa .sa-hud .sa-btn-label,.sa .sa-hud .sa-spacer{display:none}
-.sa .sa-ov{padding:8px}
-.sa .sa-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
-.sa .sa-grid,.sa .sa-cheats,.sa .sa-stats,.sa .sa-help{scrollbar-width:none}
-.sa .sa-grid::-webkit-scrollbar,.sa .sa-cheats::-webkit-scrollbar,.sa .sa-stats::-webkit-scrollbar,.sa .sa-help::-webkit-scrollbar{display:none}
-.sa .sa-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
-.sa .sa-note{display:none}
-}
-</style>
-<div class="game-app sa game-fill" data-sa>
-  <div class="sa-hud">
-    <span class="sa-chip">LV <b data-hud="level">1</b></span>
-    <span class="sa-chip">SCORE <b data-hud="score">0</b></span>
-    <span class="sa-chip">HULL <span class="sa-bar"><i data-hud="hp"></i></span></span>
-    <span class="sa-chip">ORD <b data-hud="ammo">0</b></span>
-    <span class="sa-chip">LEFT <b data-hud="left">0</b></span>
-    <span class="sa-chip" data-hud="init">FIRST —</span>
-    <span class="sa-chip" data-hud="combo" hidden>x1</span>
-    <span class="sa-spacer"></span>
-    <button class="sa-btn sa-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="sa-btn-label">Help</span></button>
-    <button class="sa-btn sa-icon-btn" type="button" data-cheats aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="sa-btn-label">Cheats</span></button>
-    <button class="sa-btn sa-icon-btn" type="button" data-pause aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="sa-btn-label">Pause</span></button>
-    <button class="sa-btn sa-icon-btn" type="button" data-restart aria-label="Restart" title="Restart">${iconSVG("refresh", { size: 14 })}<span class="sa-btn-label">Restart</span></button>
-    <button class="sa-btn sa-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="sa-btn-label">Exit game</span></button>
-  </div>
-  <section class="game-panel sa-board" data-board>
-    <canvas class="sa-canvas" data-canvas width="960" height="540"></canvas>
-    <div class="sa-ov" data-ov="select">
-      <div class="sa-card">
-        <div class="sa-head"><h3>Select aircraft</h3><span class="sa-tag" data-tag="mode">Solo</span></div>
-        <div class="sa-grid" data-grid></div>
-        <div class="sa-foot"><span class="sa-note" data-note="ready"></span><button class="sa-btn primary" type="button" data-launch>Launch</button></div>
-      </div>
-    </div>
-    <div class="sa-ov" data-ov="clear" hidden>
-      <div class="sa-card">
-        <div class="sa-head"><h3>Wave clear</h3><span class="sa-tag" data-tag="clearlv">LV 1</span></div>
-        <div class="sa-stats">
-          <div class="sa-stat-box"><u>Bonus</u><b data-out="bonus">0</b></div>
-          <div class="sa-stat-box"><u>Score</u><b data-out="cscore">0</b></div>
-          <div class="sa-stat-box"><u>Kills</u><b data-out="ckills">0</b></div>
-        </div>
-        <div class="sa-foot"><span class="sa-note" data-note="next"></span><button class="sa-btn primary" type="button" data-next>Next wave</button></div>
-      </div>
-    </div>
-    <div class="sa-ov" data-ov="over" hidden>
-      <div class="sa-card">
-        <div class="sa-head"><h3>Game over</h3><span class="sa-tag" data-tag="overlv">LV 1</span></div>
-        <div class="sa-stats">
-          <div class="sa-stat-box"><u>Score</u><b data-out="oscore">0</b></div>
-          <div class="sa-stat-box"><u>Best</u><b data-out="obest">0</b></div>
-          <div class="sa-stat-box"><u>Kills</u><b data-out="okills">0</b></div>
-        </div>
-        <div class="sa-foot"><span class="sa-note" data-note="over"></span><button class="sa-btn primary" type="button" data-retry>Retry</button></div>
-      </div>
-    </div>
-    <div class="sa-ov" data-ov="pause" hidden>
-      <div class="sa-card">
-        <div class="sa-head"><h3>Paused</h3></div>
-        <div class="sa-foot"><span class="sa-note"></span><button class="sa-btn primary" type="button" data-resume>Resume</button></div>
-      </div>
-    </div>
-    <div class="sa-ov" data-ov="cheat" hidden>
-      <div class="sa-card">
-        <div class="sa-head"><h3>Cheats</h3><button class="sa-btn" type="button" data-close>Close</button></div>
-        <div class="sa-cheats" data-cheatgrid></div>
-        <div class="sa-sep">Quick actions</div>
-        <div class="sa-cheats" data-cheatacts></div>
-      </div>
-    </div>
-    <div class="sa-ov" data-ov="help" hidden>
-      <div class="sa-card">
-        <div class="sa-head"><h3>How to play</h3><button class="sa-btn" type="button" data-help-close>Close</button></div>
-        <div class="sa-help">
-          <div>
-            <b>Desktop</b>
-            <ul>
-              <li><span class="sa-kbd">W A S D</span> / arrows — fly</li>
-              <li><span class="sa-kbd">Space</span> — fire (hold)</li>
-              <li><span class="sa-kbd">X</span> / <span class="sa-kbd">Shift</span> — special weapon</li>
-              <li>Mouse — aim · click — fire · right-click — special</li>
-              <li><span class="sa-kbd">P</span> pause · <span class="sa-kbd">H</span> help · <span class="sa-kbd">C</span> cheats</li>
-            </ul>
-            <b>Mobile</b>
-            <ul>
-              <li>On-screen D-pad to fly, FIRE and ORD buttons to attack</li>
-              <li>Drag on the canvas to aim and fire</li>
-            </ul>
-          </div>
-          <div>
-            <b>Rules</b>
-            <ul>
-              <li>Destroy every generated aircraft and ground target to clear the wave.</li>
-              <li>A coin flip decides who launches first; a boss appears every 5th wave.</li>
-              <li>Combos, remaining hull and boss kills grant extra bonus points.</li>
-              <li>Pickups repair the hull, refill ordnance or add score.</li>
-              <li>Cheats are available to the host only.</li>
-            </ul>
-            <div class="sa-foot"><span class="sa-note">Press H to reopen this guide</span><button class="sa-btn primary" type="button" data-help-close>Got it</button></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-  <div class="sa-pad">
-    <div class="sa-dpad">
-      <button class="sa-key" type="button" data-pad="u" aria-label="Fly up">${iconSVG("arrowUp", { size: 18 })}</button>
-      <button class="sa-key" type="button" data-pad="l" aria-label="Fly left">${iconSVG("arrowLeft", { size: 18 })}</button>
-      <button class="sa-key" type="button" data-pad="r" aria-label="Fly right">${iconSVG("arrowRight", { size: 18 })}</button>
-      <button class="sa-key" type="button" data-pad="d" aria-label="Fly down">${iconSVG("arrowDown", { size: 18 })}</button>
-    </div>
-    <div class="sa-acts">
-      <button class="sa-key spec" type="button" data-pad="s" aria-label="Special weapon">ORD</button>
-      <button class="sa-key fire" type="button" data-pad="f" aria-label="Fire guns">FIRE</button>
-    </div>
-  </div>
-</div>`;
 
     const $ = (sel) => root.querySelector(sel);
     const app = $("[data-sa]");
@@ -1011,8 +877,6 @@ export function mount(root, context = {}) {
     const canvas = $("[data-canvas]");
     const ctx = canvas.getContext("2d");
     const grid = $("[data-grid]");
-    const cheatGrid = $("[data-cheatgrid]");
-    const cheatActs = $("[data-cheatacts]");
     const launchBtn = $("[data-launch]");
     const ov = {
         select: $('[data-ov="select"]'),
@@ -1030,6 +894,8 @@ export function mount(root, context = {}) {
         left: $('[data-hud="left"]'),
         init: $('[data-hud="init"]'),
         combo: $('[data-hud="combo"]'),
+        best: $('[data-hud="best"]'),
+        wave: $('[data-hud="wave"]'),
     };
     const out = {
         bonus: $('[data-out="bonus"]'),
@@ -1382,21 +1248,14 @@ export function mount(root, context = {}) {
         grid.innerHTML = h;
     }
     function renderCheats(s) {
-        const sig = JSON.stringify(s.cheats);
-        if (sig === cheatSig) return;
-        cheatSig = sig;
-        let h = "";
         for (const c of CHEAT_TOGGLES) {
+            const button = root.querySelector(`[data-cheat="${c.key}"]`);
+            if (!button) continue;
             const on = !!s.cheats[c.key];
-            h += '<button class="sa-toggle' + (on ? " on" : "") + '" type="button" data-cheat="' + c.key + '">' +
-                c.label + "<em>" + (on ? "ON" : "OFF") + "</em></button>";
+            button.classList.toggle("on", on);
+            const em = button.querySelector("em");
+            if (em) em.textContent = on ? "ON" : "OFF";
         }
-        cheatGrid.innerHTML = h;
-        let a = "";
-        for (const c of CHEAT_ACTIONS) {
-            a += '<button class="sa-toggle" type="button" data-cheatact="' + c.key + '">' + c.label + "<em>RUN</em></button>";
-        }
-        cheatActs.innerHTML = a;
     }
     function syncUI(s) {
         const me = s.players[myIndex] || s.players[0];
@@ -1408,8 +1267,10 @@ export function mount(root, context = {}) {
         hud.ammo.textContent = s.cheats.ammo ? "INF" : me.ammo;
         hud.left.textContent = s.left;
         hud.init.textContent = "FIRST " + (s.first === 0 ? (online ? "SQUAD" : "YOU") : "BOT");
-        hud.combo.hidden = s.combo <= 1;
+        hud.combo.closest("[data-chip]")?.toggleAttribute("hidden", s.combo <= 1);
         hud.combo.textContent = "x" + s.combo;
+        hud.best.textContent = Math.max(best, s.score);
+        hud.wave.textContent = s.level;
         tags.mode.textContent = online ? (isHost ? "Host - P1" : "Guest - P2") : "Solo";
         tags.clearlv.textContent = "LV " + s.level;
         tags.overlv.textContent = "LV " + s.level;
@@ -1439,12 +1300,12 @@ export function mount(root, context = {}) {
         const active = Object.keys(s.cheats).filter((k) => s.cheats[k]).length;
         if (cbtn) {
             cbtn.classList.toggle("on", active > 0);
-            const label = cbtn.querySelector(".sa-btn-label");
+            const label = cbtn.querySelector(".gui-btn-label");
             if (label) label.textContent = active > 0 ? "Cheats " + active : "Cheats";
         }
         const pbtn = root.querySelector("[data-pause]");
         if (pbtn) {
-            const label = pbtn.querySelector(".sa-btn-label");
+            const label = pbtn.querySelector(".gui-btn-label");
             if (label) label.textContent = s.paused ? "Resume" : "Pause";
             pbtn.setAttribute("aria-label", s.paused ? "Resume" : "Pause");
             pbtn.disabled = online && !isHost;
@@ -1491,7 +1352,7 @@ export function mount(root, context = {}) {
             ? [{ name: playerName || "Player 1", veh: "fighter" }, { name: rivalName(), veh: "fighter" }]
             : [{ name: playerName || "Player", veh: "fighter" }];
         state = makeState({ seed: (Math.random() * 1e9) | 0, players, best });
-        gridSig = ""; cheatSig = "";
+        gridSig = "";
         specialQ[0] = 0; specialQ[1] = 0;
     }
     function sanitizeInput(o) {
@@ -1821,7 +1682,7 @@ export function mount(root, context = {}) {
             for (const u of unsubs) { if (typeof u === "function") { try { u(); } catch (err) { /* ignore */ } } }
             unsubs.length = 0;
             state = null;
-            root.innerHTML = "";
+            root.replaceChildren();
         },
     };
 }

@@ -15,6 +15,7 @@
 /* ================================================================ */
 
 import { iconSVG } from "../JS/icons.js";
+import { createGameShell } from "../JS/game-ui.js";
 
 export const META = {
     id: "zombie-survival", // harus sama dengan nama file (tanpa .js)
@@ -253,275 +254,138 @@ export function mount(root, context = {}) {
     ];
 
     /* ---------------- shell (minimal UI) ---------------- */
-    root.innerHTML = `
-<div class="game-app zs game-fill" data-zs>
-<style>
-.zs{--ink:#1c1917;--mut:#78716c;--line:#e7e5e4;--acc:#65a30d;color:var(--ink);width:100%;max-width:900px;margin:0 auto;padding:0 12px calc(12px + env(safe-area-inset-bottom));box-sizing:border-box}
-.zs.game-fill{display:flex;flex-direction:column}
-.zs *{box-sizing:border-box}
-.zs [hidden]{display:none!important}
-.zs button{font-family:inherit}
-.zs-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font:600 11px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace}
-.zs-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--mut);border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 9px;font-weight:600;line-height:1.4;white-space:nowrap}
-.zs-chip b{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
-.zs-chip.cheat{border-color:#f59e0b66;background:#fffbeb;color:#92400e;font-weight:800}
-.zs .game-status-dot{width:8px;height:8px;border-radius:50%;background:#a8a29e;display:inline-block;flex:none}
-.zs .game-status-dot.live{background:#65a30d;box-shadow:0 0 0 3px #65a30d22}
-.zs .game-status-dot.warn{background:#f59e0b}
-.zs .game-status-dot.bad{background:#ef4444}
-.zs-hp{width:60px;height:6px;border-radius:3px;background:#e7e5e4;overflow:hidden;display:inline-block}
-.zs-hp i{display:block;height:100%;border-radius:3px;background:#10b981;transition:width .15s}
-.zs-spacer{flex:1 1 auto}
-.zs-btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:#fff;font-weight:700;font-size:12px;border-radius:10px;padding:8px 14px;min-height:36px;cursor:pointer}
-.zs-btn:hover{opacity:.88}
-.zs-btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
-.zs-btn.ghost:hover{background:#f5f5f4;opacity:1}
-.zs-btn.acc{background:var(--acc);border-color:var(--acc)}
-.zs-icon-btn{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;font-size:10px;min-height:32px}
-.zs-icon-btn svg{flex:none;display:block}
-.zs-btn-label{white-space:nowrap}
-.zs-btnrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:0 auto}
-.zs-arena{position:relative;width:100%;flex:1 1 auto;min-height:0;aspect-ratio:5/4;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#161a15;line-height:0;user-select:none;-webkit-user-select:none}
-.zs-board{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
-.zs-boss{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:min(70%,340px);z-index:3;line-height:1.2}
-.zs-boss .nm{font-size:9.5px;font-weight:800;letter-spacing:.16em;color:#e9d5ff;text-align:center;text-shadow:0 1px 2px #000;margin-bottom:3px}
-.zs-boss .bar{height:7px;border-radius:4px;background:#ffffff22;border:1px solid #ffffff33;overflow:hidden}
-.zs-boss .bar i{display:block;height:100%;background:#a78bfa;transition:width .15s}
-.zs-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(250,250,249,.9);backdrop-filter:blur(5px);line-height:1.45;padding:12px;overflow:auto;z-index:5}
-.zs-card{display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;max-height:100%;max-width:min(430px,100%);width:100%;box-shadow:0 6px 18px rgba(28,25,23,.08);text-align:center;margin:auto}
-.zs-card.wide{max-width:min(520px,100%)}
-.zs-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-.zs-card h3{margin:0;font-size:18px;font-weight:800;letter-spacing:-.01em}
-.zs-head .zs-btn{min-height:30px;padding:4px 10px;font-size:10px}
-.zs-card .sub{margin:0 0 12px;font-size:12.5px;color:var(--mut)}
-.zs-scroll,.zs-help,.zs-cheats,.zs-draft,.zs-stats{flex:1 1 auto;min-height:0;overflow:auto}
-.zs-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}
-.zs-note{font-size:10.5px;color:var(--mut);text-align:left}
-.zs-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 12px}
-.zs-stat{border:1px solid var(--line);border-radius:12px;padding:8px 4px}
-.zs-stat b{display:block;font-size:15px;font-weight:800}
-.zs-stat span{font-size:9.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
-.zs-draft{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px}
-@media (max-width:420px){.zs-draft{grid-template-columns:1fr}}
-.zs-skill{border:1.5px solid var(--line);border-radius:12px;background:#fff;padding:12px 8px;min-height:44px;cursor:pointer;text-align:center;color:var(--ink)}
-.zs-skill:hover{border-color:var(--acc);background:#f7fee7}
-.zs-skill .ic{font-size:22px;line-height:1.2}
-.zs-skill h4{margin:5px 0 2px;font-size:12.5px;font-weight:800}
-.zs-skill p{margin:0;font-size:10.5px;color:var(--mut);line-height:1.35}
-.zs-skill .rar{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
-.zs-skill .lv{display:inline-block;margin-top:6px;font-size:9.5px;font-weight:700;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
-.zs-skill.picked{border-color:var(--acc);background:#f7fee7}
-.zs-skill.dim{opacity:.45;pointer-events:none}
-.zs-help{text-align:left}
-.zs-help h5{margin:12px 0 4px;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--acc)}
-.zs-help p,.zs-help li{font-size:12px;color:#44403c;margin:2px 0}
-.zs-help ul{margin:2px 0;padding-left:16px}
-.zs-help kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:10.5px;background:#fafaf9;font-family:inherit}
-.zs-cheats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;text-align:left}
-@media (max-width:420px){.zs-cheats{grid-template-columns:1fr}}
-.zs-cheat-item{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:11.5px;font-weight:600}
-.zs-tgl{border:1px solid var(--line);border-radius:999px;font-size:10px;font-weight:800;min-height:44px;padding:4px 12px;cursor:pointer;background:#f5f5f4;color:var(--mut)}
-.zs-tgl.on{background:var(--acc);border-color:var(--acc);color:#fff}
-.zs-mini{border:1px solid var(--line);background:#fff;border-radius:10px;font-size:11.5px;font-weight:700;min-height:44px;padding:7px 10px;cursor:pointer;text-align:left;color:var(--ink)}
-.zs-mini:hover{border-color:var(--acc);background:#f7fee7}
-.zs-toasts{position:absolute;left:10px;bottom:10px;display:flex;flex-direction:column;gap:5px;z-index:4;pointer-events:none;line-height:1.3;max-width:calc(100% - 20px)}
-.zs-toast{background:#ffffffee;border:1px solid var(--line);border-radius:9px;font-size:11px;font-weight:600;padding:5px 10px;box-shadow:0 3px 10px rgba(0,0,0,.08);max-width:270px;color:var(--ink)}
-.zs-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.zs-pad{display:none;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(2,46px);gap:5px}
-.zs-acts{display:none;align-items:center;gap:8px}
-.zs.touch .zs-pad{display:grid}
-.zs.touch .zs-acts{display:flex}
-@media (pointer:coarse){.zs .zs-pad{display:grid}.zs .zs-acts{display:flex}}
-.zs-dbtn{width:46px;height:46px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:16px;color:var(--ink);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;padding:0;line-height:1}
-.zs-dbtn:active{background:#f7fee7;border-color:var(--acc)}
-.zs-hit{width:66px;height:66px;border-radius:50%;background:var(--acc);border:none;color:#fff;font-weight:800;font-size:13px;letter-spacing:.04em;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
-.zs-hit:active{transform:scale(.94)}
-.zs-dashb{width:54px;height:54px;border-radius:50%;border:1.5px solid var(--ink);background:#fff;color:var(--ink);font-weight:800;font-size:10px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
-.zs-dashb.cool{opacity:.4}
-.zs :focus-visible,.zs button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-@media (prefers-reduced-motion:reduce){.zs *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
-
-/* --- fill height + mobile refinements (last, highest specificity) --- */
-@media (pointer:coarse){.zs button:not(:disabled){min-height:44px}}
-.zs .zs-hud{gap:6px;margin-bottom:8px}
-.zs .zs-hud .zs-chip{padding:4px 7px;font-size:9px}
-.zs .zs-hud .zs-icon-btn{min-height:32px;padding:5px 9px;font-size:9px}
-.zs .zs-hud .zs-btn-label,.zs .zs-hud .zs-spacer{display:none}
-.zs.game-fill > .zs-arena{flex:1 1 auto;min-height:0;aspect-ratio:auto}
-@media (max-width:640px){
-.zs{padding-left:8px;padding-right:8px}
-.zs.game-fill > .zs-arena:not(:has(.zs-ov:not([hidden]))){aspect-ratio:5/4;flex:0 0 auto}
-.zs.game-fill > .zs-arena:has(.zs-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
-.zs .zs-hud{gap:5px}
-.zs .zs-hud .zs-chip{padding:4px 6px;font-size:9px}
-.zs .zs-hud .zs-icon-btn{min-height:32px;padding:5px 9px;font-size:9px}
-.zs .zs-ov{padding:8px}
-.zs .zs-card{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
-.zs .zs-scroll,.zs .zs-help,.zs .zs-cheats,.zs .zs-draft,.zs .zs-stats{scrollbar-width:none}
-.zs .zs-scroll::-webkit-scrollbar,.zs .zs-help::-webkit-scrollbar,.zs .zs-cheats::-webkit-scrollbar,.zs .zs-draft::-webkit-scrollbar,.zs .zs-stats::-webkit-scrollbar{display:none}
-.zs .zs-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
-.zs .zs-note{display:none}
-}
-</style>
-<div class="zs-hud">
-  <span class="zs-chip">STATUS <b data-el="status">Ready</b><i class="game-status-dot" data-el="statusDot"></i></span>
-  <span class="zs-chip">WAVE <b data-el="wave">1</b>/${TOTAL_WAVES}</span>
-  <span class="zs-chip">KILLS <b data-el="kills">0</b></span>
-  <span class="zs-chip">SCORE <b data-el="score">0</b></span>
-  <span class="zs-chip">BEST <b data-el="best">0</b></span>
-  <span data-el="hps" style="display:inline-flex;gap:6px"></span>
-  <span class="zs-chip">WPN <b data-el="wpn">Bat</b></span>
-  <span class="zs-chip">SEED <b data-el="seed">—</b></span>
-  <span class="zs-chip cheat" data-el="cheatBadge" hidden>CHEATS</span>
-  <span class="zs-spacer"></span>
-  <button class="zs-btn zs-icon-btn" type="button" data-help aria-label="How to play" title="How to play (H)">${iconSVG("helpCircle", { size: 14 })}<span class="zs-btn-label">Help</span></button>
-  <button class="zs-btn zs-icon-btn" type="button" data-cheats data-el="cheatBtn" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="zs-btn-label">Cheats</span></button>
-  <button class="zs-btn zs-icon-btn" type="button" data-pause data-el="pauseBtn" aria-label="Pause" title="Pause (P)">${iconSVG("pause", { size: 14 })}<span class="zs-btn-label">Pause</span></button>
-  <button class="zs-btn zs-icon-btn" type="button" data-restart data-el="restartBtn" aria-label="Restart" title="Restart (R)">${iconSVG("refresh", { size: 14 })}<span class="zs-btn-label">Restart</span></button>
-  <button class="zs-btn zs-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="zs-btn-label">Exit game</span></button>
-  <button class="zs-btn zs-icon-btn" type="button" data-act="touch" aria-label="Toggle touch controls" title="Toggle touch controls">${iconSVG("gamepad2", { size: 14 })}<span class="zs-btn-label">Touch</span></button>
-  <button class="zs-btn zs-icon-btn" type="button" data-act="mute" data-el="sndBtn" aria-label="Toggle sound" title="Sound">${iconSVG("volume", { size: 14 })}<span class="zs-btn-label">Sound</span></button>
-</div>
-<section class="game-panel zs-arena" data-board>
-  <svg class="zs-board" data-el="board" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Zombie Survival arena">
-    <g data-el="world">
-      <rect x="0" y="0" width="${W}" height="${H}" fill="#171b16"/>
-      <rect x="1" y="1" width="${W - 2}" height="${H - 2}" rx="10" fill="none" stroke="#ffffff12" stroke-width="2"/>
-      <g data-el="dots"></g>
-      <g data-el="obst"></g>
-      <g data-el="items"></g>
-      <g data-el="rings"></g>
-      <g data-el="shots"></g>
-      <g data-el="zombies"></g>
-      <g data-el="swings"></g>
-      <g data-el="players"></g>
-      <g data-el="pops"></g>
-      <circle data-el="aim" r="6" fill="none" stroke="#a3e635" stroke-width="1.5" opacity="0"/>
-    </g>
-    <text data-el="banner" x="${W / 2}" y="218" font-size="30" font-weight="800" letter-spacing="4" fill="#fff" text-anchor="middle" opacity="0" font-family="inherit"></text>
-    <text data-el="bannerSub" x="${W / 2}" y="246" font-size="12.5" fill="#d6d3d1" text-anchor="middle" opacity="0" font-family="inherit"></text>
-  </svg>
-  <div class="zs-boss" data-el="boss" hidden>
-    <div class="nm">THE ABOMINATION</div>
-    <div class="bar"><i data-el="bossFill" style="width:100%"></i></div>
-  </div>
-  <div class="zs-toasts" data-el="toasts"></div>
-
-  <div class="zs-ov" data-ov="wait" hidden><div class="zs-card"><div class="zs-head"><h3>Connecting\u2026</h3></div><div class="zs-scroll"><p class="sub" style="margin:0">Waiting for the host's state.</p></div></div></div>
-
-  <div class="zs-ov" data-ov="start">
-    <div class="zs-card">
-      <div class="zs-head"><h3>Zombie Survival</h3></div>
-      <div class="zs-scroll">
-        <p class="sub">Survive ${TOTAL_WAVES} waves in a freshly generated arena. Zombies telegraph their attacks — dodge or dash through them. Clear a wave, draft a skill (they stack forever), and face the boss at the end.</p>
-        <p class="sub" style="margin:12px 0 0" data-el="startNote">Coin toss decides who moves first \u00B7 spawn corners are randomized.</p>
-      </div>
-      <div class="zs-foot"><div class="zs-btnrow">
-        <button class="zs-btn acc" type="button" data-act="start" data-el="startBtn">Start run</button>
-        <button class="zs-btn ghost" type="button" data-act="help">How to play</button>
-      </div></div>
-    </div>
-  </div>
-
-  <div class="zs-ov" data-ov="pause" hidden>
-    <div class="zs-card">
-      <div class="zs-head"><h3>Paused</h3></div>
-      <div class="zs-scroll"><p class="sub" data-el="pauseSub">Game paused.</p></div>
-      <div class="zs-foot"><div class="zs-btnrow"><button class="zs-btn" type="button" data-act="resume" data-el="resumeBtn">Resume</button><button class="zs-btn ghost" type="button" data-act="help">How to play</button></div></div>
-    </div>
-  </div>
-
-  <div class="zs-ov" data-ov="draft" hidden>
-    <div class="zs-card wide">
-      <div class="zs-head"><h3>Choose a skill</h3></div>
-      <div class="zs-scroll">
-        <p class="sub" data-el="draftSub">Wave cleared!</p>
-        <div class="zs-draft" data-el="draftCards"></div>
-      </div>
-      <div class="zs-foot"><p class="sub" style="margin:0" data-el="draftWait"></p></div>
-    </div>
-  </div>
-
-  <div class="zs-ov" data-ov="help" hidden>
-    <div class="zs-card wide zs-help">
-      <div class="zs-head"><h3>How to play</h3><button class="zs-btn ghost" type="button" data-help-close aria-label="Close help">Close</button></div>
-      <div class="zs-scroll">
-        <h5>Goal</h5>
-        <p>Survive ${TOTAL_WAVES} waves. Every wave generates a new arena layout (always fully connected — no unreachable spots). Wave ${TOTAL_WAVES} spawns <b>The Abomination</b>.</p>
-        <h5>Desktop controls</h5>
-        <ul>
-          <li><kbd>WASD</kbd> / <kbd>\u2190\u2191\u2192\u2193</kbd> move \u00B7 mouse to aim</li>
-          <li><kbd>Click</kbd> / <kbd>Space</kbd> attack (hold to auto-attack)</li>
-          <li><kbd>Shift</kbd> / right-click dash (brief invulnerability)</li>
-          <li><kbd>1\u20133</kbd> pick skill \u00B7 <kbd>P</kbd> pause \u00B7 <kbd>H</kbd> help \u00B7 <kbd>C</kbd> cheats \u00B7 <kbd>R</kbd> restart</li>
-        </ul>
-        <h5>Mobile controls</h5>
-        <ul>
-          <li>D-pad to move \u00B7 <b>HIT</b> to attack (auto-aims at the nearest zombie) \u00B7 <b>DASH</b> to dodge.</li>
-        </ul>
-        <h5>Combat</h5>
-        <ul>
-          <li>Zombies raise their arms and show a red <b>!</b> before striking — step away or dash during the wind-up.</li>
-          <li>Your hits knock zombies back and interrupt their wind-ups.</li>
-          <li>The boss telegraphs a <b>stomp ring</b> and a <b>charge lane</b>, and summons minions. Keep moving.</li>
-        </ul>
-        <h5>Roguelite draft</h5>
-        <ul>
-          <li>After each wave pick 1 of 3 skills. Every skill stacks without limit — combine burn + frost + corpse bombs + orbit blades\u2026</li>
-          <li>In co-op both players draft; a random coin toss decides who moves first, and spawn corners/roles are randomized.</li>
-        </ul>
-        <h5>Loot</h5>
-        <ul>
-          <li>Weapons: Katana, War Hammer, Spear, Pistol, Shotgun, SMG, Rail Rifle (guns use ammo; empty guns revert to the bat).</li>
-          <li>Items: medkit, ammo box, gem (score), coffee (speed), shield (blocks 2 hits), nuke (clears the screen).</li>
-        </ul>
-      </div>
-      <div class="zs-foot"><span class="zs-note">Press H to reopen this guide</span><button class="zs-btn" type="button" data-help-close>Got it</button></div>
-    </div>
-  </div>
-
-  <div class="zs-ov" data-ov="cheats" hidden>
-    <div class="zs-card wide">
-      <div class="zs-head"><h3>\u26A1 Cheats</h3><button class="zs-btn ghost" type="button" data-cheat-close aria-label="Close cheats">Close</button></div>
-      <div class="zs-scroll"><p class="sub">Using cheats marks the run — best score won't be saved.</p><div class="zs-cheats" data-el="cheatGrid"></div></div>
-      <div class="zs-foot"><span class="zs-note">Press C to toggle cheats</span><button class="zs-btn" type="button" data-cheat-close>Close</button></div>
-    </div>
-  </div>
-
-  <div class="zs-ov" data-ov="over" hidden>
-    <div class="zs-card">
-      <div class="zs-head"><h3 data-el="ovTitle">Game over</h3></div>
-      <div class="zs-scroll">
-        <p class="sub" data-el="ovSub"></p>
-        <div class="zs-stats" data-el="ovStats"></div>
-        <p class="sub" data-el="ovCheat" style="margin:0 0 10px"></p>
-      </div>
-      <div class="zs-foot">
-        <div class="zs-btnrow">
-          <button class="zs-btn acc" type="button" data-act="start" data-el="againBtn">Play again</button>
-          <button class="zs-btn ghost" type="button" data-exit>Exit game</button>
-        </div>
-        <p class="sub" style="margin:0" data-el="ovWait"></p>
-      </div>
-    </div>
-  </div>
-</section>
-<div class="zs-controls">
-  <div class="zs-pad" data-el="pad">
-    <button class="zs-dbtn" type="button" data-dir="up" style="grid-column:2;grid-row:1" aria-label="Up">\u25B2</button>
-    <button class="zs-dbtn" type="button" data-dir="left" style="grid-column:1;grid-row:2" aria-label="Left">\u25C0</button>
-    <button class="zs-dbtn" type="button" data-dir="down" style="grid-column:2;grid-row:2" aria-label="Down">\u25BC</button>
-    <button class="zs-dbtn" type="button" data-dir="right" style="grid-column:3;grid-row:2" aria-label="Right">\u25B6</button>
-  </div>
-  <div class="zs-acts">
-    <button class="zs-dashb" type="button" data-act="dash" data-el="dashBtn" aria-label="Dash">DASH</button>
-    <button class="zs-hit" type="button" data-act="hit" data-el="hitBtn" aria-label="Attack">HIT</button>
-  </div>
-</div>
-</div>`;
+    const CHEAT_TOGGLES = [["god", "God mode"], ["onehit", "One-hit kills"], ["ammo", "Infinite ammo"], ["slowmo", "Slow motion \u00D70.5"], ["freeze", "Freeze zombies"]];
+    const CHEAT_ACTIONS = [["heal", "Full heal (team)"], ["score", "+500 score"], ["skip", "Clear current wave"], ["boss", "Spawn boss"], ["weapon", "Cycle weapon"], ["skill", "+1 random skill"], ["level", "Reroll layout"]];
+    const ui = createGameShell(root, {
+      prefix: "zs",
+      boardClass: "zs-arena",
+      category: META.category,
+      hud: { hiddenChips: ["combo"] },
+      info: [
+        { key: "wave", label: "WAVE", el: "wave" },
+        { raw: '<span class="gui-chip gui-hps"><b data-el="hps"></b></span>' },
+      ],
+      board: {
+        type: "builder",
+        build(board, { mk }) {
+          const svg = mk("svg", { class: "zs-board", "data-el": "board", viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "xMidYMid meet" }, board);
+          const world = mk("g", { "data-el": "world" }, svg);
+          mk("rect", { x: 0, y: 0, width: W, height: H, fill: "#171b16" }, world);
+          mk("rect", { x: 1, y: 1, width: W - 2, height: H - 2, rx: 10, fill: "none", stroke: "#ffffff12", "stroke-width": 2 }, world);
+          for (const ref of ["dots", "obst", "items", "rings", "shots", "zombies", "swings", "players", "pops"]) mk("g", { "data-el": ref }, world);
+          mk("circle", { "data-el": "aim", r: 6, fill: "none", stroke: "#a3e635", "stroke-width": 1.5, opacity: 0 }, world);
+          mk("text", { "data-el": "banner", x: W / 2, y: 218, "font-size": 30, "font-weight": 800, "letter-spacing": 4, fill: "#fff", "text-anchor": "middle", opacity: 0, "font-family": "inherit" }, svg);
+          mk("text", { "data-el": "bannerSub", x: W / 2, y: 246, "font-size": 12.5, fill: "#d6d3d1", "text-anchor": "middle", opacity: 0, "font-family": "inherit" }, svg);
+          const boss = mk("div", { class: "zs-boss", "data-el": "boss", hidden: "" }, board);
+          mk("div", { class: "nm", text: "THE ABOMINATION" }, boss);
+          const bar = mk("div", { class: "bar" }, boss);
+          const bossFill = mk("i", { "data-el": "bossFill", style: "width:100%" }, bar);
+          mk("div", { class: "zs-toasts", "data-el": "toasts" }, board);
+          return { svg, boss, bossFill };
+        },
+      },
+      overlays: {
+        wait: {
+          title: "Connecting\u2026",
+          paragraphs: ["Waiting for the host's state."],
+        },
+        start: {
+          title: "Zombie Survival",
+          body: `<p class="sub">Survive ${TOTAL_WAVES} waves in a freshly generated arena. Zombies telegraph their attacks — dodge or dash through them. Clear a wave, draft a skill (they stack forever), and face the boss at the end.</p><p class="sub" style="margin:12px 0 0" data-el="startNote">Coin toss decides who moves first \u00B7 spawn corners are randomized.</p>`,
+          actions: [
+            { label: "Start run", variant: "gui-primary", attrs: ' data-act="start" data-el="startBtn"' },
+            { label: "How to play", variant: "ghost", attrs: ' data-act="help"' },
+          ],
+        },
+        pause: {
+          title: "Paused",
+          primary: "Resume", primaryAction: "resume",
+        },
+        draft: {
+          title: "Choose a skill",
+          wide: true,
+          body: '<p class="sub" data-el="draftSub">Wave cleared!</p><div class="gui-grid" data-el="draftCards"></div>',
+          footHTML: '<div class="gui-foot"><p class="sub" style="margin:0" data-el="draftWait"></p></div>',
+        },
+        help: {
+          title: "How to play",
+          closeLabel: "Close", closeAction: "help-close",
+          sections: [
+            { title: "Goal", paragraphs: [
+              `Survive ${TOTAL_WAVES} waves. Every wave generates a new arena layout (always fully connected — no unreachable spots). Wave ${TOTAL_WAVES} spawns <b>The Abomination</b>.`,
+            ] },
+            { title: "Desktop controls", items: [
+              '<span class="gui-kbd">WASD</span> / <span class="gui-kbd">\u2190\u2191\u2192\u2193</span> move · mouse to aim',
+              '<span class="gui-kbd">Click</span> / <span class="gui-kbd">Space</span> attack (hold to auto-attack)',
+              '<span class="gui-kbd">Shift</span> / right-click dash (brief invulnerability)',
+              '<span class="gui-kbd">1\u20133</span> pick skill · <span class="gui-kbd">P</span> pause · <span class="gui-kbd">H</span> help · <span class="gui-kbd">C</span> cheats · <span class="gui-kbd">R</span> restart',
+            ] },
+            { title: "Mobile controls", items: [
+              "D-pad to move · <b>HIT</b> to attack (auto-aims at the nearest zombie) · <b>DASH</b> to dodge.",
+            ] },
+            { title: "Combat", items: [
+              "Zombies raise their arms and show a red <b>!</b> before striking — step away or dash during the wind-up.",
+              "Your hits knock zombies back and interrupt their wind-ups.",
+              "The boss telegraphs a <b>stomp ring</b> and a <b>charge lane</b>, and summons minions. Keep moving.",
+            ] },
+            { title: "Roguelite draft", items: [
+              "After each wave pick 1 of 3 skills. Every skill stacks without limit — combine burn + frost + corpse bombs + orbit blades…",
+              "In co-op both players draft; a random coin toss decides who moves first, and spawn corners/roles are randomized.",
+            ] },
+            { title: "Loot", items: [
+              "Weapons: Katana, War Hammer, Spear, Pistol, Shotgun, SMG, Rail Rifle (guns use ammo; empty guns revert to the bat).",
+              "Items: medkit, ammo box, gem (score), coffee (speed), shield (blocks 2 hits), nuke (clears the screen).",
+            ] },
+          ],
+          note: "Press H to reopen this guide",
+          primary: "Got it", primaryAction: "help-close",
+        },
+        cheats: {
+          title: "Cheats",
+          closeLabel: "Close", closeAction: "cheat-close",
+          paragraphs: ["Using cheats marks the run — best score won't be saved."],
+          toggles: CHEAT_TOGGLES.map(([key, label]) => ({ key: "cheat-t", value: key, label })),
+          cardActions: CHEAT_ACTIONS.map(([key, label]) => ({ key: "cheat-a", value: key, label })),
+          note: "Press C to toggle cheats",
+        },
+        over: {
+          title: '<span data-el="ovTitle">Game over</span>',
+          body: '<p class="sub" data-el="ovSub"></p><div class="gui-stats" data-el="ovStats"></div><p class="sub" style="margin:0 0 10px" data-el="ovCheat"></p>',
+          footHTML: '<div class="gui-foot"><div class="gui-actions"><button class="gui-btn gui-primary" type="button" data-act="start" data-el="againBtn">Play again</button><button class="gui-btn ghost" type="button" data-exit>Exit game</button></div><p class="sub" style="margin:0" data-el="ovWait"></p></div>',
+        },
+      },
+      pad: {
+        build(padEl, { mk }) {
+          const controls = mk("div", { class: "zs-controls" }, padEl);
+          const dpad = mk("div", { class: "zs-pad", "data-el": "pad" }, controls);
+          for (const [dir, glyph, col, row, label] of [
+            ["up", "\u25B2", 2, 1, "Up"],
+            ["left", "\u25C0", 1, 2, "Left"],
+            ["down", "\u25BC", 2, 2, "Down"],
+            ["right", "\u25B6", 3, 2, "Right"],
+          ]) {
+            mk("button", {
+              class: "zs-dbtn", type: "button", "data-dir": dir,
+              style: `grid-column:${col};grid-row:${row}`,
+              "aria-label": label, text: glyph,
+            }, dpad);
+          }
+          const acts = mk("div", { class: "zs-acts" }, controls);
+          mk("button", { class: "zs-dashb", type: "button", "data-act": "dash", "data-el": "dashBtn", "aria-label": "Dash", text: "DASH" }, acts);
+          mk("button", { class: "zs-hit", type: "button", "data-act": "hit", "data-el": "hitBtn", "aria-label": "Attack", text: "HIT" }, acts);
+        },
+      },
+    });
 
     /* ---------------- refs ---------------- */
     const $ = (s) => root.querySelector(s);
+    root.querySelectorAll("[data-ui-action]").forEach((b) => { b.dataset.act = b.dataset.uiAction; });
+    root.querySelectorAll("[data-gui-hud] [data-hud]").forEach((n) => { n.dataset.el = n.dataset.hud; });
+    const hudElAlias = { cheats: "cheatBtn", pause: "pauseBtn", restart: "restartBtn" };
+    root.querySelectorAll("[data-gui-hud] [data-ui-action]").forEach((b) => {
+        const alias = hudElAlias[b.dataset.uiAction];
+        if (alias) b.dataset.el = alias;
+    });
     const R = {};
     for (const el of root.querySelectorAll("[data-el]")) R[el.dataset.el] = el;
     const OV = {};
@@ -1677,14 +1541,12 @@ export function mount(root, context = {}) {
 
     /* ---------------- HUD & overlays ---------------- */
     function updateHud(v) {
+        R.level.textContent = String(v.wave || 1);
+        R.lives.textContent = String(v.players.filter((p) => p.alive).length);
         R.wave.textContent = String(v.wave || 1);
-        R.kills.textContent = String(v.kills);
         R.score.textContent = String(v.score);
-        R.best.textContent = String(best);
-        R.seed.textContent = "#" + (v.seed >>> 0).toString(36);
-        vis(R.cheatBadge, v.cheated);
         const me = v.players.find((p) => p.owner === playerIndex);
-        R.wpn.textContent = me ? WEAPONS[me.weapon].name + (WEAPONS[me.weapon].kind === "gun" ? " \u00B7 " + (cheats.ammo ? "\u221E" : me.ammo) : "") : "\u2014";
+        R.hp.style.width = (100 * clamp((me?.hp || 0) / (me?.maxHp || 1), 0, 1)).toFixed(0) + "%";
         const sig = v.players.map((p) => p.id + ":" + p.color).join(",");
         if (sig !== hpsSig) {
             hpsSig = sig;
@@ -1704,14 +1566,6 @@ export function mount(root, context = {}) {
             R.dashBtn.classList.toggle("cool", cool);
             R.dashBtn.textContent = cool ? me.dashCd.toFixed(1) : "DASH";
         }
-        let st = "Ready", cls = "";
-        if (v.phase === "toss") { st = "Coin toss"; cls = "warn"; }
-        else if (v.phase === "fight") { st = v.paused ? "Paused" : "Wave " + v.wave; cls = v.paused ? "warn" : "live"; }
-        else if (v.phase === "draft") { st = "Pick a skill"; cls = "live"; }
-        else if (v.phase === "over") { st = v.over && v.over.win ? "Victory" : "Defeat"; cls = v.over && v.over.win ? "live" : "bad"; }
-        else if (online && !hostSide) { st = "Waiting for host"; }
-        R.status.textContent = st;
-        R.statusDot.className = "game-status-dot " + cls;
     }
     /* ikon + label diperbarui lewat span, bukan textContent (iconSVG tidak boleh hilang) */
     function setIconBtn(btn, icon, label, title) {
@@ -1731,7 +1585,7 @@ export function mount(root, context = {}) {
         const phase = v ? v.phase : "wait";
         const blocked = anyOverlay();
         vis(OV.wait, !v && !blocked);
-        vis(OV.start, !!v && phase === "menu" && !blocked);
+        vis(OV.start, !!v && phase === "menu" && !blocked && !v.paused);
         vis(OV.pause, !!v && v.paused && !blocked && (phase === "fight" || phase === "toss" || phase === "draft"));
         vis(OV.draft, !!v && phase === "draft" && !blocked);
         vis(OV.over, !!v && phase === "over" && !blocked);
@@ -1741,18 +1595,12 @@ export function mount(root, context = {}) {
         vis(R.cheatBtn, hostSide);
         vis(R.pauseBtn, hostSide);
         vis(R.restartBtn, hostSide);
-        vis(R.resumeBtn, hostSide);
         vis(R.againBtn, hostSide);
-        if (!v) {
-            R.status.textContent = "Connecting";
-            R.statusDot.className = "game-status-dot warn";
-            return;
-        }
+        if (!v) return;
         const hostName = roomData && roomData.players && roomData.players[0] && roomData.players[0].name;
         R.startNote.textContent = hostSide
             ? "Coin toss decides who moves first \u00B7 spawn corners are randomized."
             : "Waiting for " + (hostName || "the host") + " to start the run\u2026";
-        R.pauseSub.textContent = hostSide ? "Game paused. Press P or tap Resume." : "The host paused the game.";
         setIconBtn(R.pauseBtn, v.paused ? "play" : "pause", v.paused ? "Resume" : "Pause", v.paused ? "Resume (P)" : "Pause (P)");
         if (phase === "draft" && v.draft) {
             const sig = v.draft.options.join(",") + "|" + JSON.stringify(v.draft.picks) + "|" + v.wave;
@@ -1765,7 +1613,7 @@ export function mount(root, context = {}) {
                     const lv = me ? (me.skills[id] || 0) : 0;
                     const picked = myPick === id;
                     const dim = myPick != null && !picked;
-                    return '<button type="button" class="zs-skill' + (picked ? " picked" : "") + (dim ? " dim" : "") + '" data-pick="' + id + '">' +
+                    return '<button type="button" class="zs-skill gui-choice' + (picked ? " picked" : "") + (dim ? " dim" : "") + '" data-pick="' + id + '">' +
                         '<div class="ic">' + s.icon + '</div>' +
                         '<div class="rar" style="color:' + RARITY[s.rarity].c + '">' + RARITY[s.rarity].label + '</div>' +
                         '<h4>' + s.name + '</h4><p>' + s.desc + '</p>' +
@@ -1791,18 +1639,12 @@ export function mount(root, context = {}) {
     }
 
     /* ---------------- panel, cheat, pause ---------------- */
-    const CHEAT_TOGGLES = [["god", "God mode"], ["onehit", "One-hit kills"], ["ammo", "Infinite ammo"], ["slowmo", "Slow motion \u00D70.5"], ["freeze", "Freeze zombies"]];
-    const CHEAT_ACTIONS = [["heal", "Full heal (team)"], ["score", "+500 score"], ["skip", "Clear current wave"], ["boss", "Spawn boss"], ["weapon", "Cycle weapon"], ["skill", "+1 random skill"], ["level", "Reroll layout"]];
-    function buildCheatGrid() {
-        R.cheatGrid.innerHTML =
-            CHEAT_TOGGLES.map((ct) => '<div class="zs-cheat-item"><span>' + ct[1] + '</span><button type="button" class="zs-tgl" data-cheat-t="' + ct[0] + '">OFF</button></div>').join("") +
-            CHEAT_ACTIONS.map((ca) => '<button type="button" class="zs-mini" data-cheat-a="' + ca[0] + '">' + ca[1] + '</button>').join("");
-    }
     function syncCheatGrid() {
-        for (const b of R.cheatGrid.querySelectorAll("[data-cheat-t]")) {
+        for (const b of root.querySelectorAll("[data-cheat-t]")) {
             const on = cheats[b.dataset.cheatT];
             b.classList.toggle("on", on);
-            b.textContent = on ? "ON" : "OFF";
+            const em = b.querySelector("em");
+            if (em) em.textContent = on ? "ON" : "OFF";
         }
     }
     function markCheated() {
@@ -1910,7 +1752,11 @@ export function mount(root, context = {}) {
         if (t.closest("[data-cheat-close]")) { toggleCheats(false); return; }
         if (t.closest("[data-help]")) { toggleHelp(); return; }
         if (t.closest("[data-cheats]")) { toggleCheats(); return; }
-        if (t.closest("[data-pause]")) { togglePause(); return; }
+        if (t.closest("[data-pause]")) {
+            if (hostSide && (!sim || sim.phase === "menu")) { startRun(); setPaused(true); }
+            else togglePause();
+            return;
+        }
         if (t.closest("[data-restart]")) { if (hostSide) { closeOverlays(); startRun(); } return; }
         const pick = t.closest("[data-pick]");
         if (pick) { submitAction({ type: "pick", id: pick.dataset.pick }); return; }
@@ -1934,7 +1780,7 @@ export function mount(root, context = {}) {
         else if (a === "closepanel") closeOverlays();
         else if (a === "mute") {
             muted = !muted;
-            setIconBtn(R.sndBtn, muted ? "volumeX" : "volume", muted ? "Muted" : "Sound", "Sound");
+            if (R.sndBtn) setIconBtn(R.sndBtn, muted ? "volumeX" : "volume", muted ? "Muted" : "Sound", "Sound");
         }
         else if (a === "touch") { root.querySelector(".zs").classList.toggle("touch"); }
     }
@@ -2080,7 +1926,6 @@ export function mount(root, context = {}) {
         }
     }
     buildDots();
-    buildCheatGrid();
     root.addEventListener("click", handleClick);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
@@ -2128,7 +1973,7 @@ export function mount(root, context = {}) {
             window.removeEventListener("pointerup", onWinPointerUp);
             for (const u of subs) { if (typeof u === "function") { try { u(); } catch (e) { } } }
             try { if (audio) audio.close(); } catch (e) { }
-            root.innerHTML = "";
+            root.replaceChildren();
         },
     };
 }

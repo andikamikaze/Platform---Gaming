@@ -14,6 +14,8 @@
  *   - bg   : 2 warna hex kartu (opsional — kosong = pakai warna default)
  *   - bestKey: (opsional) localStorage key untuk skor terbaik
  */
+import { createGameShell } from "./game-ui.js";
+
 export const META = {
   id: "new-game",              // harus sama dengan nama file (tanpa .js)
   name: "New Game",
@@ -26,21 +28,30 @@ export const META = {
 };
 
 export function mount(root, context = {}) {
-  const { mode = "ai", room = null, playerName = "Player", onExit = () => {} } = context;
+  const { mode = "ai", room = null, category = META.category, playerName = "Player", onExit = () => {} } = context;
   const online = mode === "room" && Boolean(room);
   const playerIndex = online && !room.isHost ? 1 : 0;
   let roomData = room?.room || null;
   let state = null;
 
-  root.innerHTML = `
-    <div class="game-app">
-      <div class="game-intro">
-        <div><h2>New Game</h2><p>Replace this text with the game instructions.</p></div>
-        <span class="game-status"><i class="game-status-dot"></i><span data-status>Ready</span></span>
-      </div>
-      <section class="game-panel" data-board></section>
-      <div class="game-actions"><button class="game-action-button" type="button" data-exit>Exit game</button></div>
-    </div>`;
+  /* Seluruh DOM statis dibuat kit. Game hanya mengirim data + logika.
+   * HUD memakai preset kategori; stat khusus masuk panel info; aksi khusus
+   * masuk panel kontrol; konten overlay dijelaskan lewat data. */
+  const ui = createGameShell(root, {
+    prefix: "new-game",
+    category,
+    board: { type: "canvas", width: 960, height: 540 },
+    info: [],
+    controls: [],
+    overlays: {
+      help: {
+        title: "How to play",
+        sections: [{ title: "Aturan", items: ["Replace with game instructions."] }],
+        primary: "Got it",
+        primaryAction: "help-close",
+      },
+    },
+  });
 
   function render() {
     // Render the current state into root.querySelector('[data-board]').

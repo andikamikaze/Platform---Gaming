@@ -25,6 +25,7 @@ Dashboard dan aset inti disajikan sebagai situs statis melalui GitHub Pages. Set
 6. **Multiplayer terisolasi:** komunikasi multiplayer hanya aktif pada game dan room yang membutuhkannya.
 7. **Modular:** setiap game mengikuti kontrak integrasi yang sama agar dapat ditambahkan tanpa mengubah dashboard secara besar-besaran.
 8. **Ikon terpusat:** seluruh ikon UI dan cover art berasal dari `JS/icons.js` (satu sumber path SVG, `viewBox 0 0 24 24`, `stroke currentColor`, tanpa fill). Dilarang memakai glyph Unicode sebagai ikon atau menulis SVG inline baru di komponen.
+9. **UI game terpusat:** seluruh chrome game (HUD, panel info, tombol kontrol, overlay, touch pad) dibuat oleh satu UI kit (`JS/game-ui.js` + `CSS/game-ui.css`). Modul game hanya mengirim data dan logika gameplay.
 
 ### 1.2 Sistem ikon
 
@@ -252,6 +253,8 @@ Breakpoint dapat disesuaikan berdasarkan konten aktual, bukan dipakai sebagai at
 - Gunakan `100dvh` sebagai pertimbangan untuk viewport mobile, dengan fallback yang aman.
 - Hormati safe area perangkat, terutama pada iPhone dengan area notch/home indicator.
 - Jangan memaksa halaman melakukan horizontal scroll.
+- Urutan tetap: bar HUD → panel info/kontrol (bila ada) → board → touch pad (bila ada). Panel info dan kontrol berada di luar board agar tidak tertutup canvas saat overlay dibuka.
+- Overlay selalu terpusat di dalam board dengan kartu seluas maksimal 600 px.
 
 ### 6.4 Orientasi layar
 
@@ -325,6 +328,28 @@ Semua halaman penting harus memiliki state yang dirancang:
 - **Network disconnected:** indikator offline dan mekanisme reconnect.
 - **Room unavailable:** alasan yang spesifik tanpa mengungkap data room kepada pengguna yang tidak berhak.
 - **Opponent disconnected:** tampilkan status reconnect dan kebijakan timeout yang jelas.
+
+### 7.6 Game UI Kit (shared game chrome)
+
+Seluruh elemen UI di dalam game dibuat oleh satu kit bersama:
+
+- `JS/game-ui.js` — `createGameShell(root, config)` membangun HUD, panel info, panel kontrol, board, overlay, dan touch pad. Modul game hanya mengirim data; dilarang menulis `root.innerHTML` atau `<style>` sendiri.
+- `CSS/game-ui.css` — satu-satunya stylesheet untuk chrome UI. Warna memakai namespace `--gui-*` yang diturunkan dari token di §5, dengan override dark mode terpusat. Aturan mobile juga ada di sini, bukan per game.
+- `CSS/games.css` — kumpulan blok CSS **gameplay** per game dengan prefix masing-masing (board, canvas, karakter, partikel). Tidak boleh berisi aturan HUD/overlay/pad.
+
+HUD terdiri dari chip sesuai preset kategori dan tepat lima tombol ikon: **Help · Cheats · Pause · Restart · Exit**. Tombol aksi khusus game (Undo, Roll, Shoot, Hint, dll) dipindah ke panel kontrol di atas board atau ke dalam overlay; fungsinya tetap ada. Stat yang tidak masuk preset tidak ditampilkan sebagai placeholder kosong.
+
+Overlay mengikuti kontrak yang sama di semua game:
+
+| Overlay | Struktur wajib |
+| --- | --- |
+| Help | Kartu 600 px, judul, `sections` berisi konten game, satu tombol Close, satu tombol primary (`Got it`), tanpa emoji/duplikat tombol |
+| Cheats | Kartu 600 px, toggle `OFF/ON` dan aksi `RUN` dalam grid 3 kolom, satu tombol Close, tanpa emoji/duplikat tombol |
+| Pause | Kartu 600 px, judul `Paused`, isi kosong, satu tombol `Resume` — identik di semua game |
+
+Overlay adalah anak board dan diposisikan absolut di dalamnya; board wajib memiliki `position:relative` agar overlay tidak menutupi HUD. Ikon memakai `JS/icons.js`; glyph Unicode tidak dipakai sebagai ikon maupun dekorasi chrome.
+
+Dengan kontrak ini, perbedaan antar game hanya boleh berada pada area gameplay dan aturan mainnya.
 
 ---
 

@@ -1,0 +1,258 @@
+/* =============================================================
+ * GAME UI KIT — tampilan tunggal HUD, panel info, dan overlay.
+ * Warna kit memakai namespace --gui-* agar tidak ditimpa variabel
+ * lokal game (.sa, .zs, dll). Light/dark diatur di bawah.
+ * ============================================================= */
+
+.game-app.gui {
+  --gui-surface: var(--color-surface);
+  --gui-surface-soft: var(--color-surface-soft);
+  --gui-line: var(--color-border);
+  --gui-muted: var(--color-text-muted);
+  --gui-ink: var(--color-text);
+  --gui-accent: var(--color-primary);
+  --gui-accent-soft: var(--color-primary-soft);
+  --gui-green: var(--color-success);
+  --gui-amber: var(--color-warning);
+  --gui-red: var(--color-danger);
+  --gui-on-primary: var(--color-on-primary);
+  --gui-shadow: var(--shadow);
+}
+:root[data-theme="dark"] .game-app.gui {
+  --gui-surface: #171b23;
+  --gui-surface-soft: #1b2029;
+  --gui-line: #2b3340;
+  --gui-muted: #9aa4b5;
+  --gui-ink: #e8ecf3;
+  --gui-accent: #7aa7ff;
+  --gui-accent-soft: rgba(122, 167, 255, .18);
+  --gui-green: #3ecf8e;
+  --gui-amber: #f0b357;
+  --gui-red: #ff6b6b;
+}
+.gui [hidden] { display: none !important; }
+
+/* ---- HUD bar ---- */
+.gui-hud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.gui-hud .gui-btn { min-height: 32px; padding: 6px 10px; font-size: 10px; }
+.gui-spacer { flex: 1 1 auto; }
+
+.gui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--gui-line);
+  border-radius: 999px;
+  background: var(--gui-surface);
+  color: var(--gui-muted);
+  white-space: nowrap;
+}
+.gui-chip-label { letter-spacing: .04em; }
+.gui-chip b { color: var(--gui-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.gui-chip.low { color: var(--gui-muted); }
+.gui-badge { border-color: var(--gui-amber); color: var(--gui-amber); font-weight: 800; }
+.gui-bar { width: 58px; height: 4px; border-radius: 2px; background: var(--gui-line); overflow: hidden; }
+.gui-bar i { display: block; height: 100%; width: 100%; background: var(--gui-accent); transition: width .12s linear; }
+.gui-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gui-muted); display: inline-block; flex: none; }
+.gui-dot.on, .gui-dot.live { background: var(--gui-green); box-shadow: 0 0 0 3px var(--gui-accent-soft); }
+.gui-dot.warn { background: var(--gui-amber); }
+.gui-dot.bad { background: var(--gui-red); }
+
+/* Panel info: baris kedua di bawah HUD, di atas board (bukan di dalam board). */
+.gui-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.gui-info .gui-chip { font-size: 10px; padding: 4px 8px; }
+
+/* Panel aksi game (Undo/Roll/Shoot/...), bukan tombol HUD standar. */
+.gui-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.gui-controls .gui-btn { min-height: 32px; padding: 6px 10px; font-size: 10px; }
+.gui-actions { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; width: 100%; }
+
+/* ---- Tombol ---- */
+.gui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--gui-line);
+  background: var(--gui-surface);
+  color: var(--gui-ink);
+  border-radius: 9px;
+  padding: 9px 14px;
+  min-height: 38px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.gui-btn:hover { border-color: var(--gui-accent); color: var(--gui-accent); }
+.gui-btn.ghost { background: var(--gui-surface); color: var(--gui-ink); border-color: var(--gui-line); }
+.gui-btn.ghost:hover { background: var(--gui-surface-soft); }
+.gui-btn.primary, .gui-btn.gui-primary { background: var(--gui-accent); border-color: var(--gui-accent); color: var(--gui-on-primary); }
+.gui-btn.primary:hover, .gui-btn.gui-primary:hover { color: var(--gui-on-primary); opacity: .92; }
+.gui-btn.gui-btn-small { min-height: 30px; padding: 4px 10px; font-size: 10px; }
+.gui-btn:disabled { opacity: .45; cursor: not-allowed; }
+.gui-btn.on { border-color: var(--gui-accent); color: var(--gui-accent); background: var(--gui-accent-soft); }
+.gui-icon-btn { display: inline-flex; align-items: center; gap: 6px; }
+.gui-icon-btn svg { flex: none; display: block; }
+.gui-btn-label { white-space: nowrap; }
+.gui :focus-visible, .gui button:focus-visible { outline: 2px solid var(--gui-accent); outline-offset: 2px; }
+
+/* ---- Overlay ---- */
+.gui-ov {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  background: color-mix(in srgb, var(--gui-surface) 90%, transparent);
+}
+.gui-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: min(600px, 100%);
+  max-height: 100%;
+  padding: 16px;
+  border: 1px solid var(--gui-line);
+  border-radius: 14px;
+  background: var(--gui-surface);
+  color: var(--gui-ink);
+  box-shadow: var(--gui-shadow);
+}
+.gui-card.gui-wide { width: min(760px, 100%); }
+.gui-head, .gui-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.gui-head { margin-bottom: 12px; }
+.gui-head h3 { margin: 0; font-size: 13px; font-weight: 700; color: var(--gui-ink); }
+.gui-tag {
+  font: 600 10px/1 ui-monospace, monospace;
+  letter-spacing: .08em;
+  color: var(--gui-muted);
+  border: 1px solid var(--gui-line);
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+.gui-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.gui-body > :last-child { margin-bottom: 0; }
+.gui-grid, .gui-cheats, .gui-stats, .gui-help {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.gui-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.gui-cheats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.gui-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 6px 0 4px; }
+.gui-stat-box { border: 1px solid var(--gui-line); border-radius: 10px; padding: 10px; }
+.gui-stat-box u { display: block; font: 600 9px/1 ui-monospace, monospace; letter-spacing: .1em; color: var(--gui-muted); text-decoration: none; text-transform: uppercase; }
+.gui-stat-box b { display: block; margin-top: 6px; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--gui-ink); }
+.gui-sep { margin: 12px 0 8px; font: 700 9px/1 ui-monospace, monospace; letter-spacing: .12em; color: var(--gui-muted); text-transform: uppercase; }
+.gui-foot { margin-top: 14px; gap: 12px; }
+.gui-note { font: 600 10px/1.4 ui-monospace, monospace; color: var(--gui-muted); }
+
+/* Help: dua kolom desktop, satu kolom di mobile. */
+.gui-help { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.gui-help > div > b, .gui-help h5 { display: block; margin: 0 0 6px; font: 700 10px/1 ui-monospace, monospace; letter-spacing: .1em; color: var(--gui-muted); text-transform: uppercase; }
+.gui-help p b, .gui-help li b { color: var(--gui-ink); font-weight: 700; text-transform: none; letter-spacing: 0; }
+.gui-help p { margin: 0 0 10px; font: 600 11px/1.7 ui-monospace, monospace; color: var(--gui-muted); }
+.gui-help ul { margin: 0 0 12px; padding-left: 16px; font: 600 11px/1.7 ui-monospace, monospace; color: var(--gui-muted); }
+.gui-kbd { display: inline-block; padding: 1px 5px; border: 1px solid var(--gui-line); border-bottom-width: 2px; border-radius: 5px; background: var(--gui-surface-soft); color: var(--gui-ink); font: inherit; }
+
+/* Cheats: kartu toggle + aksi cepat. */
+.gui-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--gui-line);
+  border-radius: 10px;
+  background: var(--gui-surface);
+  color: var(--gui-ink);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.gui-toggle:hover { border-color: var(--gui-accent); }
+.gui-toggle.on { border-color: var(--gui-accent); color: var(--gui-accent); background: var(--gui-accent-soft); }
+.gui-toggle em { font-style: normal; font: 600 9px/1 ui-monospace, monospace; color: var(--gui-muted); }
+
+/* Kartu aksi (select aircraft, skill, draft, dll). */
+.gui-choice {
+  display: block;
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid var(--gui-line);
+  border-radius: 12px;
+  background: var(--gui-surface);
+  color: var(--gui-ink);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.gui-choice:hover { border-color: var(--gui-accent); }
+.gui-choice.on { border-color: var(--gui-accent); background: var(--gui-accent-soft); }
+.gui-choice .n { font-size: 12px; font-weight: 700; }
+.gui-choice .s { margin-top: 2px; font: 600 9px/1.5 ui-monospace, monospace; letter-spacing: .06em; color: var(--gui-muted); text-transform: uppercase; }
+
+/* ---- Touch pad (sibling board, bukan di dalam board) ---- */
+.gui-pad { display: none; margin-top: 10px; justify-content: space-between; align-items: center; gap: 12px; user-select: none; }
+.gui.touch .gui-pad { display: flex; }
+.gui-dpad { display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 44px); gap: 4px; }
+.gui-dpad [data-pad="u"] { grid-area: 1 / 2; }
+.gui-dpad [data-pad="l"] { grid-area: 2 / 1; }
+.gui-dpad [data-pad="r"] { grid-area: 2 / 3; }
+.gui-dpad [data-pad="d"] { grid-area: 3 / 2; }
+.gui-acts { display: flex; gap: 8px; }
+.gui-key { display: grid; place-items: center; min-width: 46px; min-height: 44px; border: 1px solid var(--gui-line); border-radius: 12px; background: var(--gui-surface); color: var(--gui-ink); font-size: 13px; font-weight: 700; touch-action: none; cursor: pointer; }
+.gui-key svg { width: 1.15em; height: 1.15em; display: block; }
+.gui-key.on { background: var(--gui-accent-soft); border-color: var(--gui-accent); color: var(--gui-accent); }
+.gui-acts .gui-key { width: 64px; height: 64px; border-radius: 50%; font-size: 11px; letter-spacing: .06em; }
+.gui-acts .gui-key.fire { color: var(--gui-amber); border-color: var(--gui-amber); }
+.gui-acts .gui-key.spec { color: var(--gui-accent); border-color: var(--gui-accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .gui *, .gui *::before, .gui *::after { transition: none !important; animation: none !important; }
+}
+
+/* ---- Mobile refinements (harus paling akhir) ---- */
+@media (max-width: 640px) {
+  .gui .gui-hud { gap: 5px; margin-bottom: 8px; font-size: 9px; }
+  .gui .gui-hud .gui-chip { padding: 4px 6px; font-size: 9px; }
+  .gui .gui-hud .gui-chip.low { display: none; }
+  .gui .gui-hud .gui-btn { min-height: 32px; padding: 5px 9px; font-size: 9px; }
+  .gui .gui-hud .gui-btn-label, .gui .gui-hud .gui-spacer { display: none; }
+  .gui .gui-info { gap: 4px; margin-bottom: 8px; }
+  .gui .gui-info .gui-chip { padding: 3px 6px; font-size: 9px; }
+  .gui .gui-controls { gap: 5px; margin-bottom: 8px; }
+  .gui .gui-controls .gui-btn { min-height: 30px; padding: 5px 8px; font-size: 9px; }
+  .gui-ov { padding: 8px; }
+  .gui-card { width: 100%; height: 100%; max-height: 100%; padding: 12px; border-radius: 12px; }
+  .gui-grid, .gui-cheats, .gui-stats, .gui-help, .gui-body { scrollbar-width: none; }
+  .gui-grid::-webkit-scrollbar, .gui-cheats::-webkit-scrollbar, .gui-stats::-webkit-scrollbar,
+  .gui-help::-webkit-scrollbar, .gui-body::-webkit-scrollbar { display: none; }
+  .gui-foot { position: static; margin: 0; padding: 10px 0 0; border-top: 1px solid var(--gui-line); }
+  .gui-note { display: none; }
+  .gui-help { grid-template-columns: 1fr; }
+}
+@media (pointer: coarse) {
+  .gui button:not(:disabled) { min-height: 44px; }
+  .gui .gui-hud .gui-btn { min-height: 32px; }
+}

@@ -5,6 +5,7 @@
 */
 
 import { iconSVG } from "../JS/icons.js";
+import { createGameShell } from "../JS/game-ui.js";
 
 export const META = {
     id: "water-sort",
@@ -200,214 +201,113 @@ export function mount(root, context = {}) {
     /* ---------- shell (dibangun sekali, region dinamis di-update) ---------- */
     root.classList.add("ws-root");
 
-    root.innerHTML = `
-<style>
-.ws-root{outline:none}
-.ws-game,.ws-game *{box-sizing:border-box}
-.ws-game{--bg:#f6f8fb;--card:#ffffff;--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#0ea5e9;--acc2:#ec4899;--amber:#f59e0b;--green:#10b981;--red:#ef4444;
-  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;min-width:0;max-width:100%;overflow-x:clip;-webkit-tap-highlight-color:transparent}
-@media (prefers-color-scheme:dark){.ws-game{--bg:#0b1220;--card:#121b30;--ink:#e2e8f0;--mut:#8ea0b8;--line:#26334e}}
-.ws-game [hidden]{display:none!important}
-.ws-game :where(svg,canvas,img){max-width:100%;height:auto}
-.ws-game :where(button,[role="button"],select,input){touch-action:manipulation}
-.ws-game :where(button,[role="button"],select,input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+    createGameShell(root, {
+      prefix: "ws-game",
+      boardClass: "ws-board",
+      category: META.category,
+      keys: undefined,
+      hud: { keys: { score: "done", best: "bestv", time: "parv" } },
+      info: [
+        { raw: '<span class="gui-chip"><i class="ws-dot" data-dot></i><b data-hud="status">Siap</b></span>' },
+        { raw: '<span class="gui-chip" data-hud="par">PAR</span>' },
+        { raw: '<span class="gui-chip" data-hud="best" hidden>REKOR</span>' },
+        { raw: '<span class="gui-chip" data-hud="rival" hidden><i class="ws-dot" data-rival-dot></i><b data-hud="rivalname">Bot</b> <b data-hud="rivalmoves">0</b></span>' },
+        { raw: '<span class="gui-chip" data-hud="cheat" hidden>CHEATS</span>' },
+        { raw: '<span class="ws-seg" data-hud="modes"><button type="button" data-mode="solo" aria-label="Mode solo">Solo</button><button type="button" data-mode="bot" aria-label="Mode lawan bot">Bot</button></span>' },
+      ],
+      controls: [
+        { label: "Undo", icon: "rotateCcw", attrs: ' data-act="undo" data-btn="undo"' },
+        { label: "New", icon: "sparkles", attrs: ' data-act="new" data-btn="new"' },
+        { label: "Resign", icon: "flag", attrs: ' data-act="resign" data-btn="resign"', hidden: true },
+        { label: "Pad", icon: "gamepad2", attrs: ' data-act="pad"' },
+      ],
+      board: {
+        type: "builder",
+        build(board, { mk }) {
+          mk("div", { class: "ws-boards", "data-boards": "" }, board);
+          mk("div", { class: "ws-toast", "data-toast": "", hidden: "" }, board);
+          return {};
+        },
+      },
+      overlays: {
+        help: {
+          title: "Cara Bermain",
+          closeLabel: "Tutup", closeAction: "help-close",
+          sections: [
+            { title: "Tujuan & aturan", paragraphs: [
+              `Pisahkan semua warna: setiap botol berisi satu warna penuh (${CAP} unit) atau kosong.`,
+            ], items: [
+              "Ketuk/klik botol untuk <b>mengambil</b> cairan teratas, lalu ketuk botol <b>tujuan</b>.",
+              `Tuang hanya boleh ke <b>warna yang sama</b> atau ke <b>botol kosong</b>. Kapasitas botol ${CAP} unit.`,
+              "Salah langkah? Pakai <b>Undo</b>. Semua level dijamin punya solusi.",
+            ] },
+            { title: "Mode", paragraphs: [
+              "<b>Solo</b>: kejar jumlah langkah ≤ par dan naik level (warna bertambah).",
+              "<b>Lawan Bot / Online</b>: papan identik, giliran bergantian — siapa yang merapikan papannya duluan menang. Kalau lawan buntu, gilirannya dilewati.",
+            ] },
+            { title: "Desktop", items: [
+              'Klik botol · <span class="gui-kbd">←/→</span> pilih · <span class="gui-kbd">Enter/Spasi</span> ambil–tuang · <span class="gui-kbd">1–9</span> pilih langsung · <span class="gui-kbd">U</span> undo · <span class="gui-kbd">I</span> hint · <span class="gui-kbd">N</span> baru · <span class="gui-kbd">R</span> ulangi · <span class="gui-kbd">H</span> bantuan · <span class="gui-kbd">C</span> cheat · <span class="gui-kbd">P</span> jeda · <span class="gui-kbd">Esc</span> jeda/tutup.',
+            ] },
+            { title: "Mobile", paragraphs: [
+              "Ketuk botol langsung, atau pakai tombol virtual <b>◀ ▶ Pilih/Tuang ↩</b> di bawah papan.",
+            ] },
+            { title: "Cheat", paragraphs: [
+              "Tombol Cheats membuka panel cheat (khusus Solo): hint, auto-solve, botol kosong ekstra, rapikan 1 warna, lewati level. Kemenangan dengan cheat tidak dicatat sebagai rekor.",
+            ] },
+          ],
+          note: "Tekan H untuk membuka panduan ini lagi",
+          primary: "Mengerti", primaryAction: "help-close",
+        },
+        cheat: {
+          title: "Cheat",
+          closeLabel: "Tutup", closeAction: "cheat-close",
+          paragraphs: ['<span data-cheat-note></span>'],
+          cardActions: [
+            { key: "cheat", value: "hint", label: "Hint langkah terbaik" },
+            { key: "cheat", value: "step", label: "Maju 1 langkah benar" },
+            { key: "cheat", value: "auto", label: "Auto-solve", attrs: " data-auto-label" },
+            { key: "cheat", value: "empty", label: "Botol kosong +1", attrs: " data-empty-label" },
+            { key: "cheat", value: "color", label: "Rapikan 1 warna" },
+            { key: "cheat", value: "win", label: "Lewati level" },
+          ],
+        },
+        pause: {
+          title: "Paused",
+          primary: "Resume", primaryAction: "resume",
+        },
+        end: {
+          title: '<span data-end-title></span>',
+          body: '<p data-end-sub></p>',
+          footHTML: '<div class="gui-foot" data-end-actions></div>',
+        },
+      },
+      pad: {
+        build(padEl, { mk }) {
+          const pad = mk("div", { class: "ws-pad" }, padEl);
+          mk("button", { class: "ws-btn ws-pad-btn", type: "button", "data-pad": "left", "aria-label": "Botol sebelumnya", text: "◀" }, pad);
+          const act = mk("button", { class: "ws-btn ws-pad-btn primary", type: "button", "data-pad": "act" }, pad);
+          mk("span", { "data-pad-act": "", text: "Pilih" }, act);
+          mk("button", { class: "ws-btn ws-pad-btn", type: "button", "data-pad": "right", "aria-label": "Botol berikutnya", text: "▶" }, pad);
+          mk("button", { class: "ws-btn ws-pad-btn", type: "button", "data-pad": "undo", "data-btn": "pad-undo", "aria-label": "Undo", text: "↩" }, pad);
+        },
+      },
+    });
 
-/* HUD bar: semua info + kontrol */
-.ws-game .ws-hud{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
-.ws-game .ws-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--mut);white-space:nowrap}
-.ws-game .ws-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
-.ws-game .ws-chip.on{border-color:var(--acc);color:var(--acc)}
-.ws-game .ws-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
-.ws-game .ws-seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
-.ws-game .ws-seg button{font:inherit;font-size:11px;padding:5px 11px;background:none;border:0;color:inherit;cursor:pointer;opacity:.55}
-.ws-game .ws-seg button.on{background:rgba(14,165,233,.14);opacity:1}
-.ws-game .ws-spacer{flex:1 1 auto}
-.ws-game .ws-btn{font:inherit;font-size:11px;font-weight:700;padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;min-height:32px;transition:border-color .15s,color .15s,background .15s;touch-action:manipulation}
-.ws-game .ws-btn:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
-.ws-game .ws-btn:disabled{opacity:.4;cursor:default}
-.ws-game .ws-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
-.ws-game .ws-btn.primary:hover:not(:disabled){filter:brightness(1.08);color:#fff}
-.ws-game .ws-icon-btn{display:inline-flex;align-items:center;gap:6px}
-.ws-game .ws-icon-btn svg{flex:none;display:block}
-.ws-game .ws-btn.on{border-color:var(--acc);color:var(--acc)}
 
-/* board: mengisi tinggi, SVG tetap proporsional */
-.ws-game .ws-board{position:relative;flex:1 1 auto;min-height:0;width:100%;padding:10px;background:var(--bg);border:1px solid var(--line);border-radius:12px;display:flex;overflow:auto}
-.ws-game .ws-boards{display:flex;flex:1 1 auto;min-height:0;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center;width:100%;margin:auto}
-.ws-game .ws-waiting{color:var(--mut);font-size:13px;margin:auto;text-align:center}
-.ws-game .ws-board-card{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:10px;flex:1 1 280px;max-width:560px;min-width:0;max-height:100%;display:flex;flex-direction:column;min-height:0;overflow:hidden;transition:border-color .2s,box-shadow .2s}
-.ws-game .ws-board-card.active{border-color:var(--acc);box-shadow:0 0 0 3px rgb(14 165 233 / .15)}
-.ws-game .ws-board-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;flex:none}
-.ws-game .ws-seat-dot{width:10px;height:10px;border-radius:50%;flex:none}
-.ws-game .ws-mini{color:var(--mut);font-size:11px;margin-left:auto;white-space:nowrap}
-.ws-game .ws-turn-badge{background:var(--acc);color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:999px;animation:wsPulse 1.2s ease-in-out infinite}
-.ws-game .ws-svg{display:block;width:100%;height:auto;max-height:100%;min-height:0;touch-action:manipulation}
-.ws-game .ws-bottle{fill:var(--card);stroke:var(--line);stroke-width:2;transition:stroke .15s}
-.ws-game .ws-bottle.done{stroke:var(--green)}
-.ws-game .ws-bottle.sel{stroke:var(--acc);stroke-width:3}
-.ws-game .ws-bottle.bad{stroke:var(--red);animation:wsShake .3s}
-.ws-game .ws-bottle.hint-s{stroke:var(--amber);stroke-width:3}
-.ws-game .ws-bottle.hint-d{stroke:var(--amber);stroke-width:3;stroke-dasharray:6 4;animation:wsPulse 1s infinite}
-.ws-game .ws-mouth{stroke:var(--mut);stroke-width:1.5;opacity:.45}
-.ws-game .ws-cursor{fill:none;stroke:var(--mut);stroke-width:1.5;stroke-dasharray:4 4;opacity:.85}
-.ws-game .ws-layer{pointer-events:none;opacity:.92}
-.ws-game .ws-layer.ws-new{animation:wsDrop .25s ease}
-.ws-game .ws-idx{fill:var(--mut);font-size:10px;text-anchor:middle;pointer-events:none}
-.ws-game .ws-idx.ok{fill:var(--green);font-weight:700}
-.ws-game .ws-hit{cursor:pointer}
-
-/* touch pad: sibling setelah board */
-.ws-game .ws-pad{display:none;gap:8px;justify-content:center;flex:none;margin-top:2px}
-.ws-game .ws-pad-btn{flex:1;max-width:120px;padding:12px;font-size:16px;border-radius:12px}
-.ws-game.ws-pad-on .ws-pad{display:flex}
-@media (hover:none) and (pointer:coarse){.ws-game .ws-pad{display:flex}}
-
-/* overlay modal: head/foot tetap, isi bisa scroll */
-.ws-game .ws-ov{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:14px;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(3px);overflow:auto}
-.ws-game .ws-card{display:flex;flex-direction:column;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;max-width:460px;width:100%;max-height:100%;box-shadow:0 4px 12px rgb(15 23 42 / .14);margin:auto;overflow:hidden}
-.ws-game .ws-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
-.ws-game .ws-card h3{margin:0;font-size:16px;font-weight:700}
-.ws-game .ws-body{flex:1 1 auto;min-height:0;overflow:auto}
-.ws-game .ws-foot{flex:none;display:flex;flex-wrap:wrap;gap:8px;padding-top:8px;border-top:1px solid var(--line)}
-.ws-game .ws-card p{margin:4px 0;font-size:12.5px;color:var(--mut);line-height:1.55}
-.ws-game .ws-card ul{margin:6px 0;padding-left:18px;font-size:12.5px;color:var(--mut);line-height:1.55}
-.ws-game .ws-card li{margin:3px 0}
-.ws-game .ws-card b{color:var(--ink)}
-.ws-game .ws-note{font-size:11px;color:var(--mut);margin:0}
-.ws-game .ws-cheat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.ws-game .ws-cheat-grid .ws-btn{text-align:left;font-size:12px;padding:10px;border-radius:12px}
-.ws-game .ws-toast{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);background:var(--ink);color:var(--bg);font-size:12px;padding:6px 14px;border-radius:999px;z-index:6;pointer-events:none;max-width:92%;text-align:center;box-shadow:0 6px 18px rgb(15 23 42 / .2)}
-@keyframes wsDrop{from{transform:translateY(-8px);opacity:.4}to{transform:translateY(0);opacity:.92}}
-@keyframes wsShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
-@keyframes wsPulse{0%,100%{opacity:1}50%{opacity:.55}}
-@media (prefers-reduced-motion:reduce){.ws-game *{animation:none!important;transition:none!important}}
-
-/* ==== FRONTEND REDESIGN · design.md — minimalist game utility ==== */
-.ws-game :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="foot"]){flex-wrap:wrap;min-width:0;gap:8px}
-.ws-game :is([class*="card"],[class*="panel"],[class*="wrap"]){border-radius:12px;box-shadow:none}
-.ws-game :where(h2,h3,h4){line-height:1.25;letter-spacing:-.01em}
-.ws-game :where([class*="chip"],[class*="label"],[class*="meta"],[class*="hint"],[class*="note"],[class*="sub"]){font-size:12px;line-height:1.45}
-@media (max-width:768px){.ws-game :where([class*="hud"],[class*="bar"],[class*="chips"],[class*="controls"],[class*="tools"],[class*="seg"],[class*="row"],[class*="foot"]){gap:8px}}
-@media (max-width:480px){.ws-game :where(kbd,[class*="kbd"]){display:none}}
-@media (pointer:coarse){.ws-game :where(button:not([aria-checked]):not([class*="switch"]),[role="button"],select){min-height:44px;min-width:44px}}
-
-/* ==== layout shell: override terakhir (spesifisitas > pointer:coarse) ==== */
-.ws-game.game-fill>.ws-board{flex:1 1 auto;min-height:0;aspect-ratio:auto}
-.ws-game .ws-hud .ws-btn{min-height:32px;min-width:0;padding:6px 9px;font-size:10px}
-.ws-game .ws-hud .ws-seg button{min-height:26px;padding:5px 10px;font-size:10px}
-.ws-game .ws-card{display:flex;flex-direction:column;overflow:hidden}
-.ws-game .ws-head,.ws-game .ws-foot{flex:none}
-.ws-game .ws-body,.ws-game .ws-help,.ws-game .ws-cheat-grid{flex:1 1 auto;min-height:0;overflow:auto}
-@media (max-width:640px){
-  .ws-game.game-fill>.ws-board:not(:has(.ws-ov:not([hidden]))){flex:1 1 auto;min-height:0;aspect-ratio:auto}
-  .ws-game.game-fill>.ws-board:has(.ws-ov:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
-  .ws-game .ws-hud{gap:5px;margin-bottom:8px}
-  .ws-game .ws-hud .ws-chip{padding:4px 6px;font-size:9px}
-  .ws-game .ws-hud .ws-chip[data-hud="par"],.ws-game .ws-hud .ws-chip[data-hud="best"]{display:none}
-  .ws-game .ws-hud .ws-btn{min-height:30px;min-width:28px;padding:5px 8px;font-size:9px}
-  .ws-game .ws-hud .ws-btn-label,.ws-game .ws-spacer{display:none}
-  .ws-game .ws-ov{padding:8px}
-  .ws-game .ws-card{width:100%;height:100%;max-height:100%;padding:12px}
-  .ws-game .ws-body,.ws-game .ws-help,.ws-game .ws-cheat-grid{scrollbar-width:none}
-  .ws-game .ws-body::-webkit-scrollbar,.ws-game .ws-help::-webkit-scrollbar,.ws-game .ws-cheat-grid::-webkit-scrollbar{display:none}
-  .ws-game .ws-foot{position:static;margin:0;padding:10px 0 0;border-top:1px solid var(--line)}
-  .ws-game .ws-pad-btn{min-height:44px}
-}
-</style>
-<div class="game-app ws-game game-fill" data-ws>
-  <div class="ws-hud">
-    <span class="ws-chip"><i class="ws-dot" data-dot></i><b data-hud="status">Siap</b></span>
-    <span class="ws-chip">LV <b data-hud="level">1</b></span>
-    <span class="ws-chip">LANGKAH <b data-hud="moves">0</b></span>
-    <span class="ws-chip">SELESAI <b data-hud="done">0/3</b></span>
-    <span class="ws-chip" data-hud="par">PAR <b data-hud="parv">0</b></span>
-    <span class="ws-chip" data-hud="best" hidden>REKOR <b data-hud="bestv">Lv 0</b></span>
-    <span class="ws-chip" data-hud="rival" hidden><i class="ws-dot" data-rival-dot></i><b data-hud="rivalname">Bot</b> <b data-hud="rivalmoves">0</b></span>
-    <span class="ws-chip" data-hud="cheat" hidden>🧪 <b>aktif</b></span>
-    <span class="ws-spacer"></span>
-    <span class="ws-seg" data-hud="modes">
-      <button type="button" data-mode="solo" aria-label="Mode solo">Solo</button>
-      <button type="button" data-mode="bot" aria-label="Mode lawan bot">Bot</button>
-    </span>
-    <button class="ws-btn ws-icon-btn" type="button" data-act="undo" data-btn="undo" aria-label="Undo" title="Undo (U)">${iconSVG("rotateCcw", { size: 14 })}<span class="ws-btn-label">Undo</span></button>
-    <button class="ws-btn ws-icon-btn" type="button" data-act="new" data-btn="new" aria-label="New deal" title="Deal baru (N)">${iconSVG("sparkles", { size: 14 })}<span class="ws-btn-label">New</span></button>
-    <button class="ws-btn ws-icon-btn" type="button" data-act="resign" data-btn="resign" aria-label="Resign" title="Menyerah" hidden>${iconSVG("flag", { size: 14 })}<span class="ws-btn-label">Resign</span></button>
-    <button class="ws-btn ws-icon-btn" type="button" data-act="pad" aria-label="Toggle touch pad" title="Tombol virtual">${iconSVG("gamepad2", { size: 14 })}<span class="ws-btn-label">Pad</span></button>
-    <button class="ws-btn ws-icon-btn" type="button" data-act="help" aria-label="How to play" title="Cara bermain (H)">${iconSVG("helpCircle", { size: 14 })}<span class="ws-btn-label">Help</span></button>
-    <button class="ws-btn ws-icon-btn" type="button" data-act="cheat" data-btn="cheat" aria-label="Cheats" title="Cheats (C)">${iconSVG("wrench", { size: 14 })}<span class="ws-btn-label">Cheats</span></button>
-    <button class="ws-btn ws-icon-btn" type="button" data-act="pause" data-btn="pause" aria-label="Pause" title="Jeda (P)"><span data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="ws-btn-label">Pause</span></button>
-    <button class="ws-btn ws-icon-btn" type="button" data-act="retry" data-btn="retry" aria-label="Restart" title="Ulangi deal (R)">${iconSVG("refresh", { size: 14 })}<span class="ws-btn-label">Restart</span></button>
-    <button class="ws-btn ws-icon-btn" type="button" data-exit aria-label="Exit game" title="Exit game">${iconSVG("logOut", { size: 14 })}<span class="ws-btn-label">Exit game</span></button>
-  </div>
-
-  <section class="game-panel ws-board" data-board>
-    <div class="ws-boards" data-boards></div>
-    <div class="ws-toast" data-toast hidden></div>
-
-    <div class="ws-ov" data-ov="help" hidden>
-      <div class="ws-card">
-        <div class="ws-head"><h3>Cara Bermain</h3><button class="ws-btn" type="button" data-act="close-help" aria-label="Tutup bantuan">✕</button></div>
-        <div class="ws-body ws-help">
-          <p><b>Tujuan.</b> Pisahkan semua warna: setiap botol berisi satu warna penuh (${CAP} unit) atau kosong.</p>
-          <ul>
-            <li>Ketuk/klik botol untuk <b>mengambil</b> cairan teratas, lalu ketuk botol <b>tujuan</b>.</li>
-            <li>Tuang hanya boleh ke <b>warna yang sama</b> atau ke <b>botol kosong</b>. Kapasitas botol ${CAP} unit.</li>
-            <li>Salah langkah? Pakai <b>Undo</b>. Semua level dijamin punya solusi.</li>
-          </ul>
-          <p><b>Mode.</b> <b>Solo</b>: kejar jumlah langkah ≤ par dan naik level (warna bertambah). <b>Lawan Bot / Online</b>: papan identik, giliran bergantian — siapa yang merapikan papannya duluan menang. Kalau lawan buntu, gilirannya dilewati.</p>
-          <p><b>Desktop.</b> Klik botol · <b>←/→</b> pilih · <b>Enter/Spasi</b> ambil–tuang · <b>1–9</b> pilih langsung · <b>U</b> undo · <b>I</b> hint · <b>N</b> baru · <b>R</b> ulangi · <b>H</b> bantuan · <b>C</b> cheat · <b>P</b> jeda · <b>Esc</b> jeda/tutup.</p>
-          <p><b>Mobile.</b> Ketuk botol langsung, atau pakai tombol virtual <b>◀ ▶ Pilih/Tuang ↩</b> di bawah papan.</p>
-          <p><b>Cheat.</b> Tombol 🧪 membuka panel cheat (khusus Solo): hint, auto-solve, botol kosong ekstra, rapikan 1 warna, lewati level. Kemenangan dengan cheat tidak dicatat sebagai rekor.</p>
-        </div>
-        <div class="ws-foot"><span class="ws-note">Tekan H untuk membuka panduan ini lagi</span><button class="ws-btn primary" type="button" data-act="close-help">Mengerti 👍</button></div>
-      </div>
-    </div>
-
-    <div class="ws-ov" data-ov="cheat" hidden>
-      <div class="ws-card">
-        <div class="ws-head"><h3>🧪 Cheat</h3><button class="ws-btn" type="button" data-cheat="close" aria-label="Tutup cheat">✕</button></div>
-        <div class="ws-body">
-          <p class="ws-note" data-cheat-note></p>
-          <div class="ws-cheat-grid">
-            <button class="ws-btn" type="button" data-cheat="hint">💡 Hint langkah terbaik</button>
-            <button class="ws-btn" type="button" data-cheat="step">⏭️ Maju 1 langkah benar</button>
-            <button class="ws-btn" type="button" data-cheat="auto" data-auto-label>🤖 Auto-solve</button>
-            <button class="ws-btn" type="button" data-cheat="empty" data-empty-label>🍾 Botol kosong +1</button>
-            <button class="ws-btn" type="button" data-cheat="color">🎨 Rapikan 1 warna</button>
-            <button class="ws-btn" type="button" data-cheat="win">🏁 Lewati level</button>
-          </div>
-        </div>
-        <div class="ws-foot"><button class="ws-btn primary" type="button" data-cheat="close">Tutup</button></div>
-      </div>
-    </div>
-
-    <div class="ws-ov" data-ov="pause" hidden>
-      <div class="ws-card">
-        <div class="ws-head"><h3>Dijeda</h3></div>
-        <div class="ws-body"><p>Bot dan timer dihentikan. Lanjutkan untuk melanjutkan permainan.</p></div>
-        <div class="ws-foot"><button class="ws-btn primary" type="button" data-act="resume">Lanjut ▶</button></div>
-      </div>
-    </div>
-
-    <div class="ws-ov" data-ov="end" hidden>
-      <div class="ws-card">
-        <div class="ws-head"><h3 data-end-title></h3></div>
-        <div class="ws-body"><p data-end-sub></p></div>
-        <div class="ws-foot" data-end-actions></div>
-      </div>
-    </div>
-  </section>
-
-  <div class="ws-pad">
-    <button class="ws-btn ws-pad-btn" type="button" data-pad="left" aria-label="Botol sebelumnya">◀</button>
-    <button class="ws-btn ws-pad-btn primary" type="button" data-pad="act"><span data-pad-act>Pilih</span></button>
-    <button class="ws-btn ws-pad-btn" type="button" data-pad="right" aria-label="Botol berikutnya">▶</button>
-    <button class="ws-btn ws-pad-btn" type="button" data-pad="undo" data-btn="pad-undo" aria-label="Undo">↩</button>
-  </div>
-</div>`;
 
 
     const $ = (s) => root.querySelector(s);
+    const btnAlias = { help: "help", cheats: "cheat", pause: "pause", restart: "retry", exit: "exit", "help-close": "close-help", "cheat-close": "close" };
+    root.querySelectorAll("[data-ui-action]").forEach((b) => {
+      const action = b.dataset.uiAction;
+      b.dataset.btn = btnAlias[action] || action;
+      b.dataset.act = btnAlias[action] || action;
+      if (action === "cheat-close") b.dataset.cheat = "close";
+    });
+    const pauseIconWrap = document.createElement("span");
+    pauseIconWrap.dataset.pauseIcon = "";
+    const pauseSvg = root.querySelector('[data-ui-action="pause"] svg');
+    if (pauseSvg) { pauseSvg.before(pauseIconWrap); pauseIconWrap.append(pauseSvg); }
     const statusEl = $("[data-hud='status']"), dotEl = $("[data-dot]");
     const hud = {
         level: $("[data-hud='level']"), moves: $("[data-hud='moves']"), done: $("[data-hud='done']"),
@@ -427,9 +327,15 @@ export function mount(root, context = {}) {
     const undoBtn = $('[data-btn="undo"]'), retryBtn = $('[data-btn="retry"]'), newBtn = $('[data-btn="new"]');
     const resignBtn = $('[data-btn="resign"]'), cheatBtn = $('[data-btn="cheat"]'), pauseBtn = $('[data-btn="pause"]');
     const padUndoBtn = $('[data-btn="pad-undo"]');
-    const pauseIconEl = $("[data-pause-icon]"), pauseLabelEl = pauseBtn.querySelector(".ws-btn-label");
+    const pauseIconEl = $("[data-pause-icon]"), pauseLabelEl = pauseBtn.querySelector(".gui-btn-label");
     const padActEl = $("[data-pad-act]"), padActBtn = $('[data-pad="act"]');
     const autoLabelEl = $("[data-auto-label]"), emptyLabelEl = $("[data-empty-label]");
+    const setToggleLabel = (node, text) => {
+        if (!node) return;
+        const first = node.firstChild;
+        if (first && first.nodeType === 3) first.nodeValue = text;
+        else node.textContent = text;
+    };
 
     /* ---------- timer yang ikut dibekukan saat pause ---------- */
     function armTimer(rec) {
@@ -733,8 +639,8 @@ export function mount(root, context = {}) {
         ov.cheat.querySelectorAll("[data-cheat]").forEach((b) => {
             if (b.dataset.cheat !== "close") b.disabled = !cheatOk;
         });
-        autoLabelEl.textContent = autoTimer ? "⏹ Hentikan auto" : "🤖 Auto-solve";
-        emptyLabelEl.textContent = `🍾 Botol kosong +1 (${Math.max(0, 2 - (st?.extra ?? 0))}x)`;
+        setToggleLabel(autoLabelEl, autoTimer ? "Hentikan auto" : "Auto-solve");
+        setToggleLabel(emptyLabelEl, `Botol kosong +1 (${Math.max(0, 2 - (st?.extra ?? 0))}x)`);
         const endVisible = Boolean(st && (st.phase === "won" || st.phase === "stuck" || st.phase === "draw"));
         ov.pause.hidden = !paused || showHelp || showCheat;
         ov.end.hidden = !endVisible || paused || showCheat || showHelp;
@@ -744,9 +650,7 @@ export function mount(root, context = {}) {
         const menuPhase = !st || st.phase === "menu";
         undoBtn.disabled = !canUndo() || paused;
         padUndoBtn.disabled = !canUndo() || paused;
-        retryBtn.disabled = menuPhase;
         newBtn.disabled = menuPhase;
-        cheatBtn.disabled = menuPhase || showHelp || paused;
         cheatBtn.classList.toggle("on", Boolean(st && st.cheated));
         resignBtn.hidden = !(st && st.mode !== "solo" && st.phase === "playing");
         const icon = paused ? "play" : "pause";
@@ -757,7 +661,6 @@ export function mount(root, context = {}) {
         if (pauseLabelEl) pauseLabelEl.textContent = paused ? "Resume" : "Pause";
         pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
         pauseBtn.title = paused ? "Lanjut (P)" : "Jeda (P)";
-        pauseBtn.disabled = !st || st.phase !== "playing";
         padActEl.textContent = selected >= 0 ? "Tuang" : "Pilih";
         padActBtn.disabled = !(st && st.phase === "playing" && (st.mode === "solo" || st.turn === my)) || paused;
 
@@ -1083,17 +986,23 @@ export function mount(root, context = {}) {
     }
 
     function handleAct(act, modeKind) {
+        const menu = !state || state.phase === "menu";
         if (act === "help") { toggleHelp(); return; }
         if (act === "close-help") { toggleHelp(false); return; }
         if (act === "cheat") {
+            if (menu) startMode("solo");
             if (!showHelp && !paused) { showCheat = !showCheat; render(); }
             return;
         }
-        if (act === "pause") { togglePause(); return; }
+        if (act === "pause") {
+            if (menu) { startMode("solo"); togglePause(); return; }
+            togglePause(); return;
+        }
         if (act === "resume") { if (paused) setPaused(false); return; }
         if (act === "pad") { root.classList.toggle("ws-pad-on"); render(); return; }
         if (act === "start") { if (modeKind) startMode(modeKind); return; }
         if (["undo", "retry", "new", "next", "menu", "resign"].includes(act)) {
+            if (menu) { startMode("solo"); return; }
             if (paused) setPaused(false, false);
             stopAuto();
             submitAction({ type: act });

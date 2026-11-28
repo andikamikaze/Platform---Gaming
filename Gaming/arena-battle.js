@@ -18,6 +18,7 @@
  */
 
 import { iconSVG } from "../JS/icons.js";
+import { createGameShell } from "../JS/game-ui.js";
 
 export const META = {
     id: "arena-battle",
@@ -76,196 +77,98 @@ export function mount(root, context = {}) {
       <div class="ab-bar ab-en"><i data-en="${i}" style="width:100%"></i></div>
     </div>`;
     };
-    root.innerHTML = `
-  <style>
-    .ab-app{display:flex;flex-direction:column;width:100%;font-family:system-ui,'Segoe UI',Roboto,sans-serif;color:#dbeafe}
-    .ab-app [hidden]{display:none!important}
-    .ab-app.game-fill > .game-panel[data-board]{position:relative;flex:1 1 auto;min-height:0;aspect-ratio:auto;width:100%;padding:0;border:0;border-radius:14px;overflow:hidden;background:#05070f;user-select:none;-webkit-user-select:none}
-    .ab-cv{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
-    /* satu bar HUD di atas board */
-    .ab-hud{display:flex;align-items:center;gap:7px;flex-wrap:wrap;flex:none;margin-bottom:8px;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
-    .ab-hudchip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid rgba(125,211,252,.24);border-radius:999px;background:rgba(10,16,34,.9);color:#93c5fd;white-space:nowrap;letter-spacing:.03em}
-    .ab-hudchip b{color:#f8fafc;font-weight:800;font-variant-numeric:tabular-nums}
-    .ab-hudchip.r b{color:#ff6b78} .ab-hudchip.c b{color:#5ee7f0} .ab-hudchip.sd b{color:#f87171}
-    .ab-spacer{flex:1 1 auto}
-    .ab-icon-btn{display:inline-flex;align-items:center;gap:5px}
-    .ab-icon-btn svg{flex:none;display:block}
-    .ab-btn-label{white-space:nowrap}
-    .ab-btn:disabled{opacity:.45;cursor:not-allowed}
-    .ab-hud .ab-btn{min-height:30px;padding:5px 9px;font-size:10px;letter-spacing:0}
-    .ab-hud .ab-btn.on{border-color:#ffc857;color:#ffc857}
-    /* HUD lapangan (anak board, bukan bar atas) */
-    .ab-fieldhud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:10px 12px;pointer-events:none;gap:8px;z-index:2}
-    .ab-team{display:flex;flex-direction:column;gap:6px;width:200px}
-    .ab-chip{background:rgba(8,12,26,.74);border:1px solid;border-radius:9px;padding:5px 8px;font-size:11px;line-height:1.25}
-    .ab-chip.red{border-color:rgba(255,77,93,.55)} .ab-chip.cyan{border-color:rgba(41,216,229,.55)}
-    .ab-chip.ko{opacity:.55;filter:grayscale(.7)}
-    .ab-chip-top{display:flex;justify-content:space-between;gap:6px;font-weight:700}
-    .ab-tag{font-size:9px;padding:1px 5px;border-radius:6px;background:rgba(255,255,255,.14)}
-    .ab-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.12);margin-top:3px;overflow:hidden}
-    .ab-bar i{display:block;height:100%;border-radius:3px;transition:width .12s linear}
-    .ab-hp i{background:linear-gradient(90deg,#4ade80,#a3e635)}
-    .ab-en i{background:linear-gradient(90deg,#38bdf8,#818cf8)}
-    .ab-mid{text-align:center;min-width:170px}
-    .ab-score{display:flex;justify-content:center;align-items:center;gap:10px;font-size:26px;font-weight:900;text-shadow:0 0 14px rgba(56,189,248,.45)}
-    .ab-score .r{color:#ff4d5d}.ab-score .c{color:#29d8e5}
-    .ab-pips{font-size:11px;letter-spacing:2px}
-    .ab-timer{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px}
-    .ab-timer.sd{color:#f87171;animation:ab-pulse 1s infinite}
-    .ab-round{font-size:10px;opacity:.75;letter-spacing:1px;text-transform:uppercase}
-    .ab-banner{position:absolute;left:50%;top:24%;transform:translate(-50%,-50%) scale(.7);font-size:44px;font-weight:900;letter-spacing:2px;opacity:0;pointer-events:none;text-align:center;white-space:nowrap;text-shadow:0 0 24px currentColor,0 2px 0 rgba(0,0,0,.6);transition:opacity .15s,transform .15s}
-    .ab-banner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
-    .ab-banner.count{font-size:88px}
-    .ab-banner.small{font-size:24px}
-    .ab-toast{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(8,12,26,.88);border:1px solid rgba(125,211,252,.4);padding:6px 14px;border-radius:20px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
-    .ab-toast.show{opacity:1}
-    .ab-hint{position:absolute;bottom:8px;left:10px;font-size:10px;opacity:.55;pointer-events:none}
-    .ab-vign{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 110px rgba(255,50,60,.55);opacity:0;transition:opacity .3s}
-    .ab-screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(4,7,16,.8);backdrop-filter:blur(4px);padding:18px;overflow:auto;text-align:center}
-    .ab-screen.menu{background:linear-gradient(180deg,rgba(4,7,16,.5),rgba(4,7,16,.88))}
-    .ab-title{font-size:52px;font-weight:900;letter-spacing:4px;background:linear-gradient(90deg,#ff4d5d,#ffc857,#29d8e5);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 18px rgba(56,189,248,.35))}
-    .ab-sub{font-size:13px;opacity:.85;max-width:600px;line-height:1.6}
-    .ab-btn{pointer-events:auto;cursor:pointer;background:rgba(10,16,34,.92);color:#e0f2fe;border:1px solid rgba(125,211,252,.5);padding:10px 22px;border-radius:10px;font-size:14px;font-weight:700;letter-spacing:.5px;transition:all .15s;font-family:inherit}
-    .ab-btn:hover{border-color:#7dd3fc;box-shadow:0 0 16px rgba(56,189,248,.4);transform:translateY(-1px)}
-    .ab-btn.primary{background:linear-gradient(90deg,#dc2626,#0891b2);border-color:transparent;font-size:16px;padding:12px 30px}
-    .ab-btn.small{padding:6px 12px;font-size:12px}
-    .ab-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
-    .ab-set{display:flex;gap:6px;align-items:center;font-size:12px;background:rgba(10,16,34,.85);border:1px solid rgba(125,211,252,.25);border-radius:8px;padding:6px 10px}
-    .ab-set select{background:#0b1226;color:#e0f2fe;border:1px solid rgba(125,211,252,.4);border-radius:6px;padding:3px 6px;font-size:12px}
-    .ab-grid{display:grid;grid-template-columns:repeat(4,minmax(130px,170px));gap:10px;justify-content:center}
-    .ab-card{pointer-events:auto;cursor:pointer;background:rgba(10,16,34,.92);border:1px solid rgba(125,211,252,.3);border-radius:12px;padding:10px;text-align:left;transition:all .15s;position:relative}
-    .ab-card:hover{transform:translateY(-2px);border-color:#7dd3fc}
-    .ab-card.sel{border-color:#ffc857;box-shadow:0 0 14px rgba(255,200,87,.35)}
-    .ab-card h4{margin:6px 0 2px;font-size:13px}
-    .ab-card .role{font-size:10px;opacity:.7}
-    .ab-card .sk{font-size:10px;color:#7dd3fc;margin-top:4px}
-    .ab-face{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#0b1226}
-    .ab-pickbadges{position:absolute;top:6px;right:6px;display:flex;gap:3px}
-    .ab-pb{font-size:9px;font-weight:800;padding:1px 5px;border-radius:6px;color:#0b1226}
-    .ab-tabs{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-    .ab-tab{pointer-events:auto;cursor:pointer;padding:5px 14px;border-radius:8px;border:1px solid rgba(125,211,252,.3);background:rgba(10,16,34,.85);font-size:12px;font-weight:700;color:#dbeafe;font-family:inherit}
-    .ab-tab.on{border-color:#ffc857;color:#ffc857}
-    .ab-table{border-collapse:collapse;font-size:12px;pointer-events:auto}
-    .ab-table th,.ab-table td{padding:6px 12px;border-bottom:1px solid rgba(125,211,252,.15)}
-    .ab-table th{opacity:.7;font-size:10px;text-transform:uppercase;letter-spacing:1px}
-    .ab-kbd{display:inline-block;background:#0b1226;border:1px solid rgba(125,211,252,.4);border-radius:5px;padding:1px 7px;font-size:11px;font-family:monospace}
-    .ab-ctrl{font-size:12px;text-align:left;line-height:2.1}
-    .ab-vol{display:flex;align-items:center;gap:8px;font-size:12px}
-    .ab-vol input{width:130px;accent-color:#38bdf8}
-    .ab-h2{font-size:26px;font-weight:900;letter-spacing:2px;margin:0}
-    @media(max-width:760px){.ab-grid{grid-template-columns:repeat(2,minmax(130px,1fr))}.ab-team{width:128px}.ab-banner{font-size:30px}.ab-title{font-size:34px}.ab-fieldhud{padding:6px}}
-    @keyframes ab-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  const shell = createGameShell(root, {
+    prefix: "ab-app",
+    dataKey: "ab",
+    category: META.category,
+    hud: {
+      keys: { time: "timer" },
+      labels: {
+        help: "Bantuan", cheats: "Cheat", pause: "Jeda", restart: "Ulangi", exit: "Keluar",
+        helpAria: "Cara main", cheatsAria: "Cheat", pauseAria: "Jeda", exitAria: "Keluar game",
+      },
+    },
+    board: {
+      type: "builder",
+      build(board, { mk }) {
+        const cv = mk("canvas", { class: "ab-cv", "data-cv": "" }, board);
+        mk("div", { class: "ab-vign", "data-vign": "" }, board);
+        const field = mk("div", { class: "ab-fieldhud", "data-fieldhud": "", style: "display:none" }, board);
+        const teamA = mk("div", { class: "ab-team" }, field);
+        teamA.insertAdjacentHTML("beforeend", chip(0) + chip(2));
+        const mid = mk("div", { class: "ab-mid" }, field);
+        mid.insertAdjacentHTML("beforeend", '<div class="ab-score"><span class="ab-pips r" data-pips="0"></span><span class="r" data-score="0">0</span><span style="opacity:.4">:</span><span class="c" data-score="1">0</span><span class="ab-pips c" data-pips="1"></span></div><div class="ab-timer" data-timer>1:15</div><div class="ab-round" data-round>Ronde 1 &middot; Best of 3</div>');
+        const teamB = mk("div", { class: "ab-team" }, field);
+        teamB.insertAdjacentHTML("beforeend", chip(1) + chip(3));
+        mk("div", { class: "ab-banner", "data-banner": "" }, board);
+        mk("div", { class: "ab-toast", "data-toast": "" }, board);
+        mk("div", { class: "ab-hint", "data-hint": "" }, board);
+        for (const name of ["menu", "select", "results", "wait"]) {
+          mk("div", { class: name === "menu" ? "ab-screen menu" : "ab-screen", "data-screen": name, hidden: "" }, board);
+        }
+        return { canvas: cv };
+      },
+    },
+    overlays: {
+      cheats: {
+        title: "Cheat (host)",
+        closeLabel: "Tutup", closeAction: "cheat-close",
+        cardActions: [
+          { key: "cheatact", value: "energy", label: "+ Energi tim" },
+          { key: "cheatact", value: "hp", label: "+ Pulihkan HP" },
+          { key: "cheatact", value: "goal", label: "+ Gol instan" },
+          { key: "cheatact", value: "skip", label: "Lewati ronde" },
+        ],
+        note: "Tekan C untuk menutup · Hanya host yang bisa memakai cheat",
+      },
+      help: {
+        title: "Cara Main — Arena Battle",
+        closeLabel: "Tutup", closeAction: "help-close",
+        sections: [
+          { title: "Kontrol", items: [
+            '<b>P1 (Keyboard + Mouse):</b> <span class="gui-kbd">WASD</span> gerak · <span class="gui-kbd">Mouse</span> bidik · <span class="gui-kbd">Klik kiri</span> serang / pukul bola · <span class="gui-kbd">Klik kanan</span> skill · <span class="gui-kbd">Spasi</span> dash · <span class="gui-kbd">E</span> ambil / oper',
+            '<b>P2 (Keyboard):</b> <span class="gui-kbd">Panah</span> gerak · <span class="gui-kbd">.</span> serang · <span class="gui-kbd">,</span> skill · <span class="gui-kbd">/</span> dash · <span class="gui-kbd">Shift kanan</span> ambil',
+            '<b>Gamepad:</b> stick kiri gerak · stick kanan bidik · <span class="gui-kbd">RT</span> serang · <span class="gui-kbd">LT</span> skill · <span class="gui-kbd">A</span> dash · <span class="gui-kbd">X</span> ambil / oper · <span class="gui-kbd">Start</span> jeda',
+            '<b>Aturan:</b> Best of 3 · gol langsung mengakhiri ronde · waktu habis seri &rarr; <b>Sudden Death</b> (30 detik: bola makin cepat, barrier lenyap) · KO respawn 5 detik · dilarang diam di gawang sendiri &gt;3 detik · barrier bisa dihancurkan &amp; pulih tiap ronde.',
+          ] },
+          { title: "Tim & ronde", items: [
+            "2-4 pemain lokal; slot kosong diisi bot sampai 4 fighter. Mode online selalu 2 pemain.",
+            "RED &#9650; di kiri, CYAN &#9670; di kanan. Gol ke gawang lawan bernilai 1 poin; gol sendiri untuk tim lawan.",
+            "Menangkan 2 dari 3 ronde. Waktu habis seri memicu <b>Sudden Death</b> (gol pertama menang).",
+            "KO respawn 5 detik; health &amp; energy kembali penuh tiap ronde; barrier regenerasi.",
+            "Jangan diam di gawang sendiri lebih dari 3 detik (anti-camp).",
+          ] },
+          { title: "Tombol panel", items: [
+            '<span class="gui-kbd">H</span> bantuan · <span class="gui-kbd">C</span> cheat · <span class="gui-kbd">P</span>/<span class="gui-kbd">Esc</span> jeda · <span class="gui-kbd">R</span> ulangi.',
+            "Overlay bantuan/cheat membekukan simulasi dan timer.",
+          ] },
+        ],
+        note: "Tekan H untuk membuka panduan ini lagi",
+        primary: "Mengerti", primaryAction: "help-close",
+      },
+      pause: {
+        title: "Paused",
+        primary: "Resume", primaryAction: "resume",
+      },
+    },
+  });
 
-    /* overlay bantuan / cheat: card fleksibel, isi bisa digulir */
-    .ab-screen{z-index:5;gap:12px;overflow:auto}
-    .ab-modal{display:flex;flex-direction:column;width:min(780px,100%);max-height:100%;overflow:hidden;padding:16px;border:1px solid rgba(125,211,252,.28);border-radius:14px;background:rgba(8,12,26,.96);text-align:left;gap:10px}
-    .ab-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
-    .ab-head h3{margin:0;color:#7dd3fc;font-size:16px;font-weight:800;letter-spacing:1px}
-    .ab-help{flex:1 1 auto;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
-    .ab-cheats{flex:1 1 auto;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
-    .ab-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;padding-top:10px;border-top:1px solid rgba(125,211,252,.16)}
-    .ab-note{font-size:10px;opacity:.6}
 
-    /* --- final overrides: taruh PALING AKHIR (specificity tinggi) --- */
-    @media (max-width:640px){
-      .ab-app.game-fill > .game-panel[data-board]:not(:has(.ab-screen:not([hidden]))){aspect-ratio:16/10;flex:0 0 auto;min-height:0}
-      .ab-app.game-fill > .game-panel[data-board]:has(.ab-screen:not([hidden])){flex:0 0 auto;min-height:min(70dvh,620px);aspect-ratio:auto}
-      .ab-app .ab-hud{gap:5px;margin-bottom:6px}
-      .ab-app .ab-hud .ab-hudchip{padding:3px 6px;font-size:9px}
-      .ab-app .ab-hud .ab-hudchip[data-hud="status"],
-      .ab-app .ab-hud .ab-hudchip[data-hud="best"]{display:none}
-      .ab-app .ab-hud .ab-btn{min-height:30px;padding:4px 7px;font-size:9px}
-      .ab-app .ab-hud .ab-btn-label,
-      .ab-app .ab-hud .ab-spacer{display:none}
-      .ab-app .ab-fieldhud{padding:5px 6px}
-      .ab-app .ab-fieldhud .ab-team{width:118px}
-      .ab-app .ab-screen{padding:8px;justify-content:flex-start}
-      .ab-app .ab-modal{width:100%;height:100%;max-height:100%;padding:12px;border-radius:12px}
-      .ab-app .ab-help,.ab-app .ab-cheats{scrollbar-width:none}
-      .ab-app .ab-help::-webkit-scrollbar,.ab-app .ab-cheats::-webkit-scrollbar{display:none}
-      .ab-app .ab-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}
-      .ab-app .ab-title{font-size:32px}
-      .ab-app .ab-banner{font-size:28px}
-    }
-    @media (pointer:coarse){
-      .ab-app .ab-hud .ab-btn{min-height:30px;padding:4px 8px}
-    }
-  </style>
-  <div class="game-app ab-app game-fill" data-ab>
-    <div class="ab-hud" data-topbar>
-      <span class="ab-hudchip">RONDE <b data-hud="round">1</b></span>
-      <span class="ab-hudchip r">SKOR <b data-hud="score">0:0</b></span>
-      <span class="ab-hudchip">WAKTU <b data-hud="timer">1:15</b></span>
-      <span class="ab-hudchip">STATUS <b data-status>Siap</b></span>
-      <span class="ab-hudchip">BEST <b data-hud="best">0</b></span>
-      <span class="ab-spacer"></span>
-      <button class="ab-btn ab-icon-btn" type="button" data-help aria-label="Cara main" title="Cara main (H)">
-        <span class="ab-btn-icon">${iconSVG("helpCircle", { size: 14 })}</span><span class="ab-btn-label">Bantuan</span>
-      </button>
-      <button class="ab-btn ab-icon-btn" type="button" data-cheats aria-label="Cheat" title="Cheat (C)">
-        <span class="ab-btn-icon">${iconSVG("wrench", { size: 14 })}</span><span class="ab-btn-label">Cheat</span>
-      </button>
-      <button class="ab-btn ab-icon-btn" type="button" data-pause aria-label="Jeda" title="Jeda (P)">
-        <span class="ab-btn-icon" data-pause-icon>${iconSVG("pause", { size: 14 })}</span><span class="ab-btn-label">Jeda</span>
-      </button>
-      <button class="ab-btn ab-icon-btn" type="button" data-restart aria-label="Ulangi pertandingan" title="Ulangi (R)">
-        <span class="ab-btn-icon">${iconSVG("refresh", { size: 14 })}</span><span class="ab-btn-label">Ulangi</span>
-      </button>
-      <button class="ab-btn ab-icon-btn" type="button" data-exit aria-label="Keluar game" title="Keluar game">
-        <span class="ab-btn-icon">${iconSVG("logOut", { size: 14 })}</span><span class="ab-btn-label">Keluar</span>
-      </button>
-    </div>
-    <section class="game-panel" data-board>
-      <canvas class="ab-cv" data-cv></canvas>
-      <div class="ab-vign" data-vign></div>
-      <div class="ab-fieldhud" data-fieldhud style="display:none">
-        <div class="ab-team">${chip(0)}${chip(2)}</div>
-        <div class="ab-mid">
-          <div class="ab-score"><span class="ab-pips r" data-pips="0"></span><span class="r" data-score="0">0</span><span style="opacity:.4">:</span><span class="c" data-score="1">0</span><span class="ab-pips c" data-pips="1"></span></div>
-          <div class="ab-timer" data-timer>1:15</div>
-          <div class="ab-round" data-round>Ronde 1 &middot; Best of 3</div>
-        </div>
-        <div class="ab-team">${chip(1)}${chip(3)}</div>
-      </div>
-      <div class="ab-banner" data-banner></div>
-      <div class="ab-toast" data-toast></div>
-      <div class="ab-hint" data-hint></div>
-      <div class="ab-screen menu" data-screen="menu" hidden></div>
-      <div class="ab-screen" data-screen="select" hidden></div>
-      <div class="ab-screen" data-screen="pause" hidden></div>
-      <div class="ab-screen" data-screen="results" hidden></div>
-      <div class="ab-screen" data-screen="wait" hidden></div>
-      <div class="ab-screen" data-ov="cheats" hidden>
-        <div class="ab-modal">
-          <div class="ab-head"><h3>Cheat (host)</h3><button class="ab-btn small" type="button" data-cheat-close aria-label="Tutup cheat">Tutup</button></div>
-          <div class="ab-cheats" data-cheatgrid></div>
-          <div class="ab-foot"><span class="ab-note">Tekan C untuk menutup · Hanya host yang bisa memakai cheat</span><button class="ab-btn primary small" type="button" data-cheat-close>Selesai</button></div>
-        </div>
-      </div>
-      <div class="ab-screen" data-ov="help" hidden>
-        <div class="ab-modal">
-          <div class="ab-head"><h3>Cara Main — Arena Battle</h3><button class="ab-btn small" type="button" data-help-close aria-label="Tutup bantuan">Tutup</button></div>
-          <div class="ab-help" data-help-body></div>
-          <div class="ab-foot"><span class="ab-note">Tekan H untuk membuka panduan ini lagi</span><button class="ab-btn primary small" type="button" data-help-close>Mengerti</button></div>
-        </div>
-      </div>
-    </section>
-  </div>`;
 
     const $ = (sel) => root.querySelector(sel);
     const app = $("[data-ab]"), board = $("[data-board]"), cv = $("[data-cv]");
     const ctx = cv.getContext("2d");
+    root.querySelectorAll("[data-ui-action]").forEach((b) => { b.dataset.action = b.dataset.uiAction; });
     const el = {
-        status: $("[data-status]"), hud: $("[data-fieldhud]"), banner: $("[data-banner]"),
+        hud: $("[data-fieldhud]"), banner: $("[data-banner]"),
         toast: $("[data-toast]"), hint: $("[data-hint]"), vign: $("[data-vign]"),
         timer: $("[data-timer]"), round: $("[data-round]"),
         top: {
             round: $("[data-hud='round']"), score: $("[data-hud='score']"),
             timer: $("[data-hud='timer']"), best: $("[data-hud='best']"),
         },
-        screens: { menu: $("[data-screen='menu']"), select: $("[data-screen='select']"), pause: $("[data-screen='pause']"), results: $("[data-screen='results']"), wait: $("[data-screen='wait']") },
-        ov: { help: $("[data-ov='help']"), cheats: $("[data-ov='cheats']") },
-        helpBody: $("[data-help-body]"), cheatGrid: $("[data-cheatgrid]"),
+        screens: { menu: $("[data-screen='menu']"), select: $("[data-screen='select']"), results: $("[data-screen='results']"), wait: $("[data-screen='wait']") },
+        ov: { help: $("[data-ov='help']"), cheats: $("[data-ov='cheats']"), pause: $("[data-ov='pause']") },
         hp: [0, 1, 2, 3].map(i => $(`[data-hp='${i}']`)), en: [0, 1, 2, 3].map(i => $(`[data-en='${i}']`)),
         name: [0, 1, 2, 3].map(i => $(`[data-name='${i}']`)), tag: [0, 1, 2, 3].map(i => $(`[data-tag='${i}']`)),
         chipEl: [0, 1, 2, 3].map(i => $(`[data-chip='${i}']`)),
@@ -1669,40 +1572,6 @@ export function mount(root, context = {}) {
     let picks = [0, 1, 2, 3];
     let resultsCounted = false;
     const slotCol = (i) => TEAM[(i === 0 || i === 2) ? 0 : 1].col;
-    const ctrlHTML = `
-    <div class="ab-ctrl">
-      <b>P1 (Keyboard + Mouse):</b> <span class="ab-kbd">WASD</span> gerak · <span class="ab-kbd">Mouse</span> bidik · <span class="ab-kbd">Klik kiri</span> serang / pukul bola · <span class="ab-kbd">Klik kanan</span> skill · <span class="ab-kbd">Spasi</span> dash · <span class="ab-kbd">E</span> ambil / oper<br>
-      <b>P2 (Keyboard):</b> <span class="ab-kbd">Panah</span> gerak · <span class="ab-kbd">.</span> serang · <span class="ab-kbd">,</span> skill · <span class="ab-kbd">/</span> dash · <span class="ab-kbd">Shift kanan</span> ambil<br>
-      <b>Gamepad:</b> stick kiri gerak · stick kanan bidik · <span class="ab-kbd">RT</span> serang · <span class="ab-kbd">LT</span> skill · <span class="ab-kbd">A</span> dash · <span class="ab-kbd">X</span> ambil / oper · <span class="ab-kbd">Start</span> jeda<br>
-      <b>Aturan:</b> Best of 3 · gol langsung mengakhiri ronde · waktu habis seri &rarr; <b>Sudden Death</b> (30 detik: bola makin cepat, barrier lenyap) · KO respawn 5 detik · dilarang diam di gawang sendiri &gt;3 detik · barrier bisa dihancurkan &amp; pulih tiap ronde.
-    </div>`;
-
-    // Bantuan internal menggantikan panel data-howto lama di menu.
-    if (el.helpBody) el.helpBody.innerHTML = `
-      <div>
-        <b>Kontrol</b>
-        ${ctrlHTML}
-      </div>
-      <div>
-        <b>Tim &amp; ronde</b>
-        <ul>
-          <li>2-4 pemain lokal; slot kosong diisi bot sampai 4 fighter. Mode online selalu 2 pemain.</li>
-          <li>RED &#9650; di kiri, CYAN &#9670; di kanan. Gol ke gawang lawan bernilai 1 poin; gol sendiri untuk tim lawan.</li>
-          <li>Menangkan 2 dari 3 ronde. Waktu habis seri memicu <b>Sudden Death</b> (gol pertama menang).</li>
-          <li>KO respawn 5 detik; health &amp; energy kembali penuh tiap ronde; barrier regenerasi.</li>
-          <li>Jangan diam di gawang sendiri lebih dari 3 detik (anti-camp).</li>
-        </ul>
-        <b>Tombol panel</b>
-        <ul>
-          <li><span class="ab-kbd">H</span> bantuan · <span class="ab-kbd">C</span> cheat · <span class="ab-kbd">P</span>/<span class="ab-kbd">Esc</span> jeda · <span class="ab-kbd">R</span> ulangi.</li>
-          <li>Overlay bantuan/cheat membekukan simulasi dan timer.</li>
-        </ul>
-      </div>`;
-    if (el.cheatGrid) el.cheatGrid.innerHTML = `
-      <button class="ab-btn" type="button" data-cheatact="energy">+ Energi tim</button>
-      <button class="ab-btn" type="button" data-cheatact="hp">+ Pulihkan HP</button>
-      <button class="ab-btn" type="button" data-cheatact="goal">+ Gol instan</button>
-      <button class="ab-btn" type="button" data-cheatact="skip">Lewati ronde</button>`;
     const localTeam = () => (mySlot === 0 || mySlot === 2) ? 0 : 1;
     function cheatAction(key) {
         if (!isHost || !S || S.demo) return;
@@ -1780,18 +1649,6 @@ export function mount(root, context = {}) {
                 : `<div class="ab-row"><button class="ab-btn" data-action="menu">Kembali</button><button class="ab-btn primary" data-action="start">Mulai Pertandingan</button></div>
            <div class="ab-sub" style="font-size:11px;opacity:.6">Slot kosong otomatis diisi bot sampai 4 pemain · P1 &amp; P3 = RED, P2 &amp; P4 = CYAN</div>`}`;
     }
-    function buildPause() {
-        el.screens.pause.innerHTML = `
-      <h3 class="ab-h2">JEDA</h3>
-      <div class="ab-row"><button class="ab-btn primary" data-action="resume">Lanjutkan</button></div>
-      <div class="ab-row">
-        <label class="ab-vol">Master <input type="range" min="0" max="100" value="${Math.round(cfg.vol * 100)}" data-vol="vol"></label>
-        <label class="ab-vol">Musik <input type="range" min="0" max="100" value="${Math.round(cfg.music * 100)}" data-vol="music"></label>
-        <label class="ab-vol">SFX <input type="range" min="0" max="100" value="${Math.round(cfg.sfx * 100)}" data-vol="sfx"></label>
-      </div>
-      ${ctrlHTML}
-      <div class="ab-row"><button class="ab-btn" data-action="menu">Keluar ke Menu</button></div>`;
-    }
     function buildResults(st) {
         if (!st) return;
         const winner = st.wins[0] >= 2 ? 0 : 1;
@@ -1839,14 +1696,13 @@ export function mount(root, context = {}) {
             el.screens[k].style.display = show ? "flex" : "none";
         }
         el.ov.help.hidden = !helpOpen;
-        el.ov.help.style.display = helpOpen ? "flex" : "none";
         el.ov.cheats.hidden = !cheatsOpen || helpOpen;
-        el.ov.cheats.style.display = (cheatsOpen && !helpOpen) ? "flex" : "none";
+        el.ov.pause.hidden = !(ui.screen === "pause" && !blocked);
 
         // Perbarui label span, BUKAN button.textContent (ikon harus tetap ada).
         const pbtn = root.querySelector("[data-pause]");
         if (pbtn) {
-            const label = pbtn.querySelector(".ab-btn-label");
+            const label = pbtn.querySelector(".gui-btn-label");
             if (label) label.textContent = ui.paused ? "Lanjut" : "Jeda";
             pbtn.setAttribute("aria-label", ui.paused ? "Lanjutkan" : "Jeda");
             pbtn.title = ui.paused ? "Lanjutkan (P)" : "Jeda (P)";
@@ -1871,11 +1727,9 @@ export function mount(root, context = {}) {
         syncOverlays();
         el.hud.style.display = (name === "match" || name === "pause") ? "flex" : "none";
         el.hint.style.display = name === "match" ? "block" : "none";
-        el.status.textContent = { menu: "Siap", select: "Pilih Fighter", match: "Bermain", pause: "Jeda", results: "Selesai", wait: "Menunggu host" }[name] || "Siap";
         syncTopHud(S && !S.demo ? S : null);
         if (name === "menu") buildMenu();
         if (name === "select") buildSelect();
-        if (name === "pause") buildPause();
         if (name === "wait") buildWait();
         if (online && isHost) publish();
     }
@@ -2047,7 +1901,12 @@ export function mount(root, context = {}) {
             syncOverlays(); return;
         }
         if (t.closest("[data-cheat-close]")) { cheatsOpen = false; syncOverlays(); return; }
-        if (t.closest("[data-pause]")) { AU.ensure(); togglePause(); return; }
+        if (t.closest("[data-pause]")) {
+            AU.ensure();
+            if (isHost && (ui.screen === "menu" || ui.screen === "select")) startMatch();
+            togglePause();
+            return;
+        }
         if (t.closest("[data-restart]")) {
             AU.ensure();
             if (isHost && S && !S.demo && !helpOpen && !cheatsOpen) startMatch();
@@ -2252,7 +2111,7 @@ export function mount(root, context = {}) {
             document.removeEventListener("visibilitychange", onVis);
             unsubs.forEach((f) => { try { f(); } catch (e) { } });
             AU.close();
-            root.innerHTML = "";
+            root.replaceChildren();
         },
     };
 }

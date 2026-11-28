@@ -338,6 +338,7 @@ async function launchGame(gameId, mode, room = null) {
       currentGame = module.mount(node, {
         mode,
         room,
+        category: game.category,
         playerName: playerName(),
         onExit: closeGame
       });
